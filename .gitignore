@@ -1,0 +1,13 @@
+node_modules
+dist
+out
+release
+*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+logs/
+test-results/
+*.tsbuildinfo
+*.err
+.claude/

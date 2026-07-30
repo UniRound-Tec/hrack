@@ -1,0 +1,45 @@
+{
+  "name": "vibing",
+  "version": "0.0.0",
+  "description": "AI CLI 专用终端",
+  "private": true,
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck:node": "tsc -p tsconfig.node.json --noEmit",
+    "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "postinstall": "electron-rebuild -f -w node-pty",
+    "build:win": "electron-vite build && electron-builder --win",
+    "e2e": "electron-vite build && playwright test",
+    "e2e:only": "playwright test",
+    "e2e:stress": "electron-vite build && playwright test e2e/terminal-stress.spec.ts",
+    "e2e:stress:repeat": "electron-vite build && playwright test e2e/terminal-stress.spec.ts --repeat-each=5"
+  },
+  "author": "",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "electron": "^43.2.0",
+    "node-pty": "^1.1.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
+    "@playwright/test": "^1.62.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.6"
+  }
+}
