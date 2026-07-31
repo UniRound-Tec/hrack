@@ -3,7 +3,12 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { PtyProxy } from './PtyProxy'
-import { registerTerminalForDebug, recordPtyData } from './debugBridge'
+import { handleTabShortcut } from '../tabs/tabShortcuts'
+import {
+  recordPtyData,
+  registerTerminalForDebug,
+  setActiveTerminalForDebug
+} from './debugBridge'
 
 /**
  * ConPTY 重画被主进程隔离后，xterm 需要自行维持 normal buffer 的光标。
@@ -77,12 +82,21 @@ function applyConptyCursorSync(
  */
 export function useXterm(
   containerRef: RefObject<HTMLDivElement | null>,
-  onCopied?: () => void
+  tabId: string,
+  active: boolean,
+  onCopied?: () => void,
+  onTitle?: (title: string) => void,
+  onExit?: (code: number) => void
 ): void {
+  const terminalRef = useRef<Terminal | null>(null)
   const onCopiedRef = useRef(onCopied)
+  const onTitleRef = useRef(onTitle)
+  const onExitRef = useRef(onExit)
   useEffect(() => {
     onCopiedRef.current = onCopied
-  }, [onCopied])
+    onTitleRef.current = onTitle
+    onExitRef.current = onExit
+  }, [onCopied, onExit, onTitle])
 
   useEffect(() => {
     const container = containerRef.current
@@ -110,7 +124,12 @@ export function useXterm(
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(container)
+    terminalRef.current = term
     fit.fit()
+    term.attachCustomKeyEventHandler((event) => !handleTabShortcut(event))
+    const titleDisposable = term.onTitleChange((title) => {
+      onTitleRef.current?.(title)
+    })
 
     let proxy: PtyProxy | null = null
     let disposed = false
@@ -199,6 +218,9 @@ export function useXterm(
     const fitVisual = (): void => {
       fitFrame = null
       if (disposed) return
+      if (container.clientWidth <= 0 || container.clientHeight <= 0) return
+      const proposed = fit.proposeDimensions()
+      if (!proposed || proposed.cols <= 0 || proposed.rows <= 0) return
       try {
         fit.fit()
       } catch {
@@ -214,6 +236,7 @@ export function useXterm(
 
     // 调试桥：E2E/dev 下暴露 window.__vibingDebug，可读 buffer、可主动 forceResize。
     const unregisterDebug = registerTerminalForDebug(
+      tabId,
       term,
       () => {
         if (fitFrame !== null) {
@@ -260,7 +283,7 @@ export function useXterm(
         })
         // pty → 屏幕；xterm 解析完成后 ack，驱动主进程高低水位背压。
         proxy.onData((d) => {
-          recordPtyData(d)
+          recordPtyData(tabId, d)
           term.write(d, () => acknowledgeParsedData(d.byteLength))
         })
         proxy.onResizeCursorSync(({ row, column }) => {
@@ -268,6 +291,7 @@ export function useXterm(
         })
         proxy.onExit(({ code }) => {
           term.write(`\r\n\x1b[90m[process exited with code ${code}]\x1b[0m`)
+          onExitRef.current?.(code)
         })
       })
       .catch((err: unknown) => {
@@ -284,11 +308,19 @@ export function useXterm(
       if (fitFrame !== null) cancelAnimationFrame(fitFrame)
       if (ptyResizeTimer) clearTimeout(ptyResizeTimer)
       unregisterDebug()
+      titleDisposable.dispose()
       ro.disconnect()
       container.removeEventListener('contextmenu', copySelectionOnContextMenu)
       proxy?.dispose()
       void proxy?.kill()
+      if (terminalRef.current === term) terminalRef.current = null
       term.dispose()
     }
-  }, [containerRef])
+  }, [containerRef, tabId])
+
+  useEffect(() => {
+    if (!active) return
+    terminalRef.current?.focus()
+    setActiveTerminalForDebug(tabId)
+  }, [active, tabId])
 }

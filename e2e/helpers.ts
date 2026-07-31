@@ -157,6 +157,6 @@ export async function resetClearSeqLog(window: Page): Promise<void> {
 
 /** 在终端里输入文本（经 xterm.onData 送入 pty），可选回车 */
 export async function typeInTerminal(window: Page, text: string): Promise<void> {
-  await window.locator('.xterm').click()
+  await window.locator('.xterm:visible').click()
   await window.keyboard.type(text)
 }

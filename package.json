@@ -26,7 +26,8 @@
     "electron": "^43.2.0",
     "node-pty": "^1.1.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",

@@ -21,11 +21,12 @@
 | 响应性 | 拖动中 xterm 连续改变列数；空闲终端连续两次 ConPTY resize 均在 400ms 门限内完成 |
 | 背压 | 延迟 xterm ack 模拟慢消费者；PTY pause/resume、2MB 输出首尾完整、Renderer animation frame 可响应 |
 | 内存 | Main→Renderer 在途+排队字节不超过 1MB；overflow/rejectedBytes 必须为零 |
+| 多会话 | 两 Tab 的 xterm/raw history 隔离；normal/alternate 保活；后台 2MB 背压；隐藏 resize；5 Tab 有界基线 |
 
 暂未包含在本轮门禁中的范围：
 
 - 超过 `PtyHistory` 容量上限后的分页/截断恢复；
-- 多会话、多窗口并发；
+- 多窗口并发；
 - IME 组合输入与复杂 emoji 宽度；
 - Unix PTY 平台矩阵。
 
@@ -98,7 +99,23 @@ resize 两次，让第一帧 ConPTY 重画完整返回；第二次 resize 仍必
 这条流程覆盖 `vim`、`less`、TUI 类程序使用的缓冲区切换语义，不把 normal buffer 的
 scrollback 假设错误地套到 alternate buffer。
 
-## 5. 运行方式
+## 5. 自动化流程 D：多 Tab 并发与生命周期
+
+对应 `e2e/tabs.spec.ts` 的 12 条用例：
+
+1. 从用户可见的 Tab UI 验证初始、新建、激活、关闭与关闭最后窗口。
+2. 两个 Tab 各写唯一 token，分别读取 xterm buffer 与主进程 raw history，断言互不串扰。
+   PowerShell 预测历史在夹具中关闭，避免把 shell 自身的跨会话建议误判为 PTY 串流。
+3. 切换后验证 normal scrollback、视口位置和 alternate buffer 状态完整保留。
+4. 后台 Tab 延迟 ack 并输出约 2MB；断言 pause/resume、1MB 上限、首尾 token，
+   同时在前台 Tab 执行真实命令并检查 animation frame 响应。
+5. 隐藏 Tab 期间改变窗口尺寸，断言没有新增 resize/零尺寸事件；重新激活后只同步
+   一次最新正数行列。
+6. 验证 OSC 标题及空标题回退、shell `exit` 后保留历史、手动关闭后释放 PTY。
+7. 焦点在 xterm 内验证新建、关闭、正反循环快捷键，随后执行命令确认输入链路正常。
+8. 打开 5 个 Tab，断言恰有 5 个 xterm/调试注册项，且每个 PTY 的交付上限均为 1MB。
+
+## 6. 运行方式
 
 单轮门禁：
 
@@ -118,13 +135,19 @@ npm run e2e:stress:repeat
 npm run e2e
 ```
 
+仅运行 M3 多 Tab 门禁：
+
+```powershell
+npx playwright test e2e/tabs.spec.ts
+```
+
 建议：
 
 - 每次修改 resize、xterm、PTY 数据链路时至少运行单轮；
 - 合并前运行 5 次重复；
 - CI 普通门禁运行单轮，Windows 定时任务运行重复模式。
 
-## 6. 失败如何定位
+## 7. 失败如何定位
 
 | 失败信号 | 优先检查 |
 |---|---|
@@ -137,6 +160,9 @@ npm run e2e
 | `pauseCount === 0` | ack 是否在 xterm write callback 后发送；持续输出是否真正超过高水位 |
 | `overflowed` / `rejectedBytes > 0` | node-pty pause 是否生效；单个 chunk 或水位配置是否超过 1MB 硬上限 |
 | `bufferedBytes` 无法归零 | ack 字节数、IPC handler 或低水位排队 flush 链路 |
+| 后台 Tab 出现前台 token | `tabId → PtyProxy/debug registration` 绑定或测试 shell 预测历史 |
+| 隐藏期出现 resize / 非正数行列 | `fitVisual` 的容器尺寸防护或激活后的 ResizeObserver 时序 |
+| 一次快捷键执行两次 | xterm keydown 与 window 兜底是否重复处理同一终端焦点事件 |
 
 压力用例失败时不应简单增加固定等待时间。先用上述双数据源判断是“源数据丢失”还是
 “显示解释错误”，再针对对应链路修复。

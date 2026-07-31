@@ -17,3 +17,19 @@ test('unsupported locale falls back to English', () => {
   expect(resolveLocale(['fr-FR'])).toBe('en')
   expect(translate(resolveLocale(['fr-FR']), 'copied')).toBe('Copied')
 })
+
+test('tab controls and exited state support all application locales', () => {
+  const cases = [
+    ['zh-CN', '新建标签页', '关闭标签页', '已退出'],
+    ['zh-TW', '新增分頁', '關閉分頁', '已結束'],
+    ['en', 'New tab', 'Close tab', 'Exited'],
+    ['ja', '新しいタブ', 'タブを閉じる', '終了'],
+    ['ko', '새 탭', '탭 닫기', '종료됨']
+  ] as const
+
+  for (const [locale, newTab, closeTab, exited] of cases) {
+    expect(translate(locale, 'newTab')).toBe(newTab)
+    expect(translate(locale, 'closeTab')).toBe(closeTab)
+    expect(translate(locale, 'exited')).toBe(exited)
+  }
+})

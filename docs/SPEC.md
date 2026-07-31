@@ -238,22 +238,45 @@ WebGL Addon  ──(WebGL 不可用)──►  Canvas Addon  ──(GPU context 
 |---|---|---|
 | M0 | 脚手架 | electron-vite 起窗口，React 渲染 "hello" |
 | **M1** | **最小回显链路** | React 挂 xterm → IPC → node-pty → 能跑 shell、回显正常 |
-| M2 | resize + 背压 | 窗口缩放行列同步；`yes`/`cat bigfile` 不卡 UI |
-| M3 | 多 Tab | 新建/切换/关闭 Tab，各自独立 pty 与缓冲 |
-| M4 | 渲染与体验 | WebGL + 降级链；主题、字体、连字 |
+| **M2** | **resize + 背压** | 窗口缩放行列同步；`yes`/`cat bigfile` 不卡 UI |
+| **M3** | **多 Tab** | 新建/切换/关闭 Tab，各自独立 pty 与缓冲 |
+| M4 | 渲染与体验 | WebGL + context-loss 降级链；消除 `opencode` 块字符色块网格缝；主题、字体、连字 |
 | M5 | App Shell | 侧栏、首页、设置面板 |
 | M6 | 窗口质感 | 无边框、vibrancy/acrylic、托盘、全局快捷键 |
 | M7 | 打包 | 三端安装包产出 |
 
 优先级：**M1 是地基**，其余按需推进。
 
-**当前进度（2026-07-31）：M2 已完成。**
+**当前进度（2026-07-31）：M3 已完成。**
+
+M2 基线：
+
 - Main→Renderer 的 PTY 输出已改为 `Uint8Array`。
 - Renderer 在 `term.write(data, callback)` 完成解析后发送 `pty:ack`。
 - 主进程采用 256KB 高水位 / 64KB 低水位控制 `node-pty.pause()/resume()`，
   在途与排队交付数据硬上限为 1MB；超限会显式记录并终止 PTY，不静默无限增长。
 - E2E 会延迟 ack 模拟慢消费者，以约 2MB 持续输出验证 pause/resume、UI 响应、
   输出首尾完整和内存上限；原 resize/scrollback 压测继续作为组合回归门禁。
+
+M3 交付：
+
+- Zustand 管理 Tab 元数据和活动项；每个 Tab 常驻独立 xterm/pty，隐藏时继续消费并
+  ack，切换不会卸载 normal/alternate buffer 或 scrollback。
+- 支持新建、切换、关闭、OSC 标题、进程退出保留，以及
+  `Ctrl+Shift+T` / `Ctrl+Shift+W` / `Ctrl(+Shift)+Tab`。
+- 隐藏 Tab 不执行零尺寸 fit/pty resize，重新激活后才同步最新尺寸。
+- 调试桥兼容原活动终端 API，并增加按 `tabId` 取证的多终端注册表。
+- `e2e/tabs.spec.ts` 以 12 条用例覆盖隔离、保活、生命周期、标题、快捷键、
+  后台 2MB 背压、隐藏 resize 和 5 Tab 有界基线；完整 E2E 42/42、原压力门禁
+  5 轮 20/20 通过。
+
+M4 已确认的渲染验收点：
+
+- 当前 DOM renderer 会把 `opencode` 用于色块的连续 `▀` 字符按字体轮廓栅格化，
+  在分数 cell 宽与抗锯齿下产生周期性网格缝；更换字体不能可靠消除，缩放可能放大。
+- WebGL renderer 对照已确认能把同一色块横条的缝隙像素降为 0。M4 必须以
+  WebGL 为首选，并在 context loss / 不支持时安全回退 DOM renderer。
+- M4 应把该 `opencode` 场景固化为视觉回归门禁，不能只验证 addon 成功加载。
 
 ---
 
