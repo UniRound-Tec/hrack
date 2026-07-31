@@ -1,6 +1,6 @@
 # M4 实施计划 —— 渲染与体验
 
-> 状态：**已完成（2026-07-31，含 M4.1 内嵌字体与连字补充）**。
+> 状态：**已完成（2026-07-31，含 M4.1 字体/连字与 M4.2 resize 闪屏修复）**。
 
 > 目标:WebGL 首选渲染 + context-loss 降级链;消除 `opencode` 块字符色块网格缝;
 > 主题、字体、连字。
@@ -159,7 +159,20 @@ M4.1 使用 xterm 6 已有的 character joiner proposed API：
 5. 默认字体栈在 Maple 后按系统回退到 JhengHei/YaHei UI、PingFang、Noto CJK，
    仅让中文等缺失字形走回退字体。设置 UI 仍归 M5。
 
-### 3.6 调试桥扩展(E2E 基建)
+### 3.6 WebGL resize 同步重画(M4.2)
+
+xterm 6.0 在 `WebglRenderer.handleResize` 中立即改变 canvas 尺寸并清空 glyph model，
+但完整 refresh 由 `RenderDebouncer` 放到下一帧，Chromium 可能在两者之间合成近空帧。
+上游 PR [#5529](https://github.com/xtermjs/xterm.js/pull/5529) 已改为 resize 后同步
+`renderRows`。稳定版未发布该修复，故精确锁定已验证的配对 beta 版本，不使用 `@beta`
+浮动标签；稳定版发布后再切回 stable。
+
+回归门禁使用固定文字填满视口，直接快速交替 xterm 的 70/120 列网格尺寸；每次
+`resize()` 返回后立即读取 WebGL 主 canvas，并与下一 animation frame 的稳定结果比较。
+同步结果的亮像素比例必须大于稳定结果的 55%。这样只验证 xterm resize 调用栈，
+不会把 Electron/Windows 原生窗口异步变宽过程中合法的布局中间态误判成 WebGL 闪屏。
+
+### 3.7 调试桥扩展(E2E 基建)
 
 `forTab(tabId)` 增加:
 
@@ -171,7 +184,7 @@ M4.1 使用 xterm 6 已有的 character joiner proposed API：
 
 现有 API 形状不变,既有 42 条 E2E 不受影响。
 
-### 3.7 文档修正
+### 3.8 文档修正
 
 - SPEC §5.2:降级链改两级(WebGL → DOM),注明 Canvas addon 已在 xterm 6.0
   移除;§8 表格与附图涉及 canvas 处同步修正。
@@ -181,9 +194,9 @@ M4.1 使用 xterm 6 已有的 character joiner proposed API：
 
 ## 4. 实施步骤
 
-1. `npm i @xterm/addon-webgl`(取与 `@xterm/xterm` 6.0 兼容版本);
-   SPEC §5.2 降级链修正一并提交。
-2. 调试桥扩展(§3.6),现有 E2E 全绿再继续。
+1. `npm i @xterm/addon-webgl`（与 `@xterm/xterm` 6.x 成对锁定）；当前因 M4.2
+   同步重画修复精确锁定 6.1/WebGL 0.20 beta。SPEC §5.2 降级链修正一并提交。
+2. 调试桥扩展(§3.7),现有 E2E 全绿再继续。
 3. `addons.ts` + `useXterm` 集成:默认挂 WebGL(活动 Tab)、context loss 降级、
    Tab 切换 activate/deactivate(§3.1–§3.2)。跑全量既有 E2E + 压力门禁,
    **确认 WebGL 化不回归 M2/M3 任何指标**——这是本里程碑最大的回归面。
@@ -194,7 +207,7 @@ M4.1 使用 xterm 6 已有的 character joiner proposed API：
 7. 完成连字 spike,并在 M4.1 接入标准 Maple Mono + character joiner(§3.5)。
 8. i18n:若本阶段新增用户可见文案则补五语言(预期没有,设置入口在 M5)。
 9. 全量回归 `npm run e2e`、`npm run e2e:stress:repeat`;
-   更新 SPEC §9 进度注记与 TEST 文档(§3.7)。
+   更新 SPEC §9 进度注记与 TEST 文档(§3.8)。
 
 > 步骤 3 是全部后续工作的地基且回归面最大,单独验证、先全绿再继续。
 > 任何一步破坏既有压力门禁即停下修复,不带病前进(与 M3 同纪律)。

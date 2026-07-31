@@ -22,7 +22,7 @@
 | 背压 | 延迟 xterm ack 模拟慢消费者；PTY pause/resume、2MB 输出首尾完整、Renderer animation frame 可响应 |
 | 内存 | Main→Renderer 在途+排队字节不超过 1MB；overflow/rejectedBytes 必须为零 |
 | 多会话 | 两 Tab 的 xterm/raw history 隔离；normal/alternate 保活；后台 2MB 背压；隐藏 resize；5 Tab 有界基线 |
-| 渲染 | 活动 Tab 独占 WebGL；真实 context loss 回退 DOM；100%/125%/80% 连续 `▀` 零缝截图；主题/字体运行时切换；内嵌 Maple 加载与连字像素差异；buffer/选区保留原字符 |
+| 渲染 | 活动 Tab 独占 WebGL；真实 context loss 回退 DOM；100%/125%/80% 连续 `▀` 零缝截图；resize 返回前完成 WebGL 同步重画；主题/字体运行时切换；内嵌 Maple 加载与连字像素差异；buffer/选区保留原字符 |
 
 暂未包含在本轮门禁中的范围：
 
@@ -118,7 +118,7 @@ scrollback 假设错误地套到 alternate buffer。
 
 ## 6. 自动化流程 E：WebGL 降级与视觉门禁
 
-对应 `e2e/render.spec.ts` 的 9 条用例：
+对应 `e2e/render.spec.ts` 的 10 条用例：
 
 1. 新建、来回切换 Tab，断言只有活动 Tab 是 WebGL，其余均为 DOM。
 2. 用 `WEBGL_lose_context` 触发真实 context loss，断言事件记录、DOM 降级、
@@ -127,11 +127,14 @@ scrollback 假设错误地套到 alternate buffer。
    ANSI 背景参考带；截图解码后要求两者最长水平连续像素宽度完全一致。
 4. 强制 DOM 对照只断言色块存在和真实命令可回显，不把 DOM 已知的字体栅格缝误设为
    可达的零缝目标。
-5. 切换亮色主题后同时读取 xterm options 与 chrome CSS 变量，重启应用验证持久化。
-6. 修改字号/字体后，活动 Tab 立即产生一次新 PTY resize，隐藏 Tab 在激活前不发送。
-7. 确认内嵌 Maple Mono 400 字重已加载，默认字体栈包含繁/简中文系统回退；同一操作符
+5. 用固定高亮文字填满视口，直接交替 70/120 列网格；每次 `resize()` 返回后同步读取
+   WebGL 主 canvas，并与下一 animation frame 的同尺寸稳定结果比较。同步结果不得
+   低于稳定结果亮像素的 55%，防止 canvas 清空后把重画延迟到下一帧。
+6. 切换亮色主题后同时读取 xterm options 与 chrome CSS 变量，重启应用验证持久化。
+7. 修改字号/字体后，活动 Tab 立即产生一次新 PTY resize，隐藏 Tab 在激活前不发送。
+8. 确认内嵌 Maple Mono 400 字重已加载，默认字体栈包含繁/简中文系统回退；同一操作符
    fixture 在连字关闭/开启时存在稳定像素差，但 xterm buffer 与选择结果仍是原字符串。
-8. M3 alternate buffer、后台约 2MB 背压和 5 Tab 基线叠加 renderer kind 断言，
+9. M3 alternate buffer、后台约 2MB 背压和 5 Tab 基线叠加 renderer kind 断言，
    验证 renderer 迁移不改变 buffer 保活、ack 或 1MB 上限。
 
 视觉门禁使用 PNG 像素扫描而非 golden 全图，因此不受提示符、窗口装饰等无关区域变化

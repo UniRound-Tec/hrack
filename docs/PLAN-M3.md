@@ -219,7 +219,8 @@ App
 ## 8. 与后续里程碑的衔接
 
 - **M4(渲染)**:WebGL addon 按终端实例加载,多 Tab 结构不需要重构;
-  注意隐藏 Tab 的 WebGL 上下文数量上限问题,届时在 M4 计划里处理(如非活动降级)。
+  隐藏 Tab 的 WebGL 上下文数量上限已在 M4 处理：仅活动 Tab 持有 WebGL，非活动
+  Tab 降级到 DOM，buffer 与 PTY 消费仍保持常驻。
   已确认当前 DOM renderer 会让 `opencode` 的连续 `▀` 色块出现网格缝；M4 的
   WebGL 首选路径必须消除此现象，并为 context loss 提供 DOM 降级和视觉回归测试。
 - **M5(App Shell)**:TabBar 归入 Shell 布局;"关最后一个 Tab"改为回首页。

@@ -4,7 +4,7 @@
 > **产品定位：一个完整、好用的通用终端，同时为 AI CLI（Claude Code / Codex CLI 等）提供专门的运行状态监控**。
 > - **普通终端能力是一等公民**：多 Tab、shell、滚动、搜索、复制粘贴、主题、连字、性能——都要做扎实，不是 AI 监控的附属品。用户即便不跑 AI CLI，它也应是一个称手的终端。
 > - **AI CLI 监控是差异化能力**：在跑 AI CLI 时，额外实时呈现其状态（思考中 / 等待批准 / 完成 / 上下文用量 / 当前任务）。
-> 技术路线：**Electron 原生窗口壳 + React 应用 UI + xterm.js 6.0（WebGL 渲染）+ node-pty 原生 PTY**。
+> 技术路线：**Electron 原生窗口壳 + React 应用 UI + xterm.js 6.x（WebGL 渲染）+ node-pty 原生 PTY**。
 > 架构参考 Tabby，UI 层由 Angular 换为 React。
 >
 > **两条能力线并行**：终端功能线（§1–§9）与 AI 语义监控线（§11）正交推进，后者依赖前者的 pty 字节流但不侵入其显示链路。
@@ -38,7 +38,7 @@
 │                             │                                                  │
 │                  TerminalView (React 容器)                                     │
 │                             │  xterm.open(ref)                                 │
-│                        xterm.js 6.0  ── addons: fit / webgl / search / ...     │
+│                        xterm.js 6.x  ── addons: fit / webgl / search / ...     │
 │                             │  onData ↕ write                                  │
 │                        PtyProxy (IPC client)                                   │
 └────────────────────────────────────────────────────────────────────────────┘
@@ -189,6 +189,15 @@ WebGL → Canvas → DOM 三级描述。
 为避免 Chromium 的单页 WebGL context 上限，只有活动 Tab 持有 WebGL addon；
 隐藏 Tab 同步 dispose 回 DOM，但 xterm buffer 与 PTY 消费/ack 保持常驻。
 
+xterm 6.0 的 WebGL renderer 在 resize 时先清空 canvas，完整重画却延迟到下一帧，
+会向 Chromium compositor 提交近空帧并造成拖窗闪烁。上游修复
+([xterm.js#5529](https://github.com/xtermjs/xterm.js/pull/5529))改为 resize 调用栈内
+同步重画；稳定版尚未包含该补丁，因此当前精确锁定已验证的
+`@xterm/xterm@6.1.0-beta.292` + `@xterm/addon-webgl@0.20.0-beta.291`，不使用浮动
+beta 标签。E2E 在 xterm 网格连续宽窄 resize 后立即读取 WebGL 主 canvas，并与下一
+animation frame 的稳定结果比较，禁止 renderer 再次把重画推迟到下一帧。原生窗口
+自身的异步布局阶段不属于该门禁，避免把窗口管理器中间态误判为 renderer 回归。
+
 `@xterm/addon-ligatures` 0.10.0 需要 Node 文件系统定位并解析本机字体，不能用于
 `nodeIntegration:false` 的 Renderer；本项目不引入该 addon，也不为字体放宽安全边界。
 M4.1 改用 xterm 6 的 character joiner proposed API：应用只识别连续操作符与 Maple
@@ -241,7 +250,7 @@ M4.1 改用 xterm 6 的 character joiner proposed API：应用只识别连续操
 | 壳 | Electron | 跨三端、成熟、Chromium 抹平差异 |
 | UI | React 18 + TypeScript | 需求指定 |
 | 状态 | Zustand | 轻量，可在 hook 外读写，无 re-render 陷阱 |
-| 终端 | xterm.js 6.0 + WebGL | 需求指定 |
+| 终端 | xterm.js 6.x + WebGL | 需求指定；精确 beta pin 含 resize 同步重画修复 |
 | PTY | node-pty | 事实标准，封装 ConPTY/Unix PTY |
 | 构建 | electron-vite | 一套配置同时构建 main/preload/renderer，HMR |
 | 打包 | electron-builder | 三端安装包 |
@@ -266,7 +275,7 @@ M4.1 改用 xterm 6 的 character joiner proposed API：应用只识别连续操
 
 优先级：**M1 是地基**，其余按需推进。
 
-**当前进度（2026-07-31）：M4 已完成，M4.1 字体与连字补充已落地。**
+**当前进度（2026-07-31）：M4 已完成，M4.1 字体/连字与 M4.2 resize 闪屏修复已落地。**
 
 M2 基线：
 
@@ -298,6 +307,9 @@ M4 交付：
 - `e2e/render.spec.ts` 以连续 `▀` + 同宽 ANSI 背景色带做截图像素对照，在
   100% / 125% / 80% zoom 下要求前景连续宽度完全相等，固化 `opencode` 零缝门禁；
   DOM 对照只要求内容和输入可用。
+- M4.2 精确锁定包含上游同步重画补丁的 xterm 6.1/WebGL 0.20 beta；WebGL resize
+  不再先提交空 canvas。同步 canvas 门禁要求 `resize()` 返回时的亮度至少保持下一
+  animation frame 稳定结果的 55%；同一门禁已在 6.0/WebGL 0.19 上反证失败。
 - `themes.ts` 集中定义完整 16 色终端主题与 chrome 色值；内置深/亮两套主题。
   `settingsStore` 持久化 `themeId / fontFamily / fontSize / ligatures`，主题和字体即时
   生效；字体变化仅立即 fit 活动 Tab，隐藏 Tab 激活后再同步 PTY。
