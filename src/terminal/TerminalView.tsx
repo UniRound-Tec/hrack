@@ -50,7 +50,7 @@ export default function TerminalView({ tabId, active }: TerminalViewProps) {
           role="status"
           aria-live="polite"
           data-testid="copy-toast"
-          className="copy-toast pointer-events-none absolute right-4 bottom-4 z-10 rounded-md border border-white/10 bg-[#202733]/95 px-3 py-2 text-sm text-[#e6edf3] shadow-lg"
+          className="copy-toast pointer-events-none absolute right-4 bottom-4 z-10 rounded-md border px-3 py-2 text-sm shadow-lg"
         >
           {translate(locale, 'copied')}
         </div>

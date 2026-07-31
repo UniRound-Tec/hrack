@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import type { ElectronApplication, Page } from '@playwright/test'
 import {
+  dragSelectTerminalText,
   dumpBuffer,
   launchApp,
   selectTerminalText,
@@ -56,4 +57,52 @@ test('right click copies the current terminal selection', async () => {
   await expect(toast).toBeVisible()
   await expect(toast).toHaveText(/^(已复制|已複製|Copied|コピーしました|복사됨)$/)
   await expect(toast).toBeHidden({ timeout: 3_000 })
+})
+
+test('keeps pointer selection available after a TUI exits with mouse tracking enabled', async () => {
+  const token = `SELECT_AFTER_EXIT_${Date.now()}`
+  await typeInTerminal(window, `Write-Output "${token}"`)
+  await window.keyboard.press('Enter')
+  await expect
+    .poll(async () => (await dumpBuffer(window)).join('\n'))
+    .toContain(token)
+
+  const terminalState = () =>
+    window.evaluate(() => {
+      const api = (
+        window as unknown as {
+          __vibingDebug: {
+            mouseTrackingMode(): string
+            snapshot(): { bufferType: string } | null
+          }
+        }
+      ).__vibingDebug
+      return {
+        mouseTrackingMode: api.mouseTrackingMode(),
+        bufferType: api.snapshot()?.bufferType
+      }
+    })
+  const writeFixture = (data: string) =>
+    window.evaluate(
+      (value) =>
+        (
+          window as unknown as {
+            __vibingDebug: { writeRenderFixture(data: string): Promise<void> }
+          }
+        ).__vibingDebug.writeRenderFixture(value),
+      data
+    )
+
+  await writeFixture('\x1b[?1049h\x1b[?1003hTUI_ACTIVE')
+  expect(await terminalState()).toEqual({
+    mouseTrackingMode: 'any',
+    bufferType: 'alternate'
+  })
+  await writeFixture('\x1b[?1049l')
+  expect(await terminalState()).toEqual({
+    mouseTrackingMode: 'none',
+    bufferType: 'normal'
+  })
+
+  expect(await dragSelectTerminalText(window, token)).toContain(token)
 })

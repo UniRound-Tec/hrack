@@ -1,12 +1,19 @@
 import { useEffect } from 'react'
 import TerminalView from './terminal/TerminalView'
 import { useTabsStore } from './state/tabsStore'
+import { useSettingsStore } from './state/settingsStore'
 import TabBar from './tabs/TabBar'
 import { handleTabShortcut } from './tabs/tabShortcuts'
+import { applyChromeTheme } from './terminal/themes'
 
 export default function App() {
   const tabs = useTabsStore((state) => state.tabs)
   const activeTabId = useTabsStore((state) => state.activeTabId)
+  const themeId = useSettingsStore((state) => state.themeId)
+
+  useEffect(() => {
+    applyChromeTheme(themeId)
+  }, [themeId])
 
   useEffect(() => {
     const handleWindowShortcut = (event: KeyboardEvent): void => {
@@ -19,7 +26,7 @@ export default function App() {
   }, [])
 
   return (
-    <div className="flex h-full w-full flex-col bg-[#0b0e14]">
+    <div className="app-shell flex h-full w-full flex-col">
       <TabBar />
       <div className="min-h-0 flex-1">
         {tabs.map((tab) => (

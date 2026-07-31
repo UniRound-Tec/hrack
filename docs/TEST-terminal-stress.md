@@ -22,6 +22,7 @@
 | 背压 | 延迟 xterm ack 模拟慢消费者；PTY pause/resume、2MB 输出首尾完整、Renderer animation frame 可响应 |
 | 内存 | Main→Renderer 在途+排队字节不超过 1MB；overflow/rejectedBytes 必须为零 |
 | 多会话 | 两 Tab 的 xterm/raw history 隔离；normal/alternate 保活；后台 2MB 背压；隐藏 resize；5 Tab 有界基线 |
+| 渲染 | 活动 Tab 独占 WebGL；真实 context loss 回退 DOM；100%/125%/80% 连续 `▀` 零缝截图；主题/字体运行时切换；内嵌 Maple 加载与连字像素差异；buffer/选区保留原字符 |
 
 暂未包含在本轮门禁中的范围：
 
@@ -115,7 +116,28 @@ scrollback 假设错误地套到 alternate buffer。
 7. 焦点在 xterm 内验证新建、关闭、正反循环快捷键，随后执行命令确认输入链路正常。
 8. 打开 5 个 Tab，断言恰有 5 个 xterm/调试注册项，且每个 PTY 的交付上限均为 1MB。
 
-## 6. 运行方式
+## 6. 自动化流程 E：WebGL 降级与视觉门禁
+
+对应 `e2e/render.spec.ts` 的 9 条用例：
+
+1. 新建、来回切换 Tab，断言只有活动 Tab 是 WebGL，其余均为 DOM。
+2. 用 `WEBGL_lose_context` 触发真实 context loss，断言事件记录、DOM 降级、
+   降级前后命令与 scrollback 完整；切出再切回后恢复 WebGL。
+3. 在 100% / 125% / 80% zoom 下主动 fit，然后写入连续 `▀` 色带与同字符数的
+   ANSI 背景参考带；截图解码后要求两者最长水平连续像素宽度完全一致。
+4. 强制 DOM 对照只断言色块存在和真实命令可回显，不把 DOM 已知的字体栅格缝误设为
+   可达的零缝目标。
+5. 切换亮色主题后同时读取 xterm options 与 chrome CSS 变量，重启应用验证持久化。
+6. 修改字号/字体后，活动 Tab 立即产生一次新 PTY resize，隐藏 Tab 在激活前不发送。
+7. 确认内嵌 Maple Mono 400 字重已加载，默认字体栈包含繁/简中文系统回退；同一操作符
+   fixture 在连字关闭/开启时存在稳定像素差，但 xterm buffer 与选择结果仍是原字符串。
+8. M3 alternate buffer、后台约 2MB 背压和 5 Tab 基线叠加 renderer kind 断言，
+   验证 renderer 迁移不改变 buffer 保活、ack 或 1MB 上限。
+
+视觉门禁使用 PNG 像素扫描而非 golden 全图，因此不受提示符、窗口装饰等无关区域变化
+影响；WebGL 不可用时 `rendererKind()` 前置断言会显式失败。
+
+## 7. 运行方式
 
 单轮门禁：
 
@@ -141,13 +163,25 @@ npm run e2e
 npx playwright test e2e/tabs.spec.ts
 ```
 
+仅运行 M4 renderer / 主题 / 字体门禁（需要 WebGL2 runner；无 WebGL 时显式失败）：
+
+```powershell
+npx playwright test e2e/render.spec.ts
+```
+
+仅运行 Windows PTY 退出错误边界门禁：
+
+```powershell
+npx playwright test e2e/pty-error-guard.spec.ts
+```
+
 建议：
 
 - 每次修改 resize、xterm、PTY 数据链路时至少运行单轮；
 - 合并前运行 5 次重复；
 - CI 普通门禁运行单轮，Windows 定时任务运行重复模式。
 
-## 7. 失败如何定位
+## 8. 失败如何定位
 
 | 失败信号 | 优先检查 |
 |---|---|
@@ -163,6 +197,14 @@ npx playwright test e2e/tabs.spec.ts
 | 后台 Tab 出现前台 token | `tabId → PtyProxy/debug registration` 绑定或测试 shell 预测历史 |
 | 隐藏期出现 resize / 非正数行列 | `fitVisual` 的容器尺寸防护或激活后的 ResizeObserver 时序 |
 | 一次快捷键执行两次 | xterm keydown 与 window 兜底是否重复处理同一终端焦点事件 |
+| 活动 Tab 不是 WebGL / 多个 Tab 同时是 WebGL | `active` effect 的 rAF 校验、旧 addon dispose 与调试注册绑定 |
+| context loss 后仍报告 WebGL | `onContextLoss` 是否 dispose 当前 addon；canvas 是否支持 `WEBGL_lose_context` |
+| 连续 `▀` 色带宽度小于 ANSI 参考带 | WebGL custom glyph、zoom 后 fit/renderer 尺寸同步或截图扫描坐标 |
+| 主题只改终端或只改 TabBar | `settingsStore` 订阅与 `applyChromeTheme` CSS 变量链路 |
+| 字体变化时隐藏 Tab 收到 resize | `activeRef` 在 fit 与最终 `sendPtyResize` 两处的防护 |
+| shell `exit` 时主进程弹出 `Cannot resize a pty that has already exited` | pending resize 是否在退出时清理；native resize 失败是否被当作 best-effort 丢弃 |
+| `opencode` 退出时主进程弹出 `write EAGAIN` | `PtyErrorGuard` 是否在 spawn 后立即安装；ConPTY `inSocket` error listener 与 node-pty 输出管道 listener-count 约定是否仍满足 |
+| TUI 退出后无法拖选文案 | alternate→normal 时是否仍残留非 `none` mouse tracking；`bufferChangeDisposable` 是否关闭全部鼠标协议 |
 
 压力用例失败时不应简单增加固定等待时间。先用上述双数据源判断是“源数据丢失”还是
 “显示解释错误”，再针对对应链路修复。

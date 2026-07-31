@@ -9,6 +9,16 @@ import {
   registerTerminalForDebug,
   setActiveTerminalForDebug
 } from './debugBridge'
+import {
+  createRendererController,
+  type RendererController
+} from './addons'
+import { useSettingsStore } from '../state/settingsStore'
+import { getTerminalTheme } from './themes'
+import { createLigatureController } from './ligatures'
+
+const DISABLE_MOUSE_TRACKING =
+  '\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l'
 
 /**
  * ConPTY 重画被主进程隔离后，xterm 需要自行维持 normal buffer 的光标。
@@ -89,6 +99,11 @@ export function useXterm(
   onExit?: (code: number) => void
 ): void {
   const terminalRef = useRef<Terminal | null>(null)
+  const rendererRef = useRef<RendererController | null>(null)
+  const rendererFrameRef = useRef<number | null>(null)
+  const fitRequestRef = useRef<(() => void) | null>(null)
+  const activeRef = useRef(active)
+  activeRef.current = active
   const onCopiedRef = useRef(onCopied)
   const onTitleRef = useRef(onTitle)
   const onExitRef = useRef(onExit)
@@ -106,25 +121,39 @@ export function useXterm(
     // REPRO 已证明 xterm reflow 本身能完整保留历史。真正有破坏性的 ConPTY resize 整屏重画
     // 由主进程 ConptyResizeFilter 隔离，不会进入这里的 term.write。
     const meta = window.ptyApi.getMeta()
+    const initialSettings = useSettingsStore.getState()
     const term = new Terminal({
-      fontFamily: 'Consolas, "Cascadia Code", "Courier New", monospace',
-      fontSize: 13,
+      allowProposedApi: true,
+      fontFamily: initialSettings.fontFamily,
+      fontSize: initialSettings.fontSize,
       cursorBlink: true,
       // 主进程会隔离 ConPTY resize 重画，因此当前光标行也必须由 xterm 自己 reflow。
       reflowCursorLine: true,
       windowsPty: meta.windowsPty,
-      theme: {
-        background: '#0b0e14',
-        foreground: '#c8d3e0',
-        cursor: '#c8d3e0',
-        selectionBackground: '#3d4f6b'
-      }
+      theme: getTerminalTheme(initialSettings.themeId).terminal
     })
 
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(container)
     terminalRef.current = term
+    const ligatures = createLigatureController(
+      term,
+      initialSettings.ligatures
+    )
+    const bufferChangeDisposable = term.buffer.onBufferChange((buffer) => {
+      // TUI 异常/快速退出时可能已经切回 normal buffer，却遗漏 mouse tracking
+      // 的 DECRST（opencode /exit 可稳定复现）。此时普通拖拽会继续被当作
+      // 终端鼠标事件。只在离开 alternate buffer 后修复状态，不影响 TUI 内交互。
+      if (
+        buffer.type === 'normal' &&
+        term.modes.mouseTrackingMode !== 'none'
+      ) {
+        term.write(DISABLE_MOUSE_TRACKING)
+      }
+    })
+    const renderer = createRendererController(term)
+    rendererRef.current = renderer
     fit.fit()
     term.attachCustomKeyEventHandler((event) => !handleTabShortcut(event))
     const titleDisposable = term.onTitleChange((title) => {
@@ -134,6 +163,7 @@ export function useXterm(
     let proxy: PtyProxy | null = null
     let disposed = false
     let ptyAckDelayMs = 0
+    let ptyRenderingSuspended = false
     const pendingAckTimers = new Set<ReturnType<typeof setTimeout>>()
 
     const acknowledgeParsedData = (bytes: number): void => {
@@ -180,7 +210,7 @@ export function useXterm(
     let lastSentRows = term.rows
 
     const sendPtyResize = (cols: number, rows: number): void => {
-      if (disposed || !proxy) return
+      if (disposed || !proxy || !activeRef.current) return
       if (cols === lastSentCols && rows === lastSentRows) return
       lastSentCols = cols
       lastSentRows = rows
@@ -217,7 +247,7 @@ export function useXterm(
 
     const fitVisual = (): void => {
       fitFrame = null
-      if (disposed) return
+      if (disposed || !activeRef.current) return
       if (container.clientWidth <= 0 || container.clientHeight <= 0) return
       const proposed = fit.proposeDimensions()
       if (!proposed || proposed.cols <= 0 || proposed.rows <= 0) return
@@ -233,6 +263,26 @@ export function useXterm(
       if (fitFrame !== null) return
       fitFrame = requestAnimationFrame(fitVisual)
     }
+    fitRequestRef.current = scheduleResize
+
+    const unsubscribeSettings = useSettingsStore.subscribe(
+      (settings, previous) => {
+        if (settings.themeId !== previous.themeId) {
+          term.options.theme = getTerminalTheme(settings.themeId).terminal
+        }
+        if (
+          settings.fontFamily !== previous.fontFamily ||
+          settings.fontSize !== previous.fontSize
+        ) {
+          term.options.fontFamily = settings.fontFamily
+          term.options.fontSize = settings.fontSize
+          if (activeRef.current) scheduleResize()
+        }
+        if (settings.ligatures !== previous.ligatures) {
+          ligatures.setEnabled(settings.ligatures)
+        }
+      }
+    )
 
     // 调试桥：E2E/dev 下暴露 window.__vibingDebug，可读 buffer、可主动 forceResize。
     const unregisterDebug = registerTerminalForDebug(
@@ -254,6 +304,10 @@ export function useXterm(
       () => proxy?.flowControl() ?? Promise.resolve(null),
       (milliseconds) => {
         ptyAckDelayMs = Math.max(0, Math.floor(milliseconds))
+      },
+      renderer,
+      (suspended) => {
+        ptyRenderingSuspended = suspended
       }
     )
 
@@ -284,6 +338,10 @@ export function useXterm(
         // pty → 屏幕；xterm 解析完成后 ack，驱动主进程高低水位背压。
         proxy.onData((d) => {
           recordPtyData(tabId, d)
+          if (ptyRenderingSuspended) {
+            acknowledgeParsedData(d.byteLength)
+            return
+          }
           term.write(d, () => acknowledgeParsedData(d.byteLength))
         })
         proxy.onResizeCursorSync(({ row, column }) => {
@@ -306,21 +364,49 @@ export function useXterm(
       for (const timer of pendingAckTimers) clearTimeout(timer)
       pendingAckTimers.clear()
       if (fitFrame !== null) cancelAnimationFrame(fitFrame)
+      if (rendererFrameRef.current !== null) {
+        cancelAnimationFrame(rendererFrameRef.current)
+        rendererFrameRef.current = null
+      }
+      unsubscribeSettings()
       if (ptyResizeTimer) clearTimeout(ptyResizeTimer)
       unregisterDebug()
+      bufferChangeDisposable.dispose()
       titleDisposable.dispose()
       ro.disconnect()
       container.removeEventListener('contextmenu', copySelectionOnContextMenu)
       proxy?.dispose()
       void proxy?.kill()
+      renderer.dispose()
+      ligatures.dispose()
+      if (rendererRef.current === renderer) rendererRef.current = null
+      if (fitRequestRef.current === scheduleResize) fitRequestRef.current = null
       if (terminalRef.current === term) terminalRef.current = null
       term.dispose()
     }
   }, [containerRef, tabId])
 
   useEffect(() => {
-    if (!active) return
+    if (rendererFrameRef.current !== null) {
+      cancelAnimationFrame(rendererFrameRef.current)
+      rendererFrameRef.current = null
+    }
+    if (!active) {
+      rendererRef.current?.deactivate()
+      return
+    }
     terminalRef.current?.focus()
     setActiveTerminalForDebug(tabId)
+    rendererFrameRef.current = requestAnimationFrame(() => {
+      rendererFrameRef.current = null
+      rendererRef.current?.activate()
+      fitRequestRef.current?.()
+    })
+    return () => {
+      if (rendererFrameRef.current !== null) {
+        cancelAnimationFrame(rendererFrameRef.current)
+        rendererFrameRef.current = null
+      }
+    }
   }, [active, tabId])
 }

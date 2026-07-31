@@ -12,6 +12,10 @@ import {
 import { PtyHistory } from './PtyHistory'
 import { ConptyResizeFilter } from './ConptyResizeFilter'
 import {
+  installPtyErrorGuard,
+  type PtyErrorEmitter
+} from './PtyErrorGuard'
+import {
   PTY_DATA_HIGH_WATER_MARK_BYTES,
   PTY_DATA_LOW_WATER_MARK_BYTES,
   PTY_DATA_MAX_BUFFERED_BYTES,
@@ -84,6 +88,7 @@ export class PTYManager {
     if (!pty) throw lastErr ?? new Error('failed to spawn pty')
 
     const spawnedPty = pty
+    installPtyErrorGuard(spawnedPty as unknown as PtyErrorEmitter)
     const history = new PtyHistory()
     history.appendResize(cols, rows)
     const resizeFilter =
@@ -195,18 +200,24 @@ export class PTYManager {
       return
     }
 
+    const targetPty = managed.pty
+    if (!targetPty) return
     const { cols, rows } = managed.pendingResize
     managed.pendingResize = undefined
-    managed.history.appendResize(cols, rows)
     const resizeGeneration = managed.resizeFilter?.expectResize()
     try {
-      managed.pty.resize(cols, rows)
+      targetPty.resize(cols, rows)
+      managed.history.appendResize(cols, rows)
     } catch (error) {
       // resize 未送达 PTY 时不能让过滤器继续等待，否则会误判下一段普通输出。
       if (resizeGeneration !== undefined) {
         managed.resizeFilter?.cancelExpectedResize(resizeGeneration)
       }
-      throw error
+      // ConPTY 可以在最后一次存活检查与 native resize 调用之间退出。
+      // resize 是窗口同步的 best-effort 操作，迟到失败不能成为主进程未捕获异常。
+      console.warn(
+        `[vibing] ignored stale PTY resize ${cols}x${rows}: ${String(error)}`
+      )
     }
   }
 

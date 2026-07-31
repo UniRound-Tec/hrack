@@ -1,5 +1,6 @@
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { resolve } from 'path'
+import { PNG } from 'pngjs'
 import type {
   PtyFlowControlSnapshot,
   PtyHistorySnapshot
@@ -115,6 +116,46 @@ export async function flowControl(window: Page): Promise<PtyFlowControlSnapshot 
   )
 }
 
+/** 走真实 pointer 路径拖选终端文本；TUI 遗留 mouse tracking 时该操作会失败。 */
+export async function dragSelectTerminalText(
+  window: Page,
+  text: string
+): Promise<string> {
+  const lines = await dumpBuffer(window)
+  let row = -1
+  let column = -1
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const matchIndex = lines[index].indexOf(text)
+    if (matchIndex < 0) continue
+    row = index
+    column = matchIndex
+    break
+  }
+  if (row < 0 || column < 0) return ''
+
+  const state = (await snapshot(window)) as {
+    cols: number
+    rows: number
+    viewportY: number
+  }
+  const screen = await window.locator('.xterm-screen:visible').boundingBox()
+  if (!screen || row < state.viewportY || row >= state.viewportY + state.rows) {
+    return ''
+  }
+  const cellWidth = screen.width / state.cols
+  const cellHeight = screen.height / state.rows
+  const y = screen.y + (row - state.viewportY + 0.5) * cellHeight
+  await window.mouse.move(screen.x + (column + 0.2) * cellWidth, y)
+  await window.mouse.down()
+  await window.mouse.move(
+    screen.x + (column + text.length - 0.2) * cellWidth,
+    y,
+    { steps: 5 }
+  )
+  await window.mouse.up()
+  return terminalSelection(window)
+}
+
 /** E2E 专用：延迟 xterm 消费完成后的 ack，确定性模拟慢消费者。 */
 export async function setPtyAckDelay(window: Page, milliseconds: number): Promise<void> {
   await window.evaluate(
@@ -159,4 +200,62 @@ export async function resetClearSeqLog(window: Page): Promise<void> {
 export async function typeInTerminal(window: Page, text: string): Promise<void> {
   await window.locator('.xterm:visible').click()
   await window.keyboard.type(text)
+}
+
+export interface SolidColorScan {
+  matchingPixels: number
+  longestHorizontalRun: number
+  longestRunY: number
+  longestRunFromX: number
+  longestRunToX: number
+}
+
+/** 扫描纯色像素的最长水平连续段；块字符网格缝会把该连续段切碎。 */
+export function scanSolidColor(
+  screenshot: Buffer,
+  expected: readonly [number, number, number],
+  tolerance = 4,
+  bounds?: { fromY?: number; toY?: number; fromX?: number; toX?: number }
+): SolidColorScan {
+  const png = PNG.sync.read(screenshot)
+  let matchingPixels = 0
+  let longestHorizontalRun = 0
+  let longestRunY = -1
+  let longestRunFromX = -1
+  let longestRunToX = -1
+  const fromY = Math.max(0, Math.floor(bounds?.fromY ?? 0))
+  const toY = Math.min(png.height, Math.ceil(bounds?.toY ?? png.height))
+  const fromX = Math.max(0, Math.floor(bounds?.fromX ?? 0))
+  const toX = Math.min(png.width, Math.ceil(bounds?.toX ?? png.width))
+  for (let y = fromY; y < toY; y++) {
+    let run = 0
+    let runFromX = fromX
+    for (let x = fromX; x < toX; x++) {
+      const offset = (y * png.width + x) * 4
+      const matches =
+        Math.abs(png.data[offset] - expected[0]) <= tolerance &&
+        Math.abs(png.data[offset + 1] - expected[1]) <= tolerance &&
+        Math.abs(png.data[offset + 2] - expected[2]) <= tolerance
+      if (matches) {
+        matchingPixels++
+        if (run === 0) runFromX = x
+        run++
+        if (run > longestHorizontalRun) {
+          longestHorizontalRun = run
+          longestRunY = y
+          longestRunFromX = runFromX
+          longestRunToX = x + 1
+        }
+      } else {
+        run = 0
+      }
+    }
+  }
+  return {
+    matchingPixels,
+    longestHorizontalRun,
+    longestRunY,
+    longestRunFromX,
+    longestRunToX
+  }
 }

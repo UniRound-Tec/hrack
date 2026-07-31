@@ -1,5 +1,13 @@
 import type { Terminal } from '@xterm/xterm'
 import type {
+  RendererController,
+  RendererEvent,
+  RendererKind
+} from './addons'
+import { useSettingsStore } from '../state/settingsStore'
+import type { ThemeId } from './themes'
+import { findLigatureRanges, type LigatureRange } from './ligatures'
+import type {
   PtyFlowControlSnapshot,
   PtyHistorySnapshot
 } from '../../shared/ipc-contract'
@@ -33,6 +41,24 @@ export interface VibingDebugApi {
   dumpAuthoritativeHistory(): Promise<PtyHistorySnapshot | null>
   flowControl(): Promise<PtyFlowControlSnapshot | null>
   setPtyAckDelay(milliseconds: number): void
+  mouseTrackingMode(): Terminal['modes']['mouseTrackingMode']
+  rendererKind(): RendererKind
+  rendererEvents(): RendererEvent[]
+  forceContextLoss(): boolean
+  forceDomRenderer(): void
+  writeRenderFixture(data: string): Promise<void>
+  setPtyRenderingSuspended(suspended: boolean): void
+  setTheme(themeId: ThemeId): void
+  setFont(fontFamily: string, fontSize: number): void
+  setLigatures(enabled: boolean): void
+  ligatureRanges(text: string): LigatureRange[]
+  resetSettings(): void
+  terminalAppearance(): {
+    theme: Terminal['options']['theme']
+    fontFamily: string
+    fontSize: number
+    ligatures: boolean
+  }
 }
 
 export interface VibingDebugTabsApi {
@@ -52,6 +78,8 @@ interface TerminalRegistration {
   dumpHistory: () => Promise<PtyHistorySnapshot | null>
   dumpFlowControl: () => Promise<PtyFlowControlSnapshot | null>
   setPtyAckDelay: (milliseconds: number) => void
+  renderer: RendererController
+  setPtyRenderingSuspended: (suspended: boolean) => void
   clearLog: ClearSeqLog
 }
 
@@ -184,6 +212,55 @@ function createApi(
     },
     setPtyAckDelay(milliseconds: number) {
       getRegistration()?.setPtyAckDelay(milliseconds)
+    },
+    mouseTrackingMode() {
+      return getRegistration()?.term.modes.mouseTrackingMode ?? 'none'
+    },
+    rendererKind() {
+      return getRegistration()?.renderer.kind() ?? 'dom'
+    },
+    rendererEvents() {
+      return getRegistration()?.renderer.events() ?? []
+    },
+    forceContextLoss() {
+      return getRegistration()?.renderer.forceContextLoss() ?? false
+    },
+    forceDomRenderer() {
+      getRegistration()?.renderer.deactivate('debug-forced')
+    },
+    writeRenderFixture(data: string) {
+      const registration = getRegistration()
+      if (!registration) return Promise.resolve()
+      return new Promise<void>((resolve) => {
+        registration.term.write(data, resolve)
+      })
+    },
+    setPtyRenderingSuspended(suspended: boolean) {
+      getRegistration()?.setPtyRenderingSuspended(suspended)
+    },
+    setTheme(themeId: ThemeId) {
+      useSettingsStore.getState().setTheme(themeId)
+    },
+    setFont(fontFamily: string, fontSize: number) {
+      useSettingsStore.getState().setFont(fontFamily, fontSize)
+    },
+    setLigatures(enabled: boolean) {
+      useSettingsStore.getState().setLigatures(enabled)
+    },
+    ligatureRanges(text: string) {
+      return findLigatureRanges(text)
+    },
+    resetSettings() {
+      useSettingsStore.getState().reset()
+    },
+    terminalAppearance() {
+      const term = getRegistration()?.term
+      return {
+        theme: term?.options.theme ?? {},
+        fontFamily: term?.options.fontFamily ?? '',
+        fontSize: term?.options.fontSize ?? 0,
+        ligatures: useSettingsStore.getState().ligatures
+      }
     }
   }
 }
@@ -258,7 +335,9 @@ export function registerTerminalForDebug(
   forceResize: () => void,
   dumpHistory: () => Promise<PtyHistorySnapshot | null>,
   dumpFlowControl: () => Promise<PtyFlowControlSnapshot | null>,
-  setPtyAckDelay: (milliseconds: number) => void
+  setPtyAckDelay: (milliseconds: number) => void,
+  renderer: RendererController,
+  setPtyRenderingSuspended: (suspended: boolean) => void
 ): () => void {
   if (!shouldEnable()) return () => {}
 
@@ -268,6 +347,8 @@ export function registerTerminalForDebug(
     dumpHistory,
     dumpFlowControl,
     setPtyAckDelay,
+    renderer,
+    setPtyRenderingSuspended,
     clearLog: { ed2: 0, ed3: 0, events: [] }
   })
   if (!activeTabId) activeTabId = tabId

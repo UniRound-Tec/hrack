@@ -175,13 +175,31 @@ useEffect(() => {
 ```
 
 ### 5.2 Addon 与渲染降级
-加载：`fit / search / serialize / unicode11 / image(sixel) / ligatures / webgl / canvas`。
+当前加载 `fit / webgl`；`search / serialize / unicode11 / image(sixel)` 按后续
+里程碑需求接入。
 
-降级路径（Tabby 同款）：
+渲染降级为两级：
 ```
-WebGL Addon  ──(WebGL 不可用)──►  Canvas Addon  ──(GPU context 丢失且恢复失败)──►  DOM Renderer
+WebGL Addon  ──(WebGL2 不可用 / context loss)──►  DOM Renderer
 ```
-监听 webgl addon 的 `onContextLoss`，失败即 dispose 并 fallback。
+监听 WebGL addon 的 `onContextLoss`，失败即 dispose 并 fallback；切出再切回 Tab
+后允许重新尝试。xterm.js 6.0 已移除 Canvas addon，因此不再保留旧的
+WebGL → Canvas → DOM 三级描述。
+
+为避免 Chromium 的单页 WebGL context 上限，只有活动 Tab 持有 WebGL addon；
+隐藏 Tab 同步 dispose 回 DOM，但 xterm buffer 与 PTY 消费/ack 保持常驻。
+
+`@xterm/addon-ligatures` 0.10.0 需要 Node 文件系统定位并解析本机字体，不能用于
+`nodeIntegration:false` 的 Renderer；本项目不引入该 addon，也不为字体放宽安全边界。
+M4.1 改用 xterm 6 的 character joiner proposed API：应用只识别连续操作符与 Maple
+内建标签范围，实际 OpenType `calt` 整形由浏览器和内嵌的标准版 Maple Mono 完成，
+不需要文件系统或新 IPC。xterm 会按前景/背景属性切分范围，并在光标进入连字或选区
+切开连字时退回逐字符绘制，因此 buffer、复制内容与字符格坐标保持原义。WebGL 与 DOM
+降级路径共用同一个 joiner；`ligatures` 设置可即时注册/注销。
+
+默认终端字体为内嵌 Maple Mono v7.9 WOFF2、16px；启动时先等待常规/粗体加载再
+创建 xterm，避免首屏用 fallback 尺寸建 atlas。Maple 不含中文，回退栈按平台优先
+使用 Microsoft JhengHei/YaHei UI、PingFang TC/SC、Noto Sans (Mono) CJK TC/SC。
 
 ### 5.3 尺寸链路
 ```
@@ -195,7 +213,8 @@ WebGL Addon  ──(WebGL 不可用)──►  Canvas Addon  ──(GPU context 
 ## 6. 多 Tab 状态模型
 
 - `tabsStore`（Zustand）：`tabs: {id, title, ptyId, kind}[]`、`activeTabId`。
-- **每个 Tab 的 xterm 实例常驻**（用 CSS `display:none` 隐藏非活动 Tab，而非卸载），避免切 Tab 丢失滚动缓冲与渲染上下文。
+- **每个 Tab 的 xterm 实例常驻**（用 CSS `display:none` 隐藏非活动 Tab，而非卸载），
+  避免切 Tab 丢失滚动缓冲；WebGL addon 仅在活动 Tab 挂载。
 - 标题来源：xterm 的 `onTitleChange`（OSC 序列）→ 更新 store。
 - 关闭 Tab：`term.dispose()` + `pty:kill` + 从 store 移除。
 
@@ -240,14 +259,14 @@ WebGL Addon  ──(WebGL 不可用)──►  Canvas Addon  ──(GPU context 
 | **M1** | **最小回显链路** | React 挂 xterm → IPC → node-pty → 能跑 shell、回显正常 |
 | **M2** | **resize + 背压** | 窗口缩放行列同步；`yes`/`cat bigfile` 不卡 UI |
 | **M3** | **多 Tab** | 新建/切换/关闭 Tab，各自独立 pty 与缓冲 |
-| M4 | 渲染与体验 | WebGL + context-loss 降级链；消除 `opencode` 块字符色块网格缝；主题、字体、连字 |
+| **M4** | **渲染与体验** | WebGL + context-loss 降级链；消除 `opencode` 块字符色块网格缝；主题、内嵌字体与连字 |
 | M5 | App Shell | 侧栏、首页、设置面板 |
 | M6 | 窗口质感 | 无边框、vibrancy/acrylic、托盘、全局快捷键 |
 | M7 | 打包 | 三端安装包产出 |
 
 优先级：**M1 是地基**，其余按需推进。
 
-**当前进度（2026-07-31）：M3 已完成。**
+**当前进度（2026-07-31）：M4 已完成，M4.1 字体与连字补充已落地。**
 
 M2 基线：
 
@@ -270,13 +289,34 @@ M3 交付：
   后台 2MB 背压、隐藏 resize 和 5 Tab 有界基线；完整 E2E 42/42、原压力门禁
   5 轮 20/20 通过。
 
-M4 已确认的渲染验收点：
+M4 交付：
 
-- 当前 DOM renderer 会把 `opencode` 用于色块的连续 `▀` 字符按字体轮廓栅格化，
-  在分数 cell 宽与抗锯齿下产生周期性网格缝；更换字体不能可靠消除，缩放可能放大。
-- WebGL renderer 对照已确认能把同一色块横条的缝隙像素降为 0。M4 必须以
-  WebGL 为首选，并在 context loss / 不支持时安全回退 DOM renderer。
-- M4 应把该 `opencode` 场景固化为视觉回归门禁，不能只验证 addon 成功加载。
+- `@xterm/addon-webgl` 成为活动 Tab 首选 renderer；快速切换时同步释放旧 context、
+  rAF 挂载新 context，任意时刻 WebGL context 数量不超过 1。
+- WebGL 构造/加载失败或真实 context loss 会回退 DOM；降级事件可取证，PTY、
+  scrollback 与输入不中断，完成一次 Tab 切出/切回后允许重试。
+- `e2e/render.spec.ts` 以连续 `▀` + 同宽 ANSI 背景色带做截图像素对照，在
+  100% / 125% / 80% zoom 下要求前景连续宽度完全相等，固化 `opencode` 零缝门禁；
+  DOM 对照只要求内容和输入可用。
+- `themes.ts` 集中定义完整 16 色终端主题与 chrome 色值；内置深/亮两套主题。
+  `settingsStore` 持久化 `themeId / fontFamily / fontSize / ligatures`，主题和字体即时
+  生效；字体变化仅立即 fit 活动 Tab，隐藏 Tab 激活后再同步 PTY。
+- M4.1 内嵌标准版 Maple Mono v7.9 WOFF2，默认 16px，并为繁/简中文配置
+  Microsoft JhengHei/YaHei UI、PingFang TC/SC、Noto CJK 回退栈；旧 13px 默认值与
+  临时 Maple Mono NL 默认值会迁移，新用户和默认配置开启连字。
+- 连字不采用需要 Node 字体文件访问的 addon；xterm character joiner 只组合相同 ANSI
+  属性中的操作符/内建标签片段，再由浏览器应用 Maple OpenType `calt`。光标、选区、
+  buffer 与复制仍保持原始字符；WebGL/DOM 共用，运行时可关闭。
+- M4 联调暴露并修复了 ConPTY 退出与延迟 resize 的竞态：native resize 失败现在取消
+  filter expectation 并安全丢弃，不再以未捕获异常终止主进程。最终完整 E2E 50/50、
+  压力门禁 5 轮 20/20 通过。
+- `opencode` 快速退出还可能让 node-pty 1.1.0 的 ConPTY 输入管道异步返回
+  `write EAGAIN`；主进程现在为每个 Windows PTY 安装终端级错误边界，同时满足
+  node-pty 输出管道的 listener-count 兼容约定。管道退出竞态只结束当前终端会话，不再
+  成为 Electron 主进程的未捕获异常；定向回归和真实 `opencode` 5 轮退出验证通过。
+- `opencode /exit` 会在回到 normal buffer 后遗留 `any` mouse tracking，使普通拖拽仍被
+  当作 TUI 鼠标事件。Renderer 现在在 alternate→normal 切换时显式关闭各类 mouse
+  tracking；TUI 内鼠标交互不变，退出后立即恢复文案选择。
 
 ---
 

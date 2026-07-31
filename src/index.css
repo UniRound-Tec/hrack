@@ -1,5 +1,49 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Maple Mono";
+  src: url("./assets/fonts/maple-mono/MapleMono-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Maple Mono";
+  src: url("./assets/fonts/maple-mono/MapleMono-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Maple Mono";
+  src: url("./assets/fonts/maple-mono/MapleMono-Italic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 400;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Maple Mono";
+  src: url("./assets/fonts/maple-mono/MapleMono-BoldItalic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 700;
+  font-display: block;
+}
+
+:root {
+  --app-bg: #0b0e14;
+  --tabbar-bg: #11151d;
+  --tab-bg: #11151d;
+  --tab-active-bg: #0b0e14;
+  --tab-hover-bg: #171c26;
+  --chrome-border: rgba(255, 255, 255, 0.1);
+  --chrome-fg: #e6edf3;
+  --chrome-muted: #8b949e;
+  --toast-bg: #202733;
+}
+
 html,
 body,
 #root {
@@ -8,8 +52,47 @@ body,
 }
 
 body {
-  background-color: #0b0e14;
+  background-color: var(--app-bg);
   overflow: hidden;
+}
+
+.app-shell {
+  background: var(--app-bg);
+}
+
+.tab-bar {
+  background: var(--tabbar-bg);
+  border-color: var(--chrome-border);
+}
+
+.tab-item {
+  border-color: var(--chrome-border);
+}
+
+.tab-item-active {
+  background: var(--tab-active-bg);
+  color: var(--chrome-fg);
+}
+
+.tab-item-inactive {
+  background: var(--tab-bg);
+  color: var(--chrome-muted);
+}
+
+.tab-item-inactive:hover,
+.tab-new:hover {
+  background: var(--tab-hover-bg);
+  color: var(--chrome-fg);
+}
+
+.tab-action,
+.tab-new {
+  color: var(--chrome-muted);
+}
+
+.tab-action:hover {
+  background: color-mix(in srgb, var(--chrome-fg) 10%, transparent);
+  color: var(--chrome-fg);
 }
 
 @keyframes copy-toast-in {
@@ -24,5 +107,8 @@ body {
 }
 
 .copy-toast {
+  background: color-mix(in srgb, var(--toast-bg) 95%, transparent);
+  border-color: var(--chrome-border);
+  color: var(--chrome-fg);
   animation: copy-toast-in 140ms ease-out;
 }

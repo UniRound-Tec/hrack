@@ -118,6 +118,22 @@ async function setTabAckDelay(
   )
 }
 
+async function tabRendererKind(tabId: string): Promise<'webgl' | 'dom'> {
+  return page.evaluate(
+    (id) =>
+      (
+        window as unknown as {
+          __vibingDebugTabs: {
+            forTab(tabId: string): {
+              rendererKind(): 'webgl' | 'dom'
+            }
+          }
+        }
+      ).__vibingDebugTabs.forTab(id).rendererKind(),
+    tabId
+  )
+}
+
 test.beforeEach(async () => {
   ;({ app, window: page } = await launchApp())
 })
@@ -414,8 +430,10 @@ test('keeps an alternate buffer alive while another tab is active', async () => 
     .toContain('TAB_ALT_READY')
 
   await page.getByTestId('tab-new').click()
+  await expect.poll(() => tabRendererKind(firstId)).toBe('dom')
   await page.getByTestId('tab-item').first().click()
 
+  await expect.poll(() => tabRendererKind(firstId)).toBe('webgl')
   expect((await tabSnapshot(firstId))?.bufferType).toBe('alternate')
   expect((await tabBuffer(firstId)).join('\n')).toContain('TAB_ALT_READY')
   await typeInTerminal(page, 'x')
@@ -441,6 +459,8 @@ test('backpressures sustained output in a background tab without blocking the ac
   )
   await page.keyboard.press('Enter')
   await page.getByTestId('tab-item').nth(1).click()
+  await expect.poll(() => tabRendererKind(backgroundId)).toBe('dom')
+  await expect.poll(() => tabRendererKind(foregroundId)).toBe('webgl')
 
   await expect
     .poll(async () => (await tabFlowControl(backgroundId))?.pauseCount ?? 0, {
@@ -541,6 +561,12 @@ test('opens five independently bounded terminal sessions without phantom instanc
   await expect.poll(async () => (await tabIds()).length).toBe(5)
 
   const ids = await tabIds()
+  await expect
+    .poll(async () => {
+      const kinds = await Promise.all(ids.map(tabRendererKind))
+      return kinds.filter((kind) => kind === 'webgl').length
+    })
+    .toBe(1)
   await expect
     .poll(async () => {
       const snapshots = await Promise.all(ids.map(tabFlowControl))

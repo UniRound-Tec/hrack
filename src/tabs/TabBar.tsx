@@ -13,7 +13,7 @@ export default function TabBar() {
   return (
     <div
       role="tablist"
-      className="flex h-10 shrink-0 items-stretch border-b border-white/10 bg-[#11151d]"
+      className="tab-bar flex h-10 shrink-0 items-stretch border-b"
     >
       <div className="flex min-w-0 flex-1 overflow-x-auto">
         {tabs.map((tab) => {
@@ -26,10 +26,10 @@ export default function TabBar() {
               data-exited={tab.exited}
               data-testid="tab-item"
               onClick={() => activateTab(tab.id)}
-              className={`flex min-w-32 max-w-56 items-center border-r border-white/10 text-sm ${
+              className={`tab-item flex min-w-32 max-w-56 items-center border-r text-sm ${
                 active
-                  ? 'bg-[#0b0e14] text-[#e6edf3]'
-                  : 'bg-[#11151d] text-[#8b949e] hover:bg-[#171c26]'
+                  ? 'tab-item-active'
+                  : 'tab-item-inactive'
               }`}
             >
               <button
@@ -49,7 +49,7 @@ export default function TabBar() {
                   event.stopPropagation()
                   if (closeTab(tab.id)) window.close()
                 }}
-                className="mx-1 h-7 w-7 shrink-0 rounded text-[#8b949e] hover:bg-white/10 hover:text-[#e6edf3]"
+                className="tab-action mx-1 h-7 w-7 shrink-0 rounded"
               >
                 ×
               </button>
@@ -63,7 +63,7 @@ export default function TabBar() {
         title={translate(locale, 'newTab')}
         data-testid="tab-new"
         onClick={addTab}
-        className="w-10 shrink-0 text-lg text-[#8b949e] hover:bg-[#171c26] hover:text-[#e6edf3]"
+        className="tab-new w-10 shrink-0 text-lg"
       >
         +
       </button>
