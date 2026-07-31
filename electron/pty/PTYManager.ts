@@ -5,15 +5,23 @@ import {
   ptyDataChannel,
   ptyExitChannel,
   ptyResizeCursorSyncChannel,
+  type PtyFlowControlSnapshot,
   type PtyHistorySnapshot,
   type SpawnOptions
 } from '../../shared/ipc-contract'
 import { PtyHistory } from './PtyHistory'
 import { ConptyResizeFilter } from './ConptyResizeFilter'
+import {
+  PTY_DATA_HIGH_WATER_MARK_BYTES,
+  PTY_DATA_LOW_WATER_MARK_BYTES,
+  PTY_DATA_MAX_BUFFERED_BYTES,
+  PtyDataQueue
+} from './PtyDataQueue'
 
 interface ManagedPty {
   pty?: IPty
   history: PtyHistory
+  dataQueue: PtyDataQueue
   resizeFilter?: ConptyResizeFilter
   /** renderer 已 fit、但尚未安全送给 ConPTY 的最新尺寸。 */
   pendingResize?: { cols: number; rows: number }
@@ -44,7 +52,8 @@ function defaultShellCandidates(req?: string): string[] {
 /**
  * 唯一持有 node-pty 实例的管理器（主进程）。
  * 对外暴露 spawn/write/resize/kill，向上经 IPC 发 data/exit。
- * M1：无背压队列（M2 的 PtyDataQueue 在此处插入）。
+ * M2：PtyDataQueue 用 xterm 消费完成后的 ack 控制 node-pty pause/resume，
+ * 并对 Main→Renderer 在途与排队数据设置硬上限。
  */
 export class PTYManager {
   private ptys = new Map<string, ManagedPty>()
@@ -74,13 +83,27 @@ export class PTYManager {
     }
     if (!pty) throw lastErr ?? new Error('failed to spawn pty')
 
+    const spawnedPty = pty
     const history = new PtyHistory()
     history.appendResize(cols, rows)
     const resizeFilter =
       process.platform === 'win32' ? new ConptyResizeFilter() : undefined
+    const dataQueue = new PtyDataQueue({
+      highWaterMarkBytes: PTY_DATA_HIGH_WATER_MARK_BYTES,
+      lowWaterMarkBytes: PTY_DATA_LOW_WATER_MARK_BYTES,
+      maxBufferedBytes: PTY_DATA_MAX_BUFFERED_BYTES,
+      send: (data) => {
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents.send(ptyDataChannel(ptyId), data)
+        }
+      },
+      pause: () => spawnedPty.pause(),
+      resume: () => spawnedPty.resume()
+    })
     const managed: ManagedPty = {
-      pty,
+      pty: spawnedPty,
       history,
+      dataQueue,
       resizeFilter,
       lastForwardedOutputAt: 0
     }
@@ -102,8 +125,18 @@ export class PTYManager {
         for (const cursor of filtered?.cursorSyncs ?? []) {
           win.webContents.send(ptyResizeCursorSyncChannel(ptyId), cursor)
         }
-        if (displayData.length > 0) {
-          win.webContents.send(ptyDataChannel(ptyId), displayData)
+      }
+      if (displayData.length > 0) {
+        const accepted = dataQueue.push(new TextEncoder().encode(displayData))
+        if (!accepted) {
+          console.error(
+            `[vibing] ptyId=${ptyId} output exceeded the bounded delivery buffer; terminating PTY`
+          )
+          try {
+            spawnedPty.kill()
+          } catch {
+            /* process may already be exiting */
+          }
         }
       }
     })
@@ -140,6 +173,11 @@ export class PTYManager {
     this.schedulePendingResize(managed)
   }
 
+  ack(ptyId: string, bytes: number): void {
+    if (!Number.isFinite(bytes) || bytes <= 0) return
+    this.ptys.get(ptyId)?.dataQueue.ack(bytes)
+  }
+
   private schedulePendingResize(managed: ManagedPty): void {
     if (!managed.pty || !managed.pendingResize) return
     if (managed.resizeTimer) {
@@ -174,6 +212,10 @@ export class PTYManager {
 
   history(ptyId: string): PtyHistorySnapshot | null {
     return this.ptys.get(ptyId)?.history.snapshot() ?? null
+  }
+
+  flowControl(ptyId: string): PtyFlowControlSnapshot | null {
+    return this.ptys.get(ptyId)?.dataQueue.snapshot() ?? null
   }
 
   kill(ptyId: string) {

@@ -1,6 +1,9 @@
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { resolve } from 'path'
-import type { PtyHistorySnapshot } from '../shared/ipc-contract'
+import type {
+  PtyFlowControlSnapshot,
+  PtyHistorySnapshot
+} from '../shared/ipc-contract'
 
 /**
  * 启动打包后的 Electron 应用（需先 npm run build 产出 out/main/index.js）。
@@ -98,6 +101,28 @@ export async function dumpAuthoritativeHistory(window: Page): Promise<PtyHistory
         dumpAuthoritativeHistory(): Promise<PtyHistorySnapshot | null>
       }
     }).__vibingDebug.dumpAuthoritativeHistory()
+  )
+}
+
+/** 读取当前 PTY 的背压与内存水位指标。 */
+export async function flowControl(window: Page): Promise<PtyFlowControlSnapshot | null> {
+  return window.evaluate(() =>
+    (window as unknown as {
+      __vibingDebug: {
+        flowControl(): Promise<PtyFlowControlSnapshot | null>
+      }
+    }).__vibingDebug.flowControl()
+  )
+}
+
+/** E2E 专用：延迟 xterm 消费完成后的 ack，确定性模拟慢消费者。 */
+export async function setPtyAckDelay(window: Page, milliseconds: number): Promise<void> {
+  await window.evaluate(
+    (value) =>
+      (window as unknown as {
+        __vibingDebug: { setPtyAckDelay(milliseconds: number): void }
+      }).__vibingDebug.setPtyAckDelay(value),
+    milliseconds
   )
 }
 

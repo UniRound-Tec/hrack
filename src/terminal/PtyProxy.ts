@@ -1,10 +1,11 @@
 import type {
   ExitPayload,
+  PtyFlowControlSnapshot,
   PtyHistorySnapshot,
   PtyResizeCursorSync
 } from '../../shared/ipc-contract'
 
-type DataCb = (data: string) => void
+type DataCb = (data: Uint8Array) => void
 type ExitCb = (payload: ExitPayload) => void
 type ResizeCursorSyncCb = (payload: PtyResizeCursorSync) => void
 
@@ -33,8 +34,16 @@ export class PtyProxy {
     return window.ptyApi.kill(this.ptyId)
   }
 
+  ack(bytes: number): Promise<void> {
+    return window.ptyApi.ack(this.ptyId, bytes)
+  }
+
   history(): Promise<PtyHistorySnapshot | null> {
     return window.ptyApi.getHistory(this.ptyId)
+  }
+
+  flowControl(): Promise<PtyFlowControlSnapshot | null> {
+    return window.ptyApi.getFlowControl(this.ptyId)
   }
 
   onData(cb: DataCb): void {

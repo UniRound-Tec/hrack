@@ -1,6 +1,7 @@
 /**
  * IPC 契约 —— 主进程 / preload / renderer 三方共享的单一事实来源。
- * 对齐 SPEC §3。M1 子集：尚不含 pty:ack（背压，M2）。
+ * 对齐 SPEC §3。M2：PTY 输出使用 Uint8Array，并由 renderer 在 xterm
+ * 解析完成后 ack，主进程据此执行有界背压。
  */
 
 // ───── Renderer → Main（ipcMain.handle，请求-响应）─────────
@@ -58,6 +59,21 @@ export interface PtyHistorySnapshot {
   events: PtyHistoryEvent[]
 }
 
+export interface PtyFlowControlSnapshot {
+  highWaterMarkBytes: number
+  lowWaterMarkBytes: number
+  maxBufferedBytes: number
+  unackedBytes: number
+  queuedBytes: number
+  bufferedBytes: number
+  maxObservedBufferedBytes: number
+  paused: boolean
+  pauseCount: number
+  resumeCount: number
+  overflowed: boolean
+  rejectedBytes: number
+}
+
 /** 平台元信息。 */
 export interface PtyMeta {
   platform: string
@@ -74,7 +90,9 @@ export const PtyInvokeChannel = {
   Write: 'pty:write',
   Resize: 'pty:resize',
   Kill: 'pty:kill',
-  History: 'pty:history'
+  Ack: 'pty:ack',
+  History: 'pty:history',
+  FlowControl: 'pty:flow-control'
 } as const
 
 export const ClipboardInvokeChannel = {
@@ -82,7 +100,6 @@ export const ClipboardInvokeChannel = {
 } as const
 
 // ───── Main → Renderer（webContents.send，事件流）─────────
-// TODO(M2)：data 换 Uint8Array 二进制传输，防止多字节 UTF-8 在 IPC 序列化边界被截断。
 export const ptyDataChannel = (ptyId: string): string => `pty:data:${ptyId}`
 export const ptyExitChannel = (ptyId: string): string => `pty:exit:${ptyId}`
 export const ptyResizeCursorSyncChannel = (ptyId: string): string =>
@@ -96,10 +113,13 @@ export interface PtyApi {
   write: (ptyId: string, data: string) => Promise<void>
   resize: (ptyId: string, cols: number, rows: number) => Promise<void>
   kill: (ptyId: string) => Promise<void>
+  ack: (ptyId: string, bytes: number) => Promise<void>
   /** 读取主进程中 resize 免疫的原始历史快照。 */
   getHistory: (ptyId: string) => Promise<PtyHistorySnapshot | null>
+  /** 读取 M2 背压水位；供诊断与压力测试使用。 */
+  getFlowControl: (ptyId: string) => Promise<PtyFlowControlSnapshot | null>
   /** 注册 pty 输出回调，返回取消订阅函数（cleanup 必调，防 channel 泄漏）。 */
-  onData: (ptyId: string, cb: (data: string) => void) => () => void
+  onData: (ptyId: string, cb: (data: Uint8Array) => void) => () => void
   onResizeCursorSync: (
     ptyId: string,
     cb: (payload: PtyResizeCursorSync) => void

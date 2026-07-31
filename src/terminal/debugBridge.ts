@@ -1,5 +1,8 @@
 import type { Terminal } from '@xterm/xterm'
-import type { PtyHistorySnapshot } from '../../shared/ipc-contract'
+import type {
+  PtyFlowControlSnapshot,
+  PtyHistorySnapshot
+} from '../../shared/ipc-contract'
 
 /**
  * 调试桥 —— 仅在 dev / E2E 下暴露到 window.__vibingDebug，供 Playwright 用 evaluate 读取
@@ -50,6 +53,10 @@ export interface VibingDebugApi {
   resetClearSeqLog(): void
   /** P0：读取主进程中不受 resize 覆盖影响的原始历史。 */
   dumpAuthoritativeHistory(): Promise<PtyHistorySnapshot | null>
+  /** M2：读取主进程背压与内存水位。 */
+  flowControl(): Promise<PtyFlowControlSnapshot | null>
+  /** E2E 专用：延迟 xterm 消费完成后的 ack，模拟慢消费者。 */
+  setPtyAckDelay(milliseconds: number): void
 }
 
 export interface ClearSeqLog {
@@ -64,13 +71,14 @@ const clearLog: ClearSeqLog = { ed2: 0, ed3: 0, events: [] }
  * useXterm 在每块 pty 数据写入 xterm 前调用，记录其中的清屏序列。
  * 与 shouldEnable 无关（开销极小），但只有 debug 激活时 API 才暴露这些计数。
  */
-export function recordPtyData(data: string): void {
+export function recordPtyData(data: Uint8Array): void {
+  const text = new TextDecoder().decode(data)
   let kind = ''
-  if (data.includes('\x1b[3J')) {
+  if (text.includes('\x1b[3J')) {
     clearLog.ed3++
     kind += 'ED3(clear-scrollback) '
   }
-  if (data.includes('\x1b[2J')) {
+  if (text.includes('\x1b[2J')) {
     clearLog.ed2++
     kind += 'ED2(clear-screen) '
   }
@@ -83,6 +91,8 @@ export function recordPtyData(data: string): void {
 let registered: Terminal | null = null
 let forceResizeFn: (() => void) | null = null
 let dumpHistoryFn: (() => Promise<PtyHistorySnapshot | null>) | null = null
+let dumpFlowControlFn: (() => Promise<PtyFlowControlSnapshot | null>) | null = null
+let setPtyAckDelayFn: ((milliseconds: number) => void) | null = null
 
 function bufferToLines(term: Terminal, fromViewportOnly: boolean): string[] {
   const b = term.buffer.active
@@ -131,12 +141,16 @@ function shouldEnable(): boolean {
 export function registerTerminalForDebug(
   term: Terminal,
   forceResize: () => void,
-  dumpHistory: () => Promise<PtyHistorySnapshot | null>
+  dumpHistory: () => Promise<PtyHistorySnapshot | null>,
+  dumpFlowControl: () => Promise<PtyFlowControlSnapshot | null>,
+  setPtyAckDelay: (milliseconds: number) => void
 ): () => void {
   if (!shouldEnable()) return () => {}
   registered = term
   forceResizeFn = forceResize
   dumpHistoryFn = dumpHistory
+  dumpFlowControlFn = dumpFlowControl
+  setPtyAckDelayFn = setPtyAckDelay
   const api: VibingDebugApi = {
     snapshot() {
       if (!registered) return null
@@ -211,6 +225,12 @@ export function registerTerminalForDebug(
     },
     dumpAuthoritativeHistory() {
       return dumpHistoryFn?.() ?? Promise.resolve(null)
+    },
+    flowControl() {
+      return dumpFlowControlFn?.() ?? Promise.resolve(null)
+    },
+    setPtyAckDelay(milliseconds: number) {
+      setPtyAckDelayFn?.(milliseconds)
     }
   }
   ;(window as unknown as Record<string, unknown>)['__vibingDebug'] = api
@@ -219,6 +239,8 @@ export function registerTerminalForDebug(
       registered = null
       forceResizeFn = null
       dumpHistoryFn = null
+      dumpFlowControlFn = null
+      setPtyAckDelayFn = null
       delete (window as unknown as Record<string, unknown>)['__vibingDebug']
     }
   }

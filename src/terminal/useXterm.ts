@@ -73,7 +73,7 @@ function applyConptyCursorSync(
  * 关键：**空依赖 useEffect，只挂载一次**。React 不参与 xterm 内部 re-render，
  * PTY 输出不进 React state，直达 term.write()。
  *
- * M1：无背压（直写 term.write）。背压的 ackData 流控是 M2。
+ * M2：PTY 输出使用 Uint8Array；xterm 解析完成后 ack，由主进程做有界背压。
  */
 export function useXterm(
   containerRef: RefObject<HTMLDivElement | null>,
@@ -114,6 +114,23 @@ export function useXterm(
 
     let proxy: PtyProxy | null = null
     let disposed = false
+    let ptyAckDelayMs = 0
+    const pendingAckTimers = new Set<ReturnType<typeof setTimeout>>()
+
+    const acknowledgeParsedData = (bytes: number): void => {
+      const acknowledge = (): void => {
+        if (!disposed) void proxy?.ack(bytes)
+      }
+      if (ptyAckDelayMs <= 0) {
+        acknowledge()
+        return
+      }
+      const timer = setTimeout(() => {
+        pendingAckTimers.delete(timer)
+        acknowledge()
+      }, ptyAckDelayMs)
+      pendingAckTimers.add(timer)
+    }
 
     const copySelectionOnContextMenu = (event: MouseEvent): void => {
       if (!term.hasSelection()) return
@@ -210,7 +227,11 @@ export function useXterm(
         }
         flushPendingPtyResize()
       },
-      () => proxy?.history() ?? Promise.resolve(null)
+      () => proxy?.history() ?? Promise.resolve(null),
+      () => proxy?.flowControl() ?? Promise.resolve(null),
+      (milliseconds) => {
+        ptyAckDelayMs = Math.max(0, Math.floor(milliseconds))
+      }
     )
 
     // spawn 拿到 ptyId，建立回显双向链路
@@ -237,10 +258,10 @@ export function useXterm(
         term.onData((d) => {
           void proxy?.write(d)
         })
-        // pty → 屏幕（M1 无 ack）
+        // pty → 屏幕；xterm 解析完成后 ack，驱动主进程高低水位背压。
         proxy.onData((d) => {
           recordPtyData(d)
-          term.write(d)
+          term.write(d, () => acknowledgeParsedData(d.byteLength))
         })
         proxy.onResizeCursorSync(({ row, column }) => {
           applyConptyCursorSync(term, row, column)
@@ -258,6 +279,8 @@ export function useXterm(
 
     return () => {
       disposed = true
+      for (const timer of pendingAckTimers) clearTimeout(timer)
+      pendingAckTimers.clear()
       if (fitFrame !== null) cancelAnimationFrame(fitFrame)
       if (ptyResizeTimer) clearTimeout(ptyResizeTimer)
       unregisterDebug()

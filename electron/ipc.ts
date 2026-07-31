@@ -25,12 +25,21 @@ export function registerIpc(manager: PTYManager): void {
     (_e, { ptyId, cols, rows }: { ptyId: string; cols: number; rows: number }) =>
       manager.resize(ptyId, cols, rows)
   )
+  ipcMain.handle(
+    PtyInvokeChannel.Ack,
+    (_e, { ptyId, bytes }: { ptyId: string; bytes: number }) =>
+      manager.ack(ptyId, bytes)
+  )
   ipcMain.handle(PtyInvokeChannel.Kill, (_e, { ptyId }: { ptyId: string }) =>
     manager.kill(ptyId)
   )
   ipcMain.handle(
     PtyInvokeChannel.History,
     (_e, { ptyId }: { ptyId: string }) => manager.history(ptyId)
+  )
+  ipcMain.handle(
+    PtyInvokeChannel.FlowControl,
+    (_e, { ptyId }: { ptyId: string }) => manager.flowControl(ptyId)
   )
   ipcMain.handle(ClipboardInvokeChannel.WriteText, (_e, text: unknown) => {
     if (

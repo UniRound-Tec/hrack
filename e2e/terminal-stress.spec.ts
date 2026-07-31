@@ -5,11 +5,13 @@ import {
   dumpBuffer,
   dumpLogicalBuffer,
   dumpViewport,
+  flowControl,
   launchApp,
   resetClearSeqLog,
   scrollLines,
   scrollToBottom,
   scrollToTop,
+  setPtyAckDelay,
   snapshot,
   typeInTerminal
 } from './helpers'
@@ -156,6 +158,72 @@ test('idle repeated resize is not delayed by ConPTY redraw traffic', async () =>
     .toBeGreaterThan(afterFirst)
 
   await waitForCompletePrompt()
+})
+
+test('sustained output is backpressured without exceeding the delivery memory limit', async () => {
+  const lineCount = 1024
+  const payloadBytes = 2048
+  const firstToken = 'BACKPRESSURE_LINE_1_'
+  const lastToken = `BACKPRESSURE_LINE_${lineCount}_`
+  const doneToken = 'BACKPRESSURE_DONE'
+
+  // xterm 仍会正常解析每个 chunk，只把“消费完成”ack 延后，确定性制造慢消费者。
+  await setPtyAckDelay(page, 75)
+  await typeInTerminal(
+    page,
+    `$payload="b"*${payloadBytes}; 1..${lineCount} | % { ` +
+      `[Console]::WriteLine("BACKPRESSURE_LINE_$($_)_$payload") }; ` +
+      `[Console]::WriteLine("${doneToken}")`
+  )
+  await page.keyboard.press('Enter')
+
+  await expect
+    .poll(async () => (await flowControl(page))?.pauseCount ?? 0, {
+      timeout: 15_000,
+      message: '慢消费者下主进程应触发至少一次 PTY pause'
+    })
+    .toBeGreaterThan(0)
+
+  const responsivenessStartedAt = Date.now()
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  )
+  expect(
+    Date.now() - responsivenessStartedAt,
+    '背压期间 renderer 仍应能在 1 秒内执行 animation frame'
+  ).toBeLessThan(1_000)
+
+  // 已证明 pause 后恢复正常 ack，让测试尽快排空剩余输出。
+  await setPtyAckDelay(page, 0)
+  await waitForBufferText(doneToken, 30_000)
+  await waitForCompletePrompt()
+
+  await expect
+    .poll(async () => (await flowControl(page))?.bufferedBytes ?? -1, {
+      timeout: 15_000,
+      message: 'xterm 消费完成后所有在途与排队字节都应被确认'
+    })
+    .toBe(0)
+
+  const flow = await flowControl(page)
+  expect(flow).not.toBeNull()
+  expect(flow?.pauseCount).toBeGreaterThan(0)
+  expect(flow?.resumeCount).toBeGreaterThan(0)
+  expect(flow?.overflowed).toBe(false)
+  expect(flow?.rejectedBytes).toBe(0)
+  expect(flow?.maxBufferedBytes).toBe(1024 * 1024)
+  expect(flow?.maxObservedBufferedBytes).toBeLessThanOrEqual(1024 * 1024)
+
+  const history = await dumpAuthoritativeHistory(page)
+  expect(history?.complete).toBe(true)
+  const raw =
+    history?.events
+      .filter((event) => event.kind === 'output')
+      .map((event) => event.data)
+      .join('') ?? ''
+  expect(raw).toContain(firstToken)
+  expect(raw).toContain(lastToken)
+  expect(raw).toContain(doneToken)
 })
 
 test('normal buffer: output + wheel scroll + rapid resize + zoom preserve all history and cursor state', async () => {

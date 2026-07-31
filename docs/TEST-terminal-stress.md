@@ -19,6 +19,8 @@
 | 恢复 | 提示符完整、下一条命令完整、光标坐标合法、视口回到底部 |
 | 数据源 | xterm 逻辑行、xterm 物理视口、主进程 raw history、ED2/ED3 日志 |
 | 响应性 | 拖动中 xterm 连续改变列数；空闲终端连续两次 ConPTY resize 均在 400ms 门限内完成 |
+| 背压 | 延迟 xterm ack 模拟慢消费者；PTY pause/resume、2MB 输出首尾完整、Renderer animation frame 可响应 |
+| 内存 | Main→Renderer 在途+排队字节不超过 1MB；overflow/rejectedBytes 必须为零 |
 
 暂未包含在本轮门禁中的范围：
 
@@ -29,9 +31,30 @@
 
 这些范围应各自增加独立流程，不能用当前两条 Windows ConPTY 用例假装已经覆盖。
 
-## 2. 自动化流程 A：normal buffer 组合压力
+## 2. 自动化流程 A：持续输出背压与内存上限
 
-对应 `e2e/terminal-stress.spec.ts` 第二条用例。
+对应 `e2e/terminal-stress.spec.ts` 第二条用例，队列边界另由
+`e2e/pty-data-queue.spec.ts` 以小水位做确定性验证。
+
+1. 把 xterm 解析完成后的 ack 延迟 75ms，模拟 Renderer 消费变慢。
+2. PowerShell 连续输出约 2MB 数据，并为首行、末行和完成位置写入唯一 token。
+3. 等待主进程背压指标出现 `pauseCount > 0`，证明不是仅凭最终画面推测背压生效。
+4. 背压期间请求一个 `requestAnimationFrame`，断言 Renderer 在 1 秒内响应。
+5. 恢复正常 ack，等待完成 token 和完整 PowerShell 提示符。
+6. 断言：
+   - `bufferedBytes` 最终归零；
+   - pause 与 resume 都至少发生一次；
+   - `maxObservedBufferedBytes <= 1MB`；
+   - `overflowed=false`、`rejectedBytes=0`；
+   - 权威原始历史包含首行、末行和完成 token。
+
+生产配置采用 256KB/64KB 水位；队列单元测试以缩小水位确定性证明达到配置高水位时
+暂停、ack 降至配置低水位后恢复。即便调用方在暂停后继续推送，队列也不会持有超过
+硬上限的数据。
+
+## 3. 自动化流程 B：normal buffer 组合压力
+
+对应 `e2e/terminal-stress.spec.ts` 第三条用例。
 
 在组合压力前另有一条响应性守卫：拖动尚未停止时连续采样 xterm 列数，至少应观察到
 5 个不同尺寸，防止视觉适配退化成“停手后一次跳变”。随后等待启动输出静默并连续
@@ -60,9 +83,9 @@ resize 两次，让第一帧 ConPTY 重画完整返回；第二次 resize 仍必
 逻辑 buffer 会按 xterm 的 `isWrapped` 合并物理行，避免把正常 reflow 换行误判为字符丢失；
 当前视口和提示符仍按物理行检查，因此屏幕错位、半行提示符不会被掩盖。
 
-## 3. 自动化流程 B：alternate buffer 恢复
+## 4. 自动化流程 C：alternate buffer 恢复
 
-对应 `e2e/terminal-stress.spec.ts` 第三条用例。
+对应 `e2e/terminal-stress.spec.ts` 第四条用例。
 
 1. 在 normal buffer 输出 28 条长行并记录唯一 token。
 2. 用标准 `CSI ?1049h` 进入 alternate buffer，并停在 `ReadKey`。
@@ -75,7 +98,7 @@ resize 两次，让第一帧 ConPTY 重画完整返回；第二次 resize 仍必
 这条流程覆盖 `vim`、`less`、TUI 类程序使用的缓冲区切换语义，不把 normal buffer 的
 scrollback 假设错误地套到 alternate buffer。
 
-## 4. 运行方式
+## 5. 运行方式
 
 单轮门禁：
 
@@ -101,7 +124,7 @@ npm run e2e
 - 合并前运行 5 次重复；
 - CI 普通门禁运行单轮，Windows 定时任务运行重复模式。
 
-## 5. 失败如何定位
+## 6. 失败如何定位
 
 | 失败信号 | 优先检查 |
 |---|---|
@@ -111,6 +134,9 @@ npm run e2e
 | 最后一行不是完整提示符 | resize 后 cursor sync 或当前行 reflow |
 | alternate 无法退出/normal 历史不恢复 | buffer 切换序列或 resize 对 alternate 的处理 |
 | `viewportY !== baseY` | 滚动恢复或用户输入后的自动回底逻辑 |
+| `pauseCount === 0` | ack 是否在 xterm write callback 后发送；持续输出是否真正超过高水位 |
+| `overflowed` / `rejectedBytes > 0` | node-pty pause 是否生效；单个 chunk 或水位配置是否超过 1MB 硬上限 |
+| `bufferedBytes` 无法归零 | ack 字节数、IPC handler 或低水位排队 flush 链路 |
 
 压力用例失败时不应简单增加固定等待时间。先用上述双数据源判断是“源数据丢失”还是
 “显示解释错误”，再针对对应链路修复。

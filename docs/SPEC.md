@@ -247,6 +247,14 @@ WebGL Addon  ──(WebGL 不可用)──►  Canvas Addon  ──(GPU context 
 
 优先级：**M1 是地基**，其余按需推进。
 
+**当前进度（2026-07-31）：M2 已完成。**
+- Main→Renderer 的 PTY 输出已改为 `Uint8Array`。
+- Renderer 在 `term.write(data, callback)` 完成解析后发送 `pty:ack`。
+- 主进程采用 256KB 高水位 / 64KB 低水位控制 `node-pty.pause()/resume()`，
+  在途与排队交付数据硬上限为 1MB；超限会显式记录并终止 PTY，不静默无限增长。
+- E2E 会延迟 ack 模拟慢消费者，以约 2MB 持续输出验证 pause/resume、UI 响应、
+  输出首尾完整和内存上限；原 resize/scrollback 压测继续作为组合回归门禁。
+
 ---
 
 ## 10. 明确的非目标（v1）

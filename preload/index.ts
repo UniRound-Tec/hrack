@@ -9,6 +9,7 @@ import {
   type ClipboardApi,
   type ExitPayload,
   type PtyApi,
+  type PtyFlowControlSnapshot,
   type PtyMeta,
   type PtyResizeCursorSync,
   type SpawnOptions
@@ -47,11 +48,14 @@ const ptyApi: PtyApi = {
   resize: (ptyId, cols, rows) =>
     ipcRenderer.invoke(PtyInvokeChannel.Resize, { ptyId, cols, rows }),
   kill: (ptyId) => ipcRenderer.invoke(PtyInvokeChannel.Kill, { ptyId }),
+  ack: (ptyId, bytes) => ipcRenderer.invoke(PtyInvokeChannel.Ack, { ptyId, bytes }),
   getHistory: (ptyId) => ipcRenderer.invoke(PtyInvokeChannel.History, { ptyId }),
+  getFlowControl: (ptyId): Promise<PtyFlowControlSnapshot | null> =>
+    ipcRenderer.invoke(PtyInvokeChannel.FlowControl, { ptyId }),
 
   onData: (ptyId, cb) => {
     const ch = ptyDataChannel(ptyId)
-    const handler = (_e: IpcRendererEvent, data: string): void => cb(data)
+    const handler = (_e: IpcRendererEvent, data: Uint8Array): void => cb(data)
     ipcRenderer.on(ch, handler)
     return () => ipcRenderer.removeListener(ch, handler)
   },
