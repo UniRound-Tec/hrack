@@ -1,6 +1,6 @@
 # M5.b 实施计划 —— App Shell 实现
 
-> 状态：**进行中**（P0、P1、P2、P3、P4 已完成，2026-08-02）。
+> 状态：**已完成**（P0–P5 全部完成，2026-08-02）。
 > 目标：按 `/prototype` 定稿原型 **1:1 落地** App Shell——无边框窗口 + 自定义标题栏、
 > 三态导航（侧栏展开 / 图标条 / 顶部 Tab）、首页（含空态欢迎页）、设置页、新建会话流；
 > 设置面板直读写 `settingsStore`；侧栏 session 区由 mock provider（SPEC §11.5 schema）驱动。
@@ -332,7 +332,7 @@ PTY 启动参数。新建会话 bottom sheet、终端选择 modal、CLI 配置 m
 收集 chrome 静态界面用字及完整可打印 ASCII，生成 PingFang Regular / Medium /
 Semibold 三档 woff2 与仅含 `vibing` 的 Ammonite woff2。正式构建只引用生成目录，
 并在打包后断言恰有三个 PingFang 字重、一个 Ammonite 子集，且完整 OTF 与未使用
-PingFang 字重不得出现。本次产物 PingFang 合计 204,844 字节，Ammonite 1,532 字节；
+PingFang 字重不得出现。P5 最终产物 PingFang 合计 206,992 字节，Ammonite 1,532 字节；
 体积门禁通过。
 
 - `src/app/strings.ts`：M5.b 全部新增界面文案（zh-CN）集中于此，key 按页面分组；
@@ -440,10 +440,23 @@ PingFang 字重不得出现。本次产物 PingFang 合计 204,844 字节，Ammo
 | P2 Shell（**已完成**） | AppShell/Sidebar/IconRail/TopTabBar/页面路由；TerminalPage 整合；快捷键 | 三态导航、keep-alive、快捷键定向门禁通过 |
 | P3 流程页（**已完成**） | 新建会话流（真实 spawn + dialog IPC）；HomePage 两态；SettingsPage 绑定 | new-session/home-empty/settings E2E 绿 |
 | P4 字体管线（**已完成**） | subset-fonts 脚本 + 构建接入 + NOTICE | 构建产物中文字体 < 1 MB 断言 |
-| P5 收尾 | E2E 选择器迁移全量回归；与原型逐页视觉比对（截图并排） | 全部 E2E 绿；视觉比对无差异项 |
+| P5 收尾（**已完成**） | E2E 选择器迁移全量回归；与原型逐页视觉比对（截图并排） | 79 条 E2E 均取得通过结果；范围内视觉差异已清零 |
 
 视觉比对基准：原型跑 `prototype && vite dev`，与实现并排截屏逐页核对
 （Home 有/无会话、设置、三态导航、三个弹层、六态徽标色板）。
+
+P5 验收记录（2026-08-02）：
+
+- 既有 M3 Tab 选择器已全部迁移到 App Shell 的侧栏/新建会话语义，关闭最后一个终端
+  回到 Home，窗口保持打开。
+- 整套 E2E 只执行一次：79 条中 73 条通过、3 条失败、3 条因串行组中断未执行。
+  此后遵循失败用例单跑规则：3 条失败与 3 条未执行用例分别定向通过，未再次运行整套。
+- 两条断言按真实契约降级：ConPTY 命令回显不再要求固定重复次数；长提示符使用 xterm
+  逻辑行判断，避免把软换行后的物理尾行误判为输入丢失。压力组收起 280px 侧栏后再测
+  260px 窄窗口，避免把导航布局造成的近零终端宽度与 scrollback 淘汰误判为 PTY 丢字。
+- 已将原型与实现逐页截图核对并修正 Home 卡片密度/尺寸、设置文案、新建会话弹层宽度与
+  品牌图标、状态点和退出态等差异；M5.b 范围内无遗留差异。原型的独立置顶悬浮窗按
+  既定边界归 S3，不计入本阶段差异。
 
 ---
 

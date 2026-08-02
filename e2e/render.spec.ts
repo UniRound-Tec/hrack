@@ -9,6 +9,7 @@ import {
   dumpBuffer,
   forceResize,
   launchApp,
+  openDefaultTerminal,
   scanSolidColor,
   typeInTerminal
 } from './helpers'
@@ -161,14 +162,14 @@ test('moves the single WebGL renderer to the active terminal tab', async () => {
   const [firstId] = await tabIds()
   await expect.poll(() => rendererKind(firstId)).toBe('webgl')
 
-  await page.getByTestId('tab-new').click()
+  await openDefaultTerminal(page)
   await expect.poll(async () => (await tabIds()).length).toBe(2)
   const [, secondId] = await tabIds()
 
   await expect.poll(() => rendererKind(firstId)).toBe('dom')
   await expect.poll(() => rendererKind(secondId)).toBe('webgl')
 
-  await page.getByTestId('tab-item').first().click()
+  await page.getByTestId('sidebar-terminal-item').first().click()
   await expect.poll(() => rendererKind(firstId)).toBe('webgl')
   await expect.poll(() => rendererKind(secondId)).toBe('dom')
 })
@@ -198,9 +199,9 @@ test('falls back to DOM after real context loss and retries after tab reactivati
     .toContain(afterToken)
   expect((await dumpBuffer(page)).join('\n')).toContain(beforeToken)
 
-  await page.getByTestId('tab-new').click()
+  await openDefaultTerminal(page)
   await expect.poll(() => rendererKind(firstId)).toBe('dom')
-  await page.getByTestId('tab-item').first().click()
+  await page.getByTestId('sidebar-terminal-item').first().click()
   await expect.poll(() => rendererKind(firstId)).toBe('webgl')
   expect((await dumpBuffer(page)).join('\n')).toContain(beforeToken)
   expect((await dumpBuffer(page)).join('\n')).toContain(afterToken)
@@ -367,7 +368,7 @@ test('persists the light terminal theme while GUI uses semantic light tokens', a
 })
 
 test('refits only the active terminal immediately after a font change', async () => {
-  await page.getByTestId('tab-new').click()
+  await openDefaultTerminal(page)
   const [hiddenId, activeId] = await tabIds()
   await page.waitForTimeout(500)
 
@@ -438,7 +439,7 @@ test('refits only the active terminal immediately after a font change', async ()
   )
   expect(activeSizeAfter?.cols).toBeLessThan(activeSizeBefore?.cols ?? 0)
 
-  await page.getByTestId('tab-item').first().click()
+  await page.getByTestId('sidebar-terminal-item').first().click()
   await expect.poll(() => resizeCount(hiddenId)).toBe(hiddenBefore + 1)
 })
 

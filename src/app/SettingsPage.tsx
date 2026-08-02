@@ -30,7 +30,7 @@ export default function SettingsPage({ shells }: { shells: readonly ShellOption[
           <Section label="appearance" title={strings.settings.sections.appearance}>
             <Row label={strings.settings.uiTheme} hint={strings.settings.uiThemeHint}>
               <div className="flex items-center gap-0.5 rounded-lg bg-control p-0.5">
-                {registry.themes.map((theme) => <SegmentButton key={theme.id} selected={settings.uiThemeId === theme.id} onClick={() => settings.setUiTheme(theme.id)}>{theme.name}</SegmentButton>)}
+                {registry.themes.map((theme) => <SegmentButton key={theme.id} selected={settings.uiThemeId === theme.id} onClick={() => settings.setUiTheme(theme.id)}>{theme.id === 'light' ? strings.settings.light : theme.name}</SegmentButton>)}
                 <SegmentButton selected={false} disabled title={strings.settings.darkDisabledHint}>{strings.settings.dark}</SegmentButton>
               </div>
             </Row>

@@ -38,8 +38,12 @@ export async function launchApp(): Promise<{ app: ElectronApplication; window: P
     await window.evaluate(() => {
       const debugWindow = window as unknown as {
         __vibingDebugTabs: { list(): string[] }
-        __vibingDebugShell: { navigate(pageId: `terminal:${string}`): void }
+        __vibingDebugShell: {
+          navigate(pageId: `terminal:${string}`): void
+          setNavMode(mode: 'sidebar'): void
+        }
       }
+      debugWindow.__vibingDebugShell.setNavMode('sidebar')
       const [terminalId] = debugWindow.__vibingDebugTabs.list()
       if (terminalId) {
         debugWindow.__vibingDebugShell.navigate(`terminal:${terminalId}`)
@@ -50,6 +54,18 @@ export async function launchApp(): Promise<{ app: ElectronApplication; window: P
     await app.close().catch(() => {})
     throw error
   }
+}
+
+/** App Shell entry used by legacy multi-terminal gates after the M3 tab bar was removed. */
+export async function openDefaultTerminal(window: Page): Promise<void> {
+  await window.keyboard.press('Control+Shift+T')
+  await window.getByTestId('new-session-overlay').waitFor({ state: 'visible' })
+  await window.getByTestId('new-session-terminal').click()
+}
+
+export async function closeTerminalAt(window: Page, index: number): Promise<void> {
+  await window.getByTestId('sidebar-terminal-item').nth(index).hover()
+  await window.getByTestId('sidebar-terminal-close').nth(index).click()
 }
 
 /** 通过调试桥读 buffer 快照 */

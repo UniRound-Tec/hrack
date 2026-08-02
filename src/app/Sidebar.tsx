@@ -193,7 +193,9 @@ export default function Sidebar({
                     {terminal.name}
                   </span>
                   <span className="max-w-[40%] shrink-0 truncate font-maple text-[10px] text-text-faint">
-                    {terminal.cwd || terminal.shellId}
+                    {terminal.exited
+                      ? strings.sessionStatus.exited
+                      : terminal.cwd || terminal.shellId}
                   </span>
                 </button>
                 <button

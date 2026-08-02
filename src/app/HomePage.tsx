@@ -78,12 +78,12 @@ export default function HomePage({
 
   const launchers = (
     <>
-      <div className="cursor-target group relative">
+      <div className="cursor-target group relative w-[142px]">
         <button
           type="button"
           data-testid="home-quick-terminal"
           onClick={onLaunchDefaultTerminal}
-          className="flex h-full items-center gap-2 rounded-xl border border-border-default bg-surface px-3 py-2 text-left font-pingfang transition-colors hover:bg-surface-hover"
+          className="flex w-full flex-col items-start gap-2.5 rounded-xl border border-border-default bg-surface p-3 text-left font-pingfang transition-colors hover:bg-surface-hover"
         >
           <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-control">
             <TerminalIcon className="size-4" strokeWidth={1.75} />
@@ -114,7 +114,7 @@ export default function HomePage({
           type="button"
           data-testid={`home-quick-${option.id}`}
           onClick={() => onConfigureCli(option)}
-          className="cursor-target flex items-center gap-2 rounded-xl border border-border-default bg-surface px-3 py-2 text-left font-pingfang transition-colors hover:bg-surface-hover"
+          className="cursor-target flex w-[142px] flex-col items-start gap-2.5 rounded-xl border border-border-default bg-surface p-3 text-left font-pingfang transition-colors hover:bg-surface-hover"
         >
           <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-control">
             <LaunchIcon option={option} />
@@ -123,6 +123,25 @@ export default function HomePage({
             <span className="block text-[12px] font-semibold text-text-primary">{option.name}</span>
             <span className="block truncate text-[10px] text-text-faint">{option.hint}</span>
           </span>
+        </button>
+      ))}
+    </>
+  )
+
+  const denseLaunchers = (
+    <>
+      <div className="group flex shrink-0 items-center rounded-full border border-border-default bg-surface transition-colors hover:bg-surface-hover">
+        <button type="button" data-testid="home-quick-terminal" onClick={onLaunchDefaultTerminal} className="flex items-center gap-2 py-1.5 pr-1 pl-1.5">
+          <span className="flex size-6 items-center justify-center rounded-full bg-control"><TerminalIcon className="size-[13px]" strokeWidth={1.75} /></span>
+          <span className="text-[12px] font-medium text-text-secondary">{strings.home.terminal}</span>
+          <span className="font-maple text-[10px] text-text-faint">{defaultShell?.name ?? strings.newSession.terminalFallback}</span>
+        </button>
+        <button type="button" data-testid="home-terminal-options" aria-label={strings.home.terminalOptions} onClick={onChooseTerminal} className="mr-1 flex size-6 items-center justify-center rounded-full text-text-faint hover:bg-control hover:text-text-secondary"><Settings2 className="size-3" strokeWidth={1.75} /></button>
+      </div>
+      {cliOptions.map((option) => (
+        <button key={option.id} type="button" data-testid={`home-quick-${option.id}`} onClick={() => onConfigureCli(option)} className="flex shrink-0 items-center gap-2 rounded-full border border-border-default bg-surface py-1.5 pr-3 pl-1.5 transition-colors hover:bg-surface-hover">
+          <span className="flex size-6 items-center justify-center rounded-full bg-control"><LaunchIcon option={option} /></span>
+          <span className="text-[12px] font-medium text-text-secondary">{option.name}</span>
         </button>
       ))}
     </>
@@ -149,10 +168,16 @@ export default function HomePage({
             className="mt-6 text-center font-pingfang text-[24px] font-semibold text-text-primary"
           />
           <p className="mt-3 text-center font-pingfang text-[13px] text-text-muted">{strings.home.freshHint}</p>
-          <div className="mt-9 grid w-full max-w-[620px] grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="mt-9 flex w-full max-w-[620px] flex-wrap justify-center gap-2">
             {launchers}
           </div>
-          <p className="mt-10 font-maple text-[10px] text-text-faint">{strings.home.freshFooter}</p>
+          <p className="mt-10 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 font-maple text-[10px] text-text-faint">
+            <span>{strings.home.freshCollect}</span>
+            <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-status-needs-you-dot" />{strings.sessionStatus.needsYou}</span>
+            <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-status-error-dot" />{strings.sessionStatus.error}</span>
+            <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-status-working-dot" />{strings.sessionStatus.working}</span>
+            <span>{strings.home.historyStats}</span>
+          </p>
         </section>
       </ClickSpark>
     )
@@ -187,7 +212,7 @@ export default function HomePage({
 
         <section className="px-8 pb-8">
           <p className="mb-2.5 font-maple text-[10px] tracking-[0.22em] text-text-faint uppercase">{strings.home.quickLaunch}</p>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">{launchers}</div>
+          <div className="flex flex-wrap items-center gap-2">{denseLaunchers}</div>
         </section>
 
         <section className="px-8 pb-8">
@@ -214,6 +239,7 @@ export default function HomePage({
                     <span className={`size-1.5 shrink-0 rounded-full ${statusDot[session.status]}`} />
                     <Icon size={15} className="size-[15px]" />
                     <span className="min-w-0 flex-1 truncate font-pingfang text-[13px] text-text-secondary">{session.detail ?? session.name}</span>
+                    <span className="hidden font-maple text-[10px] text-text-muted sm:inline">{session.name}</span>
                     <span className={`font-maple text-[10px] ${statusTone[session.status]}`}>{statusLabel[session.status]}</span>
                     <span className="font-maple text-[10px] text-text-faint">{relativeTime(session.lastActivityAt)}</span>
                   </button>

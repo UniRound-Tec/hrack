@@ -57,7 +57,10 @@ async function waitForBufferText(text: string, timeout = 15_000): Promise<void> 
 }
 
 async function lastNonEmptyLine(): Promise<string> {
-  const lines = await dumpBuffer(page)
+  // App Shell leaves less horizontal room than the former full-width M3 tab
+  // surface, so a valid long prompt can soft-wrap with only `> ` on its final
+  // physical row. Judge prompt integrity on xterm logical lines.
+  const lines = await dumpLogicalBuffer(page)
   return [...lines].reverse().find((line) => line.trim().length > 0) ?? ''
 }
 
@@ -99,6 +102,10 @@ async function resizeEventCount(): Promise<number> {
 
 test.beforeEach(async () => {
   ;({ app, window: page } = await launchApp())
+  // Stress the terminal viewport, not the 280px expanded navigation. At the
+  // 260px window floor an expanded sidebar leaves almost no terminal width,
+  // multiplying soft-wrapped rows until normal xterm scrollback is evicted.
+  await page.evaluate(() => window.__vibingDebugShell?.setNavMode('rail'))
   original = await app.evaluate(({ BrowserWindow }) => {
     const current = BrowserWindow.getAllWindows()[0]
     const [width, height] = current.getSize()

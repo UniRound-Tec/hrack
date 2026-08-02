@@ -3,7 +3,13 @@ import type {
   PtyFlowControlSnapshot,
   PtyHistorySnapshot
 } from '../shared/ipc-contract'
-import { dumpBuffer, launchApp, typeInTerminal } from './helpers'
+import {
+  closeTerminalAt,
+  dumpBuffer,
+  launchApp,
+  openDefaultTerminal,
+  typeInTerminal
+} from './helpers'
 
 let app: ElectronApplication
 let page: Page
@@ -143,16 +149,16 @@ test.afterEach(async () => {
 })
 
 test('starts with one terminal tab and lets the user create and activate another', async () => {
-  const tabs = page.getByTestId('tab-item')
+  const tabs = page.getByTestId('sidebar-terminal-item')
 
   await expect(tabs).toHaveCount(1)
-  await expect(tabs.first()).toHaveAttribute('aria-selected', 'true')
+  await expect(tabs.first()).toHaveAttribute('aria-current', 'page')
 
-  await page.getByTestId('tab-new').click()
+  await openDefaultTerminal(page)
 
   await expect(tabs).toHaveCount(2)
-  await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'false')
-  await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true')
+  await expect(tabs.nth(0)).not.toHaveAttribute('aria-current', 'page')
+  await expect(tabs.nth(1)).toHaveAttribute('aria-current', 'page')
   await expect(page.locator('.xterm')).toHaveCount(2)
 })
 
@@ -171,8 +177,8 @@ test('keeps terminal output and authoritative history isolated per tab', async (
     .poll(async () => (await dumpBuffer(page)).join('\n'))
     .toContain(firstToken)
 
-  await page.getByTestId('tab-new').click()
-  await expect(page.getByTestId('tab-item')).toHaveCount(2)
+  await openDefaultTerminal(page)
+  await expect(page.getByTestId('sidebar-terminal-item')).toHaveCount(2)
   await expect
     .poll(async () => {
       return page.evaluate(
@@ -241,8 +247,8 @@ test('keeps terminal output and authoritative history isolated per tab', async (
 })
 
 test('closing a tab releases its terminal session and activates its neighbor', async () => {
-  await page.getByTestId('tab-new').click()
-  await expect(page.getByTestId('tab-item')).toHaveCount(2)
+  await openDefaultTerminal(page)
+  await expect(page.getByTestId('sidebar-terminal-item')).toHaveCount(2)
 
   await page.evaluate(() => {
     const debugWindow = window as unknown as Record<string, unknown> & {
@@ -258,12 +264,12 @@ test('closing a tab releases its terminal session and activates its neighbor', a
       debugWindow.__vibingDebugTabs.forTab(closingId)
   })
 
-  await page.getByTestId('tab-close').nth(1).click()
+  await closeTerminalAt(page, 1)
 
-  await expect(page.getByTestId('tab-item')).toHaveCount(1)
-  await expect(page.getByTestId('tab-item')).toHaveAttribute(
-    'aria-selected',
-    'true'
+  await expect(page.getByTestId('sidebar-terminal-item')).toHaveCount(1)
+  await expect(page.getByTestId('sidebar-terminal-item')).toHaveAttribute(
+    'aria-current',
+    'page'
   )
   await expect(page.locator('.xterm')).toHaveCount(1)
   await expect
@@ -281,12 +287,12 @@ test('closing a tab releases its terminal session and activates its neighbor', a
     .toBeNull()
 })
 
-test('closing the final tab closes the terminal window', async () => {
-  const closed = page.waitForEvent('close')
-
-  await page.getByTestId('tab-close').click()
-
-  await closed
+test('closing the final terminal returns Home and keeps the window open', async () => {
+  await closeTerminalAt(page, 0)
+  await expect(page.getByTestId('home-page')).toBeVisible()
+  await expect(page.getByTestId('sidebar-terminal-item')).toHaveCount(0)
+  await expect(page.locator('.xterm')).toHaveCount(0)
+  expect(page.isClosed()).toBe(false)
 })
 
 test('updates the tab title from the terminal OSC title sequence', async () => {
@@ -301,14 +307,14 @@ test('updates the tab title from the terminal OSC title sequence', async () => {
   )
   await page.keyboard.press('Enter')
 
-  await expect(page.getByTestId('tab-item')).toContainText(title)
+  await expect(page.getByTestId('sidebar-terminal-item')).toContainText(title)
 
   await typeInTerminal(
     page,
     '[Console]::Write("$([char]27)]0;$([char]7)")'
   )
   await page.keyboard.press('Enter')
-  await expect(page.getByTestId('tab-item')).toContainText('Terminal 1')
+  await expect(page.getByTestId('sidebar-terminal-item')).toContainText('Terminal 1')
 })
 
 test('keeps an exited session visible until the user closes its tab', async () => {
@@ -319,14 +325,14 @@ test('keeps an exited session visible until the user closes its tab', async () =
   await typeInTerminal(page, 'exit')
   await page.keyboard.press('Enter')
 
-  await expect(page.getByTestId('tab-item')).toHaveAttribute(
+  await expect(page.getByTestId('sidebar-terminal-item')).toHaveAttribute(
     'data-exited',
     'true'
   )
-  await expect(page.getByTestId('tab-item')).toContainText(
-    /\((Exited|已退出|已結束|終了|종료됨)\)/
+  await expect(page.getByTestId('sidebar-terminal-item')).toContainText(
+    /(Exited|已退出|已結束|終了|종료됨)/
   )
-  await expect(page.getByTestId('tab-item')).toHaveCount(1)
+  await expect(page.getByTestId('sidebar-terminal-item')).toHaveCount(1)
   await expect
     .poll(async () => (await dumpBuffer(page)).join('\n'))
     .toContain('[process exited with code 0]')
@@ -351,19 +357,19 @@ test('handles tab shortcuts while terminal input is focused', async () => {
     .toContain('PS ')
   await page.locator('.xterm:visible').click()
 
-  await page.keyboard.press('Control+Shift+T')
-  const tabs = page.getByTestId('tab-item')
+  await openDefaultTerminal(page)
+  const tabs = page.getByTestId('sidebar-terminal-item')
   await expect(tabs).toHaveCount(2)
-  await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true')
+  await expect(tabs.nth(1)).toHaveAttribute('aria-current', 'page')
 
   await page.keyboard.press('Control+Shift+Tab')
-  await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true')
+  await expect(tabs.nth(0)).toHaveAttribute('aria-current', 'page')
   await page.keyboard.press('Control+Tab')
-  await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true')
+  await expect(tabs.nth(1)).toHaveAttribute('aria-current', 'page')
 
   await page.keyboard.press('Control+Shift+W')
   await expect(tabs).toHaveCount(1)
-  await expect(tabs.first()).toHaveAttribute('aria-selected', 'true')
+  await expect(tabs.first()).toHaveAttribute('aria-current', 'page')
 
   const token = `SHORTCUT_INPUT_OK_${Date.now()}`
   await typeInTerminal(page, `Write-Output "${token}"`)
@@ -402,9 +408,9 @@ test('preserves normal scrollback and viewport when switching tabs', async () =>
   expect(before?.baseY).toBeGreaterThan(0)
   expect(before?.viewportY).toBe(0)
 
-  await page.getByTestId('tab-new').click()
-  await expect(page.getByTestId('tab-item')).toHaveCount(2)
-  await page.getByTestId('tab-item').first().click()
+  await openDefaultTerminal(page)
+  await expect(page.getByTestId('sidebar-terminal-item')).toHaveCount(2)
+  await page.getByTestId('sidebar-terminal-item').first().click()
 
   const after = await tabSnapshot(firstId)
   expect(after?.baseY).toBe(before?.baseY)
@@ -429,9 +435,9 @@ test('keeps an alternate buffer alive while another tab is active', async () => 
     .poll(async () => (await tabBuffer(firstId)).join('\n'))
     .toContain('TAB_ALT_READY')
 
-  await page.getByTestId('tab-new').click()
+  await openDefaultTerminal(page)
   await expect.poll(() => tabRendererKind(firstId)).toBe('dom')
-  await page.getByTestId('tab-item').first().click()
+  await page.getByTestId('sidebar-terminal-item').first().click()
 
   await expect.poll(() => tabRendererKind(firstId)).toBe('webgl')
   expect((await tabSnapshot(firstId))?.bufferType).toBe('alternate')
@@ -443,9 +449,9 @@ test('keeps an alternate buffer alive while another tab is active', async () => 
 })
 
 test('backpressures sustained output in a background tab without blocking the active tab', async () => {
-  await page.getByTestId('tab-new').click()
+  await openDefaultTerminal(page)
   const [backgroundId, foregroundId] = await tabIds()
-  await page.getByTestId('tab-item').first().click()
+  await page.getByTestId('sidebar-terminal-item').first().click()
   await setTabAckDelay(backgroundId, 75)
 
   const lineCount = 1024
@@ -458,7 +464,7 @@ test('backpressures sustained output in a background tab without blocking the ac
       `[Console]::WriteLine("${doneToken}")`
   )
   await page.keyboard.press('Enter')
-  await page.getByTestId('tab-item').nth(1).click()
+  await page.getByTestId('sidebar-terminal-item').nth(1).click()
   await expect.poll(() => tabRendererKind(backgroundId)).toBe('dom')
   await expect.poll(() => tabRendererKind(foregroundId)).toBe('webgl')
 
@@ -513,7 +519,7 @@ test('backpressures sustained output in a background tab without blocking the ac
 })
 
 test('defers resize for a hidden tab until it becomes active again', async () => {
-  await page.getByTestId('tab-new').click()
+  await openDefaultTerminal(page)
   const [hiddenId, visibleId] = await tabIds()
   await page.waitForTimeout(700)
 
@@ -537,7 +543,7 @@ test('defers resize for a hidden tab until it becomes active again', async () =>
   ).toBe(true)
   const visibleSize = await tabSnapshot(visibleId)
 
-  await page.getByTestId('tab-item').first().click()
+  await page.getByTestId('sidebar-terminal-item').first().click()
   await expect
     .poll(async () => (await resizeEvents(hiddenId)).length)
     .toBe(before.length + 1)
@@ -553,10 +559,10 @@ test('defers resize for a hidden tab until it becomes active again', async () =>
 
 test('opens five independently bounded terminal sessions without phantom instances', async () => {
   for (let index = 1; index < 5; index++) {
-    await page.getByTestId('tab-new').click()
+    await openDefaultTerminal(page)
   }
 
-  await expect(page.getByTestId('tab-item')).toHaveCount(5)
+  await expect(page.getByTestId('sidebar-terminal-item')).toHaveCount(5)
   await expect(page.locator('.xterm')).toHaveCount(5)
   await expect.poll(async () => (await tabIds()).length).toBe(5)
 
