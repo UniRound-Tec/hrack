@@ -141,14 +141,28 @@ vibing/
 | `pty:kill`   | `{ptyId}`                             | `void`    |
 | `pty:ack`    | `{ptyId, bytes}`                      | `void`    |
 
+M5.b 新增（详见 [PLAN-M5B.md](./PLAN-M5B.md) §4.1/§4.5/§4.6/§4.11）：
+
+| channel                  | 参数                    | 返回                                          | 状态 |
+| ------------------------ | --------------------- | ------------------------------------------- | --- |
+| `window:minimize`        | —                     | `void`                                       | M5.b 实现 |
+| `window:toggle-maximize` | —                     | `void`                                       | M5.b 实现 |
+| `window:close`           | —                     | `void`                                       | M5.b 实现 |
+| `window:is-maximized`    | —                     | `boolean`                                    | M5.b 实现 |
+| `dialog:pick-directory`  | `{defaultPath?}`      | `string \| null`                             | M5.b 实现 |
+| `theme:list-user`        | —                     | 用户主题 JSON 原文列表（renderer 校验）                | M5.b 实现 |
+| `stats:all-time`         | —                     | `{sessions, toolCalls, blocked, approvals}`  | **仅契约**，实现归 M5.c / S 线 |
+| `events:history`         | `{limit, before?}`    | `HistoryEvent[]`                             | **仅契约**，实现归 M5.c / S 线 |
+
 
 **Main → Renderer（send，事件流）**
 
 
-| channel            | 载荷               |
-| ------------------ | ---------------- |
-| `pty:data:{ptyId}` | `Uint8Array`     |
-| `pty:exit:{ptyId}` | `{code, signal}` |
+| channel                    | 载荷               |
+| -------------------------- | ---------------- |
+| `pty:data:{ptyId}`         | `Uint8Array`     |
+| `pty:exit:{ptyId}`         | `{code, signal}` |
+| `window:maximized-changed` | `boolean`（M5.b 新增，驱动最大化/还原图标） |
 
 
 > 约定：`data` 用二进制传输（`Uint8Array`），避免 UTF-8 字符串在多字节边界被 IPC 序列化切坏。xterm 6.0 支持 `write(Uint8Array)`。
@@ -269,6 +283,14 @@ M4.1 改用 xterm 6 的 character joiner proposed API：应用只识别连续操
 - 标题来源：xterm 的 `onTitleChange`（OSC 序列）→ 更新 store。
 - 关闭 Tab：`term.dispose()` + `pty:kill` + 从 store 移除。
 
+**M5.b 演进**（详见 [PLAN-M5B.md](./PLAN-M5B.md) §4.4/§4.7）：M3 Tab 栏被 App
+Shell 三态导航取代，`tabsStore` 拆为 `terminalsStore`（终端条目）+
+`sessionsStore`（AI CLI 会话，§11.5 Session 形状，`sessionId ↔ terminalId` 固定
+归属）。xterm 常驻挂载与隐藏时继续消费/ack 的机制**不变**，仅"是否可见"的判定从
+`activeTabId` 换成页面路由 `PageId`（`home | settings | terminal:{id}`）。关闭
+最后一个终端回 Home，不再关窗口（M3 语义废止）；`Ctrl+Shift+T` 改为打开新建会话
+面板。
+
 ---
 
 
@@ -304,7 +326,8 @@ M4.1 改用 xterm 6 的 character joiner proposed API：应用只识别连续操
 | 构建  | electron-vite         | 一套配置同时构建 main/preload/renderer，HMR |
 | 打包  | electron-builder      | 三端安装包                              |
 | 样式  | Tailwind CSS          | 原子化、无全局污染、开发快；配 CSS 变量做主题          |
-| 字体  | 内嵌 Maple Mono（终端）+ PingFang SC（界面中文） | 三端视觉一致、离线可用；PingFang 完整字库入库（`src/assets/fonts/pingfang/`），**构建期子集化后打包，禁止全量打包**（见 §9 M5.a 注记与目录内 NOTICE） |
+| GUI 主题 | 语义 token（CSS 变量 + Tailwind `@theme inline` 映射）+ JSON 主题配置文件 | VS Code 模式：内置主题与用户主题（`<userData>/themes/*.json`）同一 schema，运行期热切换；组件禁止硬编码色值；界面主题与终端 16 色分开设置（终端配色仍走 `themes.ts`，schema 预留 `terminal` 段）。见 PLAN-M5B §4.11 |
+| 字体  | 内嵌 Maple Mono（终端）+ PingFang SC（界面中文）+ Ammonite（logo） | 三端视觉一致、离线可用；PingFang 完整字库入库（`src/assets/fonts/pingfang/`），Ammonite 随 M5.b 入库 `src/assets/fonts/ammonite/`，**构建期子集化后打包，禁止全量打包**（见 §9 M5.a 注记与目录内 NOTICE）；Geist 不引入（原型仅作未显式指定字体的兜底，已查证无实际使用） |
 
 
 **插件系统**：v1 **不做**。Tabby 的动态模块加载深绑 Angular DI，React 无等价物，强套代价高。若后续需要，用 React Context + 事件总线自建扩展点，届时单独立 Spec。
@@ -324,15 +347,25 @@ M4.1 改用 xterm 6 的 character joiner proposed API：应用只识别连续操
 | **M3**   | **多 Tab**                   | 新建/切换/关闭 Tab，各自独立 pty 与缓冲                                                                           |
 | **M4**   | **渲染与体验**                   | WebGL + context-loss 降级链；消除 `opencode` 块字符色块网格缝；主题、内嵌字体与连字                                          |
 | **M5.a** | **App Shell — UI/UX 设计与原型** | 高保真交互原型（`/prototype` 独立 Vite 工程）评审拍板，不另写 UX 规范文档；设计覆盖侧栏/首页/设置/新建会话流、三态导航（侧栏展开为默认 / 侧栏收起图标条 / 顶部 Tab 栏）、§11 监控界面（侧栏 session 六态徽标、独立置顶悬浮窗、Home 注意力队列），实现归 M5.b / S 线 |
-| **M5.b** | **App Shell — 实现**          | 侧栏、首页、设置真组件落地；设置面板直读写 `settingsStore`；侧栏 session 区由 mock provider（§11.5 schema）驱动；交互 E2E 全绿且既有门禁不回归 |
-| **M5.c** | **App Shell — 数据与打磨**       | 需新 IPC 的真实数据接入（以 M5.a 定稿为准）、i18n 五语言、视觉打磨、全量回归；AI session 真数据不在此（归 S 线）                             |
-| M6       | 窗口质感                        | 无边框、vibrancy/acrylic、托盘、全局快捷键                                                                       |
+| **M5.b** | **App Shell — 实现**          | 无边框窗口 + 自定义标题栏（原型标题栏设计的前置条件）；侧栏、首页、设置真组件落地；设置面板直读写 `settingsStore`；侧栏 session 区由 mock provider（§11.5 schema）驱动；交互 E2E 全绿且既有门禁不回归 |
+| **M5.c** | **App Shell — 数据与打磨**       | 需新 IPC 的真实数据接入（以 M5.a 定稿为准）、i18n 五语言、视觉打磨（含 vibrancy/acrylic，注意平台差异）、托盘与全局快捷键、全量回归；AI session 真数据不在此（归 S 线）                             |
+| M6       | CLI 适配器矩阵                   | 依赖 S3 定稿的 adapter 抽象；铺开接入剩余主流 CLI（gemini-cli / opencode / aider / cursor-agent 等），每个适配器带独立状态识别策略与回归夹具    |
 | M7       | 打包                          | 三端安装包产出                                                                                             |
 
 
 优先级：**M1 是地基**，其余按需推进。
 
-**当前进度（2026-08-02）：M4 已完成。M5.a 原型（`/prototype`）已覆盖全部设计范围，待评审拍板后进入 M5.b。已定决策：侧栏替代 M3 Tab 栏，导航三态互斥：侧栏展开 / 侧栏收起（图标条）/ 顶部 Tab 栏（无侧栏，Home 常驻最左、新建常驻 tabs 右、hover 出详情卡）；标题栏左侧以实际功能入口（新建会话 / 设置）取代占位菜单（文件/编辑/视图/帮助），三种导航形态下全局恒定；侧栏底部保留快速收展开关；界面（chrome）主题与终端 16 色配色在设置中分开设置——M4 的单一 `themeId` 于 M5.b 拆分为界面/终端两个字段，`themes.ts` 色值结构不变；session/terminal 归属按启动方式固定不迁移；悬浮窗为独立置顶小窗（第二 BrowserWindow，实现归 S3）；v1 只看不操作（注意力列表仅"查看"跳转，无批准/重试）；all-time 统计与跨 session 历史事件需新增 IPC 契约与主进程持久化（契约定于 M5.b，实现归 M5.c / S 线）；中文 UI 字体内嵌 PingFang——SC 六字重 woff2 已入库 `src/assets/fonts/pingfang/`（完整 CJK 字库约 5MB/字重，共约 30MB，来源与授权见目录内 `NOTICE.md`，版权由项目方自行解决），仓库保存完整字体，**构建时按产物实际用字子集化（如 fonttools `pyftsubset` 生成 woff2 子集，或按 unicode-range 切片），未用字重不进产物，禁止全量打包**（子集化管线随 M5.b 首次接入 UI 字体时落地）；Home 空状态（无会话且无终端）重排为居中欢迎页——logo + 问候 + 快速启动入口保留，注意力队列/历史/统计不渲染，有会话后恢复信息密度布局；悬浮窗为紧凑模式——默认仅显示按最新事件排序的前 3 个活跃（未退出）会话，可展开查看全部，头部仅保留 need-you 计数。**
+**当前进度（2026-08-02）：M4 已完成。M5.a 原型（`/prototype`）已覆盖全部设计范围，待评审拍板后进入 M5.b。已定决策：侧栏替代 M3 Tab 栏，导航三态互斥：侧栏展开 / 侧栏收起（图标条）/ 顶部 Tab 栏（无侧栏，Home 常驻最左、新建常驻 tabs 右、hover 出详情卡）；标题栏左侧以实际功能入口（新建会话 / 设置）取代占位菜单（文件/编辑/视图/帮助），三种导航形态下全局恒定；侧栏底部保留快速收展开关；界面（chrome）主题与终端 16 色配色在设置中分开设置——M4 的单一 `themeId` 于 M5.b 拆分为界面/终端两个字段，`themes.ts` 色值结构不变；session/terminal 归属按启动方式固定不迁移；悬浮窗为独立置顶小窗（第二 BrowserWindow，实现归 S3）；v1 只看不操作（注意力列表仅"查看"跳转，无批准/重试）；all-time 统计与跨 session 历史事件需新增 IPC 契约与主进程持久化（契约定于 M5.b，实现归 M5.c / S 线）；中文 UI 字体内嵌 PingFang——SC 六字重 woff2 已入库 `src/assets/fonts/pingfang/`（完整 CJK 字库约 5MB/字重，共约 30MB，来源与授权见目录内 `NOTICE.md`，版权由项目方自行解决），仓库保存完整字体，**构建时按产物实际用字子集化（如 fonttools `pyftsubset` 生成 woff2 子集，或按 unicode-range 切片），未用字重不进产物，禁止全量打包**（子集化管线随 M5.b 首次接入 UI 字体时落地）；Home 空状态（无会话且无终端）重排为居中欢迎页——logo + 问候 + 快速启动入口保留，注意力队列/历史/统计不渲染，有会话后恢复信息密度布局；悬浮窗为紧凑模式——默认仅显示按最新事件排序的前 3 个活跃（未退出）会话，可展开查看全部，头部仅保留 need-you 计数；里程碑重排——原 M6「窗口质感」拆解并入 M5 线（无边框 + 自定义标题栏归 M5.b，vibrancy/acrylic、托盘、全局快捷键归 M5.c），M6 重定义为「CLI 适配器矩阵」（依赖 S3，见 §11.7）。**
+
+**M5.b 已立项（2026-08-02）**：实施计划与 12 条评审决策见
+[PLAN-M5B.md](./PLAN-M5B.md)。对原型/既有约定的修订摘要：标题栏 Win/Linux 自绘右侧
+三键、**不落地原型左侧三个装饰灰点**，macOS 用原生红绿灯并隐藏自绘键；Geist 字体
+不引入（基础字体栈改 PingFang），Ammonite logo 字体入库内嵌并子集化；顶部 Tab 溢出
+全量显示 + 横向滚动；侧栏条目补 hover 关闭键（原型未画，评审确认）；关闭最后一个
+终端回 Home 不关窗口、`Ctrl+Shift+T` 改为打开新建会话面板（M3 语义调整）；GUI 全面
+token 化 + JSON 主题配置文件（见 §8「GUI 主题」行）；新建 CLI 会话真实 spawn，
+语义状态仅 working/exited 兜底，六态演示数据由 dev/E2E mock provider 注入；深色
+界面主题、悬浮窗（S3）、统计/历史真数据（M5.c / S 线）均不在 M5.b。
 
 M2 基线：
 
@@ -592,6 +625,11 @@ Stop             → completed            (进程退出) → exited
 | S2  | 加旁路信号（hooks + transcript tail）：拿到可靠的 prompt-submitted / tool-call / approval / completed 事件流 |
 | S3  | 第二个适配器（codex）验证抽象是否够用；悬浮框聚合多 session 状态                                                      |
 | S4  | 通知系统：注意力事件（needs-you / done / error）按用户规则触发通知（v1 只看不操作，不做反向注入）                               |
+
+S 线与 M6 的分工：S 线负责**跑通架构**——分流、抓屏、旁路信号、以 claude-code 与
+codex 两个参考适配器验证 adapter 抽象是否够用；M6 负责**铺开覆盖面**——在 S3 抽象
+定稿后接入剩余主流 CLI，两者不重叠。适配器接口若在 M6 期间需要变更，属抽象验证失败，
+应回溯 S3 而非在 M6 内打补丁。
 
 
 ---

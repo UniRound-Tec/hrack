@@ -123,7 +123,7 @@ App
   必须用 `term.attachCustomKeyEventHandler` 拦截上述组合键(返回 `false`
   阻止 xterm 处理),再冒泡/直接调 store action。`window` 级 keydown 只作
   焦点不在终端时的兜底,两处共用同一个判定函数,防止双触发。
-- 不做全局(系统级)快捷键,那是 M6。
+- 不做全局(系统级)快捷键,那归 M5.c(原 M6,里程碑已重排)。
 
 ### 3.6 调试桥改造(E2E 基建)
 

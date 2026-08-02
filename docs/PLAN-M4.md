@@ -35,7 +35,8 @@
 - 设置 UI 面板(M5;M4 只做 store + 应用链路,变更入口走调试桥供 E2E 与开发用)。
 - search / serialize / image / web-links / unicode11 等其他 addon(非 M4 验收点,
   按需求在 M5+ 逐个立项)。
-- 窗口透明 / vibrancy / acrylic(M6;但 theme 结构为背景 alpha 预留字段,见 §8)。
+- 窗口透明 / vibrancy / acrylic(原 M6,里程碑重排后归 M5.c;但 theme 结构为背景
+  alpha 预留字段,见 §8)。
 - IME 组合输入与复杂 emoji 宽度(TEST 文档 §1 已声明的独立空白,不借 M4 夹带)。
 - 渲染帧率性能门禁(WebGL 带来的吞吐提升只做记录,不设硬性 fps 断言)。
 
@@ -279,9 +280,9 @@ xterm 6.0 在 `WebglRenderer.handleResize` 中立即改变 canvas 尺寸并清�
 - **M5(App Shell / 设置面板)**:设置 UI 直接读写本计划的 `settingsStore`
   (themeId / fontFamily / fontSize / ligatures),不需要新状态层;
   主题的 chrome CSS 变量即侧栏 / 首页的配色基础。
-- **M6(窗口质感)**:vibrancy / acrylic 需要终端背景透明 → theme 结构中
+- **M5.c(窗口质感,原 M6)**:vibrancy / acrylic 需要终端背景透明 → theme 结构中
   background 保留 alpha 通道语义;届时评估 xterm `allowTransparency` 的
-  WebGL 性能成本,在 M6 计划里处理。
+  WebGL 性能成本,在 M5.c 计划里处理。
 - **S 线(语义监控)**:不受影响——渲染是纯 Renderer 显示话题,SemanticTap
   在主进程,正交(SPEC §11.2)。
 - **打包(M7)**:WebGL 在各平台打包产物中的可用性(GPU 黑名单、软件渲染)
