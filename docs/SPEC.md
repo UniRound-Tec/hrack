@@ -304,6 +304,7 @@ M4.1 改用 xterm 6 的 character joiner proposed API：应用只识别连续操
 | 构建  | electron-vite         | 一套配置同时构建 main/preload/renderer，HMR |
 | 打包  | electron-builder      | 三端安装包                              |
 | 样式  | Tailwind CSS          | 原子化、无全局污染、开发快；配 CSS 变量做主题          |
+| 字体  | 内嵌 Maple Mono（终端）+ PingFang SC（界面中文） | 三端视觉一致、离线可用；PingFang 完整字库入库（`src/assets/fonts/pingfang/`），**构建期子集化后打包，禁止全量打包**（见 §9 M5.a 注记与目录内 NOTICE） |
 
 
 **插件系统**：v1 **不做**。Tabby 的动态模块加载深绑 Angular DI，React 无等价物，强套代价高。若后续需要，用 React Context + 事件总线自建扩展点，届时单独立 Spec。
@@ -322,7 +323,7 @@ M4.1 改用 xterm 6 的 character joiner proposed API：应用只识别连续操
 | **M2**   | **resize + 背压**             | 窗口缩放行列同步；`yes`/`cat bigfile` 不卡 UI                                                                  |
 | **M3**   | **多 Tab**                   | 新建/切换/关闭 Tab，各自独立 pty 与缓冲                                                                           |
 | **M4**   | **渲染与体验**                   | WebGL + context-loss 降级链；消除 `opencode` 块字符色块网格缝；主题、内嵌字体与连字                                          |
-| **M5.a** | **App Shell — UI/UX 设计与原型** | UX 规范文档（`PLAN-M5-UX.md`）定稿 + 应用内原型评审拍板；设计范围覆盖 §11 监控界面（侧栏 session 徽标、悬浮框/Dashboard 的位置与交互），实现仍归 S 线 |
+| **M5.a** | **App Shell — UI/UX 设计与原型** | 高保真交互原型（`/prototype` 独立 Vite 工程）评审拍板，不另写 UX 规范文档；设计覆盖侧栏/首页/设置/新建会话流、三态导航（侧栏展开为默认 / 侧栏收起图标条 / 顶部 Tab 栏）、§11 监控界面（侧栏 session 六态徽标、独立置顶悬浮窗、Home 注意力队列），实现归 M5.b / S 线 |
 | **M5.b** | **App Shell — 实现**          | 侧栏、首页、设置真组件落地；设置面板直读写 `settingsStore`；侧栏 session 区由 mock provider（§11.5 schema）驱动；交互 E2E 全绿且既有门禁不回归 |
 | **M5.c** | **App Shell — 数据与打磨**       | 需新 IPC 的真实数据接入（以 M5.a 定稿为准）、i18n 五语言、视觉打磨、全量回归；AI session 真数据不在此（归 S 线）                             |
 | M6       | 窗口质感                        | 无边框、vibrancy/acrylic、托盘、全局快捷键                                                                       |
@@ -331,7 +332,7 @@ M4.1 改用 xterm 6 的 character joiner proposed API：应用只识别连续操
 
 优先级：**M1 是地基**，其余按需推进。
 
-**当前进度（2026-07-31）：M4 已完成，M4.1 字体/连字与 M4.2 resize 闪屏修复已落地。下一步为 M5.a（App Shell 属设计驱动里程碑，拆为设计 → 实现 → 数据三阶段，见 [PLAN-M5.md](./PLAN-M5.md)）。**
+**当前进度（2026-08-02）：M4 已完成。M5.a 原型（`/prototype`）已覆盖全部设计范围，待评审拍板后进入 M5.b。已定决策：侧栏替代 M3 Tab 栏，导航三态互斥：侧栏展开 / 侧栏收起（图标条）/ 顶部 Tab 栏（无侧栏，Home 常驻最左、新建常驻 tabs 右、hover 出详情卡）；标题栏左侧以实际功能入口（新建会话 / 设置）取代占位菜单（文件/编辑/视图/帮助），三种导航形态下全局恒定；侧栏底部保留快速收展开关；界面（chrome）主题与终端 16 色配色在设置中分开设置——M4 的单一 `themeId` 于 M5.b 拆分为界面/终端两个字段，`themes.ts` 色值结构不变；session/terminal 归属按启动方式固定不迁移；悬浮窗为独立置顶小窗（第二 BrowserWindow，实现归 S3）；v1 只看不操作（注意力列表仅"查看"跳转，无批准/重试）；all-time 统计与跨 session 历史事件需新增 IPC 契约与主进程持久化（契约定于 M5.b，实现归 M5.c / S 线）；中文 UI 字体内嵌 PingFang——SC 六字重 woff2 已入库 `src/assets/fonts/pingfang/`（完整 CJK 字库约 5MB/字重，共约 30MB，来源与授权见目录内 `NOTICE.md`，版权由项目方自行解决），仓库保存完整字体，**构建时按产物实际用字子集化（如 fonttools `pyftsubset` 生成 woff2 子集，或按 unicode-range 切片），未用字重不进产物，禁止全量打包**（子集化管线随 M5.b 首次接入 UI 字体时落地）；Home 空状态（无会话且无终端）重排为居中欢迎页——logo + 问候 + 快速启动入口保留，注意力队列/历史/统计不渲染，有会话后恢复信息密度布局；悬浮窗为紧凑模式——默认仅显示按最新事件排序的前 3 个活跃（未退出）会话，可展开查看全部，头部仅保留 need-you 计数。**
 
 M2 基线：
 
