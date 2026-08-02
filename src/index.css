@@ -32,16 +32,92 @@
   font-display: block;
 }
 
-:root {
-  --app-bg: #0b0e14;
-  --tabbar-bg: #11151d;
-  --tab-bg: #11151d;
-  --tab-active-bg: #0b0e14;
-  --tab-hover-bg: #171c26;
-  --chrome-border: rgba(255, 255, 255, 0.1);
-  --chrome-fg: #e6edf3;
-  --chrome-muted: #8b949e;
-  --toast-bg: #202733;
+@font-face {
+  font-family: "PingFang SC";
+  src: url("./assets/fonts/pingfang/PingFangSC-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "PingFang SC";
+  src: url("./assets/fonts/pingfang/PingFangSC-Medium.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "PingFang SC";
+  src: url("./assets/fonts/pingfang/PingFangSC-Semibold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Ammonite";
+  src: url("./assets/fonts/ammonite/Ammonite-2.otf") format("opentype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@theme inline {
+  --font-sans: var(--font-pingfang);
+  --font-heading: var(--font-pingfang);
+  --font-ammonite: "Ammonite", sans-serif;
+  --font-pingfang: "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-maple: "Maple Mono", ui-monospace, monospace;
+
+  --color-app: var(--vib-bg-app);
+  --color-content: var(--vib-bg-content);
+  --color-surface: var(--vib-bg-surface);
+  --color-surface-hover: var(--vib-bg-surface-hover);
+  --color-surface-strong: var(--vib-bg-surface-strong);
+  --color-control: var(--vib-bg-control);
+  --color-control-active: var(--vib-bg-control-active);
+  --color-overlay: var(--vib-bg-overlay);
+  --color-backdrop: var(--vib-bg-backdrop);
+  --color-backdrop-strong: var(--vib-bg-backdrop-strong);
+  --color-text-primary: var(--vib-text-primary);
+  --color-text-secondary: var(--vib-text-secondary);
+  --color-text-muted: var(--vib-text-muted);
+  --color-text-faint: var(--vib-text-faint);
+  --color-text-disabled: var(--vib-text-disabled);
+  --color-text-inverse: var(--vib-text-inverse);
+  --color-border-default: var(--vib-border-default);
+  --color-border-subtle: var(--vib-border-subtle);
+  --color-border-faint: var(--vib-border-faint);
+  --color-border-strong: var(--vib-border-strong);
+  --color-border-control: var(--vib-border-control);
+  --color-flame: var(--vib-accent-flame);
+  --color-cursor-accent: var(--vib-accent-cursor);
+  --color-brand-logo: var(--vib-brand-logo);
+  --color-brand-logo-shine: var(--vib-brand-logoShine);
+  --color-status-working: var(--vib-status-working);
+  --color-status-working-dot: var(--vib-status-working-dot);
+  --color-status-needs-you: var(--vib-status-needsYou);
+  --color-status-needs-you-dot: var(--vib-status-needsYou-dot);
+  --color-status-done: var(--vib-status-done);
+  --color-status-done-dot: var(--vib-status-done-dot);
+  --color-status-error: var(--vib-status-error);
+  --color-status-error-dot: var(--vib-status-error-dot);
+  --color-status-idle: var(--vib-status-idle);
+  --color-status-idle-dot: var(--vib-status-idle-dot);
+  --color-status-exited: var(--vib-status-exited);
+  --color-status-exited-dot: var(--vib-status-exited-dot);
+  --color-button-primary: var(--vib-button-primary-bg);
+  --color-button-primary-hover: var(--vib-button-primary-bg-hover);
+  --color-button-primary-fg: var(--vib-button-primary-fg);
+  --color-button-secondary: var(--vib-button-secondary-bg);
+  --color-button-secondary-hover: var(--vib-button-secondary-bg-hover);
+  --color-button-secondary-fg: var(--vib-button-secondary-fg);
+  --color-input: var(--vib-input-bg);
+  --color-input-hover: var(--vib-input-bg-hover);
+  --color-input-focus: var(--vib-input-border-focus);
+  --color-focus-ring: var(--vib-focus-ring);
 }
 
 html,
@@ -51,48 +127,182 @@ body,
   margin: 0;
 }
 
+html {
+  font-family: var(--font-pingfang);
+}
+
 body {
-  background-color: var(--app-bg);
+  background-color: var(--vib-bg-app);
+  color: var(--vib-text-primary);
   overflow: hidden;
 }
 
+button {
+  font: inherit;
+}
+
 .app-shell {
-  background: var(--app-bg);
+  background: var(--vib-bg-app);
+}
+
+.app-drag-region {
+  -webkit-app-region: drag;
+}
+
+.app-no-drag,
+.app-no-drag * {
+  -webkit-app-region: no-drag;
+}
+
+.titlebar {
+  background: var(--vib-bg-app);
+  color: var(--vib-titlebar-fg);
+}
+
+.titlebar-macos .titlebar-actions {
+  padding-left: 78px;
+}
+
+.titlebar-action:hover:not(:disabled),
+.titlebar-action-active {
+  background: var(--vib-titlebar-bg-hover);
+  color: var(--vib-titlebar-fg-hover);
+}
+
+.titlebar-action:disabled {
+  color: var(--vib-text-disabled);
+  cursor: default;
+}
+
+.window-control {
+  position: relative;
+  display: grid;
+  width: 46px;
+  place-items: center;
+  color: var(--vib-titlebar-fg);
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+.window-control:hover {
+  background: var(--vib-titlebar-bg-hover);
+  color: var(--vib-titlebar-fg-hover);
+}
+
+.window-control-close:hover {
+  background: var(--vib-titlebar-close-bg-hover);
+  color: var(--vib-titlebar-close-fg-hover);
+}
+
+.window-control-minimize {
+  width: 10px;
+  border-top: 1px solid currentColor;
+}
+
+.window-control-maximize {
+  width: 10px;
+  height: 10px;
+  border: 1px solid currentColor;
+}
+
+.window-control-restore {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  border: 1px solid currentColor;
+}
+
+.window-control-restore::before {
+  position: absolute;
+  top: -4px;
+  left: 2px;
+  width: 9px;
+  height: 9px;
+  border: 1px solid currentColor;
+  background: var(--vib-bg-app);
+  content: "";
+}
+
+.window-control:hover .window-control-restore::before {
+  background: var(--vib-titlebar-bg-hover);
+}
+
+.window-control-close-icon,
+.window-control-close-icon::after {
+  position: absolute;
+  width: 12px;
+  border-top: 1px solid currentColor;
+  content: "";
+  transform: rotate(45deg);
+}
+
+.window-control-close-icon::after {
+  transform: rotate(90deg);
 }
 
 .tab-bar {
-  background: var(--tabbar-bg);
-  border-color: var(--chrome-border);
+  background: var(--vib-bg-surface-strong);
+  border-color: var(--vib-border-default);
 }
 
 .tab-item {
-  border-color: var(--chrome-border);
+  border-color: var(--vib-border-default);
 }
 
 .tab-item-active {
-  background: var(--tab-active-bg);
-  color: var(--chrome-fg);
+  background: var(--vib-bg-app);
+  color: var(--vib-text-primary);
 }
 
 .tab-item-inactive {
-  background: var(--tab-bg);
-  color: var(--chrome-muted);
+  background: var(--vib-bg-surface-strong);
+  color: var(--vib-text-muted);
 }
 
 .tab-item-inactive:hover,
 .tab-new:hover {
-  background: var(--tab-hover-bg);
-  color: var(--chrome-fg);
+  background: var(--vib-bg-surface-hover);
+  color: var(--vib-text-secondary);
 }
 
 .tab-action,
 .tab-new {
-  color: var(--chrome-muted);
+  color: var(--vib-text-faint);
 }
 
 .tab-action:hover {
-  background: color-mix(in srgb, var(--chrome-fg) 10%, transparent);
-  color: var(--chrome-fg);
+  background: var(--vib-bg-control);
+  color: var(--vib-text-secondary);
+}
+
+.sidebar-scroll {
+  scrollbar-color: var(--vib-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+  margin-block: 4px;
+  background: transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--vib-scrollbar-thumb);
+  background-clip: content-box;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--vib-scrollbar-thumb-hover);
+  background-clip: content-box;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb:active {
+  background: var(--vib-scrollbar-thumb-active);
+  background-clip: content-box;
 }
 
 @keyframes copy-toast-in {
@@ -107,8 +317,9 @@ body {
 }
 
 .copy-toast {
-  background: color-mix(in srgb, var(--toast-bg) 95%, transparent);
-  border-color: var(--chrome-border);
-  color: var(--chrome-fg);
+  border-color: var(--vib-border-default);
+  background: var(--vib-bg-overlay);
+  box-shadow: 0 10px 15px -3px var(--vib-shadow-popover);
+  color: var(--vib-text-primary);
   animation: copy-toast-in 140ms ease-out;
 }

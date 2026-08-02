@@ -1,5 +1,6 @@
 import { BrowserWindow, shell } from 'electron'
 import { join } from 'path'
+import { WindowEventChannel } from '../shared/ipc-contract'
 
 /**
  * 创建主窗口。
@@ -12,7 +13,10 @@ export function createWindow(): BrowserWindow {
     height: 700,
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: '#0b0e14',
+    backgroundColor: '#ffffff',
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const }
+      : { frame: false }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -22,6 +26,16 @@ export function createWindow(): BrowserWindow {
   })
 
   win.on('ready-to-show', () => win.show())
+  const sendMaximizedState = (): void => {
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send(
+        WindowEventChannel.MaximizedChanged,
+        win.isMaximized()
+      )
+    }
+  }
+  win.on('maximize', sendMaximizedState)
+  win.on('unmaximize', sendMaximizedState)
 
   // 外链交给系统浏览器，避免在 Electron 内打开
   win.webContents.setWindowOpenHandler(({ url }) => {

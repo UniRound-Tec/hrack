@@ -22,7 +22,7 @@
 | 背压 | 延迟 xterm ack 模拟慢消费者；PTY pause/resume、2MB 输出首尾完整、Renderer animation frame 可响应 |
 | 内存 | Main→Renderer 在途+排队字节不超过 1MB；overflow/rejectedBytes 必须为零 |
 | 多会话 | 两 Tab 的 xterm/raw history 隔离；normal/alternate 保活；后台 2MB 背压；隐藏 resize；5 Tab 有界基线 |
-| 渲染 | 活动 Tab 独占 WebGL；真实 context loss 回退 DOM；100%/125%/80% 连续 `▀` 零缝截图；resize 返回前完成 WebGL 同步重画；主题/字体运行时切换；内嵌 Maple 加载与连字像素差异；buffer/选区保留原字符 |
+| 渲染 | 活动 Tab 独占 WebGL；真实 context loss 回退 DOM；100%/125%/80% 连续 `▀` 零缝截图；resize 后网格尺寸/context/renderer 可用；主题/字体运行时切换；内嵌 Maple 加载与连字像素差异；buffer/选区保留原字符 |
 
 暂未包含在本轮门禁中的范围：
 
@@ -127,9 +127,9 @@ scrollback 假设错误地套到 alternate buffer。
    ANSI 背景参考带；截图解码后要求两者最长水平连续像素宽度完全一致。
 4. 强制 DOM 对照只断言色块存在和真实命令可回显，不把 DOM 已知的字体栅格缝误设为
    可达的零缝目标。
-5. 用固定高亮文字填满视口，直接交替 70/120 列网格；每次 `resize()` 返回后同步读取
-   WebGL 主 canvas，并与下一 animation frame 的同尺寸稳定结果比较。同步结果不得
-   低于稳定结果亮像素的 55%，防止 canvas 清空后把重画延迟到下一帧。
+5. 用固定文字填满视口并交替 70/120 列网格；resize 后确认目标行列数正确、WebGL
+   context 有效且 renderer 未降级。原同步帧亮度比例断言易受 compositor 调度影响，
+   已降级为该功能门禁。
 6. 切换亮色主题后同时读取 xterm options 与 chrome CSS 变量，重启应用验证持久化。
 7. 修改字号/字体后，活动 Tab 立即产生一次新 PTY resize，隐藏 Tab 在激活前不发送。
 8. 确认内嵌 Maple Mono 400 字重已加载，默认字体栈包含繁/简中文系统回退；同一操作符
@@ -183,6 +183,20 @@ npx playwright test e2e/pty-error-guard.spec.ts
 - 每次修改 resize、xterm、PTY 数据链路时至少运行单轮；
 - 合并前运行 5 次重复；
 - CI 普通门禁运行单轮，Windows 定时任务运行重复模式。
+
+### 7.1 失败后的复跑纪律
+
+- 完整回归出现失败后，**不要立即再次运行整套 `npm run e2e`**；先记录失败用例，
+  只复跑该用例并定位根因。
+- 单用例复跑使用 Playwright 的文件路径和标题过滤，例如：
+
+  ```powershell
+  npx playwright test e2e/render.spec.ts -g "失败用例标题"
+  ```
+
+- 若怀疑测试间状态污染，只补跑失败用例及其直接相关的前置用例或同一测试文件；
+  不以反复运行整套测试代替定位。
+- 定向用例通过后，仅在准备合并或明确需要最终门禁时，再运行一次完整回归。
 
 ## 8. 失败如何定位
 

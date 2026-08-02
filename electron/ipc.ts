@@ -1,14 +1,56 @@
-import { clipboard, ipcMain } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  ipcMain,
+  type IpcMainInvokeEvent
+} from 'electron'
 import { appendFileSync } from 'node:fs'
+import { mkdir, readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { PTYManager } from './pty/PTYManager'
 import {
   ClipboardInvokeChannel,
   PtyInvokeChannel,
+  ThemeInvokeChannel,
+  WindowInvokeChannel,
   type SpawnOptions
 } from '../shared/ipc-contract'
 
 const MAX_CLIPBOARD_TEXT_LENGTH = 8 * 1024 * 1024
+const MAX_USER_THEME_FILES = 128
+const MAX_USER_THEME_BYTES = 256 * 1024
+
+function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  return win && !win.isDestroyed() ? win : null
+}
+
+async function listUserThemes() {
+  const themesDirectory = join(app.getPath('userData'), 'themes')
+  await mkdir(themesDirectory, { recursive: true })
+  const entries = (await readdir(themesDirectory, { withFileTypes: true }))
+    .filter(
+      (entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json')
+    )
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .slice(0, MAX_USER_THEME_FILES)
+
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const path = join(themesDirectory, entry.name)
+      const metadata = await stat(path)
+      if (metadata.size > MAX_USER_THEME_BYTES) {
+        return {
+          filename: entry.name,
+          error: `文件大小 ${metadata.size} 字节，超过 256 KB 上限`
+        }
+      }
+      return { filename: entry.name, source: await readFile(path, 'utf8') }
+    })
+  )
+  return files
+}
 
 /** 注册所有 pty 相关的 invoke handler，委托 PTYManager。 */
 export function registerIpc(manager: PTYManager): void {
@@ -51,6 +93,22 @@ export function registerIpc(manager: PTYManager): void {
     }
     clipboard.writeText(text)
   })
+  ipcMain.handle(WindowInvokeChannel.Minimize, (event) => {
+    senderWindow(event)?.minimize()
+  })
+  ipcMain.handle(WindowInvokeChannel.ToggleMaximize, (event) => {
+    const win = senderWindow(event)
+    if (!win) return
+    if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
+  })
+  ipcMain.handle(WindowInvokeChannel.Close, (event) => {
+    senderWindow(event)?.close()
+  })
+  ipcMain.handle(WindowInvokeChannel.IsMaximized, (event) =>
+    Boolean(senderWindow(event)?.isMaximized())
+  )
+  ipcMain.handle(ThemeInvokeChannel.ListUser, listUserThemes)
 
   // 诊断：渲染进程把 resize 前后的 buffer 快照写到 logs/resize-diag.log，供离线分析。
   // 只在真实 dev 会话里抓证据用，定位后移除。

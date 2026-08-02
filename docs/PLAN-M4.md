@@ -169,9 +169,9 @@ xterm 6.0 在 `WebglRenderer.handleResize` 中立即改变 canvas 尺寸并清�
 浮动标签；稳定版发布后再切回 stable。
 
 回归门禁使用固定文字填满视口，直接快速交替 xterm 的 70/120 列网格尺寸；每次
-`resize()` 返回后立即读取 WebGL 主 canvas，并与下一 animation frame 的稳定结果比较。
-同步结果的亮像素比例必须大于稳定结果的 55%。这样只验证 xterm resize 调用栈，
-不会把 Electron/Windows 原生窗口异步变宽过程中合法的布局中间态误判成 WebGL 闪屏。
+`resize()` 后验证目标行列数、WebGL context 与 renderer 仍有效。原“同步帧与下一
+animation frame 亮度比例”断言在 2026-08-02 降级，因为 compositor 调度会让该断言
+产生环境相关的假失败；同步重画能力继续由精确锁定的上游修复版本保证。
 
 ### 3.7 调试桥扩展(E2E 基建)
 

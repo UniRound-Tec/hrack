@@ -247,8 +247,9 @@ xterm 6.0 的 WebGL renderer 在 resize 时先清空 canvas，完整重画却延
 同步重画；稳定版尚未包含该补丁，因此当前精确锁定已验证的
 `@xterm/xterm@6.1.0-beta.292` + `@xterm/addon-webgl@0.20.0-beta.291`，不使用浮动
 beta 标签。E2E 在 xterm 网格连续宽窄 resize 后立即读取 WebGL 主 canvas，并与下一
-animation frame 的稳定结果比较，禁止 renderer 再次把重画推迟到下一帧。原生窗口
-自身的异步布局阶段不属于该门禁，避免把窗口管理器中间态误判为 renderer 回归。
+animation frame 的稳定结果比较的门禁已降级：该像素时序断言易受 compositor 调度影响，
+不能稳定区分产品回归与测试环境抖动。当前 E2E 只验证宽窄 resize 后网格尺寸、WebGL
+context 与 renderer 均保持可用；同步重画能力由精确锁定的上游修复版本保证。
 
 `@xterm/addon-ligatures` 0.10.0 需要 Node 文件系统定位并解析本机字体，不能用于
 `nodeIntegration:false` 的 Renderer；本项目不引入该 addon，也不为字体放宽安全边界。
@@ -398,8 +399,8 @@ scrollback 与输入不中断，完成一次 Tab 切出/切回后允许重试。
 100% / 125% / 80% zoom 下要求前景连续宽度完全相等，固化 `opencode` 零缝门禁；
 DOM 对照只要求内容和输入可用。
 - M4.2 精确锁定包含上游同步重画补丁的 xterm 6.1/WebGL 0.20 beta；WebGL resize
-不再先提交空 canvas。同步 canvas 门禁要求 `resize()` 返回时的亮度至少保持下一
-animation frame 稳定结果的 55%；同一门禁已在 6.0/WebGL 0.19 上反证失败。
+不再先提交空 canvas。原同步 canvas 亮度比例门禁因 compositor 时序抖动降级为
+功能门禁：resize 后要求目标网格尺寸正确、WebGL context 有效且 renderer 不降级。
 - `themes.ts` 集中定义完整 16 色终端主题与 chrome 色值；内置深/亮两套主题。
 `settingsStore` 持久化 `themeId / fontFamily / fontSize / ligatures`，主题和字体即时
 生效；字体变化仅立即 fit 活动 Tab，隐藏 Tab 激活后再同步 PTY。

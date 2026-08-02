@@ -2,14 +2,25 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import './index.css'
 import mapleMonoLicenseUrl from './assets/fonts/maple-mono/LICENSE.txt?url'
+import {
+  applyUiTheme,
+  builtInLightTheme,
+  loadUiThemeRegistry
+} from './app/themeRuntime'
 
 const licenseLink = document.createElement('link')
 licenseLink.rel = 'license'
 licenseLink.href = mapleMonoLicenseUrl
 licenseLink.title = 'Maple Mono — SIL Open Font License 1.1'
 document.head.append(licenseLink)
+applyUiTheme(builtInLightTheme)
 
 async function bootstrap(): Promise<void> {
+  const themeRegistry = await loadUiThemeRegistry()
+  for (const error of themeRegistry.errors) {
+    console.warn(`[theme] ${error.filename}: ${error.message}`)
+  }
+
   // xterm 会在 open/fit 时测量字体；先等内嵌主字体可用，避免 fallback 字体尺寸被
   // 缓存后再换字体，导致首屏行列数和 WebGL glyph atlas 不一致。
   try {

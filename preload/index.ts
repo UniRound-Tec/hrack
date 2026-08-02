@@ -1,8 +1,15 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import {
+  contextBridge,
+  ipcRenderer,
+  type IpcRendererEvent
+} from 'electron'
 import os from 'node:os'
 import {
   ClipboardInvokeChannel,
   PtyInvokeChannel,
+  ThemeInvokeChannel,
+  WindowEventChannel,
+  WindowInvokeChannel,
   ptyDataChannel,
   ptyExitChannel,
   ptyResizeCursorSyncChannel,
@@ -12,7 +19,9 @@ import {
   type PtyFlowControlSnapshot,
   type PtyMeta,
   type PtyResizeCursorSync,
-  type SpawnOptions
+  type SpawnOptions,
+  type ThemeApi,
+  type WindowApi
 } from '../shared/ipc-contract'
 
 /** 推算 Windows build 号（os.release() 形如 "10.0.26200"）。 */
@@ -84,9 +93,32 @@ const clipboardApi: ClipboardApi = {
   writeText: (text) => ipcRenderer.invoke(ClipboardInvokeChannel.WriteText, text)
 }
 
+const windowApi: WindowApi = {
+  platform: process.platform,
+  minimize: () => ipcRenderer.invoke(WindowInvokeChannel.Minimize),
+  toggleMaximize: () =>
+    ipcRenderer.invoke(WindowInvokeChannel.ToggleMaximize),
+  close: () => ipcRenderer.invoke(WindowInvokeChannel.Close),
+  isMaximized: () => ipcRenderer.invoke(WindowInvokeChannel.IsMaximized),
+  onMaximizedChange: (cb) => {
+    const handler = (_event: IpcRendererEvent, maximized: unknown): void => {
+      if (typeof maximized === 'boolean') cb(maximized)
+    }
+    ipcRenderer.on(WindowEventChannel.MaximizedChanged, handler)
+    return () =>
+      ipcRenderer.removeListener(WindowEventChannel.MaximizedChanged, handler)
+  }
+}
+
+const themeApi: ThemeApi = {
+  listUser: () => ipcRenderer.invoke(ThemeInvokeChannel.ListUser)
+}
+
 try {
   contextBridge.exposeInMainWorld('ptyApi', ptyApi)
   contextBridge.exposeInMainWorld('clipboardApi', clipboardApi)
+  contextBridge.exposeInMainWorld('windowApi', windowApi)
+  contextBridge.exposeInMainWorld('themeApi', themeApi)
   // E2E：主进程设置 VIBING_E2E 时，向渲染进程注入标记，激活 debugBridge（即便是生产构建）
   if (process.env['VIBING_E2E']) {
     contextBridge.exposeInMainWorld('__VIBING_E2E__', true)

@@ -1,6 +1,6 @@
 # M5.b 实施计划 —— App Shell 实现
 
-> 状态：**待评审**。
+> 状态：**进行中**（P0 已完成，2026-08-02）。
 > 目标：按 `/prototype` 定稿原型 **1:1 落地** App Shell——无边框窗口 + 自定义标题栏、
 > 三态导航（侧栏展开 / 图标条 / 顶部 Tab）、首页（含空态欢迎页）、设置页、新建会话流；
 > 设置面板直读写 `settingsStore`；侧栏 session 区由 mock provider（SPEC §11.5 schema）驱动。
@@ -111,7 +111,12 @@ export const WindowInvokeChannel = {
   去掉灰点），中部空白区 `-webkit-app-region: drag`，右侧窗口控制键
   （及所有可点元素）`no-drag`。macOS 下左侧按钮组右移让位红绿灯（`env(titlebar-area-*)`
   不可用时按 78px 固定偏移），右侧控制键不渲染。
-- 双击拖拽区 = 最大化/还原（frameless 下需自行处理，监听 dblclick 调 ToggleMaximize）。
+- Electron drag 区域会吞掉全部 pointer event，renderer 的 `dblclick` 处理无效，故不挂
+  双击监听。拖拽区双击是否最大化由原生窗口管理器决定；Windows 自带该语义，Linux
+  依 WM 配置可能不同。跨 Linux WM 的一致双击行为需窗口层方案，归 M5.c；本阶段以
+  右侧最大化/还原按钮作为确定性入口。
+- `BrowserWindow.backgroundColor` 暂固定为 `#ffffff`，避免浅色主题首帧闪黑；深色主题
+  的首帧底色需在主进程可读取界面主题偏好后设置，归 M5.c。
 
 ### 4.2 UI 基建迁移
 
@@ -360,7 +365,9 @@ export const StatsInvokeChannel = {
   `applyChromeTheme`；切换无需重载。
 - 主题注册表：内置 JSON 打包进 renderer；用户主题经新 IPC
   `theme:list-user`（主进程枚举并读取 `<userData>/themes/*.json`，返回原文由
-  renderer 校验）在启动与设置页打开时刷新。热重载（watch 文件变更）不做，归 M5.c。
+  renderer 校验）在启动与设置页打开时刷新。单文件上限 256 KB，超限返回明确的
+  尺寸拒载错误，不进入 JSON 解析；内置主题校验失败时记录错误并启用安全浅色回退，
+  不阻断 renderer 启动。热重载（watch 文件变更）不做，归 M5.c。
 - `statusDot/statusTone/statusLabel`（§4.4）改为引用 status token 工具类，
   色值随主题走；label 文案仍出自 strings 模块。
 - 终端 16 色暂不并入（SPEC 已定 `themes.ts` 色值结构不变）；schema 预留
@@ -399,7 +406,7 @@ export const StatsInvokeChannel = {
 
 | 阶段 | 内容 | 验收 |
 |---|---|---|
-| P0 基建 | frameless + TitleBar + 窗口控制 IPC；依赖引入；**token 体系 + 主题 schema/加载器/运行期接线（§4.11）**；字体迁移；特效组件迁移 | 窗口可拖动/最大化/关闭；内置 light.json 驱动全部 chrome 颜色；typecheck 过 |
+| P0 基建（**已完成**） | frameless + TitleBar + 窗口控制 IPC；依赖引入；**token 体系 + 主题 schema/加载器/运行期接线（§4.11）**；字体迁移；特效组件迁移 | 窗口可拖动/最大化/关闭；内置 light.json 驱动全部 chrome 颜色；typecheck 过 |
 | P1 状态层 | settingsStore v3 迁移；terminalsStore/sessionsStore；mock provider；strings.ts | store 单测 + 迁移用例（v2→v3） |
 | P2 Shell | AppShell/Sidebar/IconRail/TopTabBar/页面路由；TerminalPage 整合；快捷键 | 三态导航可用；既有终端门禁回归绿 |
 | P3 流程页 | 新建会话流（真实 spawn + dialog IPC）；HomePage 两态；SettingsPage 绑定 | new-session/home-empty/settings E2E 绿 |
@@ -416,6 +423,8 @@ export const StatsInvokeChannel = {
 | 风险 | 对策 |
 |---|---|
 | frameless 拖拽区与可点元素冲突（drag region 吃掉点击） | 所有交互元素显式 `no-drag`；E2E 冒烟点一遍标题栏按钮 |
+| Linux WM 不提供拖拽区双击最大化 | P0 保留显式最大化按钮；跨 WM 一致的窗口层双击方案归 M5.c |
+| 深色主题启动首帧仍为白底 | 当前仅启用浅色 GUI 主题；主进程读取主题偏好并设置窗口底色归 M5.c |
 | TargetCursor（gsap 全局 mousemove）与 xterm WebGL 同屏性能 | 决策 2 已隔离终端区；chrome 区若仍掉帧，降级为仅 Home/设置启用 |
 | `@lobehub/icons` 包体大 | 按名导入 + vite tree-shaking；构建后检查 renderer chunk，必要时改 deep import |
 | WSL runtime 参数组装边界（路径映射/无发行版） | 组装函数纯函数化 + 单测；`wsl -l` 探测失败则隐藏 WSL 选项 |

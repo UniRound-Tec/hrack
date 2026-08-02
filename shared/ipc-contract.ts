@@ -4,6 +4,8 @@
  * 解析完成后 ack，主进程据此执行有界背压。
  */
 
+import type { UserThemeFile } from './theme-schema'
+
 // ───── Renderer → Main（ipcMain.handle，请求-响应）─────────
 
 export interface SpawnOptions {
@@ -99,7 +101,22 @@ export const ClipboardInvokeChannel = {
   WriteText: 'clipboard:write-text'
 } as const
 
+export const WindowInvokeChannel = {
+  Minimize: 'window:minimize',
+  ToggleMaximize: 'window:toggle-maximize',
+  Close: 'window:close',
+  IsMaximized: 'window:is-maximized'
+} as const
+
+export const ThemeInvokeChannel = {
+  ListUser: 'theme:list-user'
+} as const
+
 // ───── Main → Renderer（webContents.send，事件流）─────────
+export const WindowEventChannel = {
+  MaximizedChanged: 'window:maximized-changed'
+} as const
+
 export const ptyDataChannel = (ptyId: string): string => `pty:data:${ptyId}`
 export const ptyExitChannel = (ptyId: string): string => `pty:exit:${ptyId}`
 export const ptyResizeCursorSyncChannel = (ptyId: string): string =>
@@ -132,4 +149,19 @@ export interface PtyApi {
 export interface ClipboardApi {
   /** 把纯文本写入系统剪贴板。 */
   writeText: (text: string) => Promise<void>
+}
+
+export interface WindowApi {
+  /** Renderer uses this only to select native/custom title-bar controls. */
+  platform: string
+  minimize: () => Promise<void>
+  toggleMaximize: () => Promise<void>
+  close: () => Promise<void>
+  isMaximized: () => Promise<boolean>
+  onMaximizedChange: (cb: (maximized: boolean) => void) => () => void
+}
+
+export interface ThemeApi {
+  /** Main only reads files; renderer owns schema and CSS color validation. */
+  listUser: () => Promise<UserThemeFile[]>
 }

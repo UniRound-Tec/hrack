@@ -16,12 +16,23 @@ export async function launchApp(): Promise<{ app: ElectronApplication; window: P
     args: [main],
     env: { ...process.env, VIBING_E2E: '1' }
   })
-  const window = await app.firstWindow()
-  // 等待调试桥就绪（xterm 已挂载并注册）
-  await window.waitForFunction(() => Boolean((window as unknown as Record<string, unknown>)['__vibingDebug']), null, {
-    timeout: 15_000
-  })
-  return { app, window }
+  try {
+    const window = await app.firstWindow()
+    // Electron 窗口被遮挡时 requestAnimationFrame 可能被节流；使用固定间隔轮询，
+    // 避免调试桥已经注册却因默认 rAF polling 误报启动超时。
+    await window.waitForFunction(
+      () =>
+        Boolean(
+          (window as unknown as Record<string, unknown>)['__vibingDebug']
+        ),
+      null,
+      { polling: 100, timeout: 30_000 }
+    )
+    return { app, window }
+  } catch (error) {
+    await app.close().catch(() => {})
+    throw error
+  }
 }
 
 /** 通过调试桥读 buffer 快照 */

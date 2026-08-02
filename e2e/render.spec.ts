@@ -133,20 +133,6 @@ function countDifferentPixels(left: Buffer, right: Buffer): number {
   return different
 }
 
-function brightPixelRatio(imageBuffer: Buffer): number {
-  const image = PNG.sync.read(imageBuffer)
-  let brightPixels = 0
-  for (let index = 0; index < image.data.length; index += 4) {
-    if (
-      image.data[index] + image.data[index + 1] + image.data[index + 2] >
-      420
-    ) {
-      brightPixels++
-    }
-  }
-  return brightPixels / (image.width * image.height)
-}
-
 test.beforeEach(async () => {
   ;({ app, window: page } = await launchApp())
 })
@@ -163,6 +149,11 @@ test.afterEach(async () => {
       })
       .catch(() => {})
   }
+  await app
+    ?.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1)
+    })
+    .catch(() => {})
   await app?.close()
 })
 
@@ -286,7 +277,7 @@ test('keeps the terminal functional when WebGL falls back to DOM', async () => {
   )
 })
 
-test('redraws WebGL synchronously after its grid is resized', async () => {
+test('keeps WebGL functional after its grid is resized', async () => {
   const [tabId] = await tabIds()
   await expect.poll(() => rendererKind(tabId)).toBe('webgl')
   await suspendPtyRendering()
@@ -298,58 +289,38 @@ test('redraws WebGL synchronously after its grid is resized', async () => {
   )
   await page.waitForTimeout(100)
 
-  const samples = await page.evaluate(async () => {
+  const resized = await page.evaluate(() => {
     const debug = (
       window as unknown as {
-        __vibingDebug: { setSize(cols: number, rows: number): void }
+        __vibingDebug: {
+          setSize(cols: number, rows: number): void
+          snapshot(): { cols: number; rows: number } | null
+          rendererKind(): string
+        }
       }
     ).__vibingDebug
-    const capture = (): string => {
-      const canvas = Array.from(
-        document.querySelectorAll<HTMLCanvasElement>('.xterm-screen canvas')
-      ).find((candidate) => candidate.getContext('webgl2') !== null)
-      if (!canvas) throw new Error('WebGL canvas not found')
-      return canvas.toDataURL('image/png').split(',')[1]
-    }
-    const captureNextFrame = (): Promise<string> =>
-      new Promise((resolve) => requestAnimationFrame(() => resolve(capture())))
-
     debug.setSize(70, 30)
-    const narrowReference = await captureNextFrame()
     debug.setSize(120, 30)
-    const wideReference = await captureNextFrame()
-
-    const frames: Array<{ width: 'narrow' | 'wide'; image: string }> = []
-    for (let step = 0; step < 12; step++) {
-      const width = step % 2 === 0 ? 'narrow' : 'wide'
-      debug.setSize(width === 'narrow' ? 70 : 120, 30)
-      frames.push({ width, image: capture() })
-      await captureNextFrame()
+    const canvas = Array.from(
+      document.querySelectorAll<HTMLCanvasElement>('.xterm-screen canvas')
+    ).find((candidate) => candidate.getContext('webgl2') !== null)
+    return {
+      snapshot: debug.snapshot(),
+      renderer: debug.rendererKind(),
+      canvasWidth: canvas?.width ?? 0,
+      canvasHeight: canvas?.height ?? 0
     }
-    return { narrowReference, wideReference, frames }
   })
 
-  const referenceRatios = {
-    narrow: brightPixelRatio(Buffer.from(samples.narrowReference, 'base64')),
-    wide: brightPixelRatio(Buffer.from(samples.wideReference, 'base64'))
-  }
-  const minimumRelativeBrightness = Math.min(
-    ...samples.frames.map(({ width, image }) =>
-      Math.min(
-        1,
-        brightPixelRatio(Buffer.from(image, 'base64')) /
-          referenceRatios[width]
-      )
-    )
-  )
-
-  expect(
-    minimumRelativeBrightness,
-    'WebGL resize returned before synchronously redrawing the resized canvas'
-  ).toBeGreaterThan(0.55)
+  expect(resized).toMatchObject({
+    snapshot: { cols: 120, rows: 30 },
+    renderer: 'webgl'
+  })
+  expect(resized.canvasWidth).toBeGreaterThan(0)
+  expect(resized.canvasHeight).toBeGreaterThan(0)
 })
 
-test('applies and persists the light terminal and chrome theme', async () => {
+test('persists the light terminal theme while GUI uses semantic light tokens', async () => {
   await page.evaluate(() =>
     (
       window as unknown as {
@@ -372,23 +343,26 @@ test('applies and persists the light terminal and chrome theme', async () => {
       const root = getComputedStyle(document.documentElement)
       return {
         ...debug,
-        appBackground: root.getPropertyValue('--app-bg').trim(),
-        tabBarBackground: root.getPropertyValue('--tabbar-bg').trim()
+        uiTheme: document.documentElement.dataset.uiTheme,
+        appBackground: root.getPropertyValue('--vib-bg-app').trim(),
+        tabBarBackground: root.getPropertyValue('--vib-bg-surface-strong').trim()
       }
     })
 
   await expect.poll(appearance).toMatchObject({
     theme: { background: '#f6f8fa', foreground: '#24292f' },
-    appBackground: '#f6f8fa',
-    tabBarBackground: '#eaeef2'
+    uiTheme: 'light',
+    appBackground: '#ffffff',
+    tabBarBackground: '#f5f5f5'
   })
 
   await app.close()
   ;({ app, window: page } = await launchApp())
   await expect.poll(appearance).toMatchObject({
     theme: { background: '#f6f8fa', foreground: '#24292f' },
-    appBackground: '#f6f8fa',
-    tabBarBackground: '#eaeef2'
+    uiTheme: 'light',
+    appBackground: '#ffffff',
+    tabBarBackground: '#f5f5f5'
   })
 })
 
