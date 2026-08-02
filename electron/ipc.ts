@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  dialog,
   ipcMain,
   type IpcMainInvokeEvent
 } from 'electron'
@@ -11,11 +12,14 @@ import { join } from 'node:path'
 import { PTYManager } from './pty/PTYManager'
 import {
   ClipboardInvokeChannel,
+  DialogInvokeChannel,
   PtyInvokeChannel,
+  ShellInvokeChannel,
   ThemeInvokeChannel,
   WindowInvokeChannel,
   type SpawnOptions
 } from '../shared/ipc-contract'
+import { listAvailableShells } from './shells'
 
 const MAX_CLIPBOARD_TEXT_LENGTH = 8 * 1024 * 1024
 const MAX_USER_THEME_FILES = 128
@@ -109,6 +113,25 @@ export function registerIpc(manager: PTYManager): void {
     Boolean(senderWindow(event)?.isMaximized())
   )
   ipcMain.handle(ThemeInvokeChannel.ListUser, listUserThemes)
+  ipcMain.handle(
+    DialogInvokeChannel.PickDirectory,
+    async (event, payload: { defaultPath?: unknown } | undefined) => {
+      const win = senderWindow(event)
+      const defaultPath =
+        typeof payload?.defaultPath === 'string'
+          ? payload.defaultPath
+          : undefined
+      const options = {
+        defaultPath,
+        properties: ['openDirectory' as const]
+      }
+      const result = win
+        ? await dialog.showOpenDialog(win, options)
+        : await dialog.showOpenDialog(options)
+      return result.canceled ? null : result.filePaths[0] ?? null
+    }
+  )
+  ipcMain.handle(ShellInvokeChannel.ListAvailable, listAvailableShells)
 
   // 诊断：渲染进程把 resize 前后的 buffer 快照写到 logs/resize-diag.log，供离线分析。
   // 只在真实 dev 会话里抓证据用，定位后移除。

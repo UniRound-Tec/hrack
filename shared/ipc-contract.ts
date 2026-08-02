@@ -103,6 +103,14 @@ export interface HistoryQuery {
   before?: number
 }
 
+export interface ShellOption {
+  id: string
+  name: string
+  hint: string
+  shell: string
+  args?: string[]
+}
+
 /** 平台元信息。 */
 export interface PtyMeta {
   platform: string
@@ -137,6 +145,14 @@ export const WindowInvokeChannel = {
 
 export const ThemeInvokeChannel = {
   ListUser: 'theme:list-user'
+} as const
+
+export const DialogInvokeChannel = {
+  PickDirectory: 'dialog:pick-directory'
+} as const
+
+export const ShellInvokeChannel = {
+  ListAvailable: 'shell:list-available'
 } as const
 
 /** M5.b defines these contracts; persistence/real event handlers land later. */
@@ -197,4 +213,12 @@ export interface WindowApi {
 export interface ThemeApi {
   /** Main only reads files; renderer owns schema and CSS color validation. */
   listUser: () => Promise<UserThemeFile[]>
+}
+
+export interface DialogApi {
+  pickDirectory: (defaultPath?: string) => Promise<string | null>
+}
+
+export interface ShellApi {
+  listAvailable: () => Promise<ShellOption[]>
 }

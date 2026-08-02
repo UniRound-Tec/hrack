@@ -368,6 +368,10 @@ token 化 + JSON 主题配置文件（见 §8「GUI 主题」行）；新建 CLI
 语义状态仅 working/exited 兜底，六态演示数据由 dev/E2E mock provider 注入；深色
 界面主题、悬浮窗（S3）、统计/历史真数据（M5.c / S 线）均不在 M5.b。
 
+**M5.b P3 已完成（2026-08-02）**：无边框 Shell、三态导航、Home 两态、完整设置页与
+新建会话三层流已落地；可用终端按平台探测，目录选择和 CLI 的 Windows/WSL 参数会
+真实传入 PTY，退出状态同步回 session。当前进入 P4 字体子集化与 P5 门禁收尾。
+
 M2 基线：
 
 - Main→Renderer 的 PTY 输出已改为 `Uint8Array`。

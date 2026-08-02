@@ -5,7 +5,8 @@ import mapleMonoLicenseUrl from './assets/fonts/maple-mono/LICENSE.txt?url'
 import {
   applyUiTheme,
   builtInLightTheme,
-  loadUiThemeRegistry
+  loadUiThemeRegistry,
+  setUiThemeRegistry
 } from './app/themeRuntime'
 import {
   setRuntimeMockSessions,
@@ -22,6 +23,7 @@ applyUiTheme(builtInLightTheme)
 
 async function bootstrap(): Promise<void> {
   const themeRegistry = await loadUiThemeRegistry()
+  setUiThemeRegistry(themeRegistry)
   for (const error of themeRegistry.errors) {
     console.warn(`[theme] ${error.filename}: ${error.message}`)
   }

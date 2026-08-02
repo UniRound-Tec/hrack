@@ -22,6 +22,16 @@ export interface UiThemeRegistry {
   get(themeId: string): ResolvedUiTheme | undefined
 }
 
+let activeUiThemeRegistry: UiThemeRegistry | null = null
+
+export function setUiThemeRegistry(registry: UiThemeRegistry): void {
+  activeUiThemeRegistry = registry
+}
+
+export function getUiThemeRegistry(): UiThemeRegistry {
+  return activeUiThemeRegistry ?? buildUiThemeRegistry([])
+}
+
 function emergencyColor(token: UiColorToken): string {
   if (
     token === 'text.inverse' ||

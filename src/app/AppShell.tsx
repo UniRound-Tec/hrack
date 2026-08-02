@@ -5,14 +5,16 @@ import {
   useState
 } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Settings2, Terminal as TerminalIcon, X } from 'lucide-react'
+import type { ShellOption } from '../../shared/ipc-contract'
 import TitleBar from './TitleBar'
 import Sidebar from './Sidebar'
 import IconRail from './IconRail'
 import TopTabBar from './TopTabBar'
 import TerminalPage from './TerminalPage'
+import HomePage from './HomePage'
+import SettingsPage from './SettingsPage'
+import NewSessionFlow from './NewSessionFlow'
 import TargetCursor from './effects/TargetCursor'
-import ShinyText from './effects/ShinyText'
 import {
   isPageId,
   terminalIdFromPage,
@@ -27,6 +29,12 @@ import {
   setRuntimeMockSessions
 } from './mockSessions'
 import { strings } from './strings'
+import {
+  buildCliLaunch,
+  findDefaultShell,
+  type CliLaunchDraft,
+  type CliOption
+} from './launchOptions'
 import { useSettingsStore, type NavMode } from '../state/settingsStore'
 import {
   useSessionsStore,
@@ -44,9 +52,18 @@ export interface VibingDebugShellApi {
 export default function AppShell() {
   const [pageId, setPageId] = useState<PageId>('home')
   const [newSessionOpen, setNewSessionOpen] = useState(false)
+  const [newSessionIntent, setNewSessionIntent] = useState<
+    'sheet' | 'terminal' | CliOption
+  >('sheet')
+  const [shells, setShells] = useState<readonly ShellOption[]>([])
   const navMode = useSettingsStore((state) => state.navMode)
   const setNavMode = useSettingsStore((state) => state.setNavMode)
+  const defaultTerminal = useSettingsStore((state) => state.defaultTerminal)
+  const setDefaultTerminal = useSettingsStore(
+    (state) => state.setDefaultTerminal
+  )
   const sessions = useSessionsStore((state) => state.sessions)
+  const addSession = useSessionsStore((state) => state.addSession)
   const removeSession = useSessionsStore((state) => state.removeSession)
   const terminals = useTerminalsStore((state) => state.terminals)
   const addTerminal = useTerminalsStore((state) => state.addTerminal)
@@ -54,6 +71,16 @@ export default function AppShell() {
     (state) => state.activateTerminal
   )
   const closeTerminal = useTerminalsStore((state) => state.closeTerminal)
+
+  useEffect(() => {
+    let cancelled = false
+    void window.shellApi.listAvailable().then((available) => {
+      if (!cancelled) setShells(available)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const terminalIds = useMemo(
     () => new Set(terminals.map((terminal) => terminal.id)),
@@ -73,14 +100,57 @@ export default function AppShell() {
   )
 
   const openNewSession = useCallback((): void => {
+    setNewSessionIntent('sheet')
     setNewSessionOpen(true)
   }, [])
 
-  const openDefaultTerminal = useCallback((): void => {
-    const terminal = addTerminal()
-    setNewSessionOpen(false)
-    setPageId(terminalPage(terminal.id))
-  }, [addTerminal])
+  const launchTerminal = useCallback(
+    (shell: ShellOption, remember = false): void => {
+      if (remember) setDefaultTerminal(shell.id)
+      const terminal = addTerminal({
+        shellId: shell.id,
+        launch: {
+          shell: shell.shell,
+          args: shell.args
+        }
+      })
+      setNewSessionOpen(false)
+      setPageId(terminalPage(terminal.id))
+    },
+    [addTerminal, setDefaultTerminal]
+  )
+
+  const launchDefaultTerminal = useCallback((): void => {
+    const shell = findDefaultShell(shells, defaultTerminal)
+    if (shell) launchTerminal(shell)
+  }, [defaultTerminal, launchTerminal, shells])
+
+  const launchCli = useCallback(
+    (draft: CliLaunchDraft): void => {
+      const launch = buildCliLaunch(draft)
+      const terminal = addTerminal({
+        shellId: draft.option.adapterId,
+        cwd: draft.workspace.trim(),
+        launch
+      })
+      addSession({
+        sessionId: crypto.randomUUID(),
+        terminalId: terminal.id,
+        adapterId: draft.option.adapterId,
+        name: draft.name.trim() || draft.option.name,
+        status: 'working',
+        lastActivityAt: Date.now()
+      })
+      setNewSessionOpen(false)
+      setPageId(terminalPage(terminal.id))
+    },
+    [addSession, addTerminal]
+  )
+
+  const configureCli = useCallback((option: CliOption): void => {
+    setNewSessionIntent(option)
+    setNewSessionOpen(true)
+  }, [])
 
   const closeTerminalAndRoute = useCallback(
     (terminalId: string): void => {
@@ -249,10 +319,24 @@ export default function AppShell() {
           )}
 
           <div className="relative min-h-0 flex-1 overflow-hidden">
-            {pageId === 'home' && <HomeShellPage />}
-            {pageId === 'settings' && (
-              <SettingsShellPage navMode={navMode} onChange={setNavMode} />
+            {pageId === 'home' && (
+              <HomePage
+                sessions={sessions}
+                terminals={terminals}
+                shells={shells}
+                defaultTerminal={defaultTerminal}
+                onLaunchDefaultTerminal={launchDefaultTerminal}
+                onChooseTerminal={() => {
+                  setNewSessionIntent('terminal')
+                  setNewSessionOpen(true)
+                }}
+                onConfigureCli={configureCli}
+                onViewSession={(session) =>
+                  navigate(terminalPage(session.terminalId))
+                }
+              />
             )}
+            {pageId === 'settings' && <SettingsPage shells={shells} />}
             {activeTerminalId && !terminalIds.has(activeTerminalId) && (
               <UnavailableTerminalPage />
             )}
@@ -279,112 +363,22 @@ export default function AppShell() {
         />
       )}
 
-      <AnimatePresence>
-        {newSessionOpen && (
-          <NewSessionShell
-            onClose={() => setNewSessionOpen(false)}
-            onOpenTerminal={openDefaultTerminal}
-          />
-        )}
-      </AnimatePresence>
+      <NewSessionFlow
+        open={newSessionOpen}
+        shells={shells}
+        defaultTerminal={defaultTerminal}
+        initialCli={
+          typeof newSessionIntent === 'object' ? newSessionIntent : undefined
+        }
+        initialTerminalPicker={newSessionIntent === 'terminal'}
+        onClose={() => {
+          setNewSessionOpen(false)
+          setNewSessionIntent('sheet')
+        }}
+        onLaunchTerminal={launchTerminal}
+        onLaunchCli={launchCli}
+      />
     </div>
-  )
-}
-
-function HomeShellPage() {
-  return (
-    <section
-      data-testid="home-page"
-      className="flex h-full flex-col items-center justify-center px-8 py-14"
-    >
-      <p className="font-maple text-[10px] tracking-[0.28em] text-text-faint uppercase">
-        {strings.shell.homeLabel}
-      </p>
-      <div className="mt-5">
-        <ShinyText
-          text="vibing"
-          color="var(--vib-brand-logo)"
-          shineColor="var(--vib-brand-logoShine)"
-          speed={3.2}
-          spread={100}
-          className="font-ammonite text-[54px] leading-none tracking-[0.08em]"
-        />
-      </div>
-      <h1 className="mt-6 font-pingfang text-[24px] font-semibold tracking-wide text-text-primary">
-        {strings.shell.homeTitle}
-      </h1>
-      <p className="mt-2 max-w-md text-center font-pingfang text-[12px] text-text-muted">
-        {strings.shell.homeHint}
-      </p>
-    </section>
-  )
-}
-
-function SettingsShellPage({
-  navMode,
-  onChange
-}: {
-  navMode: NavMode
-  onChange: (mode: NavMode) => void
-}) {
-  const options: readonly { id: NavMode; label: string }[] = [
-    { id: 'sidebar', label: strings.settings.sidebar },
-    { id: 'rail', label: strings.settings.rail },
-    { id: 'tabs', label: strings.settings.tabs }
-  ]
-  return (
-    <section
-      data-testid="settings-page"
-      className="sidebar-scroll h-full overflow-y-auto px-8 py-7"
-    >
-      <div className="mx-auto max-w-2xl">
-        <div className="flex items-center gap-2">
-          <Settings2 className="size-4 text-text-muted" strokeWidth={1.75} />
-          <h1 className="font-pingfang text-[16px] font-semibold text-text-primary">
-            {strings.settings.title}
-          </h1>
-        </div>
-        <p className="mt-2 font-pingfang text-[11px] text-text-faint">
-          {strings.shell.settingsHint}
-        </p>
-        <div className="mt-8 border-b border-border-subtle pb-2">
-          <p className="font-maple text-[10px] tracking-[0.22em] text-text-faint uppercase">
-            layout
-          </p>
-          <h2 className="mt-0.5 font-pingfang text-[13px] font-semibold text-text-secondary">
-            {strings.settings.sections.layout}
-          </h2>
-        </div>
-        <div className="flex items-center justify-between gap-6 py-4">
-          <div>
-            <p className="font-pingfang text-[12px] font-medium text-text-secondary">
-              {strings.settings.navigationMode}
-            </p>
-            <p className="mt-0.5 font-pingfang text-[11px] text-text-faint">
-              {strings.settings.navigationModeHint}
-            </p>
-          </div>
-          <div className="flex items-center gap-0.5 rounded-lg bg-control p-0.5">
-            {options.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                data-testid={`settings-nav-${option.id}`}
-                aria-pressed={navMode === option.id}
-                onClick={() => onChange(option.id)}
-                className={`cursor-target rounded-md px-2.5 py-1 font-pingfang text-[11px] font-medium transition-colors ${
-                  navMode === option.id
-                    ? 'bg-control-active text-text-primary shadow-sm'
-                    : 'text-text-muted hover:text-text-secondary'
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
   )
 }
 
@@ -396,74 +390,5 @@ function UnavailableTerminalPage() {
     >
       {strings.shell.unavailableTerminal}
     </section>
-  )
-}
-
-function NewSessionShell({
-  onClose,
-  onOpenTerminal
-}: {
-  onClose: () => void
-  onOpenTerminal: () => void
-}) {
-  return (
-    <motion.div
-      data-testid="new-session-overlay"
-      className="absolute inset-0 z-50 flex items-end bg-backdrop"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.16 }}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose()
-      }}
-    >
-      <motion.section
-        className="shell-sheet w-full rounded-t-[20px] border border-border-default bg-surface px-6 py-5"
-        initial={{ y: 56, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 56, opacity: 0 }}
-        transition={{ type: 'spring', stiffness: 420, damping: 38 }}
-      >
-        <div className="mx-auto flex max-w-3xl items-start justify-between gap-4">
-          <div>
-            <h2 className="font-pingfang text-[15px] font-semibold text-text-primary">
-              {strings.newSession.title}
-            </h2>
-            <p className="mt-1 font-pingfang text-[11px] text-text-faint">
-              {strings.newSession.p2Placeholder}
-            </p>
-            <button
-              type="button"
-              data-testid="new-session-terminal"
-              onClick={onOpenTerminal}
-              className="cursor-target mt-4 flex w-64 items-center gap-3 rounded-xl border border-border-subtle bg-surface px-3 py-2.5 text-left transition-colors hover:bg-surface-hover"
-            >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-control text-text-secondary">
-                <TerminalIcon className="size-4" strokeWidth={1.75} />
-              </span>
-              <span className="min-w-0">
-                <span className="block font-pingfang text-[12px] font-semibold text-text-primary">
-                  {strings.newSession.terminal}
-                </span>
-                <span className="mt-0.5 block font-pingfang text-[10px] text-text-faint">
-                  {strings.newSession.quickTerminalHint}
-                </span>
-              </span>
-            </button>
-          </div>
-          <button
-            type="button"
-            data-testid="new-session-close"
-            aria-label={strings.common.close}
-            title={strings.common.close}
-            onClick={onClose}
-            className="cursor-target flex size-8 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-control hover:text-text-secondary"
-          >
-            <X className="size-4" strokeWidth={1.75} />
-          </button>
-        </div>
-      </motion.section>
-    </motion.div>
   )
 }

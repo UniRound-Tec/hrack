@@ -126,7 +126,7 @@ export default function ClickSpark({
   }
 
   return (
-    <div className="relative h-svh w-full" onClick={handleClick}>
+    <div className="relative h-full w-full" onClick={handleClick}>
       {children}
       <canvas
         ref={canvasRef}

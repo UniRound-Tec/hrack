@@ -6,7 +6,9 @@ import {
 import os from 'node:os'
 import {
   ClipboardInvokeChannel,
+  DialogInvokeChannel,
   PtyInvokeChannel,
+  ShellInvokeChannel,
   ThemeInvokeChannel,
   WindowEventChannel,
   WindowInvokeChannel,
@@ -14,11 +16,13 @@ import {
   ptyExitChannel,
   ptyResizeCursorSyncChannel,
   type ClipboardApi,
+  type DialogApi,
   type ExitPayload,
   type PtyApi,
   type PtyFlowControlSnapshot,
   type PtyMeta,
   type PtyResizeCursorSync,
+  type ShellApi,
   type SpawnOptions,
   type ThemeApi,
   type WindowApi
@@ -114,11 +118,22 @@ const themeApi: ThemeApi = {
   listUser: () => ipcRenderer.invoke(ThemeInvokeChannel.ListUser)
 }
 
+const dialogApi: DialogApi = {
+  pickDirectory: (defaultPath) =>
+    ipcRenderer.invoke(DialogInvokeChannel.PickDirectory, { defaultPath })
+}
+
+const shellApi: ShellApi = {
+  listAvailable: () => ipcRenderer.invoke(ShellInvokeChannel.ListAvailable)
+}
+
 try {
   contextBridge.exposeInMainWorld('ptyApi', ptyApi)
   contextBridge.exposeInMainWorld('clipboardApi', clipboardApi)
   contextBridge.exposeInMainWorld('windowApi', windowApi)
   contextBridge.exposeInMainWorld('themeApi', themeApi)
+  contextBridge.exposeInMainWorld('dialogApi', dialogApi)
+  contextBridge.exposeInMainWorld('shellApi', shellApi)
   // E2E：主进程设置 VIBING_E2E 时，向渲染进程注入标记，激活 debugBridge（即便是生产构建）
   if (process.env['VIBING_E2E']) {
     contextBridge.exposeInMainWorld('__VIBING_E2E__', true)

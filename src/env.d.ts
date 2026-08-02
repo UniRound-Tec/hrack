@@ -1,6 +1,8 @@
 import type {
   ClipboardApi,
+  DialogApi,
   PtyApi,
+  ShellApi,
   ThemeApi,
   WindowApi
 } from '../shared/ipc-contract'
@@ -13,6 +15,8 @@ declare global {
     clipboardApi: ClipboardApi
     windowApi: WindowApi
     themeApi: ThemeApi
+    dialogApi: DialogApi
+    shellApi: ShellApi
     __VIBING_E2E__?: true
     __vibingDebugShell?: VibingDebugShellApi
   }

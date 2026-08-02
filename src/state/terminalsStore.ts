@@ -1,4 +1,9 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
+import type { TerminalLaunchOptions } from './terminalLaunchRegistry'
+import {
+  removeTerminalLaunch,
+  setTerminalLaunch
+} from './terminalLaunchRegistry'
 
 export interface TerminalEntry {
   id: string
@@ -11,6 +16,7 @@ export interface TerminalEntry {
 export interface AddTerminalOptions {
   shellId?: string
   cwd?: string
+  launch?: TerminalLaunchOptions
 }
 
 export interface TerminalsState {
@@ -46,6 +52,7 @@ export function createTerminalsStore(): UseBoundStore<
       exited: false
     }
     fallbackNames.set(terminal.id, fallbackName)
+    setTerminalLaunch(terminal.id, options.launch)
     return terminal
   }
 
@@ -69,6 +76,7 @@ export function createTerminalsStore(): UseBoundStore<
       )
       if (closingIndex < 0) return false
       fallbackNames.delete(id)
+      removeTerminalLaunch(id)
       const terminals = state.terminals.filter(
         (terminal) => terminal.id !== id
       )

@@ -16,6 +16,7 @@ import {
 import { useSettingsStore } from '../state/settingsStore'
 import { getTerminalTheme } from './themes'
 import { createLigatureController } from './ligatures'
+import { getTerminalLaunch } from '../state/terminalLaunchRegistry'
 
 const DISABLE_MOUSE_TRACKING =
   '\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l'
@@ -315,7 +316,11 @@ export function useXterm(
 
     // spawn 拿到 ptyId，建立回显双向链路
     window.ptyApi
-      .spawn({ cols: term.cols, rows: term.rows })
+      .spawn({
+        ...getTerminalLaunch(tabId),
+        cols: term.cols,
+        rows: term.rows
+      })
       .then(({ ptyId }) => {
         if (disposed) {
           void window.ptyApi.kill(ptyId)

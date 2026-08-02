@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { detectLocale, translate } from '../i18n'
 import { useTerminalsStore } from '../state/terminalsStore'
+import { useSessionsStore } from '../state/sessionsStore'
 import { useXterm } from './useXterm'
 
 /** xterm 宿主容器：一个占满父级的 div，内部由 xterm 独占渲染。 */
@@ -39,7 +40,16 @@ export default function TerminalView({ tabId, active }: TerminalViewProps) {
     active,
     showCopied,
     (title) => setTitle(tabId, title),
-    () => markExited(tabId)
+    (code) => {
+      markExited(tabId)
+      const sessionIds = useSessionsStore
+        .getState()
+        .sessions.filter((session) => session.terminalId === tabId)
+        .map((session) => session.sessionId)
+      for (const sessionId of sessionIds) {
+        useSessionsStore.getState().markExited(sessionId, code)
+      }
+    }
   )
 
   return (

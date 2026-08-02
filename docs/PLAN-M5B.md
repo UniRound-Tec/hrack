@@ -1,6 +1,6 @@
 # M5.b 实施计划 —— App Shell 实现
 
-> 状态：**进行中**（P0、P1、P2 已完成，2026-08-02）。
+> 状态：**进行中**（P0、P1、P2、P3 已完成，2026-08-02）。
 > 目标：按 `/prototype` 定稿原型 **1:1 落地** App Shell——无边框窗口 + 自定义标题栏、
 > 三态导航（侧栏展开 / 图标条 / 顶部 Tab）、首页（含空态欢迎页）、设置页、新建会话流；
 > 设置面板直读写 `settingsStore`；侧栏 session 区由 mock provider（SPEC §11.5 schema）驱动。
@@ -303,6 +303,13 @@ E2E。Home/Settings 当前只承载 P2 路由与导航模式骨架，完整页�
 | 连字开关 | `ligatures` |
 | 默认终端 select | `defaultTerminal` |
 
+**P3 实施结果（2026-08-02）**：主进程按平台探测可用 shell，并通过 preload 暴露
+目录选择与 shell 列表 IPC；终端及 CLI 配置都把 `shell/args/cwd` 固定到对应终端的
+PTY 启动参数。新建会话 bottom sheet、终端选择 modal、CLI 配置 modal、Home 空态/
+密集态与四区 Settings 已按原型接入；CLI 退出会同步把所属真实 session 标记为
+`exited`。Home 的历史与 all-time 仍按范围使用 mock 数据，设置页用户主题错误会显示
+明确原因。Shell 回归 5 条与 P3 新增/定向用例 5 条通过；按测试纪律未运行整套 E2E。
+
 ### 4.9 字体子集化管线（SPEC 强制项）
 
 - 工具：`subset-font`（npm，harfbuzz-wasm，免 Python 工具链）+ 构建脚本
@@ -424,7 +431,7 @@ E2E。Home/Settings 当前只承载 P2 路由与导航模式骨架，完整页�
 | P0 基建（**已完成**） | frameless + TitleBar + 窗口控制 IPC；依赖引入；**token 体系 + 主题 schema/加载器/运行期接线（§4.11）**；字体迁移；特效组件迁移 | 窗口可拖动/最大化/关闭；内置 light.json 驱动全部 chrome 颜色；typecheck 过 |
 | P1 状态层（**已完成**） | settingsStore v3 迁移；terminalsStore/sessionsStore；mock provider；strings.ts | store 单测 + 迁移用例（v0/v1/v2→v3）通过 |
 | P2 Shell（**已完成**） | AppShell/Sidebar/IconRail/TopTabBar/页面路由；TerminalPage 整合；快捷键 | 三态导航、keep-alive、快捷键定向门禁通过 |
-| P3 流程页 | 新建会话流（真实 spawn + dialog IPC）；HomePage 两态；SettingsPage 绑定 | new-session/home-empty/settings E2E 绿 |
+| P3 流程页（**已完成**） | 新建会话流（真实 spawn + dialog IPC）；HomePage 两态；SettingsPage 绑定 | new-session/home-empty/settings E2E 绿 |
 | P4 字体管线 | subset-fonts 脚本 + 构建接入 + NOTICE | 构建产物中文字体 < 1 MB 断言 |
 | P5 收尾 | E2E 选择器迁移全量回归；与原型逐页视觉比对（截图并排） | 全部 E2E 绿；视觉比对无差异项 |
 
