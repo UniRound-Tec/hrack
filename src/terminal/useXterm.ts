@@ -130,7 +130,7 @@ export function useXterm(
       // 主进程会隔离 ConPTY resize 重画，因此当前光标行也必须由 xterm 自己 reflow。
       reflowCursorLine: true,
       windowsPty: meta.windowsPty,
-      theme: getTerminalTheme(initialSettings.themeId).terminal
+      theme: getTerminalTheme(initialSettings.terminalThemeId).terminal
     })
 
     const fit = new FitAddon()
@@ -267,8 +267,10 @@ export function useXterm(
 
     const unsubscribeSettings = useSettingsStore.subscribe(
       (settings, previous) => {
-        if (settings.themeId !== previous.themeId) {
-          term.options.theme = getTerminalTheme(settings.themeId).terminal
+        if (settings.terminalThemeId !== previous.terminalThemeId) {
+          term.options.theme = getTerminalTheme(
+            settings.terminalThemeId
+          ).terminal
         }
         if (
           settings.fontFamily !== previous.fontFamily ||

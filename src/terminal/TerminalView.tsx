@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { detectLocale, translate } from '../i18n'
-import { useTabsStore } from '../state/tabsStore'
+import { useTerminalsStore } from '../state/terminalsStore'
 import { useXterm } from './useXterm'
 
 /** xterm 宿主容器：一个占满父级的 div，内部由 xterm 独占渲染。 */
@@ -14,8 +14,8 @@ export default function TerminalView({ tabId, active }: TerminalViewProps) {
   const hideCopiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [locale] = useState(detectLocale)
   const [copiedVisible, setCopiedVisible] = useState(false)
-  const setTitle = useTabsStore((state) => state.setTitle)
-  const markExited = useTabsStore((state) => state.markExited)
+  const setTitle = useTerminalsStore((state) => state.setTitle)
+  const markExited = useTerminalsStore((state) => state.markExited)
 
   const showCopied = useCallback(() => {
     if (hideCopiedTimer.current) clearTimeout(hideCopiedTimer.current)

@@ -239,7 +239,7 @@ function createApi(
       getRegistration()?.setPtyRenderingSuspended(suspended)
     },
     setTheme(themeId: ThemeId) {
-      useSettingsStore.getState().setTheme(themeId)
+      useSettingsStore.getState().setTerminalTheme(themeId)
     },
     setFont(fontFamily: string, fontSize: number) {
       useSettingsStore.getState().setFont(fontFamily, fontSize)

@@ -1,6 +1,6 @@
 # M5.b 实施计划 —— App Shell 实现
 
-> 状态：**进行中**（P0 已完成，2026-08-02）。
+> 状态：**进行中**（P0、P1 已完成，2026-08-02）。
 > 目标：按 `/prototype` 定稿原型 **1:1 落地** App Shell——无边框窗口 + 自定义标题栏、
 > 三态导航（侧栏展开 / 图标条 / 顶部 Tab）、首页（含空态欢迎页）、设置页、新建会话流；
 > 设置面板直读写 `settingsStore`；侧栏 session 区由 mock provider（SPEC §11.5 schema）驱动。
@@ -220,6 +220,13 @@ strings 模块。
 更新 `lastActivityAt`/status 模拟活动；同时提供首页历史事件与 all-time 统计的
 mock 数据源。**正式构建默认关闭**，真实会话条目与 mock 条目可共存（E2E 需要）。
 
+**P1 实施结果（2026-08-02）**：persist schema 已升至 v3，保留 v0/v1 字体迁移并
+覆盖 v2 `themeId` 拆分；`tabsStore` 已演进为 `terminalsStore`，既有终端常驻挂载行为
+保持不变；新增 `sessionsStore`、六态 token/文案映射、17 条 dev/E2E mock 会话、首页
+历史与 all-time mock 数据，并定稿 `stats:all-time` / `events:history` 共享契约。正式
+构建不注入 mock。状态层与迁移共 7 条定向测试通过，另有 6 条直接受影响的终端回归
+通过；按测试纪律未运行整套 E2E。
+
 ### 4.5 新建会话流（真实 spawn）
 
 - **终端启动**：终端选项按平台探测可用性——Windows：cmd / Windows PowerShell /
@@ -407,7 +414,7 @@ export const StatsInvokeChannel = {
 | 阶段 | 内容 | 验收 |
 |---|---|---|
 | P0 基建（**已完成**） | frameless + TitleBar + 窗口控制 IPC；依赖引入；**token 体系 + 主题 schema/加载器/运行期接线（§4.11）**；字体迁移；特效组件迁移 | 窗口可拖动/最大化/关闭；内置 light.json 驱动全部 chrome 颜色；typecheck 过 |
-| P1 状态层 | settingsStore v3 迁移；terminalsStore/sessionsStore；mock provider；strings.ts | store 单测 + 迁移用例（v2→v3） |
+| P1 状态层（**已完成**） | settingsStore v3 迁移；terminalsStore/sessionsStore；mock provider；strings.ts | store 单测 + 迁移用例（v0/v1/v2→v3）通过 |
 | P2 Shell | AppShell/Sidebar/IconRail/TopTabBar/页面路由；TerminalPage 整合；快捷键 | 三态导航可用；既有终端门禁回归绿 |
 | P3 流程页 | 新建会话流（真实 spawn + dialog IPC）；HomePage 两态；SettingsPage 绑定 | new-session/home-empty/settings E2E 绿 |
 | P4 字体管线 | subset-fonts 脚本 + 构建接入 + NOTICE | 构建产物中文字体 < 1 MB 断言 |

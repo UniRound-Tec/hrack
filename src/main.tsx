@@ -7,6 +7,8 @@ import {
   builtInLightTheme,
   loadUiThemeRegistry
 } from './app/themeRuntime'
+import { startMockSessionsProvider } from './app/mockSessions'
+import { useSettingsStore } from './state/settingsStore'
 
 const licenseLink = document.createElement('link')
 licenseLink.rel = 'license'
@@ -19,6 +21,27 @@ async function bootstrap(): Promise<void> {
   const themeRegistry = await loadUiThemeRegistry()
   for (const error of themeRegistry.errors) {
     console.warn(`[theme] ${error.filename}: ${error.message}`)
+  }
+  const applySelectedUiTheme = (themeId: string): void => {
+    applyUiTheme(themeRegistry.get(themeId) ?? builtInLightTheme)
+  }
+  applySelectedUiTheme(useSettingsStore.getState().uiThemeId)
+  const unsubscribeTheme = useSettingsStore.subscribe(
+    (settings, previous) => {
+      if (settings.uiThemeId !== previous.uiThemeId) {
+        applySelectedUiTheme(settings.uiThemeId)
+      }
+    }
+  )
+  const stopMockSessions = startMockSessionsProvider({
+    enabled: isMockRuntime()
+  })
+
+  if (import.meta.hot) {
+    import.meta.hot.dispose(() => {
+      unsubscribeTheme()
+      stopMockSessions()
+    })
   }
 
   // xterm 会在 open/fit 时测量字体；先等内嵌主字体可用，避免 fallback 字体尺寸被
@@ -35,6 +58,13 @@ async function bootstrap(): Promise<void> {
   // 注意：不使用 <React.StrictMode>。StrictMode 会在 dev 下双触发 effect，
   // 导致 xterm 被 mount→dispose→mount 且 pty 重复 spawn，违背 SPEC §5.1「只挂载一次」。
   createRoot(document.getElementById('root')!).render(<App />)
+}
+
+function isMockRuntime(): boolean {
+  return (
+    import.meta.env.DEV ||
+    Boolean((globalThis as Record<string, unknown>)['__VIBING_E2E__'])
+  )
 }
 
 void bootstrap()

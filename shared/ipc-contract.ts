@@ -76,6 +76,33 @@ export interface PtyFlowControlSnapshot {
   rejectedBytes: number
 }
 
+export interface AllTimeStats {
+  sessions: number
+  toolCalls: number
+  blocked: number
+  approvals: number
+}
+
+export type HistoryEventKind =
+  | 'tool_call'
+  | 'completed'
+  | 'approved'
+  | 'message'
+
+export interface HistoryEvent {
+  id: string
+  kind: HistoryEventKind
+  adapterId: string
+  occurredAt: number
+  title: string
+  detail: string
+}
+
+export interface HistoryQuery {
+  limit: number
+  before?: number
+}
+
 /** 平台元信息。 */
 export interface PtyMeta {
   platform: string
@@ -110,6 +137,12 @@ export const WindowInvokeChannel = {
 
 export const ThemeInvokeChannel = {
   ListUser: 'theme:list-user'
+} as const
+
+/** M5.b defines these contracts; persistence/real event handlers land later. */
+export const StatsInvokeChannel = {
+  AllTime: 'stats:all-time',
+  HistoryEvents: 'events:history'
 } as const
 
 // ───── Main → Renderer（webContents.send，事件流）─────────

@@ -1,14 +1,16 @@
 import { useEffect } from 'react'
 import TerminalView from './terminal/TerminalView'
-import { useTabsStore } from './state/tabsStore'
+import { useTerminalsStore } from './state/terminalsStore'
 import TabBar from './tabs/TabBar'
 import { handleTabShortcut } from './tabs/tabShortcuts'
 import TitleBar from './app/TitleBar'
 
 export default function App() {
-  const tabs = useTabsStore((state) => state.tabs)
-  const activeTabId = useTabsStore((state) => state.activeTabId)
-  const addTab = useTabsStore((state) => state.addTab)
+  const terminals = useTerminalsStore((state) => state.terminals)
+  const activeTerminalId = useTerminalsStore(
+    (state) => state.activeTerminalId
+  )
+  const addTerminal = useTerminalsStore((state) => state.addTerminal)
 
   useEffect(() => {
     const handleWindowShortcut = (event: KeyboardEvent): void => {
@@ -22,16 +24,22 @@ export default function App() {
 
   return (
     <div className="app-shell flex h-full w-full flex-col">
-      <TitleBar onNew={addTab} />
+      <TitleBar onNew={() => addTerminal()} />
       <TabBar />
       <div className="min-h-0 flex-1">
-        {tabs.map((tab) => (
+        {terminals.map((terminal) => (
           <div
-            key={tab.id}
+            key={terminal.id}
             className="h-full w-full"
-            style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
+            style={{
+              display:
+                terminal.id === activeTerminalId ? 'block' : 'none'
+            }}
           >
-            <TerminalView tabId={tab.id} active={tab.id === activeTabId} />
+            <TerminalView
+              tabId={terminal.id}
+              active={terminal.id === activeTerminalId}
+            />
           </div>
         ))}
       </div>
