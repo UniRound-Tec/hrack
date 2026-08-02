@@ -1,4 +1,5 @@
 import lightThemeJson from '../themes/light.json'
+import darkThemeJson from '../themes/dark.json'
 import {
   UI_COLOR_TOKENS,
   isCssColorLiteral,
@@ -47,6 +48,11 @@ function emergencyColor(token: UiColorToken): string {
   ) {
     return '#171717'
   }
+  if (token === 'accent.spark') return '#1a1a1a'
+  if (token === 'accent.cursor' || token === 'accent.target') return '#b497cf'
+  // 环境渐变缺失时直接隐形，比给一个错误的彩色安全
+  if (token.startsWith('sidebar.tint')) return 'rgb(0 0 0 / 0%)'
+  if (token.startsWith('brand.')) return '#7a7a7a'
   if (token.startsWith('bg.backdrop')) return 'rgb(0 0 0 / 25%)'
   if (token.startsWith('bg.')) return '#ffffff'
   if (token.startsWith('border.')) return '#d4d4d4'
@@ -104,7 +110,8 @@ export function loadBuiltInTheme(value: unknown): ResolvedUiTheme {
 }
 
 export const builtInLightTheme = loadBuiltInTheme(lightThemeJson)
-const builtInThemes = [builtInLightTheme] as const
+export const builtInDarkTheme = loadBuiltInTheme(darkThemeJson)
+const builtInThemes = [builtInLightTheme, builtInDarkTheme] as const
 
 export function applyUiTheme(theme: ResolvedUiTheme): void {
   const root = document.documentElement

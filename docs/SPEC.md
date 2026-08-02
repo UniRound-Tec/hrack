@@ -149,6 +149,7 @@ M5.b 新增（详见 [PLAN-M5B.md](./PLAN-M5B.md) §4.1/§4.5/§4.6/§4.11）：
 | `window:toggle-maximize` | —                     | `void`                                       | M5.b 实现 |
 | `window:close`           | —                     | `void`                                       | M5.b 实现 |
 | `window:is-maximized`    | —                     | `boolean`                                    | M5.b 实现 |
+| `window:get-position`    | —                     | `{x, y, screenWidth, screenHeight}`（相对当前显示器） | M5.b 实现 |
 | `dialog:pick-directory`  | `{defaultPath?}`      | `string \| null`                             | M5.b 实现 |
 | `theme:list-user`        | —                     | 用户主题 JSON 原文列表（renderer 校验）                | M5.b 实现 |
 | `stats:all-time`         | —                     | `{sessions, toolCalls, blocked, approvals}`  | **仅契约**，实现归 M5.c / S 线 |
@@ -163,6 +164,7 @@ M5.b 新增（详见 [PLAN-M5B.md](./PLAN-M5B.md) §4.1/§4.5/§4.6/§4.11）：
 | `pty:data:{ptyId}`         | `Uint8Array`     |
 | `pty:exit:{ptyId}`         | `{code, signal}` |
 | `window:maximized-changed` | `boolean`（M5.b 新增，驱动最大化/还原图标） |
+| `window:position-changed`  | `{x, y, screenWidth, screenHeight}`（M5.b 新增，主进程节流 ~30ms；驱动侧栏屏幕锚定环境渐变） |
 
 
 > 约定：`data` 用二进制传输（`Uint8Array`），避免 UTF-8 字符串在多字节边界被 IPC 序列化切坏。xterm 6.0 支持 `write(Uint8Array)`。
@@ -259,7 +261,8 @@ M4.1 改用 xterm 6 的 character joiner proposed API：应用只识别连续操
 切开连字时退回逐字符绘制，因此 buffer、复制内容与字符格坐标保持原义。WebGL 与 DOM
 降级路径共用同一个 joiner；`ligatures` 设置可即时注册/注销。
 
-默认终端字体为内嵌 Maple Mono v7.9 WOFF2、16px；启动时先等待常规/粗体加载再
+默认终端字体为内嵌 Maple Mono v7.9 WOFF2、14px（settingsStore v4 起；v3 及以前
+默认 16px，迁移时仍停留在旧默认值的用户跟随新默认）；启动时先等待常规/粗体加载再
 创建 xterm，避免首屏用 fallback 尺寸建 atlas。Maple 不含中文，回退栈按平台优先
 使用 Microsoft JhengHei/YaHei UI、PingFang TC/SC、Noto Sans (Mono) CJK TC/SC。
 
@@ -374,6 +377,13 @@ token 化 + JSON 主题配置文件（见 §8「GUI 主题」行）；新建 CLI
 构建期 HarfBuzz 子集化，打包产物有 < 1 MB 硬门禁。P5 已完成 App Shell 选择器迁移、
 79 条 E2E 回归和逐页视觉核对；一次整套中的失败/跳过项均按单用例定向复跑通过，未重复
 执行整套。独立置顶悬浮窗仍按既定范围归 S3。
+
+**M5.b 完成后补充（2026-08-03，评审反馈）**：深色界面主题提前落地（内置
+`src/themes/dark.json`，与浅色同为 built-in，用户 dark 主题可省略 token 回退到
+内置 dark）；设置页原生 `<select>` 换成 token 化自绘下拉框；新增「圆角」开关
+（settingsStore v4 `terminalRounded`，默认开）——开时内容区保留 20px 圆角且终端
+两侧加留白防裁字，关时终端贴边直角；终端默认字号 16px → 14px（v4 迁移）；修复
+标题栏关闭键 X 图标的 CSS 旋转错误。
 
 M2 基线：
 

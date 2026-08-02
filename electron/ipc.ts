@@ -20,6 +20,7 @@ import {
   type SpawnOptions
 } from '../shared/ipc-contract'
 import { listAvailableShells } from './shells'
+import { displayRelativePosition } from './window'
 
 const MAX_CLIPBOARD_TEXT_LENGTH = 8 * 1024 * 1024
 const MAX_USER_THEME_FILES = 128
@@ -112,6 +113,11 @@ export function registerIpc(manager: PTYManager): void {
   ipcMain.handle(WindowInvokeChannel.IsMaximized, (event) =>
     Boolean(senderWindow(event)?.isMaximized())
   )
+  ipcMain.handle(WindowInvokeChannel.GetPosition, (event) => {
+    const win = senderWindow(event)
+    if (!win) return { x: 0, y: 0, screenWidth: 1, screenHeight: 1 }
+    return displayRelativePosition(win)
+  })
   ipcMain.handle(ThemeInvokeChannel.ListUser, listUserThemes)
   ipcMain.handle(
     DialogInvokeChannel.PickDirectory,

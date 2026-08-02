@@ -56,7 +56,7 @@ export default function Sidebar({
   return (
     <aside
       data-testid="sidebar"
-      className="flex w-[280px] shrink-0 flex-col bg-app px-3 pt-3"
+      className="flex w-[280px] shrink-0 flex-col px-3 pt-3"
     >
       <div className="flex justify-center">
         <ShinyText
@@ -121,7 +121,7 @@ export default function Sidebar({
                   data-session-id={session.sessionId}
                   aria-current={active ? 'page' : undefined}
                   onClick={() => onNavigate(terminalPage(session.terminalId))}
-                  className="cursor-target w-full px-2.5 py-1.5 pr-8 text-left font-pingfang"
+                  className="cursor-target w-full px-2.5 py-1.5 text-left font-pingfang"
                 >
                   <div className="flex items-center gap-1.5">
                     <span className="inline-flex size-3.5 shrink-0 items-center justify-center">
@@ -133,7 +133,7 @@ export default function Sidebar({
                     <span
                       className={`size-1.5 shrink-0 rounded-full ${statusDot[session.status]}`}
                     />
-                    <span className="ml-auto shrink-0 text-[10px] text-text-faint">
+                    <span className="ml-auto shrink-0 text-[11px] text-text-faint transition-opacity group-hover:opacity-0">
                       {relativeTime(session.lastActivityAt)}
                     </span>
                   </div>
@@ -187,12 +187,12 @@ export default function Sidebar({
                   data-exited={terminal.exited}
                   aria-current={active ? 'page' : undefined}
                   onClick={() => onNavigate(terminalPage(terminal.id))}
-                  className="cursor-target flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 pr-8 text-left font-pingfang"
+                  className="cursor-target flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 text-left font-pingfang"
                 >
                   <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-text-secondary">
                     {terminal.name}
                   </span>
-                  <span className="max-w-[40%] shrink-0 truncate font-maple text-[10px] text-text-faint">
+                  <span className="max-w-[40%] shrink-0 truncate text-[10px] text-text-faint transition-opacity group-hover:opacity-0">
                     {terminal.exited
                       ? strings.sessionStatus.exited
                       : terminal.cwd || terminal.shellId}

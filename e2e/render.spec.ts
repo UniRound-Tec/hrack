@@ -470,7 +470,7 @@ test('loads bundled Maple Mono, shapes ligatures, and keeps terminal text exact'
   })
   expect(fontState.loaded).toBe(true)
   expect(fontState.appearance).toMatchObject({
-    fontSize: 16,
+    fontSize: 14,
     ligatures: true
   })
   expect(fontState.appearance.fontFamily).toContain('"Maple Mono"')

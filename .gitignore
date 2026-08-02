@@ -12,3 +12,4 @@ test-results/
 src/assets/fonts/.subset/
 *.err
 .claude/
+.dev-shots/

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Home, Plus, Terminal as TerminalIcon, X } from 'lucide-react'
 import { getAdapterIcon } from './adapterIcons'
 import { terminalIdFromPage, terminalPage, type PageId } from './pages'
@@ -47,8 +47,24 @@ export default function TopTabBar({
   onCloseTerminal
 }: TopTabBarProps) {
   const barRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const [hovered, setHovered] = useState<HoveredTab | null>(null)
   const activeTerminalId = terminalIdFromPage(pageId)
+
+  // 纵向滚轮转横向滚动。React 在根节点上以 passive 注册 wheel，
+  // preventDefault 会失效，所以这里直接挂原生非 passive 监听。
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onWheel = (event: WheelEvent): void => {
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+      if (el.scrollWidth <= el.clientWidth) return
+      el.scrollLeft += event.deltaY
+      event.preventDefault()
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
 
   const popoverLeft = (target: HTMLElement): number => {
     const bar = barRef.current?.getBoundingClientRect()
@@ -77,8 +93,9 @@ export default function TopTabBar({
 
       <div className="top-tab-viewport min-w-0 flex-1">
         <div
+          ref={scrollRef}
           data-testid="toptab-scroll"
-          className="sidebar-scroll flex min-w-0 items-center gap-1 overflow-x-auto py-0.5"
+          className="scrollbar-hidden flex min-w-0 items-center gap-1 overflow-x-auto py-0.5"
         >
           {sessions.map((session) => {
             const Icon = getAdapterIcon(session.adapterId)
@@ -188,7 +205,7 @@ export default function TopTabBar({
       {hovered && (
         <div
           data-testid="toptab-hover-card"
-          className="shell-popover pointer-events-none absolute top-full z-40 mt-1.5 w-60 rounded-xl border border-border-default bg-surface p-3"
+          className="shell-popover hover-card-delayed pointer-events-none absolute top-full z-40 mt-1.5 w-60 rounded-xl border border-border-default bg-surface p-3"
           style={{ left: hovered.left }}
         >
           {hovered.kind === 'session' ? (

@@ -11,10 +11,10 @@ export const terminalThemes: Record<ThemeId, TerminalThemeDefinition> = {
   dark: {
     id: 'dark',
     terminal: {
-      background: '#0b0e14',
+      background: '#1f1f1f',
       foreground: '#c8d3e0',
       cursor: '#c8d3e0',
-      cursorAccent: '#0b0e14',
+      cursorAccent: '#1f1f1f',
       selectionBackground: '#3d4f6b',
       black: '#1b1d23',
       red: '#e06c75',

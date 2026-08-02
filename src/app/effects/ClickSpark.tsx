@@ -13,6 +13,19 @@ interface Spark {
   startTime: number
 }
 
+/**
+ * canvas 的 strokeStyle 不解析 var()（无效赋值会被忽略、保持默认黑色）。
+ * 这里在绘制时把 CSS 变量解析成实际颜色，主题切换后取到的是新值。
+ */
+function resolveCssColor(color: string): string {
+  const match = /^var\((--[\w-]+)\s*(?:,\s*([^)]+))?\)$/.exec(color.trim())
+  if (!match) return color
+  const resolved = getComputedStyle(document.documentElement)
+    .getPropertyValue(match[1])
+    .trim()
+  return resolved || match[2]?.trim() || '#ffffff'
+}
+
 export interface ClickSparkProps {
   sparkColor?: string
   sparkSize?: number
@@ -86,6 +99,7 @@ export default function ClickSpark({
     let animationId = 0
     const draw = (timestamp: number): void => {
       context.clearRect(0, 0, canvas.width, canvas.height)
+      const strokeColor = resolveCssColor(sparkColor)
       sparksRef.current = sparksRef.current.filter((spark) => {
         const elapsed = timestamp - spark.startTime
         if (elapsed >= duration) return false
@@ -96,7 +110,7 @@ export default function ClickSpark({
         const y1 = spark.y + distance * Math.sin(spark.angle)
         const x2 = spark.x + (distance + lineLength) * Math.cos(spark.angle)
         const y2 = spark.y + (distance + lineLength) * Math.sin(spark.angle)
-        context.strokeStyle = sparkColor
+        context.strokeStyle = strokeColor
         context.lineWidth = 2
         context.beginPath()
         context.moveTo(x1, y1)

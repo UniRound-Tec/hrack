@@ -15,6 +15,7 @@ import HomePage from './HomePage'
 import SettingsPage from './SettingsPage'
 import NewSessionFlow from './NewSessionFlow'
 import TargetCursor from './effects/TargetCursor'
+import SidebarTint from './SidebarTint'
 import {
   isPageId,
   terminalIdFromPage,
@@ -58,6 +59,7 @@ export default function AppShell() {
   const [shells, setShells] = useState<readonly ShellOption[]>([])
   const navMode = useSettingsStore((state) => state.navMode)
   const setNavMode = useSettingsStore((state) => state.setNavMode)
+  const terminalRounded = useSettingsStore((state) => state.terminalRounded)
   const defaultTerminal = useSettingsStore((state) => state.defaultTerminal)
   const setDefaultTerminal = useSettingsStore(
     (state) => state.setDefaultTerminal
@@ -248,49 +250,66 @@ export default function AppShell() {
     }
   }, [navigate, openNewSession, setNavMode])
 
+  // 侧栏 ↔ 图标栏共用一个容器：容器只动宽度，内容层交叉淡入淡出。
+  // 不能给两种形态各建一个带退出动画的元素——退出层会叠在进入层上产生重影。
   const sideNavigation =
-    navMode === 'sidebar' ? (
+    navMode !== 'tabs' ? (
       <motion.div
-        key="sidebar"
-        className="flex shrink-0 overflow-hidden"
-        initial={{ width: 48, opacity: 0.6 }}
-        animate={{ width: 280, opacity: 1 }}
-        exit={{ width: 48, opacity: 0.6 }}
+        key="sidenav"
+        className="relative shrink-0 overflow-hidden"
+        initial={{ width: 0 }}
+        animate={{ width: navMode === 'sidebar' ? 280 : 48 }}
+        exit={{ width: 0 }}
         transition={{ type: 'spring', stiffness: 420, damping: 38 }}
       >
-        <Sidebar
-          pageId={pageId}
-          sessions={sessions}
-          terminals={terminals}
-          onNavigate={navigate}
-          onOpenNewSession={openNewSession}
-          onCollapse={() => setNavMode('rail')}
-          onCloseSession={closeSessionAndTerminal}
-          onCloseTerminal={closeTerminalAndRoute}
-        />
-      </motion.div>
-    ) : navMode === 'rail' ? (
-      <motion.div
-        key="rail"
-        className="flex shrink-0 overflow-hidden"
-        initial={{ width: 48, opacity: 0.6 }}
-        animate={{ width: 48, opacity: 1 }}
-        exit={{ width: 48, opacity: 0.6 }}
-        transition={{ duration: 0.16 }}
-      >
-        <IconRail
-          pageId={pageId}
-          sessions={sessions}
-          terminals={terminals}
-          onNavigate={navigate}
-          onOpenNewSession={openNewSession}
-          onExpand={() => setNavMode('sidebar')}
-        />
+        <AnimatePresence initial={false} mode="wait">
+          {navMode === 'sidebar' ? (
+            <motion.div
+              key="sidebar"
+              className="absolute inset-y-0 left-0 flex"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.12 }}
+            >
+              <Sidebar
+                pageId={pageId}
+                sessions={sessions}
+                terminals={terminals}
+                onNavigate={navigate}
+                onOpenNewSession={openNewSession}
+                onCollapse={() => setNavMode('rail')}
+                onCloseSession={closeSessionAndTerminal}
+                onCloseTerminal={closeTerminalAndRoute}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="rail"
+              className="absolute inset-y-0 left-0 flex"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.12 }}
+            >
+              <IconRail
+                pageId={pageId}
+                sessions={sessions}
+                terminals={terminals}
+                onNavigate={navigate}
+                onOpenNewSession={openNewSession}
+                onExpand={() => setNavMode('sidebar')}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     ) : null
 
   return (
-    <div className="app-shell relative flex h-full w-full flex-col overflow-hidden">
+    <div className="app-shell isolate relative flex h-full w-full flex-col overflow-hidden">
+      {/* 环境渐变垫在全部镶边（标题栏/侧栏/圆角缺口）下面；内容面板不透明底色自然盖住自己的区域 */}
+      <SidebarTint />
       <TitleBar
         onNew={openNewSession}
         onSettings={() => navigate('settings')}
@@ -298,13 +317,17 @@ export default function AppShell() {
       />
 
       <div className="relative flex min-h-0 flex-1">
-        <AnimatePresence initial={false} mode="popLayout">
+        {/* 默认 sync 模式：退出的侧栏容器留在文档流里收缩到 0，主内容跟随过渡 */}
+        <AnimatePresence initial={false}>
           {sideNavigation}
         </AnimatePresence>
 
         <main
           data-testid="app-content"
-          className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-tl-[20px] bg-content"
+          className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-content ${
+            // 圆角开关关闭时，终端页贴边直角显示；其余页面保留内容区圆角
+            terminalRounded || !activeTerminalId ? 'rounded-tl-[20px]' : ''
+          }`}
         >
           {navMode === 'tabs' && (
             <TopTabBar
@@ -359,7 +382,7 @@ export default function AppShell() {
           parallaxOn
           hoverDuration={0.2}
           cursorColor="var(--vib-accent-cursor)"
-          cursorColorOnTarget="var(--vib-accent-cursor)"
+          cursorColorOnTarget="var(--vib-accent-target)"
         />
       )}
 

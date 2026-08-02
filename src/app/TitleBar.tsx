@@ -34,7 +34,7 @@ export default function TitleBar({
   return (
     <header
       data-testid="titlebar"
-      className={`titlebar flex h-10 shrink-0 items-stretch select-none ${
+      className={`titlebar relative flex h-10 shrink-0 items-stretch select-none ${
         isMac ? 'titlebar-macos' : ''
       }`}
     >

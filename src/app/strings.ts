@@ -55,7 +55,8 @@ export const strings = {
       { text: 'Good timing. Let’s vibe.', keywords: ['vibe'] },
       { text: 'Pick a CLI and go.', keywords: ['CLI'] }
     ],
-    quickLaunch: '快速启动',
+    /** 原型密集态用英文微标签（Maple 大写），与 attn/log/metrics 一致 */
+    quickLaunch: 'quick launch',
     terminal: '终端',
     freshLabel: 'home · getting started',
     freshTitle: 'Welcome. Pick a CLI and go.',
@@ -72,7 +73,7 @@ export const strings = {
     allStatuses: '全部',
     emptyAttention: '当前没有待处理或出错的会话',
     showMore: '展开更多',
-    showLess: '收起',
+    showLess: '收起 ↑',
     showAll: (count: number) => `展开全部 ${count} 条 ↓`,
     recentHistory: '历史事件',
     allTime: '概览',
@@ -95,7 +96,6 @@ export const strings = {
     uiThemeHint: '只影响应用界面，与终端配色相互独立',
     light: '浅色',
     dark: '深色',
-    darkDisabledHint: '深色界面主题归 M5.c',
     language: '界面语言',
     languageHint: '五语言 i18n 归 M5.c',
     languages: {
@@ -114,6 +114,8 @@ export const strings = {
     floatingWindowHint: '独立置顶小窗，随 S3 落地',
     terminalTheme: '终端配色',
     terminalThemeHint: '16 色方案，独立于界面主题',
+    /** 原型中终端配色分段按钮直接用主题名 Dark / Light */
+    terminalThemeNames: { dark: 'Dark', light: 'Light' },
     font: '字体',
     fontHint: '内嵌 Maple Mono，中文回退栈随平台',
     fontSize: '字号',
@@ -121,6 +123,8 @@ export const strings = {
     increaseFontSize: '增大字号',
     ligatures: '连字',
     ligaturesHint: '=> !== 等操作符合并渲染',
+    terminalRounded: '圆角',
+    terminalRoundedHint: '内容区圆角并为终端加两侧留白；关闭后终端贴边显示',
     defaultTerminal: '默认终端',
     defaultTerminalHint: 'quick launch 的「终端」芯片按此启动',
     preferences: 'settings · preferences',

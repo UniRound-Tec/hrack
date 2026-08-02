@@ -43,9 +43,9 @@ export default function IconRail({
   return (
     <aside
       data-testid="icon-rail"
-      className="flex w-12 shrink-0 flex-col items-center bg-app pt-3 pb-2"
+      className="flex w-12 shrink-0 flex-col items-center pt-3 pb-2"
     >
-      <span className="font-ammonite text-[20px] leading-none text-brand-logo select-none">
+      <span className="font-ammonite text-[20px] leading-none text-brand-logo-muted select-none">
         v
       </span>
 
@@ -82,9 +82,11 @@ export default function IconRail({
               data-testid="rail-session-item"
               title={`${session.name} · ${session.detail ?? ''}`}
               onClick={() => onNavigate(terminalPage(session.terminalId))}
-              className={`${railButtonClass(
+              className={`cursor-target relative flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
                 activeTerminalId === session.terminalId
-              )} relative`}
+                  ? 'bg-surface-strong'
+                  : 'hover:bg-surface-hover'
+              }`}
             >
               <Icon size={15} className="size-[15px]" />
               <span
@@ -108,7 +110,11 @@ export default function IconRail({
             data-testid="rail-terminal-item"
             title={`${terminal.name} · ${terminal.cwd || terminal.shellId}`}
             onClick={() => onNavigate(terminalPage(terminal.id))}
-            className={railButtonClass(activeTerminalId === terminal.id)}
+            className={`cursor-target flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+              activeTerminalId === terminal.id
+                ? 'bg-surface-strong text-text-primary'
+                : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+            }`}
           >
             <TerminalIcon className="size-[15px]" strokeWidth={1.75} />
           </button>

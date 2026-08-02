@@ -27,7 +27,7 @@ test('fills omitted user-theme tokens from the built-in theme of the same type',
   })
 })
 
-test('rejects invalid colors, unknown tokens, duplicate ids, and incomplete dark themes', () => {
+test('rejects invalid colors, unknown tokens, duplicate ids, and fills partial dark themes from the built-in dark theme', () => {
   const registry = buildUiThemeRegistry([
     {
       filename: 'invalid.json',
@@ -61,13 +61,20 @@ test('rejects invalid colors, unknown tokens, duplicate ids, and incomplete dark
     }
   ])
 
-  expect(registry.themes.map((theme) => theme.id)).toEqual(['light'])
-  expect(registry.errors).toHaveLength(3)
+  expect(registry.themes.map((theme) => theme.id)).toEqual([
+    'light',
+    'dark',
+    'partial-dark'
+  ])
+  expect(registry.errors).toHaveLength(2)
   expect(registry.errors.map((error) => error.filename)).toEqual([
     'invalid.json',
-    'duplicate.json',
-    'partial-dark.json'
+    'duplicate.json'
   ])
+  expect(registry.get('partial-dark')?.colors).toMatchObject({
+    'bg.app': '#000000',
+    'text.primary': '#f5f5f5'
+  })
 })
 
 test('reports rejected theme files without mislabeling them as JSON errors', () => {

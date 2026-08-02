@@ -80,12 +80,24 @@ test.describe('settingsStore v3', () => {
       fontFamily: 'Custom Mono',
       fontSize: 19,
       ligatures: false,
+      terminalRounded: true,
       navMode: 'tabs',
       floatEnabled: false,
       defaultTerminal: 'pwsh',
       language: 'ja'
     })
     expect(migrated).not.toHaveProperty('themeId')
+  })
+
+  test('v4 lowers the abandoned default font size and adds the rounded flag', () => {
+    // v3 及以前默认 16px：仍停留在旧默认值的用户跟随新默认 14px
+    expect(migrateSettings({ fontSize: 16 }, 3).fontSize).toBe(14)
+    // 主动改过字号的用户保留自己的选择
+    expect(migrateSettings({ fontSize: 18 }, 3).fontSize).toBe(18)
+    expect(migrateSettings({ fontSize: 16 }, 3).terminalRounded).toBe(true)
+    expect(
+      migrateSettings({ terminalRounded: false, fontSize: 12 }, 3)
+    ).toMatchObject({ terminalRounded: false, fontSize: 12 })
   })
 
   test('updates and resets the full settings slice', () => {

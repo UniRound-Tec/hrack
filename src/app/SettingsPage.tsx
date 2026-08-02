@@ -1,5 +1,6 @@
-import { Minus, Plus } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { Check, ChevronDown, Minus, Plus } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import type { ShellOption } from '../../shared/ipc-contract'
 import { appLocales, strings } from './strings'
 import { getUiThemeRegistry } from './themeRuntime'
@@ -19,24 +20,23 @@ export default function SettingsPage({ shells }: { shells: readonly ShellOption[
   const terminalTheme = terminalThemes[settings.terminalThemeId].terminal
 
   return (
-    <ClickSpark sparkColor="var(--vib-accent-flame)" sparkSize={6} sparkRadius={16}>
+    <ClickSpark sparkColor="var(--vib-accent-spark)" sparkSize={8} sparkRadius={18} sparkCount={10} duration={450}>
       <section data-testid="settings-page" className="sidebar-scroll h-full overflow-y-auto">
         <header className="px-8 pt-10 pb-6">
           <p className="mb-3 font-maple text-[10px] tracking-[0.28em] text-text-faint uppercase">{strings.settings.preferences}</p>
-          <h1 className="font-pingfang text-[32px] font-semibold text-text-primary">{strings.settings.title}</h1>
+          <h1 className="font-pingfang text-[32px] font-semibold leading-tight tracking-wide text-text-primary">{strings.settings.title}</h1>
           <p className="mt-2 font-pingfang text-[12px] text-text-faint">{strings.settings.description}</p>
         </header>
         <div className="flex max-w-[560px] flex-col gap-7 px-8 pb-10">
           <Section label="appearance" title={strings.settings.sections.appearance}>
             <Row label={strings.settings.uiTheme} hint={strings.settings.uiThemeHint}>
               <div className="flex items-center gap-0.5 rounded-lg bg-control p-0.5">
-                {registry.themes.map((theme) => <SegmentButton key={theme.id} selected={settings.uiThemeId === theme.id} onClick={() => settings.setUiTheme(theme.id)}>{theme.id === 'light' ? strings.settings.light : theme.name}</SegmentButton>)}
-                <SegmentButton selected={false} disabled title={strings.settings.darkDisabledHint}>{strings.settings.dark}</SegmentButton>
+                {registry.themes.map((theme) => <SegmentButton key={theme.id} testId={`settings-ui-theme-${theme.id}`} selected={settings.uiThemeId === theme.id} onClick={() => settings.setUiTheme(theme.id)}>{theme.id === 'light' ? strings.settings.light : theme.id === 'dark' ? strings.settings.dark : theme.name}</SegmentButton>)}
               </div>
             </Row>
             {registry.errors.length > 0 && <div data-testid="theme-load-errors" className="border-b border-border-faint py-3 text-[11px] text-status-error"><p className="font-semibold">{strings.settings.themeErrors}</p>{registry.errors.map((error) => <p key={error.filename} className="mt-1 font-maple">{error.filename}: {error.message}</p>)}</div>}
             <Row label={strings.settings.language} hint={strings.settings.languageHint}>
-              <select data-testid="settings-language" value={settings.language} onChange={(event) => settings.setLanguage(event.target.value as typeof settings.language)} className={selectClass}>{appLocales.map((locale) => <option key={locale} value={locale}>{strings.settings.languages[locale]}</option>)}</select>
+              <Dropdown testId="settings-language" value={settings.language} options={appLocales.map((locale) => ({ value: locale, label: strings.settings.languages[locale] }))} onChange={(value) => settings.setLanguage(value as typeof settings.language)} />
             </Row>
           </Section>
 
@@ -55,16 +55,17 @@ export default function SettingsPage({ shells }: { shells: readonly ShellOption[
 
           <Section label="terminal" title={strings.settings.sections.terminal}>
             <div className="border-b border-border-faint py-3.5">
-              <div className="flex items-center justify-between gap-6"><div><p className="text-[12px] font-medium text-text-secondary">{strings.settings.terminalTheme}</p><p className="mt-0.5 text-[11px] text-text-faint">{strings.settings.terminalThemeHint}</p></div><div className="flex rounded-lg bg-control p-0.5">{(['dark', 'light'] as ThemeId[]).map((themeId) => <SegmentButton key={themeId} testId={`settings-terminal-theme-${themeId}`} selected={settings.terminalThemeId === themeId} onClick={() => settings.setTerminalTheme(themeId)}>{themeId === 'dark' ? strings.settings.dark : strings.settings.light}</SegmentButton>)}</div></div>
+              <div className="flex items-center justify-between gap-6"><div className="min-w-0"><p className="font-pingfang text-[12px] font-medium text-text-secondary">{strings.settings.terminalTheme}</p><p className="mt-0.5 font-pingfang text-[11px] text-text-faint">{strings.settings.terminalThemeHint}</p></div><div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-control p-0.5">{(['dark', 'light'] as ThemeId[]).map((themeId) => <SegmentButton key={themeId} testId={`settings-terminal-theme-${themeId}`} selected={settings.terminalThemeId === themeId} onClick={() => settings.setTerminalTheme(themeId)}>{strings.settings.terminalThemeNames[themeId]}</SegmentButton>)}</div></div>
               <div data-testid="terminal-theme-preview" className="mt-2.5 flex gap-[3px] overflow-hidden rounded-md">{colorKeys.map((key) => <span key={key} title={terminalTheme[key]} className="h-3.5 min-w-0 flex-1" style={{ background: terminalTheme[key] }} />)}</div>
             </div>
             <Row label={strings.settings.font} hint={strings.settings.fontHint}><span className="font-maple text-[12px] text-text-secondary">{strings.settings.mapleMono}</span></Row>
-            <Row label={strings.settings.fontSize}><div className="flex items-center gap-0.5 rounded-lg bg-control p-0.5"><button type="button" data-testid="settings-font-decrease" aria-label={strings.settings.decreaseFontSize} onClick={() => settings.setFont(settings.fontFamily, Math.max(10, settings.fontSize - 1))} className="flex size-6 items-center justify-center rounded-md text-text-muted hover:bg-control-active"><Minus className="size-3" strokeWidth={1.75} /></button><span data-testid="settings-font-size" className="w-10 text-center font-maple text-[12px] text-text-secondary">{strings.settings.pixels(settings.fontSize)}</span><button type="button" data-testid="settings-font-increase" aria-label={strings.settings.increaseFontSize} onClick={() => settings.setFont(settings.fontFamily, Math.min(24, settings.fontSize + 1))} className="flex size-6 items-center justify-center rounded-md text-text-muted hover:bg-control-active"><Plus className="size-3" strokeWidth={1.75} /></button></div></Row>
+            <Row label={strings.settings.fontSize}><div className="flex items-center gap-0.5 rounded-lg bg-control p-0.5"><button type="button" data-testid="settings-font-decrease" aria-label={strings.settings.decreaseFontSize} onClick={() => settings.setFont(settings.fontFamily, Math.max(10, settings.fontSize - 1))} className="cursor-target flex size-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-control-active hover:text-text-primary"><Minus className="size-3" strokeWidth={1.75} /></button><span data-testid="settings-font-size" className="w-10 text-center font-maple text-[12px] text-text-secondary">{strings.settings.pixels(settings.fontSize)}</span><button type="button" data-testid="settings-font-increase" aria-label={strings.settings.increaseFontSize} onClick={() => settings.setFont(settings.fontFamily, Math.min(24, settings.fontSize + 1))} className="cursor-target flex size-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-control-active hover:text-text-primary"><Plus className="size-3" strokeWidth={1.75} /></button></div></Row>
             <Row label={strings.settings.ligatures} hint={strings.settings.ligaturesHint}><Toggle testId="settings-ligatures" checked={settings.ligatures} onChange={settings.setLigatures} /></Row>
+            <Row label={strings.settings.terminalRounded} hint={strings.settings.terminalRoundedHint}><Toggle testId="settings-terminal-rounded" checked={settings.terminalRounded} onChange={settings.setTerminalRounded} /></Row>
           </Section>
 
           <Section label="session" title={strings.settings.sections.session}>
-            <Row label={strings.settings.defaultTerminal} hint={strings.settings.defaultTerminalHint}><select data-testid="settings-default-terminal" value={shells.some((shell) => shell.id === settings.defaultTerminal) ? settings.defaultTerminal : shells[0]?.id ?? ''} disabled={shells.length === 0} onChange={(event) => settings.setDefaultTerminal(event.target.value)} className={selectClass}>{shells.map((shell) => <option key={shell.id} value={shell.id}>{shell.name}</option>)}</select></Row>
+            <Row label={strings.settings.defaultTerminal} hint={strings.settings.defaultTerminalHint}><Dropdown testId="settings-default-terminal" direction="up" value={shells.some((shell) => shell.id === settings.defaultTerminal) ? settings.defaultTerminal : shells[0]?.id ?? ''} disabled={shells.length === 0} options={shells.map((shell) => ({ value: shell.id, label: shell.name }))} onChange={(value) => settings.setDefaultTerminal(value)} /></Row>
           </Section>
         </div>
       </section>
@@ -81,11 +82,88 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
 }
 
 function SegmentButton({ selected, disabled, title, testId, onClick, children }: { selected: boolean; disabled?: boolean; title?: string; testId?: string; onClick?: () => void; children: ReactNode }) {
-  return <button type="button" data-testid={testId} aria-pressed={selected} disabled={disabled} title={title} onClick={onClick} className={`rounded-md px-2.5 py-1 font-pingfang text-[11px] font-medium ${disabled ? 'cursor-not-allowed text-text-disabled' : selected ? 'bg-control-active text-text-primary shadow-sm' : 'text-text-muted hover:text-text-secondary'}`}>{children}</button>
+  return <button type="button" data-testid={testId} aria-pressed={selected} disabled={disabled} title={title} onClick={onClick} className={`rounded-md px-2.5 py-1 font-pingfang text-[11px] font-medium transition-colors ${disabled ? 'cursor-not-allowed text-text-disabled' : selected ? 'cursor-target bg-control-active text-text-primary shadow-sm' : 'cursor-target text-text-muted hover:text-text-secondary'}`}>{children}</button>
 }
 
 function Toggle({ checked, disabled, testId, onChange }: { checked: boolean; disabled?: boolean; testId?: string; onChange?: (value: boolean) => void }) {
-  return <button type="button" data-testid={testId} role="switch" aria-checked={checked} disabled={disabled} onClick={() => onChange?.(!checked)} className={`relative h-[18px] w-8 rounded-full ${checked ? 'bg-button-primary' : 'bg-control'} ${disabled ? 'cursor-not-allowed opacity-55' : ''}`}><span className={`absolute top-[2px] left-0 size-3.5 rounded-full bg-surface shadow-sm transition-transform ${checked ? 'translate-x-[16px]' : 'translate-x-[2px]'}`} /></button>
+  return <button type="button" data-testid={testId} role="switch" aria-checked={checked} disabled={disabled} onClick={() => onChange?.(!checked)} className={`relative h-[18px] w-8 rounded-full transition-colors ${checked ? 'bg-button-primary' : 'bg-border-control'} ${disabled ? 'cursor-not-allowed opacity-55' : 'cursor-target'}`}><span className={`absolute top-[2px] left-0 size-3.5 rounded-full bg-surface shadow-sm transition-transform ${checked ? 'translate-x-[16px]' : 'translate-x-[2px]'}`} /></button>
 }
 
-const selectClass = 'rounded-lg border border-border-default bg-input px-2 py-1.5 font-pingfang text-[12px] text-text-secondary outline-none hover:bg-input-hover focus:border-input-focus disabled:opacity-50'
+interface DropdownOption {
+  value: string
+  label: string
+}
+
+/** 自绘下拉框：原生 <select> 的弹出层无法用主题 token 定制，这里统一替换。 */
+function Dropdown({ testId, value, options, disabled, direction = 'down', onChange }: { testId?: string; value: string; options: readonly DropdownOption[]; disabled?: boolean; direction?: 'down' | 'up'; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open])
+
+  const active = options.find((option) => option.value === value)
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        data-testid={testId}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((previous) => !previous)}
+        className="cursor-target flex min-w-[128px] items-center justify-between gap-2 rounded-lg border border-border-default bg-input px-2.5 py-1.5 font-pingfang text-[12px] text-text-secondary outline-none transition-colors hover:bg-input-hover focus:border-input-focus disabled:opacity-50"
+      >
+        <span className="truncate">{active?.label ?? value}</span>
+        <ChevronDown className={`size-3.5 shrink-0 text-text-faint transition-transform ${open ? 'rotate-180' : ''}`} strokeWidth={1.75} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.ul
+            role="listbox"
+            data-testid={testId ? `${testId}-list` : undefined}
+            initial={{ opacity: 0, y: direction === 'down' ? -4 : 4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: direction === 'down' ? -4 : 4, scale: 0.98 }}
+            transition={{ duration: 0.14, ease: [0.32, 0.72, 0, 1] }}
+            className={`shell-popover absolute right-0 z-30 min-w-full overflow-hidden rounded-lg border border-border-default bg-surface p-1 ${direction === 'down' ? 'top-full mt-1' : 'bottom-full mb-1'}`}
+          >
+            {options.map((option) => (
+              <li key={option.value}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={option.value === value}
+                  onClick={() => {
+                    onChange(option.value)
+                    setOpen(false)
+                  }}
+                  className={`cursor-target flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left font-pingfang text-[12px] whitespace-nowrap transition-colors ${option.value === value ? 'bg-surface-strong text-text-primary' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}
+                >
+                  <span className="truncate">{option.label}</span>
+                  {option.value === value && <Check className="size-3.5 shrink-0" strokeWidth={1.75} />}
+                </button>
+              </li>
+            ))}
+          </motion.ul>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}

@@ -140,8 +140,21 @@ export const WindowInvokeChannel = {
   Minimize: 'window:minimize',
   ToggleMaximize: 'window:toggle-maximize',
   Close: 'window:close',
-  IsMaximized: 'window:is-maximized'
+  IsMaximized: 'window:is-maximized',
+  GetPosition: 'window:get-position'
 } as const
+
+/**
+ * 窗口左上角相对"当前所在显示器"的位置与该显示器尺寸。
+ * 侧栏环境渐变把一张显示器大小的虚拟渐变画布锚定在屏幕上，
+ * 用该偏移取窗口对应的切片；跨显示器移动时坐标系自动跟随。
+ */
+export interface WindowPositionPayload {
+  x: number
+  y: number
+  screenWidth: number
+  screenHeight: number
+}
 
 export const ThemeInvokeChannel = {
   ListUser: 'theme:list-user'
@@ -163,7 +176,8 @@ export const StatsInvokeChannel = {
 
 // ───── Main → Renderer（webContents.send，事件流）─────────
 export const WindowEventChannel = {
-  MaximizedChanged: 'window:maximized-changed'
+  MaximizedChanged: 'window:maximized-changed',
+  PositionChanged: 'window:position-changed'
 } as const
 
 export const ptyDataChannel = (ptyId: string): string => `pty:data:${ptyId}`
@@ -208,6 +222,10 @@ export interface WindowApi {
   close: () => Promise<void>
   isMaximized: () => Promise<boolean>
   onMaximizedChange: (cb: (maximized: boolean) => void) => () => void
+  getPosition: () => Promise<WindowPositionPayload>
+  onPositionChange: (
+    cb: (position: WindowPositionPayload) => void
+  ) => () => void
 }
 
 export interface ThemeApi {

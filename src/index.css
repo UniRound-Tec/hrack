@@ -69,7 +69,9 @@
   --font-heading: var(--font-pingfang);
   --font-ammonite: "Ammonite", sans-serif;
   --font-pingfang: "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  --font-maple: "Maple Mono", ui-monospace, monospace;
+  /* 内嵌标准版 Maple 无中文字形；中文回退到界面普通字体（原型本机装的是
+     Maple Mono NF CN），不要落到 generic monospace（Windows 会命中宋体）。 */
+  --font-maple: "Maple Mono", "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Microsoft YaHei", ui-monospace, monospace;
 
   --color-app: var(--vib-bg-app);
   --color-content: var(--vib-bg-content);
@@ -83,6 +85,7 @@
   --color-backdrop-strong: var(--vib-bg-backdrop-strong);
   --color-text-primary: var(--vib-text-primary);
   --color-text-secondary: var(--vib-text-secondary);
+  --color-text-strong: var(--vib-text-strong);
   --color-text-muted: var(--vib-text-muted);
   --color-text-faint: var(--vib-text-faint);
   --color-text-disabled: var(--vib-text-disabled);
@@ -94,8 +97,10 @@
   --color-border-control: var(--vib-border-control);
   --color-flame: var(--vib-accent-flame);
   --color-cursor-accent: var(--vib-accent-cursor);
+  --color-target-accent: var(--vib-accent-target);
   --color-brand-logo: var(--vib-brand-logo);
   --color-brand-logo-shine: var(--vib-brand-logoShine);
+  --color-brand-logo-muted: var(--vib-brand-logoMuted);
   --color-status-working: var(--vib-status-working);
   --color-status-working-dot: var(--vib-status-working-dot);
   --color-status-needs-you: var(--vib-status-needsYou);
@@ -137,9 +142,9 @@ body {
   overflow: hidden;
 }
 
-button {
-  font: inherit;
-}
+/* 注意：不要在这里写未分层的 button { font: inherit } —— 未分层规则会压过
+   @layer utilities，导致按钮上的 text-[NNpx] 全部失效（Tailwind preflight
+   已在 @layer base 内做了同样的 reset）。 */
 
 .app-shell {
   background: var(--vib-bg-app);
@@ -155,7 +160,8 @@ button {
 }
 
 .titlebar {
-  background: var(--vib-bg-app);
+  /* 透明：露出 app-shell 根上的底色与环境渐变层 */
+  background: transparent;
   color: var(--vib-titlebar-fg);
 }
 
@@ -163,10 +169,20 @@ button {
   padding-left: 78px;
 }
 
-.titlebar-action:hover:not(:disabled),
-.titlebar-action-active {
+/* 原型：标题栏功能按钮 text-neutral-500 → hover neutral-800 / 激活 neutral-900 */
+.titlebar-action {
+  color: var(--vib-text-muted);
+}
+
+.titlebar-action:hover:not(:disabled) {
   background: var(--vib-titlebar-bg-hover);
-  color: var(--vib-titlebar-fg-hover);
+  color: var(--vib-text-secondary);
+}
+
+.titlebar-action-active,
+.titlebar-action-active:hover:not(:disabled) {
+  background: var(--vib-titlebar-bg-hover);
+  color: var(--vib-text-primary);
 }
 
 .titlebar-action:disabled {
@@ -226,17 +242,29 @@ button {
   background: var(--vib-titlebar-bg-hover);
 }
 
-.window-control-close-icon,
+/* 关闭按钮画一个 10×10 的 X：两条对角线分别绕自身中心旋转 ±45°。 */
+.window-control-close-icon {
+  position: relative;
+  width: 10px;
+  height: 10px;
+}
+
+.window-control-close-icon::before,
 .window-control-close-icon::after {
   position: absolute;
-  width: 12px;
+  top: 50%;
+  left: 50%;
+  width: 14px;
   border-top: 1px solid currentColor;
   content: "";
-  transform: rotate(45deg);
+}
+
+.window-control-close-icon::before {
+  transform: translate(-50%, -50%) rotate(45deg);
 }
 
 .window-control-close-icon::after {
-  transform: rotate(90deg);
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 .sidebar-scroll {
@@ -281,17 +309,32 @@ button {
   );
 }
 
-.top-tab-viewport .sidebar-scroll {
-  scrollbar-width: thin;
+/* 顶部 Tab 滚动区：隐藏滚动条，横向滚动交给滚轮（TopTabBar 里做 deltaY 转换） */
+.scrollbar-hidden {
+  scrollbar-width: none;
 }
 
-.top-tab-viewport .sidebar-scroll::-webkit-scrollbar {
-  width: auto;
-  height: 4px;
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
 }
 
 .shell-popover {
   box-shadow: 0 20px 25px -5px var(--vib-shadow-popover);
+}
+
+/* 原型 hover 卡：transition-opacity delay-150，进入前先停 150ms 再淡入 */
+@keyframes hover-card-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.hover-card-delayed {
+  opacity: 0;
+  animation: hover-card-in 150ms ease-out 150ms forwards;
 }
 
 .shell-sheet {

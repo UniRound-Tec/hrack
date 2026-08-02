@@ -25,7 +25,8 @@ import {
   type ShellApi,
   type SpawnOptions,
   type ThemeApi,
-  type WindowApi
+  type WindowApi,
+  type WindowPositionPayload
 } from '../shared/ipc-contract'
 
 /** 推算 Windows build 号（os.release() 形如 "10.0.26200"）。 */
@@ -111,6 +112,26 @@ const windowApi: WindowApi = {
     ipcRenderer.on(WindowEventChannel.MaximizedChanged, handler)
     return () =>
       ipcRenderer.removeListener(WindowEventChannel.MaximizedChanged, handler)
+  },
+  getPosition: () => ipcRenderer.invoke(WindowInvokeChannel.GetPosition),
+  onPositionChange: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      position: WindowPositionPayload
+    ): void => {
+      if (
+        position &&
+        typeof position.x === 'number' &&
+        typeof position.y === 'number' &&
+        typeof position.screenWidth === 'number' &&
+        typeof position.screenHeight === 'number'
+      ) {
+        cb(position)
+      }
+    }
+    ipcRenderer.on(WindowEventChannel.PositionChanged, handler)
+    return () =>
+      ipcRenderer.removeListener(WindowEventChannel.PositionChanged, handler)
   }
 }
 

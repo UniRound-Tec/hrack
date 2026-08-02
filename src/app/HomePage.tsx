@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react'
 import { motion } from 'motion/react'
 import { Settings2, Terminal as TerminalIcon } from 'lucide-react'
-import type { ShellOption } from '../../shared/ipc-contract'
+import type {
+  HistoryEventKind,
+  ShellOption
+} from '../../shared/ipc-contract'
 import type { SessionEntry } from '../state/sessionsStore'
 import type { TerminalEntry } from '../state/terminalsStore'
-import { getAdapterIcon } from './adapterIcons'
+import { getAdapterIcon, getAdapterName } from './adapterIcons'
 import ClickSpark from './effects/ClickSpark'
 import CountUp from './effects/CountUp'
 import ShinyText from './effects/ShinyText'
@@ -15,6 +18,32 @@ import { statusDot, statusLabel, statusTone, type SessionStatus } from './sessio
 import { strings } from './strings'
 
 const ATTENTION_COLLAPSED_ROWS = 8
+
+/** 原型全局 ClickSpark 参数（App.tsx：#1a1a1a / 8 / 18 / 10 / 450）。 */
+const clickSparkProps = {
+  sparkColor: 'var(--vib-accent-spark)',
+  sparkSize: 8,
+  sparkRadius: 18,
+  sparkCount: 10,
+  duration: 450
+} as const
+
+/** 原型 historyKindTone / historyKindDot 的 token 版。 */
+const historyKindTone: Record<HistoryEventKind, string> = {
+  tool_call: 'text-text-strong',
+  completed: 'text-status-done',
+  approved: 'text-status-needs-you',
+  message: 'text-text-muted'
+}
+
+const historyKindDot: Record<HistoryEventKind, string> = {
+  tool_call: 'bg-text-faint',
+  completed: 'bg-status-done-dot',
+  approved: 'bg-status-needs-you-dot',
+  message: 'bg-status-idle-dot'
+}
+
+type AttentionFilter = 'all' | Extract<SessionStatus, 'needs-you' | 'error'>
 
 interface HomePageProps {
   sessions: readonly SessionEntry[]
@@ -52,9 +81,7 @@ export default function HomePage({
   onConfigureCli,
   onViewSession
 }: HomePageProps) {
-  const [attentionFilter, setAttentionFilter] = useState<
-    'all' | Extract<SessionStatus, 'needs-you' | 'error'>
-  >('all')
+  const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>('all')
   const [attentionExpanded, setAttentionExpanded] = useState(false)
   const greeting = useMemo(
     () => strings.home.greetings[Math.floor(Math.random() * strings.home.greetings.length)],
@@ -76,25 +103,87 @@ export default function HomePage({
     : filtered.slice(0, ATTENTION_COLLAPSED_ROWS)
   const defaultShell = findDefaultShell(shells, defaultTerminal)
 
-  const launchers = (
+  const pickAttentionFilter = (id: AttentionFilter): void => {
+    setAttentionFilter(id)
+    setAttentionExpanded(false)
+  }
+
+  const launchCardClass =
+    'flex w-full flex-col items-start gap-2.5 rounded-xl border border-border-default bg-surface p-3 text-left font-pingfang transition-colors hover:border-border-strong hover:bg-surface-hover'
+
+  /** 空态启动卡：原型带 0.3s 起步、每张 +0.05s 的 spring 入场。 */
+  const launchers = [
+    {
+      key: 'terminal',
+      body: (
+        <>
+          <button
+            type="button"
+            data-testid="home-quick-terminal"
+            onClick={onLaunchDefaultTerminal}
+            className={launchCardClass}
+          >
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-strong">
+              <TerminalIcon className="size-4" strokeWidth={1.75} />
+            </span>
+            <span className="w-full min-w-0">
+              <span className="block text-[12px] font-semibold text-text-primary">
+                {strings.home.terminal}
+              </span>
+              <span className="block truncate text-[10px] text-text-faint">
+                {strings.home.defaultTerminal(defaultShell?.name ?? strings.newSession.terminalFallback)}
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            data-testid="home-terminal-options"
+            aria-label={strings.home.terminalOptions}
+            title={strings.home.terminalOptions}
+            onClick={onChooseTerminal}
+            className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-md text-text-faint opacity-0 transition-all hover:bg-control hover:text-text-secondary group-hover:opacity-100 focus:opacity-100"
+          >
+            <Settings2 className="size-3" strokeWidth={1.75} />
+          </button>
+        </>
+      )
+    },
+    ...cliOptions.map((option) => ({
+      key: option.id,
+      body: (
+        <button
+          type="button"
+          data-testid={`home-quick-${option.id}`}
+          onClick={() => onConfigureCli(option)}
+          className={launchCardClass}
+        >
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-strong">
+            <LaunchIcon option={option} />
+          </span>
+          <span className="w-full min-w-0">
+            <span className="block text-[12px] font-semibold text-text-primary">{option.name}</span>
+            <span className="block truncate text-[10px] text-text-faint">{option.hint}</span>
+          </span>
+        </button>
+      )
+    }))
+  ]
+
+  const denseLaunchers = (
     <>
-      <div className="cursor-target group relative w-[142px]">
+      <div className="cursor-target group flex shrink-0 items-center rounded-full border border-border-default bg-surface transition-colors hover:border-border-strong hover:bg-surface-hover">
         <button
           type="button"
           data-testid="home-quick-terminal"
           onClick={onLaunchDefaultTerminal}
-          className="flex w-full flex-col items-start gap-2.5 rounded-xl border border-border-default bg-surface p-3 text-left font-pingfang transition-colors hover:bg-surface-hover"
+          className="flex items-center gap-2 py-1.5 pr-1 pl-1.5 font-pingfang"
         >
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-control">
-            <TerminalIcon className="size-4" strokeWidth={1.75} />
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-strong">
+            <TerminalIcon className="size-[13px]" strokeWidth={1.75} />
           </span>
-          <span className="min-w-0">
-            <span className="block text-[12px] font-semibold text-text-primary">
-              {strings.home.terminal}
-            </span>
-            <span className="block truncate text-[10px] text-text-faint">
-              {strings.home.defaultTerminal(defaultShell?.name ?? strings.newSession.terminalFallback)}
-            </span>
+          <span className="text-[12px] font-medium whitespace-nowrap text-text-secondary">{strings.home.terminal}</span>
+          <span className="font-maple text-[10px] whitespace-nowrap text-text-faint">
+            {defaultShell?.name ?? strings.newSession.terminalFallback}
           </span>
         </button>
         <button
@@ -103,7 +192,7 @@ export default function HomePage({
           aria-label={strings.home.terminalOptions}
           title={strings.home.terminalOptions}
           onClick={onChooseTerminal}
-          className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-md text-text-faint opacity-0 transition-all hover:bg-control hover:text-text-secondary group-hover:opacity-100 focus:opacity-100"
+          className="mr-1 flex size-6 shrink-0 items-center justify-center rounded-full text-text-faint opacity-70 transition-all hover:bg-control hover:text-text-secondary group-hover:opacity-100"
         >
           <Settings2 className="size-3" strokeWidth={1.75} />
         </button>
@@ -114,34 +203,12 @@ export default function HomePage({
           type="button"
           data-testid={`home-quick-${option.id}`}
           onClick={() => onConfigureCli(option)}
-          className="cursor-target flex w-[142px] flex-col items-start gap-2.5 rounded-xl border border-border-default bg-surface p-3 text-left font-pingfang transition-colors hover:bg-surface-hover"
+          className="cursor-target flex shrink-0 items-center gap-2 rounded-full border border-border-default bg-surface py-1.5 pr-3 pl-1.5 font-pingfang transition-colors hover:border-border-strong hover:bg-surface-hover"
         >
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-control">
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-strong">
             <LaunchIcon option={option} />
           </span>
-          <span className="min-w-0">
-            <span className="block text-[12px] font-semibold text-text-primary">{option.name}</span>
-            <span className="block truncate text-[10px] text-text-faint">{option.hint}</span>
-          </span>
-        </button>
-      ))}
-    </>
-  )
-
-  const denseLaunchers = (
-    <>
-      <div className="group flex shrink-0 items-center rounded-full border border-border-default bg-surface transition-colors hover:bg-surface-hover">
-        <button type="button" data-testid="home-quick-terminal" onClick={onLaunchDefaultTerminal} className="flex items-center gap-2 py-1.5 pr-1 pl-1.5">
-          <span className="flex size-6 items-center justify-center rounded-full bg-control"><TerminalIcon className="size-[13px]" strokeWidth={1.75} /></span>
-          <span className="text-[12px] font-medium text-text-secondary">{strings.home.terminal}</span>
-          <span className="font-maple text-[10px] text-text-faint">{defaultShell?.name ?? strings.newSession.terminalFallback}</span>
-        </button>
-        <button type="button" data-testid="home-terminal-options" aria-label={strings.home.terminalOptions} onClick={onChooseTerminal} className="mr-1 flex size-6 items-center justify-center rounded-full text-text-faint hover:bg-control hover:text-text-secondary"><Settings2 className="size-3" strokeWidth={1.75} /></button>
-      </div>
-      {cliOptions.map((option) => (
-        <button key={option.id} type="button" data-testid={`home-quick-${option.id}`} onClick={() => onConfigureCli(option)} className="flex shrink-0 items-center gap-2 rounded-full border border-border-default bg-surface py-1.5 pr-3 pl-1.5 transition-colors hover:bg-surface-hover">
-          <span className="flex size-6 items-center justify-center rounded-full bg-control"><LaunchIcon option={option} /></span>
-          <span className="text-[12px] font-medium text-text-secondary">{option.name}</span>
+          <span className="text-[12px] font-medium whitespace-nowrap text-text-secondary">{option.name}</span>
         </button>
       ))}
     </>
@@ -149,7 +216,7 @@ export default function HomePage({
 
   if (fresh) {
     return (
-      <ClickSpark sparkColor="var(--vib-accent-flame)" sparkSize={6} sparkRadius={16}>
+      <ClickSpark {...clickSparkProps}>
         <section data-testid="home-page" data-home-state="fresh" className="flex h-full flex-col items-center justify-center overflow-y-auto px-8 py-14">
           <p className="font-maple text-[10px] tracking-[0.28em] text-text-faint uppercase">
             {strings.home.freshLabel}
@@ -165,13 +232,31 @@ export default function HomePage({
             typingSpeed={42}
             initialDelay={160}
             loop={false}
-            className="mt-6 text-center font-pingfang text-[24px] font-semibold text-text-primary"
+            showCursor
+            cursorCharacter="|"
+            cursorClassName="text-text-faint"
+            className="mt-6 text-center font-pingfang text-[24px] font-semibold leading-tight tracking-wide text-text-primary"
           />
           <p className="mt-3 text-center font-pingfang text-[13px] text-text-muted">{strings.home.freshHint}</p>
           <div className="mt-9 flex w-full max-w-[620px] flex-wrap justify-center gap-2">
-            {launchers}
+            {launchers.map(({ key, body }, index) => (
+              <motion.div
+                key={key}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{
+                  delay: 0.3 + index * 0.05,
+                  type: 'spring',
+                  stiffness: 380,
+                  damping: 30
+                }}
+                className="cursor-target group relative w-[142px]"
+              >
+                {body}
+              </motion.div>
+            ))}
           </div>
-          <p className="mt-10 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 font-maple text-[10px] text-text-faint">
+          <p className="mt-11 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 font-maple text-[10px] text-text-faint">
             <span>{strings.home.freshCollect}</span>
             <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-status-needs-you-dot" />{strings.sessionStatus.needsYou}</span>
             <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-status-error-dot" />{strings.sessionStatus.error}</span>
@@ -196,18 +281,54 @@ export default function HomePage({
   ]
 
   return (
-    <ClickSpark sparkColor="var(--vib-accent-flame)" sparkSize={6} sparkRadius={16}>
+    <ClickSpark {...clickSparkProps}>
       <section data-testid="home-page" data-home-state="dense" className="sidebar-scroll h-full overflow-y-auto">
         <header className="px-8 pt-10 pb-8">
-          <p className="mb-3 font-maple text-[10px] tracking-[0.28em] text-text-faint uppercase">{strings.home.deskLabel}</p>
-          <TextType as="h1" text={greeting.text} keywords={[...greeting.keywords]} keywordColor="var(--vib-accent-flame)" typingSpeed={42} initialDelay={120} loop={false} className="font-pingfang text-[32px] font-semibold text-text-primary" />
-          <p className="mt-4 flex gap-2.5 font-maple text-[12px]">
-            <span className="text-status-needs-you">{strings.home.waitingApproval(needsYou)}</span>
-            <span className="text-text-disabled">·</span>
-            <span className="text-status-error">{strings.home.errors(errors)}</span>
-            <span className="text-text-disabled">·</span>
-            <span className="text-status-done">{strings.home.live(live)}</span>
-          </p>
+          <div className="min-w-0">
+            <p className="mb-3 font-maple text-[10px] tracking-[0.28em] text-text-faint uppercase">{strings.home.deskLabel}</p>
+            <TextType
+              as="h1"
+              text={greeting.text}
+              keywords={[...greeting.keywords]}
+              keywordColor="var(--vib-accent-flame)"
+              typingSpeed={42}
+              initialDelay={120}
+              loop={false}
+              showCursor
+              cursorCharacter="|"
+              cursorClassName="text-text-faint"
+              className="font-pingfang text-[32px] font-semibold leading-tight tracking-wide text-text-primary"
+            />
+            <p className="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 font-maple text-[12px] leading-none">
+              <span aria-hidden className="select-none text-text-disabled">$</span>
+              <button
+                type="button"
+                data-testid="home-prompt-needs-you"
+                onClick={() => pickAttentionFilter('needs-you')}
+                className="cursor-target text-status-needs-you decoration-dotted underline-offset-4 hover:underline"
+              >
+                {strings.home.waitingApproval(needsYou)}
+              </button>
+              <span className="select-none text-text-disabled">·</span>
+              <button
+                type="button"
+                data-testid="home-prompt-error"
+                onClick={() => pickAttentionFilter('error')}
+                className="cursor-target text-status-error decoration-dotted underline-offset-4 hover:underline"
+              >
+                {strings.home.errors(errors)}
+              </button>
+              <span className="select-none text-text-disabled">·</span>
+              <button
+                type="button"
+                data-testid="home-prompt-live"
+                onClick={() => pickAttentionFilter('all')}
+                className="cursor-target text-status-done decoration-dotted underline-offset-4 hover:underline"
+              >
+                {strings.home.live(live)}
+              </button>
+            </p>
+          </div>
         </header>
 
         <section className="px-8 pb-8">
@@ -216,61 +337,142 @@ export default function HomePage({
         </section>
 
         <section className="px-8 pb-8">
-          <div className="flex items-end justify-between gap-3 border-b border-border-subtle pb-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle pb-2.5">
             <div>
               <p className="font-maple text-[10px] tracking-[0.22em] text-text-faint uppercase">attn</p>
               <h2 className="mt-0.5 font-pingfang text-[13px] font-semibold text-text-secondary">{strings.home.attention}</h2>
             </div>
-            <div className="flex rounded-lg bg-control p-0.5">
-              {filterOptions.map((option) => (
-                <button key={option.id} type="button" data-testid={`home-filter-${option.id}`} onClick={() => { setAttentionFilter(option.id); setAttentionExpanded(false) }} className={`rounded-md px-2.5 py-1 font-pingfang text-[11px] ${attentionFilter === option.id ? 'bg-control-active text-text-primary' : 'text-text-muted'}`}>
-                  {option.label} <span className="font-maple text-[10px]">{option.count}</span>
-                </button>
-              ))}
+            <div className="flex items-center gap-0.5 rounded-lg bg-control p-0.5">
+              {filterOptions.map((option) => {
+                const selected = attentionFilter === option.id
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    data-testid={`home-filter-${option.id}`}
+                    onClick={() => pickAttentionFilter(option.id)}
+                    className={[
+                      'cursor-target flex items-baseline gap-1.5 rounded-md px-2.5 py-1 font-pingfang text-[11px] font-medium transition-colors',
+                      selected
+                        ? 'bg-control-active text-text-primary shadow-sm'
+                        : 'text-text-muted hover:text-text-secondary'
+                    ].join(' ')}
+                  >
+                    {option.label}
+                    <span className={`font-maple text-[10px] ${selected ? 'text-text-muted' : 'text-text-faint'}`}>
+                      {option.count}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           </div>
           {visible.length === 0 && <p className="py-4 font-pingfang text-[11px] text-text-faint">{strings.home.emptyAttention}</p>}
-          <ul>
+          <ul className="flex flex-col">
             {visible.map((session) => {
               const Icon = getAdapterIcon(session.adapterId)
               return (
-                <li key={session.sessionId} className="border-b border-border-faint">
-                  <button type="button" onClick={() => onViewSession(session)} className="cursor-target flex w-full items-center gap-3 py-3 text-left hover:bg-surface-hover">
+                <li key={session.sessionId} className="group relative border-b border-border-faint last:border-b-0">
+                  <button
+                    type="button"
+                    onClick={() => onViewSession(session)}
+                    className="cursor-target -mx-3 flex w-[calc(100%+1.5rem)] items-center gap-3 rounded-lg px-3 py-3 text-left font-pingfang transition-colors hover:bg-surface-strong"
+                  >
                     <span className={`size-1.5 shrink-0 rounded-full ${statusDot[session.status]}`} />
-                    <Icon size={15} className="size-[15px]" />
-                    <span className="min-w-0 flex-1 truncate font-pingfang text-[13px] text-text-secondary">{session.detail ?? session.name}</span>
-                    <span className="hidden font-maple text-[10px] text-text-muted sm:inline">{session.name}</span>
-                    <span className={`font-maple text-[10px] ${statusTone[session.status]}`}>{statusLabel[session.status]}</span>
-                    <span className="font-maple text-[10px] text-text-faint">{relativeTime(session.lastActivityAt)}</span>
+                    <span className="inline-flex size-6 shrink-0 items-center justify-center">
+                      <Icon size={15} className="size-[15px]" />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-text-secondary">{session.detail ?? session.name}</span>
+                    <span className="ml-auto hidden shrink-0 items-baseline gap-2 font-maple text-[10px] text-text-faint transition-opacity group-hover:opacity-0 sm:flex">
+                      <span className="text-text-muted">{session.name}</span>
+                      <span className={statusTone[session.status]}>{statusLabel[session.status]}</span>
+                      <span>{relativeTime(session.lastActivityAt)}</span>
+                    </span>
                   </button>
+                  {/* v1 只看不操作：hover 仅提供「查看」跳转到对应终端 */}
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100">
+                    <button
+                      type="button"
+                      data-testid="home-attention-view"
+                      onClick={() => onViewSession(session)}
+                      className="cursor-target rounded-md border border-border-default bg-surface px-2.5 py-1 font-pingfang text-[11px] font-medium text-text-strong transition-colors hover:bg-surface-strong hover:text-text-primary"
+                    >
+                      {strings.common.view}
+                    </button>
+                  </div>
                 </li>
               )
             })}
           </ul>
           {filtered.length > ATTENTION_COLLAPSED_ROWS && (
-            <button type="button" data-testid="home-attention-expand" onClick={() => setAttentionExpanded((value) => !value)} className="mt-2.5 font-maple text-[11px] text-text-muted hover:text-text-primary">
+            <button
+              type="button"
+              data-testid="home-attention-expand"
+              onClick={() => setAttentionExpanded((value) => !value)}
+              className="cursor-target mt-2.5 font-maple text-[11px] tracking-wide text-text-muted transition-colors hover:text-text-primary"
+            >
               {attentionExpanded ? strings.home.showLess : strings.home.showAll(filtered.length)}
             </button>
           )}
         </section>
 
-        <section className="grid grid-cols-1 gap-10 px-8 pb-10 lg:grid-cols-5">
-          <div className="lg:col-span-3">
-            <div className="border-b border-border-subtle pb-2.5">
-              <p className="font-maple text-[10px] tracking-[0.22em] text-text-faint uppercase">log</p>
-              <h2 className="font-pingfang text-[13px] font-semibold text-text-secondary">{strings.home.recentHistory}</h2>
+        <section className="grid grid-cols-1 gap-x-10 gap-y-8 px-8 pb-10 lg:grid-cols-5">
+          <div className="min-w-0 lg:col-span-3">
+            <div className="flex items-end justify-between gap-3 border-b border-border-subtle pb-2.5">
+              <div>
+                <p className="font-maple text-[10px] tracking-[0.22em] text-text-faint uppercase">log</p>
+                <h2 className="mt-0.5 font-pingfang text-[13px] font-semibold text-text-secondary">{strings.home.recentHistory}</h2>
+              </div>
+              <span className="font-maple text-[10px] tracking-wide text-text-faint">tools · sessions</span>
             </div>
-            <ul>{history.map((event) => { const Icon = getAdapterIcon(event.adapterId); return (
-              <li key={event.id} className="flex items-start gap-3 border-b border-border-faint py-2.5">
-                <Icon size={14} className="mt-0.5 size-3.5 opacity-80" />
-                <span className="min-w-0 flex-1"><span className="block font-pingfang text-[12px] font-semibold text-text-primary">{event.title}</span><span className="block truncate font-maple text-[11px] text-text-muted">{event.detail}</span></span>
-                <span className="font-maple text-[10px] text-text-faint">{relativeTime(event.occurredAt)}</span>
-              </li>
-            ) })}</ul>
+            <ul className="flex flex-col">
+              {history.map((event) => {
+                const Icon = getAdapterIcon(event.adapterId)
+                return (
+                  <li key={event.id} className="border-b border-border-faint last:border-b-0">
+                    <button
+                      type="button"
+                      className="cursor-target -mx-3 flex w-[calc(100%+1.5rem)] items-start gap-3 rounded-lg px-3 py-2.5 text-left font-pingfang transition-colors hover:bg-surface-strong"
+                    >
+                      <span className={`mt-1.5 size-1.5 shrink-0 rounded-full ${historyKindDot[event.kind]}`} />
+                      <span className="mt-0.5 inline-flex size-6 shrink-0 items-center justify-center opacity-80">
+                        <Icon size={14} className="size-3.5" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-baseline gap-2">
+                          <span className="text-[12px] font-semibold text-text-primary">{getAdapterName(event.adapterId)}</span>
+                          <span className={`truncate font-maple text-[10px] ${historyKindTone[event.kind]}`}>{event.title}</span>
+                          <span className="ml-auto shrink-0 font-maple text-[10px] text-text-faint">{relativeTime(event.occurredAt)}</span>
+                        </span>
+                        <span className="mt-0.5 block truncate font-maple text-[11px] leading-snug text-text-muted">{event.detail}</span>
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
           </div>
-          <div className="lg:col-span-2">
-            <div className="border-b border-border-subtle pb-2.5"><p className="font-maple text-[10px] tracking-[0.22em] text-text-faint uppercase">metrics</p><h2 className="font-pingfang text-[13px] font-semibold text-text-secondary">{strings.home.allTime}</h2></div>
-            <ul>{stats.map((stat, index) => <li key={stat.id} className="flex items-baseline justify-between border-b border-border-faint py-3"><span className="font-pingfang text-[12px] text-text-muted">{stat.label} <span className="font-maple text-[10px] text-text-faint">{stat.hint}</span></span><span className="font-maple text-[20px] text-text-primary"><CountUp to={stat.value} duration={1.2} delay={index * 0.06} separator="," /></span></li>)}</ul>
+          <div className="min-w-0 lg:col-span-2">
+            <div className="flex items-end justify-between gap-3 border-b border-border-subtle pb-2.5">
+              <div>
+                <p className="font-maple text-[10px] tracking-[0.22em] text-text-faint uppercase">metrics</p>
+                <h2 className="mt-0.5 font-pingfang text-[13px] font-semibold text-text-secondary">{strings.home.allTime}</h2>
+              </div>
+              <span className="font-maple text-[10px] tracking-wide text-text-faint">all time</span>
+            </div>
+            <ul className="flex flex-col">
+              {stats.map((stat, index) => (
+                <li key={stat.id} className="flex items-baseline justify-between gap-3 border-b border-border-faint py-3 last:border-b-0">
+                  <p className="flex items-baseline gap-2">
+                    <span className="font-pingfang text-[12px] text-text-strong">{stat.label}</span>
+                    <span className="font-maple text-[10px] tracking-wide text-text-faint uppercase">{stat.hint}</span>
+                  </p>
+                  <p className="font-maple text-[20px] font-medium leading-none tracking-tight text-text-primary">
+                    <CountUp to={stat.value} from={0} duration={1.2} delay={0.06 * index} separator="," />
+                  </p>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
       </section>
