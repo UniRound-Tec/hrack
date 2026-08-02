@@ -7,7 +7,10 @@ import {
   builtInLightTheme,
   loadUiThemeRegistry
 } from './app/themeRuntime'
-import { startMockSessionsProvider } from './app/mockSessions'
+import {
+  setRuntimeMockSessions,
+  stopRuntimeMockSessions
+} from './app/mockSessions'
 import { useSettingsStore } from './state/settingsStore'
 
 const licenseLink = document.createElement('link')
@@ -33,14 +36,12 @@ async function bootstrap(): Promise<void> {
       }
     }
   )
-  const stopMockSessions = startMockSessionsProvider({
-    enabled: isMockRuntime()
-  })
+  setRuntimeMockSessions(isMockRuntime())
 
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
       unsubscribeTheme()
-      stopMockSessions()
+      stopRuntimeMockSessions()
     })
   }
 

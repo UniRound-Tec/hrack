@@ -140,3 +140,18 @@ export function startMockSessionsProvider(
     store.getState().removeSessions(mockIds)
   }
 }
+
+let stopRuntimeProvider: (() => void) | null = null
+
+/** Runtime switch used by bootstrap and the dev/E2E shell bridge. */
+export function setRuntimeMockSessions(enabled: boolean): void {
+  stopRuntimeProvider?.()
+  stopRuntimeProvider = enabled
+    ? startMockSessionsProvider({ enabled: true })
+    : null
+}
+
+export function stopRuntimeMockSessions(): void {
+  stopRuntimeProvider?.()
+  stopRuntimeProvider = null
+}

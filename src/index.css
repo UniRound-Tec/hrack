@@ -239,41 +239,6 @@ button {
   transform: rotate(90deg);
 }
 
-.tab-bar {
-  background: var(--vib-bg-surface-strong);
-  border-color: var(--vib-border-default);
-}
-
-.tab-item {
-  border-color: var(--vib-border-default);
-}
-
-.tab-item-active {
-  background: var(--vib-bg-app);
-  color: var(--vib-text-primary);
-}
-
-.tab-item-inactive {
-  background: var(--vib-bg-surface-strong);
-  color: var(--vib-text-muted);
-}
-
-.tab-item-inactive:hover,
-.tab-new:hover {
-  background: var(--vib-bg-surface-hover);
-  color: var(--vib-text-secondary);
-}
-
-.tab-action,
-.tab-new {
-  color: var(--vib-text-faint);
-}
-
-.tab-action:hover {
-  background: var(--vib-bg-control);
-  color: var(--vib-text-secondary);
-}
-
 .sidebar-scroll {
   scrollbar-color: var(--vib-scrollbar-thumb) transparent;
   scrollbar-width: thin;
@@ -303,6 +268,34 @@ button {
 .sidebar-scroll::-webkit-scrollbar-thumb:active {
   background: var(--vib-scrollbar-thumb-active);
   background-clip: content-box;
+}
+
+.top-tab-viewport {
+  min-width: 0;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 10px,
+    black calc(100% - 10px),
+    transparent
+  );
+}
+
+.top-tab-viewport .sidebar-scroll {
+  scrollbar-width: thin;
+}
+
+.top-tab-viewport .sidebar-scroll::-webkit-scrollbar {
+  width: auto;
+  height: 4px;
+}
+
+.shell-popover {
+  box-shadow: 0 20px 25px -5px var(--vib-shadow-popover);
+}
+
+.shell-sheet {
+  box-shadow: 0 -18px 40px var(--vib-shadow-window);
 }
 
 @keyframes copy-toast-in {

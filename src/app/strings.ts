@@ -16,7 +16,11 @@ export const strings = {
     view: '查看',
     cancel: '取消',
     confirm: '确认',
-    disabledUntilM5c: 'M5.c 开放'
+    disabledUntilM5c: 'M5.c 开放',
+    justNow: '刚刚',
+    minutesAgo: (minutes: number) => `${minutes} 分钟前`,
+    hoursAgo: (hours: number) => `${hours} 小时前`,
+    daysAgo: (days: number) => `${days} 天前`
   },
   navigation: {
     home: 'Home',
@@ -24,8 +28,12 @@ export const strings = {
     sessions: 'Sessions',
     terminals: 'Terminals',
     settings: '设置',
+    emptySessions: '暂无会话',
+    emptyTerminals: '暂无终端',
     expandSidebar: '展开侧栏',
-    collapseSidebar: '收起侧栏'
+    collapseSidebar: '收起侧栏',
+    closeTerminal: '关闭终端',
+    closeSession: '关闭会话'
   },
   sessionStatus: {
     working: '运行中',
@@ -99,6 +107,7 @@ export const strings = {
   newSession: {
     title: '新建会话',
     terminal: '终端',
+    quickTerminalHint: '按系统默认方式启动',
     chooseTerminal: '选择终端',
     configureCli: '配置 CLI 会话',
     sessionName: '会话名称',
@@ -107,7 +116,15 @@ export const strings = {
     arguments: '启动参数',
     runtime: '运行环境',
     rememberDefault: '下次默认以该方式启动',
-    launch: '启动会话'
+    launch: '启动会话',
+    p2Placeholder: 'CLI 与运行环境选项将在 P3 接入'
+  },
+  shell: {
+    homeLabel: 'home · app shell',
+    homeTitle: 'Welcome back.',
+    homeHint: '首页内容将在 P3 接入；三态导航与终端路由已可用。',
+    settingsHint: 'P2 先开放导航模式；完整设置项将在 P3 接入。',
+    unavailableTerminal: '这个演示会话没有可打开的终端。'
   },
   mock: {
     sessions: [

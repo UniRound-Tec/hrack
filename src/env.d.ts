@@ -4,6 +4,7 @@ import type {
   ThemeApi,
   WindowApi
 } from '../shared/ipc-contract'
+import type { VibingDebugShellApi } from './app/AppShell'
 
 // renderer 全局类型：preload 通过 contextBridge 注入 window.ptyApi。
 declare global {
@@ -13,6 +14,7 @@ declare global {
     windowApi: WindowApi
     themeApi: ThemeApi
     __VIBING_E2E__?: true
+    __vibingDebugShell?: VibingDebugShellApi
   }
 }
 

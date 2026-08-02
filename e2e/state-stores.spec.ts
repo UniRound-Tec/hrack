@@ -139,7 +139,8 @@ test.describe('terminalsStore', () => {
     expect(store.getState().closeTerminal(second.id)).toBe(false)
     expect(store.getState().activeTerminalId).toBe(first.id)
     expect(store.getState().closeTerminal(first.id)).toBe(true)
-    expect(store.getState().terminals).toHaveLength(1)
+    expect(store.getState().terminals).toHaveLength(0)
+    expect(store.getState().activeTerminalId).toBeNull()
   })
 })
 

@@ -1,6 +1,6 @@
 # M5.b 实施计划 —— App Shell 实现
 
-> 状态：**进行中**（P0、P1 已完成，2026-08-02）。
+> 状态：**进行中**（P0、P1、P2 已完成，2026-08-02）。
 > 目标：按 `/prototype` 定稿原型 **1:1 落地** App Shell——无边框窗口 + 自定义标题栏、
 > 三态导航（侧栏展开 / 图标条 / 顶部 Tab）、首页（含空态欢迎页）、设置页、新建会话流；
 > 设置面板直读写 `settingsStore`；侧栏 session 区由 mock provider（SPEC §11.5 schema）驱动。
@@ -281,6 +281,14 @@ export const StatsInvokeChannel = {
     创建序）间循环。
   - `xterm attachCustomKeyEventHandler` 拦截逻辑沿用 M3。
 
+**P2 实施结果（2026-08-02）**：`AppShell`、`Sidebar`、`IconRail`、全量横向滚动的
+`TopTabBar` 与 `TerminalPage` 已落地；页面路由替代 `activeTabId` 控制可见性，所有
+xterm/PTY 继续常驻挂载。`Ctrl+Shift+T/W`、`Ctrl+Tab`/`Ctrl+Shift+Tab` 已切换到
+新语义，关闭最后一个终端回 Home 且不关窗口。补齐 `__vibingDebugShell` 与测试 helper
+路由适配；品牌图标改走 `@lobehub/icons` Mono 精确入口，避免根入口扫描全部图标。
+P2 Shell 5 条、状态层 7 条及代表性渲染/resize/剪贴板 3 条定向用例通过；未运行整套
+E2E。Home/Settings 当前只承载 P2 路由与导航模式骨架，完整页面仍按计划归 P3。
+
 ### 4.8 设置页绑定
 
 | 原型控件 | M5.b 绑定 |
@@ -415,7 +423,7 @@ export const StatsInvokeChannel = {
 |---|---|---|
 | P0 基建（**已完成**） | frameless + TitleBar + 窗口控制 IPC；依赖引入；**token 体系 + 主题 schema/加载器/运行期接线（§4.11）**；字体迁移；特效组件迁移 | 窗口可拖动/最大化/关闭；内置 light.json 驱动全部 chrome 颜色；typecheck 过 |
 | P1 状态层（**已完成**） | settingsStore v3 迁移；terminalsStore/sessionsStore；mock provider；strings.ts | store 单测 + 迁移用例（v0/v1/v2→v3）通过 |
-| P2 Shell | AppShell/Sidebar/IconRail/TopTabBar/页面路由；TerminalPage 整合；快捷键 | 三态导航可用；既有终端门禁回归绿 |
+| P2 Shell（**已完成**） | AppShell/Sidebar/IconRail/TopTabBar/页面路由；TerminalPage 整合；快捷键 | 三态导航、keep-alive、快捷键定向门禁通过 |
 | P3 流程页 | 新建会话流（真实 spawn + dialog IPC）；HomePage 两态；SettingsPage 绑定 | new-session/home-empty/settings E2E 绿 |
 | P4 字体管线 | subset-fonts 脚本 + 构建接入 + NOTICE | 构建产物中文字体 < 1 MB 断言 |
 | P5 收尾 | E2E 选择器迁移全量回归；与原型逐页视觉比对（截图并排） | 全部 E2E 绿；视觉比对无差异项 |

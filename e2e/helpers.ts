@@ -24,10 +24,27 @@ export async function launchApp(): Promise<{ app: ElectronApplication; window: P
       () =>
         Boolean(
           (window as unknown as Record<string, unknown>)['__vibingDebug']
+        ) &&
+        Boolean(
+          (window as unknown as Record<string, unknown>)[
+            '__vibingDebugShell'
+          ]
         ),
       null,
       { polling: 100, timeout: 30_000 }
     )
+    // 既有终端门禁仍以“启动后可直接操作终端”为前提。产品默认页已经改为
+    // Home，因此 helper 统一导航到首个常驻终端；Shell 自身用例可再切回 Home。
+    await window.evaluate(() => {
+      const debugWindow = window as unknown as {
+        __vibingDebugTabs: { list(): string[] }
+        __vibingDebugShell: { navigate(pageId: `terminal:${string}`): void }
+      }
+      const [terminalId] = debugWindow.__vibingDebugTabs.list()
+      if (terminalId) {
+        debugWindow.__vibingDebugShell.navigate(`terminal:${terminalId}`)
+      }
+    })
     return { app, window }
   } catch (error) {
     await app.close().catch(() => {})

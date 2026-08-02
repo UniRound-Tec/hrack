@@ -15,7 +15,7 @@ export interface AddTerminalOptions {
 
 export interface TerminalsState {
   terminals: TerminalEntry[]
-  activeTerminalId: string
+  activeTerminalId: string | null
   addTerminal(options?: AddTerminalOptions): TerminalEntry
   closeTerminal(id: string): boolean
   activateTerminal(id: string): void
@@ -25,8 +25,8 @@ export interface TerminalsState {
 
 /**
  * A factory keeps unit tests isolated while the exported singleton remains a
- * regular Zustand React store. P1 preserves the M3 final-tab return value;
- * P2 consumes it to route Home instead of closing the window.
+ * regular Zustand React store. `closeTerminal` returns true when the removed
+ * entry was the final terminal so AppShell can route Home without closing.
  */
 export function createTerminalsStore(): UseBoundStore<
   StoreApi<TerminalsState>
@@ -68,18 +68,18 @@ export function createTerminalsStore(): UseBoundStore<
         (terminal) => terminal.id === id
       )
       if (closingIndex < 0) return false
-      if (state.terminals.length === 1) return true
-
       fallbackNames.delete(id)
       const terminals = state.terminals.filter(
         (terminal) => terminal.id !== id
       )
       const activeTerminalId =
-        state.activeTerminalId === id
+        terminals.length === 0
+          ? null
+          : state.activeTerminalId === id
           ? terminals[Math.min(closingIndex, terminals.length - 1)].id
           : state.activeTerminalId
       set({ terminals, activeTerminalId })
-      return false
+      return terminals.length === 0
     },
     activateTerminal: (id) =>
       set((state) =>

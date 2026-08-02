@@ -3,7 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { PtyProxy } from './PtyProxy'
-import { handleTabShortcut } from '../tabs/tabShortcuts'
+import { handleShellShortcut } from '../app/shellShortcuts'
 import {
   recordPtyData,
   registerTerminalForDebug,
@@ -155,7 +155,7 @@ export function useXterm(
     const renderer = createRendererController(term)
     rendererRef.current = renderer
     fit.fit()
-    term.attachCustomKeyEventHandler((event) => !handleTabShortcut(event))
+    term.attachCustomKeyEventHandler((event) => !handleShellShortcut(event))
     const titleDisposable = term.onTitleChange((title) => {
       onTitleRef.current?.(title)
     })
