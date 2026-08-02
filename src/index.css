@@ -34,7 +34,7 @@
 
 @font-face {
   font-family: "PingFang SC";
-  src: url("./assets/fonts/pingfang/PingFangSC-Regular.woff2") format("woff2");
+  src: url("./assets/fonts/.subset/PingFangSC-Regular.woff2") format("woff2");
   font-style: normal;
   font-weight: 400;
   font-display: swap;
@@ -42,7 +42,7 @@
 
 @font-face {
   font-family: "PingFang SC";
-  src: url("./assets/fonts/pingfang/PingFangSC-Medium.woff2") format("woff2");
+  src: url("./assets/fonts/.subset/PingFangSC-Medium.woff2") format("woff2");
   font-style: normal;
   font-weight: 500;
   font-display: swap;
@@ -50,7 +50,7 @@
 
 @font-face {
   font-family: "PingFang SC";
-  src: url("./assets/fonts/pingfang/PingFangSC-Semibold.woff2") format("woff2");
+  src: url("./assets/fonts/.subset/PingFangSC-Semibold.woff2") format("woff2");
   font-style: normal;
   font-weight: 600;
   font-display: swap;
@@ -58,7 +58,7 @@
 
 @font-face {
   font-family: "Ammonite";
-  src: url("./assets/fonts/ammonite/Ammonite-2.otf") format("opentype");
+  src: url("./assets/fonts/.subset/Ammonite-vibing.woff2") format("woff2");
   font-style: normal;
   font-weight: 400;
   font-display: swap;

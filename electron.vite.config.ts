@@ -24,6 +24,7 @@ export default defineConfig({
     root: '.',
     publicDir: false,
     build: {
+      assetsInlineLimit: 0,
       rollupOptions: {
         input: { index: resolve(__dirname, 'index.html') }
       }

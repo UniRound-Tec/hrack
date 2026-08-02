@@ -1,6 +1,6 @@
 # M5.b 实施计划 —— App Shell 实现
 
-> 状态：**进行中**（P0、P1、P2、P3 已完成，2026-08-02）。
+> 状态：**进行中**（P0、P1、P2、P3、P4 已完成，2026-08-02）。
 > 目标：按 `/prototype` 定稿原型 **1:1 落地** App Shell——无边框窗口 + 自定义标题栏、
 > 三态导航（侧栏展开 / 图标条 / 顶部 Tab）、首页（含空态欢迎页）、设置页、新建会话流；
 > 设置面板直读写 `settingsStore`；侧栏 session 区由 mock provider（SPEC §11.5 schema）驱动。
@@ -328,6 +328,13 @@ PTY 启动参数。新建会话 bottom sheet、终端选择 modal、CLI 配置 m
 
 ### 4.10 文案组织
 
+**P4 实施结果（2026-08-02）**：`subset-font@2.5.0` + HarfBuzz WASM 构建脚本会
+收集 chrome 静态界面用字及完整可打印 ASCII，生成 PingFang Regular / Medium /
+Semibold 三档 woff2 与仅含 `vibing` 的 Ammonite woff2。正式构建只引用生成目录，
+并在打包后断言恰有三个 PingFang 字重、一个 Ammonite 子集，且完整 OTF 与未使用
+PingFang 字重不得出现。本次产物 PingFang 合计 204,844 字节，Ammonite 1,532 字节；
+体积门禁通过。
+
 - `src/app/strings.ts`：M5.b 全部新增界面文案（zh-CN）集中于此，key 按页面分组；
   组件禁止内联中文字面量（子集化扫描与 M5.c i18n 迁移都依赖这一点）。
 - 既有 `i18n.ts`（copy toast 等四 key）不动，既有 i18n E2E 门禁不受影响。
@@ -432,7 +439,7 @@ PTY 启动参数。新建会话 bottom sheet、终端选择 modal、CLI 配置 m
 | P1 状态层（**已完成**） | settingsStore v3 迁移；terminalsStore/sessionsStore；mock provider；strings.ts | store 单测 + 迁移用例（v0/v1/v2→v3）通过 |
 | P2 Shell（**已完成**） | AppShell/Sidebar/IconRail/TopTabBar/页面路由；TerminalPage 整合；快捷键 | 三态导航、keep-alive、快捷键定向门禁通过 |
 | P3 流程页（**已完成**） | 新建会话流（真实 spawn + dialog IPC）；HomePage 两态；SettingsPage 绑定 | new-session/home-empty/settings E2E 绿 |
-| P4 字体管线 | subset-fonts 脚本 + 构建接入 + NOTICE | 构建产物中文字体 < 1 MB 断言 |
+| P4 字体管线（**已完成**） | subset-fonts 脚本 + 构建接入 + NOTICE | 构建产物中文字体 < 1 MB 断言 |
 | P5 收尾 | E2E 选择器迁移全量回归；与原型逐页视觉比对（截图并排） | 全部 E2E 绿；视觉比对无差异项 |
 
 视觉比对基准：原型跑 `prototype && vite dev`，与实现并排截屏逐页核对

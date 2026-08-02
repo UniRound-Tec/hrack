@@ -9,5 +9,6 @@ release
 logs/
 test-results/
 *.tsbuildinfo
+src/assets/fonts/.subset/
 *.err
 .claude/

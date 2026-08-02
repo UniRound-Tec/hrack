@@ -9,4 +9,6 @@
 
 仓库保存完整字体，**构建产物禁止全量打包**：构建期按产物实际用字做子集化
 （如 fonttools `pyftsubset` 输出 woff2 子集，或按 unicode-range 切片按需加载），
-未使用的字重不进产物。子集化管线随 M5.b 首次接入 UI 字体时落地。
+未使用的字重不进产物。M5.b P4 已由 `scripts/subset-fonts.mjs` 落地：构建只输出
+Regular / Medium / Semibold 三档实际用字子集，并由 `scripts/assert-font-size.mjs`
+断言三档总量小于 1 MB。

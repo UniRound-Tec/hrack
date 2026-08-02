@@ -8,4 +8,5 @@
 ## 打包策略（必须遵守）
 
 仓库保存原始 OTF，构建产物仅允许包含 `vibing` 所需的五个字形，并转为 woff2。
-字体子集化与体积门禁在 M5.b P4 接入；P4 完成前不得发布正式安装包。
+M5.b P4 已由 `scripts/subset-fonts.mjs` 完成子集化；正式产物仅包含
+`Ammonite-vibing.woff2`，并由构建门禁禁止原始 OTF 进入产物。
