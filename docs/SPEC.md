@@ -2,6 +2,7 @@
 
 > 跨三端（Windows / macOS / Linux）终端应用。
 > **产品定位：一个完整、好用的通用终端，同时为 AI CLI（Claude Code / Codex CLI 等）提供专门的运行状态监控**。
+>
 > - **普通终端能力是一等公民**：多 Tab、shell、滚动、搜索、复制粘贴、主题、连字、性能——都要做扎实，不是 AI 监控的附属品。用户即便不跑 AI CLI，它也应是一个称手的终端。
 > - **AI CLI 监控是差异化能力**：在跑 AI CLI 时，额外实时呈现其状态（思考中 / 等待批准 / 完成 / 上下文用量 / 当前任务）。
 > 技术路线：**Electron 原生窗口壳 + React 应用 UI + xterm.js 6.x（WebGL 渲染）+ node-pty 原生 PTY**。
@@ -14,6 +15,8 @@
 
 ---
 
+
+
 ## 0. 设计原则
 
 1. **进程边界清晰**：PTY 只活在主进程；Renderer 通过 IPC 代理访问，永不直接 spawn。
@@ -23,6 +26,8 @@
 5. **最小可跑优先**：先打通单终端回显链路，再逐层加功能。不一次性复刻插件系统。
 
 ---
+
+
 
 ## 1. 进程与模块总览
 
@@ -43,6 +48,8 @@
 │                        PtyProxy (IPC client)                                   │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
+
+
 
 ### 目录结构（建议）
 
@@ -84,9 +91,14 @@ vibing/
 
 ---
 
+
+
 ## 2. 分层职责
 
+
+
 ### 2.1 Electron 主进程
+
 - 创建 / 管理 `BrowserWindow`：无边框、可缩放/最大化/全屏。
 - 平台窗口效果：macOS Vibrancy、Windows Acrylic/Blur、Linux 透明。
 - 系统集成：托盘、全局快捷键、菜单。
@@ -94,40 +106,56 @@ vibing/
 - **PtyDataQueue**：见 §4。
 - 打包（electron-builder）：nsis / dmg / AppImage+deb。
 
+
+
 ### 2.2 Preload（安全边界）
+
 - `contextIsolation: true`、`nodeIntegration: false`。
 - 通过 `contextBridge.exposeInMainWorld` 暴露**收窄**的 API，而非整个 ipcRenderer。
 - 只暴露 §3 契约里定义的方法。
 
+
+
 ### 2.3 Renderer（React）
+
 - **App Shell**：Tab 栏、侧栏、首页、设置——全部普通 Web UI，用 React state。
 - **TerminalView**：xterm 宿主，见 §5。
 - **状态管理**：Zustand（轻、无 Provider 地狱、易在 hook 外读写）。Tab 元数据、活动 Tab、设置存这里；**终端字符流不存这里**。
 
 ---
 
+
+
 ## 3. IPC 契约（单一事实来源）
 
 `src/shared/ipc-contract.ts` 定义类型，主进程与 preload 共用。
 
 **Renderer → Main（invoke，请求-响应）**
-| channel | 参数 | 返回 |
-|---|---|---|
-| `pty:spawn` | `{shell, args, cwd, env, cols, rows}` | `{ptyId}` |
-| `pty:write` | `{ptyId, data}` | `void` |
-| `pty:resize` | `{ptyId, cols, rows}` | `void` |
-| `pty:kill` | `{ptyId}` | `void` |
-| `pty:ack` | `{ptyId, bytes}` | `void` |  ← 背压回执
+
+
+| channel      | 参数                                    | 返回        |
+| ------------ | ------------------------------------- | --------- |
+| `pty:spawn`  | `{shell, args, cwd, env, cols, rows}` | `{ptyId}` |
+| `pty:write`  | `{ptyId, data}`                       | `void`    |
+| `pty:resize` | `{ptyId, cols, rows}`                 | `void`    |
+| `pty:kill`   | `{ptyId}`                             | `void`    |
+| `pty:ack`    | `{ptyId, bytes}`                      | `void`    |
+
 
 **Main → Renderer（send，事件流）**
-| channel | 载荷 |
-|---|---|
-| `pty:data:{ptyId}` | `Uint8Array` |
+
+
+| channel            | 载荷               |
+| ------------------ | ---------------- |
+| `pty:data:{ptyId}` | `Uint8Array`     |
 | `pty:exit:{ptyId}` | `{code, signal}` |
+
 
 > 约定：`data` 用二进制传输（`Uint8Array`），避免 UTF-8 字符串在多字节边界被 IPC 序列化切坏。xterm 6.0 支持 `write(Uint8Array)`。
 
 ---
+
+
 
 ## 4. 背压 / 流控（照搬 Tabby，必做）
 
@@ -152,9 +180,14 @@ Main 收到 ack：unacked -= bytes
 
 ---
 
+
+
 ## 5. xterm.js 集成
 
+
+
 ### 5.1 挂载（React 只挂一次）
+
 ```ts
 // useXterm.ts —— 空依赖 useEffect，杜绝 React re-render 干扰 xterm
 useEffect(() => {
@@ -174,14 +207,19 @@ useEffect(() => {
 }, [])
 ```
 
+
+
 ### 5.2 Addon 与渲染降级
+
 当前加载 `fit / webgl`；`search / serialize / unicode11 / image(sixel)` 按后续
 里程碑需求接入。
 
 渲染降级为两级：
+
 ```
 WebGL Addon  ──(WebGL2 不可用 / context loss)──►  DOM Renderer
 ```
+
 监听 WebGL addon 的 `onContextLoss`，失败即 dispose 并 fallback；切出再切回 Tab
 后允许重新尝试。xterm.js 6.0 已移除 Canvas addon，因此不再保留旧的
 WebGL → Canvas → DOM 三级描述。
@@ -211,126 +249,146 @@ M4.1 改用 xterm 6 的 character joiner proposed API：应用只识别连续操
 使用 Microsoft JhengHei/YaHei UI、PingFang TC/SC、Noto Sans (Mono) CJK TC/SC。
 
 ### 5.3 尺寸链路
+
 ```
 窗口 resize → 容器尺寸变化 → ResizeObserver → FitAddon.fit() → (cols,rows)
            → PtyProxy.resize → IPC → node-pty.resize → ConPTY / Unix PTY
 ```
+
 保证 shell / vim / tmux 看到的是**终端区域**的行列，而非整窗。
 
 ---
+
+
 
 ## 6. 多 Tab 状态模型
 
 - `tabsStore`（Zustand）：`tabs: {id, title, ptyId, kind}[]`、`activeTabId`。
 - **每个 Tab 的 xterm 实例常驻**（用 CSS `display:none` 隐藏非活动 Tab，而非卸载），
-  避免切 Tab 丢失滚动缓冲；WebGL addon 仅在活动 Tab 挂载。
+避免切 Tab 丢失滚动缓冲；WebGL addon 仅在活动 Tab 挂载。
 - 标题来源：xterm 的 `onTitleChange`（OSC 序列）→ 更新 store。
 - 关闭 Tab：`term.dispose()` + `pty:kill` + 从 store 移除。
 
 ---
 
+
+
 ## 7. 平台差异一览（大多由底层库抹平）
 
-| 关注点 | Windows | macOS | Linux |
-|---|---|---|---|
-| 窗口后端 | Win32 (via Chromium) | AppKit | Wayland/X11 |
-| PTY | ConPTY (node-pty) | Unix PTY | Unix PTY |
-| 窗口效果 | Acrylic/Blur | Vibrancy | 透明 |
-| 默认 shell | pwsh / cmd | zsh | bash |
-| 打包 | nsis | dmg | AppImage + deb |
+
+| 关注点      | Windows              | macOS    | Linux          |
+| -------- | -------------------- | -------- | -------------- |
+| 窗口后端     | Win32 (via Chromium) | AppKit   | Wayland/X11    |
+| PTY      | ConPTY (node-pty)    | Unix PTY | Unix PTY       |
+| 窗口效果     | Acrylic/Blur         | Vibrancy | 透明             |
+| 默认 shell | pwsh / cmd           | zsh      | bash           |
+| 打包       | nsis                 | dmg      | AppImage + deb |
+
 
 上层代码只面对统一的 `spawn/write/resize/kill/data/exit`。
 
 ---
 
+
+
 ## 8. 技术选型
 
-| 关注点 | 选型 | 理由 |
-|---|---|---|
-| 壳 | Electron | 跨三端、成熟、Chromium 抹平差异 |
-| UI | React 18 + TypeScript | 需求指定 |
-| 状态 | Zustand | 轻量，可在 hook 外读写，无 re-render 陷阱 |
-| 终端 | xterm.js 6.x + WebGL | 需求指定；精确 beta pin 含 resize 同步重画修复 |
-| PTY | node-pty | 事实标准，封装 ConPTY/Unix PTY |
-| 构建 | electron-vite | 一套配置同时构建 main/preload/renderer，HMR |
-| 打包 | electron-builder | 三端安装包 |
-| 样式 | Tailwind CSS | 原子化、无全局污染、开发快；配 CSS 变量做主题 |
+
+| 关注点 | 选型                    | 理由                                 |
+| --- | --------------------- | ---------------------------------- |
+| 壳   | Electron              | 跨三端、成熟、Chromium 抹平差异               |
+| UI  | React 18 + TypeScript | 需求指定                               |
+| 状态  | Zustand               | 轻量，可在 hook 外读写，无 re-render 陷阱      |
+| 终端  | xterm.js 6.x + WebGL  | 需求指定；精确 beta pin 含 resize 同步重画修复   |
+| PTY | node-pty              | 事实标准，封装 ConPTY/Unix PTY            |
+| 构建  | electron-vite         | 一套配置同时构建 main/preload/renderer，HMR |
+| 打包  | electron-builder      | 三端安装包                              |
+| 样式  | Tailwind CSS          | 原子化、无全局污染、开发快；配 CSS 变量做主题          |
+
 
 **插件系统**：v1 **不做**。Tabby 的动态模块加载深绑 Angular DI，React 无等价物，强套代价高。若后续需要，用 React Context + 事件总线自建扩展点，届时单独立 Spec。
 
 ---
 
+
+
 ## 9. 里程碑（增量交付）
 
-| 阶段 | 目标 | 完成标志 |
-|---|---|---|
-| M0 | 脚手架 | electron-vite 起窗口，React 渲染 "hello" |
-| **M1** | **最小回显链路** | React 挂 xterm → IPC → node-pty → 能跑 shell、回显正常 |
-| **M2** | **resize + 背压** | 窗口缩放行列同步；`yes`/`cat bigfile` 不卡 UI |
-| **M3** | **多 Tab** | 新建/切换/关闭 Tab，各自独立 pty 与缓冲 |
-| **M4** | **渲染与体验** | WebGL + context-loss 降级链；消除 `opencode` 块字符色块网格缝；主题、内嵌字体与连字 |
-| M5 | App Shell | 侧栏、首页、设置面板 |
-| M6 | 窗口质感 | 无边框、vibrancy/acrylic、托盘、全局快捷键 |
-| M7 | 打包 | 三端安装包产出 |
+
+| 阶段       | 目标                          | 完成标志                                                                                                |
+| -------- | --------------------------- | --------------------------------------------------------------------------------------------------- |
+| M0       | 脚手架                         | electron-vite 起窗口，React 渲染 "hello"                                                                  |
+| **M1**   | **最小回显链路**                  | React 挂 xterm → IPC → node-pty → 能跑 shell、回显正常                                                      |
+| **M2**   | **resize + 背压**             | 窗口缩放行列同步；`yes`/`cat bigfile` 不卡 UI                                                                  |
+| **M3**   | **多 Tab**                   | 新建/切换/关闭 Tab，各自独立 pty 与缓冲                                                                           |
+| **M4**   | **渲染与体验**                   | WebGL + context-loss 降级链；消除 `opencode` 块字符色块网格缝；主题、内嵌字体与连字                                          |
+| **M5.a** | **App Shell — UI/UX 设计与原型** | UX 规范文档（`PLAN-M5-UX.md`）定稿 + 应用内原型评审拍板；设计范围覆盖 §11 监控界面（侧栏 session 徽标、悬浮框/Dashboard 的位置与交互），实现仍归 S 线 |
+| **M5.b** | **App Shell — 实现**          | 侧栏、首页、设置真组件落地；设置面板直读写 `settingsStore`；侧栏 session 区由 mock provider（§11.5 schema）驱动；交互 E2E 全绿且既有门禁不回归 |
+| **M5.c** | **App Shell — 数据与打磨**       | 需新 IPC 的真实数据接入（以 M5.a 定稿为准）、i18n 五语言、视觉打磨、全量回归；AI session 真数据不在此（归 S 线）                             |
+| M6       | 窗口质感                        | 无边框、vibrancy/acrylic、托盘、全局快捷键                                                                       |
+| M7       | 打包                          | 三端安装包产出                                                                                             |
+
 
 优先级：**M1 是地基**，其余按需推进。
 
-**当前进度（2026-07-31）：M4 已完成，M4.1 字体/连字与 M4.2 resize 闪屏修复已落地。**
+**当前进度（2026-07-31）：M4 已完成，M4.1 字体/连字与 M4.2 resize 闪屏修复已落地。下一步为 M5.a（App Shell 属设计驱动里程碑，拆为设计 → 实现 → 数据三阶段，见 [PLAN-M5.md](./PLAN-M5.md)）。**
 
 M2 基线：
 
 - Main→Renderer 的 PTY 输出已改为 `Uint8Array`。
 - Renderer 在 `term.write(data, callback)` 完成解析后发送 `pty:ack`。
 - 主进程采用 256KB 高水位 / 64KB 低水位控制 `node-pty.pause()/resume()`，
-  在途与排队交付数据硬上限为 1MB；超限会显式记录并终止 PTY，不静默无限增长。
+在途与排队交付数据硬上限为 1MB；超限会显式记录并终止 PTY，不静默无限增长。
 - E2E 会延迟 ack 模拟慢消费者，以约 2MB 持续输出验证 pause/resume、UI 响应、
-  输出首尾完整和内存上限；原 resize/scrollback 压测继续作为组合回归门禁。
+输出首尾完整和内存上限；原 resize/scrollback 压测继续作为组合回归门禁。
 
 M3 交付：
 
 - Zustand 管理 Tab 元数据和活动项；每个 Tab 常驻独立 xterm/pty，隐藏时继续消费并
-  ack，切换不会卸载 normal/alternate buffer 或 scrollback。
+ack，切换不会卸载 normal/alternate buffer 或 scrollback。
 - 支持新建、切换、关闭、OSC 标题、进程退出保留，以及
-  `Ctrl+Shift+T` / `Ctrl+Shift+W` / `Ctrl(+Shift)+Tab`。
+`Ctrl+Shift+T` / `Ctrl+Shift+W` / `Ctrl(+Shift)+Tab`。
 - 隐藏 Tab 不执行零尺寸 fit/pty resize，重新激活后才同步最新尺寸。
 - 调试桥兼容原活动终端 API，并增加按 `tabId` 取证的多终端注册表。
 - `e2e/tabs.spec.ts` 以 12 条用例覆盖隔离、保活、生命周期、标题、快捷键、
-  后台 2MB 背压、隐藏 resize 和 5 Tab 有界基线；完整 E2E 42/42、原压力门禁
-  5 轮 20/20 通过。
+后台 2MB 背压、隐藏 resize 和 5 Tab 有界基线；完整 E2E 42/42、原压力门禁
+5 轮 20/20 通过。
 
 M4 交付：
 
 - `@xterm/addon-webgl` 成为活动 Tab 首选 renderer；快速切换时同步释放旧 context、
-  rAF 挂载新 context，任意时刻 WebGL context 数量不超过 1。
+rAF 挂载新 context，任意时刻 WebGL context 数量不超过 1。
 - WebGL 构造/加载失败或真实 context loss 会回退 DOM；降级事件可取证，PTY、
-  scrollback 与输入不中断，完成一次 Tab 切出/切回后允许重试。
+scrollback 与输入不中断，完成一次 Tab 切出/切回后允许重试。
 - `e2e/render.spec.ts` 以连续 `▀` + 同宽 ANSI 背景色带做截图像素对照，在
-  100% / 125% / 80% zoom 下要求前景连续宽度完全相等，固化 `opencode` 零缝门禁；
-  DOM 对照只要求内容和输入可用。
+100% / 125% / 80% zoom 下要求前景连续宽度完全相等，固化 `opencode` 零缝门禁；
+DOM 对照只要求内容和输入可用。
 - M4.2 精确锁定包含上游同步重画补丁的 xterm 6.1/WebGL 0.20 beta；WebGL resize
-  不再先提交空 canvas。同步 canvas 门禁要求 `resize()` 返回时的亮度至少保持下一
-  animation frame 稳定结果的 55%；同一门禁已在 6.0/WebGL 0.19 上反证失败。
+不再先提交空 canvas。同步 canvas 门禁要求 `resize()` 返回时的亮度至少保持下一
+animation frame 稳定结果的 55%；同一门禁已在 6.0/WebGL 0.19 上反证失败。
 - `themes.ts` 集中定义完整 16 色终端主题与 chrome 色值；内置深/亮两套主题。
-  `settingsStore` 持久化 `themeId / fontFamily / fontSize / ligatures`，主题和字体即时
-  生效；字体变化仅立即 fit 活动 Tab，隐藏 Tab 激活后再同步 PTY。
+`settingsStore` 持久化 `themeId / fontFamily / fontSize / ligatures`，主题和字体即时
+生效；字体变化仅立即 fit 活动 Tab，隐藏 Tab 激活后再同步 PTY。
 - M4.1 内嵌标准版 Maple Mono v7.9 WOFF2，默认 16px，并为繁/简中文配置
-  Microsoft JhengHei/YaHei UI、PingFang TC/SC、Noto CJK 回退栈；旧 13px 默认值与
-  临时 Maple Mono NL 默认值会迁移，新用户和默认配置开启连字。
+Microsoft JhengHei/YaHei UI、PingFang TC/SC、Noto CJK 回退栈；旧 13px 默认值与
+临时 Maple Mono NL 默认值会迁移，新用户和默认配置开启连字。
 - 连字不采用需要 Node 字体文件访问的 addon；xterm character joiner 只组合相同 ANSI
-  属性中的操作符/内建标签片段，再由浏览器应用 Maple OpenType `calt`。光标、选区、
-  buffer 与复制仍保持原始字符；WebGL/DOM 共用，运行时可关闭。
+属性中的操作符/内建标签片段，再由浏览器应用 Maple OpenType `calt`。光标、选区、
+buffer 与复制仍保持原始字符；WebGL/DOM 共用，运行时可关闭。
 - M4 联调暴露并修复了 ConPTY 退出与延迟 resize 的竞态：native resize 失败现在取消
-  filter expectation 并安全丢弃，不再以未捕获异常终止主进程。最终完整 E2E 50/50、
-  压力门禁 5 轮 20/20 通过。
+filter expectation 并安全丢弃，不再以未捕获异常终止主进程。最终完整 E2E 50/50、
+压力门禁 5 轮 20/20 通过。
 - `opencode` 快速退出还可能让 node-pty 1.1.0 的 ConPTY 输入管道异步返回
-  `write EAGAIN`；主进程现在为每个 Windows PTY 安装终端级错误边界，同时满足
-  node-pty 输出管道的 listener-count 兼容约定。管道退出竞态只结束当前终端会话，不再
-  成为 Electron 主进程的未捕获异常；定向回归和真实 `opencode` 5 轮退出验证通过。
+`write EAGAIN`；主进程现在为每个 Windows PTY 安装终端级错误边界，同时满足
+node-pty 输出管道的 listener-count 兼容约定。管道退出竞态只结束当前终端会话，不再
+成为 Electron 主进程的未捕获异常；定向回归和真实 `opencode` 5 轮退出验证通过。
 - `opencode /exit` 会在回到 normal buffer 后遗留 `any` mouse tracking，使普通拖拽仍被
-  当作 TUI 鼠标事件。Renderer 现在在 alternate→normal 切换时显式关闭各类 mouse
-  tracking；TUI 内鼠标交互不变，退出后立即恢复文案选择。
+当作 TUI 鼠标事件。Renderer 现在在 alternate→normal 切换时显式关闭各类 mouse
+tracking；TUI 内鼠标交互不变，退出后立即恢复文案选择。
 
 ---
+
+
 
 ## 10. 明确的非目标（v1）
 
@@ -342,9 +400,13 @@ M4 交付：
 
 ---
 
+
+
 ## 11. AI CLI 语义监控（核心子系统）
 
 > 这是本产品区别于普通终端的核心。目标：在跑 AI CLI 的同时，把它的运行状态结构化出来，驱动 Dashboard / 侧栏。
+
+
 
 ### 11.1 根本难点：AI CLI 是 TUI，不是流
 
@@ -370,18 +432,22 @@ node-pty 'data'
 ### 11.3 两套采集基建（适配器按需选用）
 
 **A. HeadlessScreen —— 主进程内的无头终端**
-- 用 **`@xterm/headless`**（xterm 官方无渲染构建，同一套 VT 解析器）在主进程为每个被监控会话重建屏幕网格。
+
+- 用 `@xterm/headless`（xterm 官方无渲染构建，同一套 VT 解析器）在主进程为每个被监控会话重建屏幕网格。
 - 适配器读 `buffer.active` 的单元格 / 行文本提取状态。
 - **放主进程、用独立 headless 实例的理由**：语义层不绑定任何 Tab 的 UI 生命周期，是单一事实来源，且未来扩展后台/未聚焦会话时天然支持。
 - **固有成本：同一字节流被 VT 解析两次**（Renderer 的 xterm 一次用于显示、主进程的 headless 一次用于语义）。这是"语义独立于 UI"的代价，**不是主进程方案的缺点**——若改为复用 Renderer buffer 只解析一次，就会把语义绑死在 UI 上。对"几个 AI CLI 会话"量级，多一次解析的开销可忽略（xterm 解析器本就为全屏高刷 TUI 设计）。
 
 **B. SidebandSources —— 旁路结构化信号（比抓屏可靠）**
-| 手段 | 可靠性 | 说明 |
-|---|---|---|
-| **Hooks**（如 Claude Code settings.json 事件钩子） | ★★★★ | CLI 主动上报事件，最稳 |
-| **Transcript 日志**（如 `~/.claude/projects/**/*.jsonl`） | ★★★★ | 结构化，可 tail |
-| **OSC 标记注入** | ★★★ | 若能包裹/配置 CLI 输出 |
-| **屏幕抓取**（HeadlessScreen） | ★★ | 通用兜底，CLI 改 UI 可能失效 |
+
+
+| 手段                                                   | 可靠性  | 说明                 |
+| ---------------------------------------------------- | ---- | ------------------ |
+| **Hooks**（如 Claude Code settings.json 事件钩子）          | ★★★★ | CLI 主动上报事件，最稳      |
+| **Transcript 日志**（如 `~/.claude/projects/**/*.jsonl`） | ★★★★ | 结构化，可 tail         |
+| **OSC 标记注入**                                         | ★★★  | 若能包裹/配置 CLI 输出     |
+| **屏幕抓取**（HeadlessScreen）                             | ★★   | 通用兜底，CLI 改 UI 可能失效 |
+
 
 原则：**优先旁路信号，抓屏兜底**。旁路信号能拿到屏幕外信息（如 token 用量），抓屏对任意 TUI 都能上手但脆。
 
@@ -408,42 +474,54 @@ interface MonitorStrategy {
 - `detect`：新开 Tab 跑命令时，框架依次问各适配器"这是不是你负责的 CLI"。
 - `strategies`：一个适配器可组合多策略（如 claude-code = transcript 日志 + 抓屏兜底）。框架按序 attach，高可靠信号覆盖低可靠信号。
 
+
+
 ### 11.5 归一化会话状态模型（UI 的唯一数据契约）
 
 > 目标不是抓 model/cwd 这类静态元数据，而是**监听一个 AI CLI 会话正在做什么任务、进行到哪一步、要不要你介入**。用户开一个悬浮框看多个 session 的状态，不必一直盯屏；关键事件绑定通知来提醒。
+
+
 
 #### 核心思路：事件流是事实来源，"当前状态"是它的归约结果
 
 适配器只负责**吐事件**（它观察到什么就报什么）；框架把事件流**归约（reduce）**成一个"当前状态"给 UI。UI 只读归约结果。好处：适配器简单无状态、没有多信号覆写的竞态、通知天然挂在事件上。
 
-**不设 "Turn / 一轮任务" 这层结构。** 一轮任务的边界（哪开始、哪结束）恰恰最难可靠判断——抓屏时 AI 中途停顿、多步骤、被打断都会导致误切或误并，一旦切错，挂在其上的时间线与"完成"通知全错。因此模型只有两层：**Session（=一个 Tab，长期）+ 扁平事件流**。需要"当前在做什么 prompt"时，取**最近一次 `prompt-submitted` 事件**作为派生字段即可，不建容器去框住它 → 框架永不需要判断任务边界，也就没有误判空间。
+**不设 "Turn / 一轮任务" 这层结构。** 一轮任务的边界（哪开始、哪结束）恰恰最难可靠判断——抓屏时 AI 中途停顿、多步骤、被打断都会导致误切或误并，一旦切错，挂在其上的时间线与"完成"通知全错。因此模型只有两层：**Session（=一个 Tab，长期）+ 扁平事件流**。需要"当前在做什么 prompt"时，取**最近一次** `prompt-submitted` **事件**作为派生字段即可，不建容器去框住它 → 框架永不需要判断任务边界，也就没有误判空间。
 
 #### 事件类型（会话生命周期）
 
-| 事件 type | 触发 | 关键 payload | 注意力事件 |
-|---|---|---|---|
-| `prompt-submitted` | 用户提交 prompt | prompt 文本 | 否 |
-| `thinking` | AI 开始思考 | — | 否 |
-| `tool-call` | 调用工具 | 工具名、参数摘要（如 `Bash: npm test`） | 否 |
-| `tool-result` | 工具返回 | ok / 失败 | 否 |
-| `question` | AI 向用户提问 | 问题文本 | ✅ 需要你 |
-| `approval` | 请求批准操作 | 要批准什么 | ✅ 需要你 |
-| `completed` | AI 停下、交还控制权 | 结果摘要 | ✅ 完成 |
-| `error` | 出错 | 错误信息 | ✅ |
-| `exited` | 进程退出 | 退出码 | ✅ |
+
+| 事件 type            | 触发          | 关键 payload                   | 注意力事件 |
+| ------------------ | ----------- | ---------------------------- | ----- |
+| `prompt-submitted` | 用户提交 prompt | prompt 文本                    | 否     |
+| `thinking`         | AI 开始思考     | —                            | 否     |
+| `tool-call`        | 调用工具        | 工具名、参数摘要（如 `Bash: npm test`） | 否     |
+| `tool-result`      | 工具返回        | ok / 失败                      | 否     |
+| `question`         | AI 向用户提问    | 问题文本                         | ✅ 需要你 |
+| `approval`         | 请求批准操作      | 要批准什么                        | ✅ 需要你 |
+| `completed`        | AI 停下、交还控制权 | 结果摘要                         | ✅ 完成  |
+| `error`            | 出错          | 错误信息                         | ✅     |
+| `exited`           | 进程退出        | 退出码                          | ✅     |
+
+
+
 
 #### 派生的当前状态：注意力导向
 
 悬浮框真正要回答的是"**这个 session 现在要不要我**"，所以主状态是注意力导向而非技术导向：
 
-| status | 含义 | 归约规则（示例） |
-|---|---|---|
-| `working` | 在思考/跑工具，别管它 | 最近事件是 thinking / tool-call 且未见 completed |
-| `needs-you` | **卡在等你**（批准 / 回答）← 悬浮框存在的意义 | 最近事件是 question / approval |
-| `done` | 完成一轮，等你下个 prompt | 最近事件是 completed |
-| `error` | 出错 | 最近事件是 error |
-| `idle` | 会话开着但无活动 | 无事件 / 久未活动 |
-| `exited` | 进程结束 | exited |
+
+| status      | 含义                          | 归约规则（示例）                                 |
+| ----------- | --------------------------- | ---------------------------------------- |
+| `working`   | 在思考/跑工具，别管它                 | 最近事件是 thinking / tool-call 且未见 completed |
+| `needs-you` | **卡在等你**（批准 / 回答）← 悬浮框存在的意义 | 最近事件是 question / approval                |
+| `done`      | 完成一轮，等你下个 prompt            | 最近事件是 completed                          |
+| `error`     | 出错                          | 最近事件是 error                              |
+| `idle`      | 会话开着但无活动                    | 无事件 / 久未活动                               |
+| `exited`    | 进程结束                        | exited                                   |
+
+
+
 
 #### Schema（草图，讨论用）
 
@@ -473,17 +551,22 @@ interface SessionEvent {
 
 > **v1：只看不操作。** 悬浮框/侧栏纯展示状态与事件；要批准/回答就回到对应终端 Tab 手动做。**不做**"从悬浮框直接响应 → 反向注入 pty"这条链路，`question`/`approval` 事件只携带"在等什么"用于展示与通知，不携带可点击选项。（反向注入作为未来增强，届时单独设计。）
 
+
+
 #### 可靠性：关键事件优先走旁路信号
 
 上表事件几乎一对一映射到 **Claude Code 官方 hook 事件**：
+
 ```
 UserPromptSubmit → prompt-submitted    PreToolUse  → tool-call
 PostToolUse      → tool-result          Notification→ approval / question
 Stop             → completed            (进程退出) → exited
 ```
+
 **通知语义上：误报烦，漏报致命。** "需要你"这类注意力事件应优先从 **hooks / transcript** 拿（CLI 主动上报，稳），抓屏只作没有旁路能力的 CLI 的兜底——抓屏判断"是否在等批准"太脆（TUI 一重绘就可能误判）。这正是 §11.3「优先旁路，抓屏兜底」在状态模型上的体现。
 
 #### 通知绑定
+
 标记了 `attention` 的事件（question / approval / completed / error）可触发通知；用户可配规则，如"needs-you 立即通知""done 仅当 app 不在前台时通知"。
 
 状态推送：主进程维护每 session 的归约状态，变化时 diff 后经 IPC 推给 Renderer（`session:state:{sessionId}`），存入 Zustand 的 `sessionsStore` 驱动悬浮框 / 侧栏 / 通知。
@@ -494,19 +577,25 @@ Stop             → completed            (进程退出) → exited
 - 语义状态**额外**驱动：Tab Header 上的状态徽标、侧栏摘要、Dashboard 聚合视图、（可选）系统通知（如"等待你批准"时提醒）。
 - 这与 §6 多 Tab 模型正交：`tabsStore` 管 Tab，`sessionsStore` 管语义状态，通过 `sessionId ↔ tabId` 关联。
 
+
+
 ### 11.7 里程碑增补
 
 语义监控作为独立里程碑线，**依赖 M1（拿到 pty 字节流）后即可起步**，与终端功能线并行：
 
-| 阶段 | 目标 |
-|---|---|
-| S0 | SemanticTap 分流 + 主进程 HeadlessScreen 重建屏幕（能 dump 出网格文本） |
-| S1 | 第一个适配器（claude-code）：抓屏策略识别 working / needs-you / done，归约出 status 推到侧栏 |
-| S2 | 加旁路信号（hooks + transcript tail）：拿到可靠的 prompt-submitted / tool-call / approval / completed 事件流 |
-| S3 | 第二个适配器（codex）验证抽象是否够用；悬浮框聚合多 session 状态 |
-| S4 | 通知系统：注意力事件（needs-you / done / error）按用户规则触发通知（v1 只看不操作，不做反向注入） |
+
+| 阶段  | 目标                                                                                           |
+| --- | -------------------------------------------------------------------------------------------- |
+| S0  | SemanticTap 分流 + 主进程 HeadlessScreen 重建屏幕（能 dump 出网格文本）                                       |
+| S1  | 第一个适配器（claude-code）：抓屏策略识别 working / needs-you / done，归约出 status 推到侧栏                        |
+| S2  | 加旁路信号（hooks + transcript tail）：拿到可靠的 prompt-submitted / tool-call / approval / completed 事件流 |
+| S3  | 第二个适配器（codex）验证抽象是否够用；悬浮框聚合多 session 状态                                                      |
+| S4  | 通知系统：注意力事件（needs-you / done / error）按用户规则触发通知（v1 只看不操作，不做反向注入）                               |
+
 
 ---
+
+
 
 ## 附：数据流总图
 
@@ -527,3 +616,4 @@ shell 输出
   → AiCliAdapter.strategies 提取 → SessionState(归一化)
   → diff → IPC(session:state) → Renderer sessionsStore → Dashboard / 侧栏徽标 / 通知
 ```
+
