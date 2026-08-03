@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { CliScanReport, ShellOption } from '../../shared/ipc-contract'
 import type { AgentEvent } from '../../shared/agent-events'
@@ -36,10 +30,7 @@ import {
   type CliOption
 } from './launchOptions'
 import { useSettingsStore, type NavMode } from '../state/settingsStore'
-import {
-  useSessionsStore,
-  type SessionEntry
-} from '../state/sessionsStore'
+import { useSessionsStore, type SessionEntry } from '../state/sessionsStore'
 import { useAgentEventsStore } from '../state/agentEventsStore'
 import { useTerminalsStore } from '../state/terminalsStore'
 
@@ -80,9 +71,8 @@ export default function AppShell() {
   const updateSession = useSessionsStore((state) => state.updateSession)
   const terminals = useTerminalsStore((state) => state.terminals)
   const addTerminal = useTerminalsStore((state) => state.addTerminal)
-  const activateTerminal = useTerminalsStore(
-    (state) => state.activateTerminal
-  )
+  const restoreTerminals = useTerminalsStore((state) => state.restoreTerminals)
+  const activateTerminal = useTerminalsStore((state) => state.activateTerminal)
   const closeTerminal = useTerminalsStore((state) => state.closeTerminal)
 
   useEffect(() => {
@@ -119,9 +109,7 @@ export default function AppShell() {
     const sessionTerminalIds = new Set(
       sessions.map((session) => session.terminalId)
     )
-    return terminals.filter(
-      (terminal) => !sessionTerminalIds.has(terminal.id)
-    )
+    return terminals.filter((terminal) => !sessionTerminalIds.has(terminal.id))
   }, [sessions, terminals])
   const activeTerminalId = terminalIdFromPage(pageId)
 
@@ -197,8 +185,9 @@ export default function AppShell() {
     [addTerminal, pageId]
   )
 
-  // S1：主进程投影是权威状态；renderer 只 upsert 展示副本。
-  // reload 后先 listActive 恢复，再订阅增量；Runtime 保持权威状态。
+  // 主进程同时持有 PTY 与 Agent projection。renderer reload 时先订阅
+  // 增量，再恢复稳定 terminalId 和展示投影；只有主进程确认没有
+  // 任何可恢复 PTY 时，才创建首个默认终端。
   useEffect(() => {
     let cancelled = false
     const unsubscribeProjection = window.agentApi.onProjection((projection) => {
@@ -207,18 +196,35 @@ export default function AppShell() {
     const unsubscribeEvents = window.agentApi.onEvents((events) => {
       useAgentEventsStore.getState().record(events)
     })
-    void window.agentApi.listActive().then((projections) => {
-      if (cancelled) return
-      for (const projection of projections) {
-        useSessionsStore.getState().applyProjection(projection)
-      }
-    })
+    void Promise.all([
+      window.ptyApi.listRecoverable(),
+      window.agentApi.listActive()
+    ])
+      .then(([recoverable, projections]) => {
+        if (cancelled) return
+        restoreTerminals(recoverable)
+        for (const projection of projections) {
+          useSessionsStore.getState().applyProjection(projection)
+        }
+        if (
+          recoverable.length === 0 &&
+          useTerminalsStore.getState().terminals.length === 0
+        ) {
+          addTerminal()
+        }
+      })
+      .catch(() => {
+        // 恢复通道失败不应让应用停在“无终端且无法新建”的状态。
+        if (!cancelled && useTerminalsStore.getState().terminals.length === 0) {
+          addTerminal()
+        }
+      })
     return () => {
       cancelled = true
       unsubscribeProjection()
       unsubscribeEvents()
     }
-  }, [])
+  }, [addTerminal, restoreTerminals])
 
   const handleInitialTerminalSpawn = useCallback(
     (terminalId: string, error: string | null): void => {
@@ -229,10 +235,11 @@ export default function AppShell() {
       if (error) {
         closeTerminal(terminalId)
         const previousTerminalId = terminalIdFromPage(pending.previousPage)
-        const previousPageStillExists = !previousTerminalId ||
-          useTerminalsStore.getState().terminals.some(
-            (terminal) => terminal.id === previousTerminalId
-          )
+        const previousPageStillExists =
+          !previousTerminalId ||
+          useTerminalsStore
+            .getState()
+            .terminals.some((terminal) => terminal.id === previousTerminalId)
         setPageId(previousPageStillExists ? pending.previousPage : 'home')
         pending.resolve(error)
         return
@@ -254,12 +261,19 @@ export default function AppShell() {
   const closeTerminalAndRoute = useCallback(
     (terminalId: string): void => {
       const wasActive = terminalIdFromPage(pageId) === terminalId
-      closeTerminal(terminalId)
-
       const linkedSessionIds = useSessionsStore
         .getState()
         .sessions.filter((session) => session.terminalId === terminalId)
         .map((session) => session.sessionId)
+      if (linkedSessionIds.length > 0) {
+        for (const sessionId of linkedSessionIds) {
+          void window.agentApi.stop(sessionId)
+        }
+      } else {
+        void window.ptyApi.killTerminal(terminalId)
+      }
+
+      closeTerminal(terminalId)
       useSessionsStore.getState().removeSessions(linkedSessionIds)
 
       if (!wasActive) return
@@ -271,21 +285,20 @@ export default function AppShell() {
 
   const closeSessionAndTerminal = useCallback(
     (session: SessionEntry): void => {
-      // 主进程权威清理（幂等）；renderer 墓碑保证迟到的退出投影不复活会话。
-      void window.agentApi.stop(session.sessionId)
-      removeSession(session.sessionId)
       if (terminalIds.has(session.terminalId)) {
         closeTerminalAndRoute(session.terminalId)
-      } else if (activeTerminalId === session.terminalId) {
+        return
+      }
+
+      // 极端竞态：Session projection 已到达，PTY 描述符尚未恢复。
+      // 没有 TerminalEntry 时仍必须显式 stop，不能只删 UI。
+      void window.agentApi.stop(session.sessionId)
+      removeSession(session.sessionId)
+      if (activeTerminalId === session.terminalId) {
         setPageId('home')
       }
     },
-    [
-      activeTerminalId,
-      closeTerminalAndRoute,
-      removeSession,
-      terminalIds
-    ]
+    [activeTerminalId, closeTerminalAndRoute, removeSession, terminalIds]
   )
 
   useEffect(() => {
@@ -323,13 +336,7 @@ export default function AppShell() {
       unregister()
       window.removeEventListener('keydown', handleWindowKeyDown)
     }
-  }, [
-    closeTerminalAndRoute,
-    navigate,
-    openNewSession,
-    pageId,
-    terminalIds
-  ])
+  }, [closeTerminalAndRoute, navigate, openNewSession, pageId, terminalIds])
 
   useEffect(() => {
     if (!import.meta.env.DEV && !window.__VIBING_E2E__) return
@@ -421,9 +428,7 @@ export default function AppShell() {
 
       <div className="relative flex min-h-0 flex-1">
         {/* 默认 sync 模式：退出的侧栏容器留在文档流里收缩到 0，主内容跟随过渡 */}
-        <AnimatePresence initial={false}>
-          {sideNavigation}
-        </AnimatePresence>
+        <AnimatePresence initial={false}>{sideNavigation}</AnimatePresence>
 
         <main
           data-testid="app-content"

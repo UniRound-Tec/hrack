@@ -1,8 +1,4 @@
-import {
-  contextBridge,
-  ipcRenderer,
-  type IpcRendererEvent
-} from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import os from 'node:os'
 import {
   AppEventChannel,
@@ -68,7 +64,10 @@ function windowsBuildNumber(): number {
 function getMeta(): PtyMeta {
   const platform = process.platform
   if (platform === 'win32') {
-    return { platform, windowsPty: { backend: 'conpty', buildNumber: windowsBuildNumber() } }
+    return {
+      platform,
+      windowsPty: { backend: 'conpty', buildNumber: windowsBuildNumber() }
+    }
   }
   return { platform }
 }
@@ -79,13 +78,21 @@ function getMeta(): PtyMeta {
  */
 const ptyApi: PtyApi = {
   getMeta,
-  spawn: (opts: SpawnOptions) => ipcRenderer.invoke(PtyInvokeChannel.Spawn, opts),
-  write: (ptyId, data) => ipcRenderer.invoke(PtyInvokeChannel.Write, { ptyId, data }),
+  spawn: (opts: SpawnOptions) =>
+    ipcRenderer.invoke(PtyInvokeChannel.Spawn, opts),
+  attach: (ptyId) => ipcRenderer.invoke(PtyInvokeChannel.Attach, { ptyId }),
+  listRecoverable: () => ipcRenderer.invoke(PtyInvokeChannel.ListRecoverable),
+  write: (ptyId, data) =>
+    ipcRenderer.invoke(PtyInvokeChannel.Write, { ptyId, data }),
   resize: (ptyId, cols, rows) =>
     ipcRenderer.invoke(PtyInvokeChannel.Resize, { ptyId, cols, rows }),
   kill: (ptyId) => ipcRenderer.invoke(PtyInvokeChannel.Kill, { ptyId }),
-  ack: (ptyId, bytes) => ipcRenderer.invoke(PtyInvokeChannel.Ack, { ptyId, bytes }),
-  getHistory: (ptyId) => ipcRenderer.invoke(PtyInvokeChannel.History, { ptyId }),
+  killTerminal: (terminalId) =>
+    ipcRenderer.invoke(PtyInvokeChannel.KillTerminal, { terminalId }),
+  ack: (ptyId, bytes) =>
+    ipcRenderer.invoke(PtyInvokeChannel.Ack, { ptyId, bytes }),
+  getHistory: (ptyId) =>
+    ipcRenderer.invoke(PtyInvokeChannel.History, { ptyId }),
   getFlowControl: (ptyId): Promise<PtyFlowControlSnapshot | null> =>
     ipcRenderer.invoke(PtyInvokeChannel.FlowControl, { ptyId }),
 
@@ -108,7 +115,8 @@ const ptyApi: PtyApi = {
 
   onExit: (ptyId, cb) => {
     const ch = ptyExitChannel(ptyId)
-    const handler = (_e: IpcRendererEvent, payload: ExitPayload): void => cb(payload)
+    const handler = (_e: IpcRendererEvent, payload: ExitPayload): void =>
+      cb(payload)
     ipcRenderer.on(ch, handler)
     return () => ipcRenderer.removeListener(ch, handler)
   },
@@ -117,14 +125,14 @@ const ptyApi: PtyApi = {
 }
 
 const clipboardApi: ClipboardApi = {
-  writeText: (text) => ipcRenderer.invoke(ClipboardInvokeChannel.WriteText, text)
+  writeText: (text) =>
+    ipcRenderer.invoke(ClipboardInvokeChannel.WriteText, text)
 }
 
 const windowApi: WindowApi = {
   platform: process.platform,
   minimize: () => ipcRenderer.invoke(WindowInvokeChannel.Minimize),
-  toggleMaximize: () =>
-    ipcRenderer.invoke(WindowInvokeChannel.ToggleMaximize),
+  toggleMaximize: () => ipcRenderer.invoke(WindowInvokeChannel.ToggleMaximize),
   close: () => ipcRenderer.invoke(WindowInvokeChannel.Close),
   isMaximized: () => ipcRenderer.invoke(WindowInvokeChannel.IsMaximized),
   onMaximizedChange: (cb) => {
@@ -199,8 +207,7 @@ const agentApi: AgentApi = {
       }
     }
     ipcRenderer.on(AgentEventChannel.Events, handler)
-    return () =>
-      ipcRenderer.removeListener(AgentEventChannel.Events, handler)
+    return () => ipcRenderer.removeListener(AgentEventChannel.Events, handler)
   },
   onProjection: (cb) => {
     const handler = (

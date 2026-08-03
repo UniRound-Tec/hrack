@@ -9,14 +9,15 @@ import {
   registerTerminalForDebug,
   setActiveTerminalForDebug
 } from './debugBridge'
-import {
-  createRendererController,
-  type RendererController
-} from './addons'
+import { createRendererController, type RendererController } from './addons'
 import { useSettingsStore } from '../state/settingsStore'
 import { getTerminalTheme } from './themes'
 import { createLigatureController } from './ligatures'
-import { getTerminalLaunch } from '../state/terminalLaunchRegistry'
+import {
+  getTerminalLaunch,
+  setTerminalLaunch
+} from '../state/terminalLaunchRegistry'
+import { useTerminalsStore } from '../state/terminalsStore'
 import { parseRenderedActivityCaption } from './renderedActivityCaption'
 
 const DISABLE_MOUSE_TRACKING =
@@ -142,18 +143,12 @@ export function useXterm(
     term.loadAddon(fit)
     term.open(container)
     terminalRef.current = term
-    const ligatures = createLigatureController(
-      term,
-      initialSettings.ligatures
-    )
+    const ligatures = createLigatureController(term, initialSettings.ligatures)
     const bufferChangeDisposable = term.buffer.onBufferChange((buffer) => {
       // TUI 异常/快速退出时可能已经切回 normal buffer，却遗漏 mouse tracking
       // 的 DECRST（opencode /exit 可稳定复现）。此时普通拖拽会继续被当作
       // 终端鼠标事件。只在离开 alternate buffer 后修复状态，不影响 TUI 内交互。
-      if (
-        buffer.type === 'normal' &&
-        term.modes.mouseTrackingMode !== 'none'
-      ) {
+      if (buffer.type === 'normal' && term.modes.mouseTrackingMode !== 'none') {
         term.write(DISABLE_MOUSE_TRACKING)
       }
     })
@@ -169,7 +164,8 @@ export function useXterm(
     let initialSpawnPending = true
     // S1：AI CLI 启动走主进程 AgentSessionRuntime；普通终端保持原链路。
     const launch = getTerminalLaunch(tabId)
-    const isAgentLaunch = launch?.kind === 'agent'
+    const isAgentLaunch =
+      launch?.kind === 'agent' || (launch?.kind === 'attach' && launch.agent)
     let agentSessionReady = false
     const settleInitialSpawn = (error: string | null): void => {
       if (!initialSpawnPending) return
@@ -363,33 +359,62 @@ export function useXterm(
       renderer,
       (suspended) => {
         ptyRenderingSuspended = suspended
-      }
+      },
+      (data) => proxy?.write(data) ?? Promise.resolve()
     )
 
     /**
      * 绑定一个新 pty 到当前 xterm。首次 spawn 与异常退出后的自动重启共用，
      * 保证两条路径的 data/exit 语义一致。
      */
-    const wireProxy = (next: PtyProxy): void => {
+    const writeTerminal = (data: string | Uint8Array): Promise<void> =>
+      new Promise((resolve) => term.write(data, resolve))
+
+    const replayHistory = async (
+      snapshot: NonNullable<Awaited<ReturnType<PtyProxy['attach']>>>
+    ): Promise<void> => {
+      let output = ''
+      const flushOutput = async (): Promise<void> => {
+        if (!output) return
+        const current = output
+        output = ''
+        await writeTerminal(current)
+      }
+      for (const event of snapshot.events) {
+        if (disposed) return
+        if (event.kind === 'output') {
+          output += event.data
+          continue
+        }
+        await flushOutput()
+        if (event.cols > 0 && event.rows > 0) {
+          term.resize(event.cols, event.rows)
+        }
+      }
+      await flushOutput()
+    }
+
+    const wireProxy = (next: PtyProxy, restored = false): void => {
       proxy?.dispose()
       proxy = next
-      // spawn 完成后同步一次尺寸：spawn 期间容器尺寸可能已变，且此时 proxy 才可用。
-      if (ptyResizeTimer) {
-        clearTimeout(ptyResizeTimer)
-        ptyResizeTimer = null
-      }
-      pendingPtyResize = null
-      const { cols, rows } = term
-      sendPtyResize(cols, rows)
+      let replaying = restored
+      const replayQueue: Uint8Array[] = []
 
       // pty → 屏幕；xterm 解析完成后 ack，驱动主进程高低水位背压。
-      next.onData((d) => {
+      const renderData = (d: Uint8Array): void => {
         recordPtyData(tabId, d)
         if (ptyRenderingSuspended) {
           acknowledgeParsedData(d.byteLength)
           return
         }
         term.write(d, () => acknowledgeParsedData(d.byteLength))
+      }
+      next.onData((d) => {
+        if (replaying) {
+          replayQueue.push(d)
+          return
+        }
+        renderData(d)
       })
       next.onResizeCursorSync(({ row, column }) => {
         applyConptyCursorSync(term, row, column)
@@ -398,7 +423,9 @@ export function useXterm(
         if (disposed) return
         // Agent 会话不自动重启：PTY 退出即事实（由主进程归约 session.exited）。
         const respawned =
-          !isAgentLaunch && code === undefined && respawnCount < MAX_ABNORMAL_EXITS
+          !isAgentLaunch &&
+          code === undefined &&
+          respawnCount < MAX_ABNORMAL_EXITS
         if (respawned) {
           respawnCount++
           term.write(
@@ -415,10 +442,64 @@ export function useXterm(
         }
         onExitRef.current?.(code, respawned)
       })
+
+      const finishBinding = (): void => {
+        if (ptyResizeTimer) {
+          clearTimeout(ptyResizeTimer)
+          ptyResizeTimer = null
+        }
+        pendingPtyResize = null
+        const { cols, rows } = term
+        sendPtyResize(cols, rows)
+        if (activeRef.current) scheduleResize()
+      }
+
+      if (!restored) {
+        finishBinding()
+        return
+      }
+
+      // listener 先就位，attach 再在主进程原子清掉旧 ack 账本并取
+      // history 快照。快照之后到达的 live chunk 先缓冲，避免与重放交错。
+      void next
+        .attach()
+        .then(async (snapshot) => {
+          if (disposed) return
+          if (!snapshot) {
+            replaying = false
+            term.write(
+              '\r\n\x1b[90m[terminal is no longer available]\x1b[0m\r\n'
+            )
+            settleInitialSpawn('Terminal is no longer available')
+            onExitRef.current?.(undefined, false)
+            return
+          }
+          await replayHistory(snapshot)
+          if (disposed) return
+          replaying = false
+          for (const chunk of replayQueue) renderData(chunk)
+          replayQueue.length = 0
+          agentSessionReady = isAgentLaunch
+          finishBinding()
+          settleInitialSpawn(null)
+        })
+        .catch((error: unknown) => {
+          if (disposed) return
+          replaying = false
+          const message = error instanceof Error ? error.message : String(error)
+          term.write(
+            `\r\n\x1b[31mFailed to restore terminal: ${message}\x1b[0m\r\n`
+          )
+          settleInitialSpawn(message)
+        })
     }
 
     const spawnShell = (): void => {
       if (disposed) return
+      if (launch?.kind === 'attach') {
+        wireProxy(new PtyProxy(launch.ptyId), true)
+        return
+      }
       if (isAgentLaunch && launch?.kind === 'agent') {
         window.agentApi
           .start({
@@ -437,6 +518,11 @@ export function useXterm(
               return
             }
             agentSessionReady = true
+            setTerminalLaunch(tabId, {
+              kind: 'attach',
+              ptyId: started.ptyId,
+              agent: true
+            })
             wireProxy(new PtyProxy(started.ptyId))
             settleInitialSpawn(null)
           })
@@ -452,23 +538,40 @@ export function useXterm(
       window.ptyApi
         .spawn({
           ...(launch?.kind === 'shell' ? launch.shell : {}),
+          terminal: (() => {
+            const terminal = useTerminalsStore
+              .getState()
+              .terminals.find((candidate) => candidate.id === tabId)
+            return {
+              terminalId: tabId,
+              kind: 'terminal' as const,
+              name: terminal?.name ?? 'Terminal',
+              shellId: terminal?.shellId ?? 'system',
+              cwd: terminal?.cwd ?? ''
+            }
+          })(),
           cols: term.cols,
           rows: term.rows
         })
         .then(({ ptyId }) => {
           if (disposed) {
             void window.ptyApi.kill(ptyId)
-            settleInitialSpawn('Launch was cancelled before the terminal became ready')
+            settleInitialSpawn(
+              'Launch was cancelled before the terminal became ready'
+            )
             return
           }
+          setTerminalLaunch(tabId, {
+            kind: 'attach',
+            ptyId,
+            agent: false
+          })
           wireProxy(new PtyProxy(ptyId))
           settleInitialSpawn(null)
         })
         .catch((err: unknown) => {
           const message = err instanceof Error ? err.message : String(err)
-          term.write(
-            `\r\n\x1b[31mFailed to spawn shell: ${message}\x1b[0m\r\n`
-          )
+          term.write(`\r\n\x1b[31mFailed to spawn shell: ${message}\x1b[0m\r\n`)
           settleInitialSpawn(message)
         })
     }
@@ -504,7 +607,6 @@ export function useXterm(
       ro.disconnect()
       container.removeEventListener('contextmenu', copySelectionOnContextMenu)
       proxy?.dispose()
-      void proxy?.kill()
       renderer.dispose()
       ligatures.dispose()
       if (rendererRef.current === renderer) rendererRef.current = null

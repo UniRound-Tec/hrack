@@ -6,6 +6,7 @@ import type {
 export type TerminalLaunch =
   | { kind: 'shell'; shell: Omit<SpawnOptions, 'cols' | 'rows'> }
   | { kind: 'agent'; selection: CliLaunchSelection; name: string }
+  | { kind: 'attach'; ptyId: string; agent: boolean }
 
 export type TerminalLaunchOptions = TerminalLaunch
 

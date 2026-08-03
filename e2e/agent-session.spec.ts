@@ -794,7 +794,7 @@ test.describe('AgentSessionRuntime (interface gates)', () => {
     })
     // observer-runs/<sessionId> 已被清理。
     const leftovers = join(harness.runDirRoot, started.sessionId)
-    expect(existsSync(leftovers)).toBe(false)
+    await expect.poll(() => existsSync(leftovers)).toBe(false)
   })
 
   test('passes adapter args into the provider before a Windows verbatim command is serialized', async () => {

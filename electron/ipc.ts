@@ -104,6 +104,12 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(PtyInvokeChannel.Spawn, (_e, opts: SpawnOptions) =>
     manager.spawn(opts)
   )
+  ipcMain.handle(PtyInvokeChannel.Attach, (_e, { ptyId }: { ptyId: string }) =>
+    manager.attach(ptyId)
+  )
+  ipcMain.handle(PtyInvokeChannel.ListRecoverable, () =>
+    manager.listRecoverable()
+  )
   ipcMain.handle(
     PtyInvokeChannel.Write,
     (_e, { ptyId, data }: { ptyId: string; data: string }) =>
@@ -111,8 +117,10 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   )
   ipcMain.handle(
     PtyInvokeChannel.Resize,
-    (_e, { ptyId, cols, rows }: { ptyId: string; cols: number; rows: number }) =>
-      manager.resize(ptyId, cols, rows)
+    (
+      _e,
+      { ptyId, cols, rows }: { ptyId: string; cols: number; rows: number }
+    ) => manager.resize(ptyId, cols, rows)
   )
   ipcMain.handle(
     PtyInvokeChannel.Ack,
@@ -123,8 +131,12 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     manager.kill(ptyId)
   )
   ipcMain.handle(
-    PtyInvokeChannel.History,
-    (_e, { ptyId }: { ptyId: string }) => manager.history(ptyId)
+    PtyInvokeChannel.KillTerminal,
+    (_e, { terminalId }: { terminalId: string }) =>
+      manager.killTerminal(terminalId)
+  )
+  ipcMain.handle(PtyInvokeChannel.History, (_e, { ptyId }: { ptyId: string }) =>
+    manager.history(ptyId)
   )
   ipcMain.handle(
     PtyInvokeChannel.FlowControl,
@@ -176,7 +188,7 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
       const result = win
         ? await dialog.showOpenDialog(win, options)
         : await dialog.showOpenDialog(options)
-      return result.canceled ? null : result.filePaths[0] ?? null
+      return result.canceled ? null : (result.filePaths[0] ?? null)
     }
   )
   ipcMain.handle(ShellInvokeChannel.ListAvailable, listAvailableShells)
@@ -249,7 +261,9 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   })
 }
 
-function parseHistoryQuery(value: unknown): { limit: number; before?: number } | null {
+function parseHistoryQuery(
+  value: unknown
+): { limit: number; before?: number } | null {
   if (!value || typeof value !== 'object') return null
   const raw = value as { limit?: unknown; before?: unknown }
   if (typeof raw.limit !== 'number' || !Number.isFinite(raw.limit)) return null
@@ -263,11 +277,18 @@ function parseHistoryQuery(value: unknown): { limit: number; before?: number } |
 function parseRecordEventInput(value: unknown): RecordEventInput | null {
   if (!value || typeof value !== 'object') return null
   const raw = value as Record<string, unknown>
-  if (typeof raw.kind !== 'string' || !EVENT_KIND_WHITELIST.has(raw.kind as HistoryEventKind)) {
+  if (
+    typeof raw.kind !== 'string' ||
+    !EVENT_KIND_WHITELIST.has(raw.kind as HistoryEventKind)
+  ) {
     return null
   }
   const kind = raw.kind as HistoryEventKind
-  const adapterId = boundedString(raw.adapterId, MAX_EVENT_ADAPTER_ID_LENGTH, '')
+  const adapterId = boundedString(
+    raw.adapterId,
+    MAX_EVENT_ADAPTER_ID_LENGTH,
+    ''
+  )
   const title = boundedString(raw.title, MAX_EVENT_TITLE_LENGTH, '')
   const detail = boundedString(raw.detail, MAX_EVENT_DETAIL_LENGTH, '')
   if (!adapterId && !title && !detail) return null

@@ -10,14 +10,13 @@ import {
   type ExitPayload,
   type PtyFlowControlSnapshot,
   type PtyHistorySnapshot,
+  type PtyTerminalIdentity,
+  type RecoverablePty,
   type SpawnOptions
 } from '../../shared/ipc-contract'
 import { PtyHistory } from './PtyHistory'
 import { ConptyResizeFilter } from './ConptyResizeFilter'
-import {
-  installPtyErrorGuard,
-  type PtyErrorEmitter
-} from './PtyErrorGuard'
+import { installPtyErrorGuard, type PtyErrorEmitter } from './PtyErrorGuard'
 import {
   PTY_DATA_HIGH_WATER_MARK_BYTES,
   PTY_DATA_LOW_WATER_MARK_BYTES,
@@ -35,6 +34,7 @@ interface ManagedPty {
   resizeTimer?: ReturnType<typeof setTimeout>
   /** 最近一次真正转发给 renderer 的输出；不包含被抑制的 ConPTY resize 重画。 */
   lastForwardedOutputAt: number
+  terminal?: PtyTerminalIdentity
 }
 
 /**
@@ -113,9 +113,10 @@ export class PTYManager {
     listeners.add(cb)
     this.exitListeners.set(ptyId, listeners)
     const cached = this.exitedPayloads.get(ptyId)
-    if (cached) queueMicrotask(() => {
-      if (active) cb(cached)
-    })
+    if (cached)
+      queueMicrotask(() => {
+        if (active) cb(cached)
+      })
     return () => {
       active = false
       const current = this.exitListeners.get(ptyId)
@@ -149,7 +150,9 @@ export class PTYManager {
     const ptyId = String(this.nextId++)
     const cols = opts.cols ?? 80
     const rows = opts.rows ?? 24
-    console.log(`[vibing] spawn ptyId=${ptyId} shell=${opts.shell ?? '(default)'}`)
+    console.log(
+      `[vibing] spawn ptyId=${ptyId} shell=${opts.shell ?? '(default)'}`
+    )
 
     // Windows：裸命令名先解析成绝对路径，避免 CreateProcess 找不到可执行文件。
     let resolvedShell: string | undefined
@@ -167,7 +170,7 @@ export class PTYManager {
           cols,
           rows,
           cwd: opts.cwd ?? process.cwd(),
-          env: (opts.env ?? (process.env as Record<string, string>))
+          env: opts.env ?? (process.env as Record<string, string>)
         })
         break
       } catch (err) {
@@ -199,7 +202,8 @@ export class PTYManager {
       history,
       dataQueue,
       resizeFilter,
-      lastForwardedOutputAt: 0
+      lastForwardedOutputAt: 0,
+      terminal: opts.terminal
     }
     this.ptys.set(ptyId, managed)
 
@@ -267,7 +271,8 @@ export class PTYManager {
     if (!target) return
     target.write(data)
     if (/[\r\n]/.test(data)) {
-      for (const listener of this.inputSubmitListeners.get(ptyId) ?? []) listener()
+      for (const listener of this.inputSubmitListeners.get(ptyId) ?? [])
+        listener()
     }
   }
 
@@ -363,5 +368,36 @@ export class PTYManager {
     this.exitListeners.clear()
     this.exitedPayloads.clear()
     this.inputSubmitListeners.clear()
+  }
+
+  /**
+   * 与 JS 事件循环内的 history snapshot 同步执行：先清理旧 renderer
+   * 未 ack 的字节，再取快照。之后到达的输出只会进入新订阅者。
+   */
+  attach(ptyId: string): PtyHistorySnapshot | null {
+    const managed = this.ptys.get(ptyId)
+    if (!managed) return null
+    managed.dataQueue.resetForAttach()
+    return managed.history.snapshot()
+  }
+
+  listRecoverable(): RecoverablePty[] {
+    const recoverable: RecoverablePty[] = []
+    for (const [ptyId, managed] of this.ptys) {
+      if (!managed.terminal) continue
+      recoverable.push({
+        ...managed.terminal,
+        ptyId,
+        exited: !managed.pty
+      })
+    }
+    return recoverable
+  }
+
+  killTerminal(terminalId: string): void {
+    const matches = [...this.ptys.entries()]
+      .filter(([, managed]) => managed.terminal?.terminalId === terminalId)
+      .map(([ptyId]) => ptyId)
+    for (const ptyId of matches) this.kill(ptyId)
   }
 }

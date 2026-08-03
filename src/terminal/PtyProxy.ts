@@ -42,6 +42,10 @@ export class PtyProxy {
     return window.ptyApi.getHistory(this.ptyId)
   }
 
+  attach(): Promise<PtyHistorySnapshot | null> {
+    return window.ptyApi.attach(this.ptyId)
+  }
+
   flowControl(): Promise<PtyFlowControlSnapshot | null> {
     return window.ptyApi.getFlowControl(this.ptyId)
   }

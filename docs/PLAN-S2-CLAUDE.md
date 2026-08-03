@@ -881,7 +881,7 @@ P6 不阻塞 S2 完成。
 - [ ] Stop/idle notification 丢失：5 分钟双时钟沉默后 low-confidence idle，不写 completed；
 - [ ] HTTP allowlist 明确阻断：启动即 lifecycle-only；
 - [ ] HTTP policy unknown 且首个 Hook 未到：watchdog 标记 stale，后续 Hook 可恢复；
-- [ ] renderer reload：主进程 Session 投影恢复，不重新注入 Hook；
+- [x] renderer reload：主进程恢复原 terminalId/ptyId 并重放权威历史，Session 投影与 Hook 原地保留，不重新 spawn/注入；
 - [ ] managed policy 禁止 Hook：Claude 正常启动，Session lifecycle-only。
 
 ### 13.2 平台场景

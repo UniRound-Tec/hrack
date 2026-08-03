@@ -8,6 +8,14 @@ import type { UserThemeFile } from './theme-schema'
 
 // ───── Renderer → Main（ipcMain.handle，请求-响应）─────────
 
+export interface PtyTerminalIdentity {
+  terminalId: string
+  kind: 'terminal' | 'agent'
+  name: string
+  shellId: string
+  cwd: string
+}
+
 export interface SpawnOptions {
   /** 未提供时由主进程按平台选默认 shell（Windows→pwsh，类 Unix→$SHELL/bash）。 */
   shell?: string
@@ -17,10 +25,20 @@ export interface SpawnOptions {
   env?: Record<string, string>
   cols?: number
   rows?: number
+  /**
+   * Renderer reload 后重建终端的稳定身份。PTYManager 只保存通用终端
+   * 元数据，不解析 CLI 品牌或 Agent 事件。
+   */
+  terminal?: PtyTerminalIdentity
 }
 
 export interface SpawnResult {
   ptyId: string
+}
+
+export interface RecoverablePty extends PtyTerminalIdentity {
+  ptyId: string
+  exited: boolean
 }
 
 export interface ExitPayload {
@@ -48,9 +66,7 @@ export interface PtyHistoryResizeEvent {
   rows: number
 }
 
-export type PtyHistoryEvent =
-  | PtyHistoryOutputEvent
-  | PtyHistoryResizeEvent
+export type PtyHistoryEvent = PtyHistoryOutputEvent | PtyHistoryResizeEvent
 
 /** 主进程权威历史源的只读快照。P0 保存原始流；后续 P1/P2 在此之上做重放。 */
 export interface PtyHistorySnapshot {
@@ -174,9 +190,12 @@ export interface PtyMeta {
 
 export const PtyInvokeChannel = {
   Spawn: 'pty:spawn',
+  Attach: 'pty:attach',
+  ListRecoverable: 'pty:list-recoverable',
   Write: 'pty:write',
   Resize: 'pty:resize',
   Kill: 'pty:kill',
+  KillTerminal: 'pty:kill-terminal',
   Ack: 'pty:ack',
   History: 'pty:history',
   FlowControl: 'pty:flow-control'
@@ -273,9 +292,13 @@ export interface PtyApi {
   /** 同步返回平台元信息（Terminal 构造前需要 windowsPty）。 */
   getMeta: () => PtyMeta
   spawn: (opts: SpawnOptions) => Promise<SpawnResult>
+  /** 原子重置旧 renderer 的背压账本并取回权威历史。 */
+  attach: (ptyId: string) => Promise<PtyHistorySnapshot | null>
+  listRecoverable: () => Promise<RecoverablePty[]>
   write: (ptyId: string, data: string) => Promise<void>
   resize: (ptyId: string, cols: number, rows: number) => Promise<void>
   kill: (ptyId: string) => Promise<void>
+  killTerminal: (terminalId: string) => Promise<void>
   ack: (ptyId: string, bytes: number) => Promise<void>
   /** 读取主进程中 resize 免疫的原始历史快照。 */
   getHistory: (ptyId: string) => Promise<PtyHistorySnapshot | null>

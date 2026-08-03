@@ -28,6 +28,7 @@ import { AgentSessionRuntime } from './agents/AgentSessionRuntime'
 import { ObserverRegistry } from './agents/ObserverRegistry'
 import { FixtureObserverAdapter } from './agents/adapters/fixture'
 import { ClaudeObserverAdapter } from './agents/adapters/claude/ClaudeObserverAdapter'
+import { OpenCodeObserverAdapter } from './agents/adapters/opencode'
 import { HookIngress } from './hooks/HookIngress'
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
@@ -46,6 +47,7 @@ const eventLog = new EventLog()
 const observerRegistry = new ObserverRegistry()
 const hookIngress = new HookIngress()
 observerRegistry.register(new ClaudeObserverAdapter(hookIngress))
+observerRegistry.register(new OpenCodeObserverAdapter())
 observerRegistry.register(new FixtureObserverAdapter())
 const agentRuntime = new AgentSessionRuntime({
   pty: manager,

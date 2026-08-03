@@ -1,5 +1,6 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import type { TerminalLaunchOptions } from './terminalLaunchRegistry'
+import type { RecoverablePty } from '../../shared/ipc-contract'
 import {
   removeTerminalLaunch,
   setTerminalLaunch
@@ -23,6 +24,7 @@ export interface TerminalsState {
   terminals: TerminalEntry[]
   activeTerminalId: string | null
   addTerminal(options?: AddTerminalOptions): TerminalEntry
+  restoreTerminals(terminals: readonly RecoverablePty[]): void
   closeTerminal(id: string): boolean
   activateTerminal(id: string): void
   setTitle(id: string, title: string): void
@@ -34,15 +36,15 @@ export interface TerminalsState {
  * regular Zustand React store. `closeTerminal` returns true when the removed
  * entry was the final terminal so AppShell can route Home without closing.
  */
-export function createTerminalsStore(): UseBoundStore<
-  StoreApi<TerminalsState>
-> {
+export function createTerminalsStore(
+  options: {
+    initialTerminal?: boolean
+  } = {}
+): UseBoundStore<StoreApi<TerminalsState>> {
   let nextTerminalNumber = 1
   const fallbackNames = new Map<string, string>()
 
-  const createTerminal = (
-    options: AddTerminalOptions = {}
-  ): TerminalEntry => {
+  const createTerminal = (options: AddTerminalOptions = {}): TerminalEntry => {
     const fallbackName = `Terminal ${nextTerminalNumber++}`
     const terminal = {
       id: crypto.randomUUID(),
@@ -56,11 +58,12 @@ export function createTerminalsStore(): UseBoundStore<
     return terminal
   }
 
-  const initialTerminal = createTerminal()
+  const initialTerminal =
+    options.initialTerminal === false ? null : createTerminal()
 
   return create<TerminalsState>((set, get) => ({
-    terminals: [initialTerminal],
-    activeTerminalId: initialTerminal.id,
+    terminals: initialTerminal ? [initialTerminal] : [],
+    activeTerminalId: initialTerminal?.id ?? null,
     addTerminal: (options) => {
       const terminal = createTerminal(options)
       set((state) => ({
@@ -68,6 +71,40 @@ export function createTerminalsStore(): UseBoundStore<
         activeTerminalId: terminal.id
       }))
       return terminal
+    },
+    restoreTerminals: (recoverable) => {
+      if (recoverable.length === 0) return
+      set((state) => {
+        const existingIds = new Set(
+          state.terminals.map((terminal) => terminal.id)
+        )
+        const restored: TerminalEntry[] = []
+        for (const item of recoverable) {
+          if (existingIds.has(item.terminalId)) continue
+          const fallbackName =
+            item.name.trim() || `Terminal ${nextTerminalNumber}`
+          nextTerminalNumber++
+          fallbackNames.set(item.terminalId, fallbackName)
+          setTerminalLaunch(item.terminalId, {
+            kind: 'attach',
+            ptyId: item.ptyId,
+            agent: item.kind === 'agent'
+          })
+          restored.push({
+            id: item.terminalId,
+            name: fallbackName,
+            cwd: item.cwd.trim(),
+            shellId: item.shellId.trim() || 'system',
+            exited: item.exited
+          })
+        }
+        if (restored.length === 0) return state
+        const terminals = [...state.terminals, ...restored]
+        return {
+          terminals,
+          activeTerminalId: state.activeTerminalId ?? terminals[0].id
+        }
+      })
     },
     closeTerminal: (id) => {
       const state = get()
@@ -77,15 +114,13 @@ export function createTerminalsStore(): UseBoundStore<
       if (closingIndex < 0) return false
       fallbackNames.delete(id)
       removeTerminalLaunch(id)
-      const terminals = state.terminals.filter(
-        (terminal) => terminal.id !== id
-      )
+      const terminals = state.terminals.filter((terminal) => terminal.id !== id)
       const activeTerminalId =
         terminals.length === 0
           ? null
           : state.activeTerminalId === id
-          ? terminals[Math.min(closingIndex, terminals.length - 1)].id
-          : state.activeTerminalId
+            ? terminals[Math.min(closingIndex, terminals.length - 1)].id
+            : state.activeTerminalId
       set({ terminals, activeTerminalId })
       return terminals.length === 0
     },
@@ -102,8 +137,7 @@ export function createTerminalsStore(): UseBoundStore<
           terminal.id === id
             ? {
                 ...terminal,
-                name:
-                  normalized || fallbackNames.get(id) || terminal.name
+                name: normalized || fallbackNames.get(id) || terminal.name
               }
             : terminal
         )
@@ -118,4 +152,8 @@ export function createTerminalsStore(): UseBoundStore<
   }))
 }
 
-export const useTerminalsStore = createTerminalsStore()
+// 产品 Store 先等待主进程恢复旧 PTY；只有确认无可恢复实例后
+// AppShell 才创建首个默认终端。工厂默认仍保留初始终端，便于独立单测。
+export const useTerminalsStore = createTerminalsStore({
+  initialTerminal: false
+})

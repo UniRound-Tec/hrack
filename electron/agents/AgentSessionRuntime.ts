@@ -159,10 +159,7 @@ function validateStartAgentSession(value: unknown): StartAgentSession | null {
   if (!raw || !selection) return null
   const terminalId = bounded(raw.terminalId, MAX_TERMINAL_ID_LENGTH)
   if (!terminalId) return null
-  const installationId = bounded(
-    selection.installationId,
-    MAX_ENV_VALUE_LENGTH
-  )
+  const installationId = bounded(selection.installationId, MAX_ENV_VALUE_LENGTH)
   const workspace =
     typeof selection.workspace === 'string'
       ? selection.workspace.slice(0, 32_768)
@@ -226,9 +223,7 @@ function sanitizeAugmentation(
       }
     }
   }
-  const cleanArgs = (
-    values: string[] | undefined
-  ): string[] | undefined => {
+  const cleanArgs = (values: string[] | undefined): string[] | undefined => {
     if (!values) return undefined
     const cleaned = values
       .filter(
@@ -275,8 +270,7 @@ function mergeEnvironmentAugmentation(
 
 async function disposeResources(
   resources: ReadonlyArray<
-    | { label: string; dispose: (() => Promise<void>) | undefined }
-    | undefined
+    { label: string; dispose: (() => Promise<void>) | undefined } | undefined
   >
 ): Promise<void> {
   const active = resources.filter(
@@ -319,10 +313,9 @@ function validatePublishCaption(value: unknown): PublishAgentCaption | null {
 export class AgentSessionRuntime {
   private readonly sessions = new Map<string, ActiveAgentSession>()
   private runRootReady: Promise<void> | null = null
-  private readonly options: Required<Pick<
-    AgentRuntimeOptions,
-    'silenceAfterMs' | 'idleCheckMs'
-  >> &
+  private readonly options: Required<
+    Pick<AgentRuntimeOptions, 'silenceAfterMs' | 'idleCheckMs'>
+  > &
     AgentRuntimeOptions
 
   constructor(
@@ -367,7 +360,9 @@ export class AgentSessionRuntime {
       input.selection.installationId
     )
     if (!installation) {
-      throw new Error('CLI installation is no longer available; refresh the scan')
+      throw new Error(
+        'CLI installation is no longer available; refresh the scan'
+      )
     }
     const adapterId =
       this.deps.discovery.definitionAdapterId(installation) ?? 'unknown'
@@ -421,6 +416,7 @@ export class AgentSessionRuntime {
       throw error
     }
     const spawnOptions = mergeEnvironmentAugmentation(baseOptions, augmentation)
+    const name = input.name?.trim() ?? ''
 
     // 3. PTY spawn；失败必须 dispose prepared observer 并删除临时资源。
     let ptyId: string
@@ -429,7 +425,14 @@ export class AgentSessionRuntime {
         await this.deps.pty.spawn({
           ...spawnOptions,
           cols: input.cols,
-          rows: input.rows
+          rows: input.rows,
+          terminal: {
+            terminalId: input.terminalId,
+            kind: 'agent',
+            name: name || installation.definitionId,
+            shellId: adapterId,
+            cwd: input.selection.workspace.trim()
+          }
         })
       ).ptyId
     } catch (error) {
@@ -445,7 +448,6 @@ export class AgentSessionRuntime {
     const capabilities: ObserverCapabilities = degraded
       ? NO_OBSERVER_CAPABILITIES
       : (prepared?.capabilities ?? adapter.capabilities)
-    const name = input.name ?? ''
     const now = Date.now()
     const projection = createInitialAgentProjection({
       sessionId,
@@ -530,7 +532,10 @@ export class AgentSessionRuntime {
           reason: `observer attach failed: ${String(error).slice(0, 512)}`
         }
         await disposeResources([
-          { label: 'prepared observer after attach failure', dispose: () => prepared.dispose() }
+          {
+            label: 'prepared observer after attach failure',
+            dispose: () => prepared.dispose()
+          }
         ])
         session.prepared = null
         session.capabilities = NO_OBSERVER_CAPABILITIES
@@ -560,7 +565,12 @@ export class AgentSessionRuntime {
       this.deps.pty.onInputSubmitted
     ) {
       session.unsubscribeInput = this.deps.pty.onInputSubmitted(ptyId, () => {
-        if (session.finalized || session.observerDelivered || session.handshakeTimer) return
+        if (
+          session.finalized ||
+          session.observerDelivered ||
+          session.handshakeTimer
+        )
+          return
         session.handshakeTimer = setTimeout(() => {
           session.handshakeTimer = null
           if (session.finalized || session.observerDelivered) return
@@ -651,7 +661,8 @@ export class AgentSessionRuntime {
     const session = [...this.sessions.values()].find(
       (candidate) => candidate.terminalId === input.terminalId
     )
-    if (!session || session.finalized || session.projection.correlation.exited) return
+    if (!session || session.finalized || session.projection.correlation.exited)
+      return
     this.acceptAdapterEvent(session, {
       kind: 'activity.caption',
       payload: {
@@ -664,7 +675,12 @@ export class AgentSessionRuntime {
   }
 
   listActive(): AgentSessionProjection[] {
-    return [...this.sessions.values()].map((session) => session.projection)
+    return [...this.sessions.values()]
+      .filter(
+        (session) =>
+          !session.finalized && !session.projection.correlation.exited
+      )
+      .map((session) => session.projection)
   }
 
   /** 应用退出：对所有会话幂等清理，不遗留 hook server、socket 或 temp settings。 */
@@ -776,7 +792,10 @@ export class AgentSessionRuntime {
     }
 
     if (processed.length > 0) {
-      this.deps.options.broadcast(AgentEventChannel.Projection, session.projection)
+      this.deps.options.broadcast(
+        AgentEventChannel.Projection,
+        session.projection
+      )
       this.deps.options.broadcast(AgentEventChannel.Events, processed)
     }
 

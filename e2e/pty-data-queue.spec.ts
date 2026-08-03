@@ -90,3 +90,32 @@ test('stays paused when draining one queued chunk crosses the high-water mark', 
   expect(queue.snapshot().paused).toBe(false)
   expect(resumeCount).toBe(1)
 })
+
+test('reattach drops stale delivery accounting and resumes the PTY', () => {
+  let resumeCount = 0
+  const queue = new PtyDataQueue({
+    highWaterMarkBytes: 8,
+    lowWaterMarkBytes: 2,
+    maxBufferedBytes: 16,
+    send: () => {},
+    pause: () => {},
+    resume: () => resumeCount++
+  })
+
+  queue.push(bytes(8))
+  queue.push(bytes(4))
+  expect(queue.snapshot()).toMatchObject({
+    unackedBytes: 8,
+    queuedBytes: 4,
+    paused: true
+  })
+
+  queue.resetForAttach()
+
+  expect(queue.snapshot()).toMatchObject({
+    unackedBytes: 0,
+    queuedBytes: 0,
+    paused: false
+  })
+  expect(resumeCount).toBe(1)
+})

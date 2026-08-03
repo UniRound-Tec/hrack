@@ -47,6 +47,7 @@ export interface VibingDebugApi {
   forceContextLoss(): boolean
   forceDomRenderer(): void
   writeRenderFixture(data: string): Promise<void>
+  sendInput(data: string): Promise<void>
   setPtyRenderingSuspended(suspended: boolean): void
   setTheme(themeId: ThemeId): void
   setFont(fontFamily: string, fontSize: number): void
@@ -80,6 +81,7 @@ interface TerminalRegistration {
   setPtyAckDelay: (milliseconds: number) => void
   renderer: RendererController
   setPtyRenderingSuspended: (suspended: boolean) => void
+  sendInput: (data: string) => Promise<void>
   clearLog: ClearSeqLog
 }
 
@@ -235,6 +237,9 @@ function createApi(
         registration.term.write(data, resolve)
       })
     },
+    sendInput(data: string) {
+      return getRegistration()?.sendInput(data) ?? Promise.resolve()
+    },
     setPtyRenderingSuspended(suspended: boolean) {
       getRegistration()?.setPtyRenderingSuspended(suspended)
     },
@@ -337,7 +342,8 @@ export function registerTerminalForDebug(
   dumpFlowControl: () => Promise<PtyFlowControlSnapshot | null>,
   setPtyAckDelay: (milliseconds: number) => void,
   renderer: RendererController,
-  setPtyRenderingSuspended: (suspended: boolean) => void
+  setPtyRenderingSuspended: (suspended: boolean) => void,
+  sendInput: (data: string) => Promise<void>
 ): () => void {
   if (!shouldEnable()) return () => {}
 
@@ -349,6 +355,7 @@ export function registerTerminalForDebug(
     setPtyAckDelay,
     renderer,
     setPtyRenderingSuspended,
+    sendInput,
     clearLog: { ed2: 0, ed3: 0, events: [] }
   })
   if (!activeTabId) activeTabId = tabId

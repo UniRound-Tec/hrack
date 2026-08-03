@@ -400,7 +400,7 @@ S0 新会话应保存 `installationId`，使历史/诊断知道它来自 Windows
 |---|---|
 | **S1** | ✅ 结构化 observer 基础设施（事件、能力、归约、投影、IPC、fixture 门禁）已完成 |
 | **S2** | Claude Code 参考 Adapter 驱动真实 `working / needs-you / done`；实施见 [PLAN-S2-CLAUDE.md](./PLAN-S2-CLAUDE.md) |
-| **S3** | 第二种协议形态验证 observer 抽象；悬浮窗聚合 |
+| **S3** | OpenCode Server/SSE Adapter（Windows + WSL）验证第二种协议形态；实施见 [PLAN-S3-OPENCODE.md](./PLAN-S3-OPENCODE.md) |
 | **S4** | 注意力通知，仍只看不操作 |
 | **M6** | 在 S3 抽象上铺开更多产品的语义 adapter；扫描定义不需要等到 M6 |
 

@@ -54,14 +54,20 @@ export class PtyDataQueue {
       return false
     }
 
-    if (this.queued.length === 0 && this.unackedBytes < this.options.highWaterMarkBytes) {
+    if (
+      this.queued.length === 0 &&
+      this.unackedBytes < this.options.highWaterMarkBytes
+    ) {
       this.send(data)
     } else {
       this.queued.push(data)
       this.queuedBytes += data.byteLength
     }
 
-    if (this.unackedBytes >= this.options.highWaterMarkBytes || this.queued.length > 0) {
+    if (
+      this.unackedBytes >= this.options.highWaterMarkBytes ||
+      this.queued.length > 0
+    ) {
       this.pause()
     }
     this.maxObservedBufferedBytes = Math.max(
@@ -93,6 +99,17 @@ export class PtyDataQueue {
     ) {
       this.resume()
     }
+  }
+
+  /**
+   * Renderer 刷新会丢失旧的 ack 订阅者。重新挂接时丢弃旧的
+   * “在途”账本；这些字节已全部进入 PtyHistory，会由 attach 快照重放。
+   */
+  resetForAttach(): void {
+    this.queued.length = 0
+    this.queuedBytes = 0
+    this.unackedBytes = 0
+    this.resume()
   }
 
   snapshot(): PtyFlowControlSnapshot {

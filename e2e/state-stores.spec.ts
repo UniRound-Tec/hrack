@@ -168,6 +168,34 @@ test.describe('terminalsStore', () => {
     expect(store.getState().terminals).toHaveLength(0)
     expect(store.getState().activeTerminalId).toBeNull()
   })
+
+  test('restores stable terminal identities without creating a replacement', () => {
+    const store = createTerminalsStore({ initialTerminal: false })
+    expect(store.getState().terminals).toHaveLength(0)
+
+    const recovered = {
+      ptyId: 'pty-7',
+      terminalId: 'terminal-stable',
+      kind: 'terminal' as const,
+      name: 'PowerShell',
+      shellId: 'pwsh',
+      cwd: 'C:\\repo',
+      exited: false
+    }
+    store.getState().restoreTerminals([recovered])
+    store.getState().restoreTerminals([recovered])
+
+    expect(store.getState().terminals).toEqual([
+      {
+        id: 'terminal-stable',
+        name: 'PowerShell',
+        shellId: 'pwsh',
+        cwd: 'C:\\repo',
+        exited: false
+      }
+    ])
+    expect(store.getState().activeTerminalId).toBe('terminal-stable')
+  })
 })
 
 test.describe('sessionsStore', () => {
@@ -203,9 +231,9 @@ test.describe('sessionsStore', () => {
     })
 
     store.getState().removeSession('real:2')
-    expect(store.getState().sessions.map((session) => session.sessionId)).toEqual([
-      'real:1'
-    ])
+    expect(
+      store.getState().sessions.map((session) => session.sessionId)
+    ).toEqual(['real:1'])
   })
 
   test('provides tokenized status presentation', () => {
