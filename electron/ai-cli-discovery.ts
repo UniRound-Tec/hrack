@@ -925,7 +925,14 @@ function e2eFixtureReport(startedAt: number): CliScanReport {
   const definition = cliDefinitions.find((item) => item.id === 'codex')!
   const windows: CliRuntime = { kind: 'host', platform: 'windows' }
   const wsl: CliRuntime = { kind: 'wsl', distro: 'Ubuntu-Test' }
-  const fixtureExecutable = process.platform === 'win32' ? 'where.exe' : '/bin/false'
+  // S1：observer fixture 走查需要 CLI 在脚本重放期间保持存活，
+  // 因此 Windows 安装改用交互式 cmd.exe（普通 e2e 仍用 where.exe 快速退出）。
+  const fixtureExecutable =
+    process.platform === 'win32'
+      ? process.env['VIBING_FIXTURE_OBSERVER'] === '1'
+        ? 'cmd.exe'
+        : 'where.exe'
+      : '/bin/false'
   return {
     startedAt,
     finishedAt: Date.now(),
@@ -1100,7 +1107,34 @@ export class AiCliDiscoveryService {
     return report
   }
 
-  async prepareLaunch(selection: CliLaunchSelection): Promise<SpawnOptions> {
+  /** 按 installationId 找回本次扫描的已验证安装；已失效返回 null。 */
+  async resolveInstallation(
+    installationId: string
+  ): Promise<CliInstallation | null> {
+    const report = await this.scan(false)
+    return (
+      report.launchable
+        .flatMap((cli) => cli.installations)
+        .find((item) => item.id === installationId) ?? null
+    )
+  }
+
+  /** 安装所属 CLI Definition 的 Observer Adapter id；未知定义返回 null。 */
+  definitionAdapterId(installation: CliInstallation): string | null {
+    return (
+      cliDefinitions.find(
+        (definition) => definition.id === installation.definitionId
+      )?.adapterId ?? null
+    )
+  }
+
+  async prepareLaunch(
+    selection: CliLaunchSelection,
+    augmentation: {
+      prependArgs?: readonly string[]
+      appendArgs?: readonly string[]
+    } = {}
+  ): Promise<SpawnOptions> {
     validateSelection(selection)
     const report = await this.scan(false)
     const installation = report.launchable
@@ -1109,7 +1143,14 @@ export class AiCliDiscoveryService {
     if (!installation) throw new Error('CLI installation is no longer available; refresh the scan')
     const definition = cliDefinitions.find((item) => item.id === installation.definitionId)
     if (!definition) throw new Error('Unknown CLI definition')
-    const args = [...(definition.launchArgs ?? []), ...selection.args]
+    // Adapter 参数必须在 Windows `.cmd` 命令行序列化之前合并。序列化后再
+    // 拼接不仅会丢参数，也无法在 cmd.exe 的多层 quoting 下保持安全。
+    const args = [
+      ...(augmentation.prependArgs ?? []),
+      ...(definition.launchArgs ?? []),
+      ...selection.args,
+      ...(augmentation.appendArgs ?? [])
+    ]
 
     if (installation.runtime.kind === 'wsl') {
       const cwd = selection.workspace.trim()

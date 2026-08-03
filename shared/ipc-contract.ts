@@ -88,6 +88,7 @@ export type HistoryEventKind =
   | 'tool_call'
   | 'completed'
   | 'approved'
+  | 'blocked'
   | 'message'
   | 'session_start'
   | 'session_exit'

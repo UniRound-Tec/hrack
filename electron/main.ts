@@ -24,6 +24,9 @@ import {
 import { startThemeWatcher, stopThemeWatcher } from './themes-watch'
 import { AppEventChannel } from '../shared/ipc-contract'
 import { AiCliDiscoveryService } from './ai-cli-discovery'
+import { AgentSessionRuntime } from './agents/AgentSessionRuntime'
+import { ObserverRegistry } from './agents/ObserverRegistry'
+import { FixtureObserverAdapter } from './agents/adapters/fixture'
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
 // 必须在 app ready 之前调用。
@@ -36,6 +39,27 @@ const manager = new PTYManager()
 const cliDiscovery = new AiCliDiscoveryService(
   join(app.getPath('userData'), 'ai-cli-scan.json')
 )
+const eventLog = new EventLog()
+// S1：Agent Observer 基础设施。fixture adapter 仅在 E2E 环境变量下启用。
+const observerRegistry = new ObserverRegistry()
+observerRegistry.register(new FixtureObserverAdapter())
+const agentRuntime = new AgentSessionRuntime({
+  pty: manager,
+  discovery: cliDiscovery,
+  history: eventLog,
+  registry: observerRegistry,
+  options: {
+    runDirRoot: join(app.getPath('userData'), 'observer-runs'),
+    broadcast: (channel, payload) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.webContents.isDestroyed()) {
+          win.webContents.send(channel, payload)
+        }
+      }
+    }
+  }
+})
+let shutdownStarted = false
 
 app.whenReady().then(async () => {
   // M0 验收：抵达此行即证明 node-pty 已按 Electron ABI 成功加载
@@ -48,7 +72,6 @@ app.whenReady().then(async () => {
   }
 
   const prefs = await loadMainPrefs()
-  const eventLog = new EventLog()
   await eventLog.init()
 
   let winRef: BrowserWindow | null = null
@@ -80,6 +103,7 @@ app.whenReady().then(async () => {
   const ctx: IpcContext = {
     eventLog,
     cliDiscovery,
+    agentRuntime,
     getWindow: () => (winRef && !winRef.isDestroyed() ? winRef : null),
     getTray: () => trayRef,
     rebuildTrayMenu: () => {
@@ -129,9 +153,17 @@ app.whenReady().then(async () => {
   })
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (shutdownStarted) return
+  event.preventDefault()
+  shutdownStarted = true
   markQuitting()
-  manager.killAll()
-  unregisterGlobalShortcut()
-  stopThemeWatcher()
+  void (async () => {
+    // Agent Runtime 先写入退出事实并回收 observer；随后兜底关闭普通终端。
+    await agentRuntime.disposeAll()
+    manager.killAll()
+    unregisterGlobalShortcut()
+    stopThemeWatcher()
+    app.quit()
+  })()
 })

@@ -48,6 +48,15 @@ export const ja = {
         ? '終了'
         : `終了：exit code ${exitCode}`
   },
+  agentDetail: {
+    thinking: '思考中',
+    waitingApproval: '承認待ち',
+    waitingInput: '入力待ち',
+    exited: (exitCode: number | undefined) =>
+      exitCode === undefined
+        ? '終了'
+        : `終了：exit code ${exitCode}`
+  },
   terminal: {
     copied: 'コピーしました',
     newTab: '新しいタブ',

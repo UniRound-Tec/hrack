@@ -166,6 +166,9 @@ export function useXterm(
 
     let proxy: PtyProxy | null = null
     let initialSpawnPending = true
+    // S1：AI CLI 启动走主进程 AgentSessionRuntime；普通终端保持原链路。
+    const launch = getTerminalLaunch(tabId)
+    const isAgentLaunch = launch?.kind === 'agent'
     const settleInitialSpawn = (error: string | null): void => {
       if (!initialSpawnPending) return
       initialSpawnPending = false
@@ -359,8 +362,9 @@ export function useXterm(
       })
       next.onExit(({ code }) => {
         if (disposed) return
+        // Agent 会话不自动重启：PTY 退出即事实（由主进程归约 session.exited）。
         const respawned =
-          code === undefined && respawnCount < MAX_ABNORMAL_EXITS
+          !isAgentLaunch && code === undefined && respawnCount < MAX_ABNORMAL_EXITS
         if (respawned) {
           respawnCount++
           term.write(
@@ -381,9 +385,38 @@ export function useXterm(
 
     const spawnShell = (): void => {
       if (disposed) return
+      if (isAgentLaunch && launch?.kind === 'agent') {
+        window.agentApi
+          .start({
+            terminalId: tabId,
+            selection: launch.selection,
+            name: launch.name,
+            cols: term.cols,
+            rows: term.rows
+          })
+          .then((started) => {
+            if (disposed) {
+              void window.agentApi.stop(started.sessionId)
+              settleInitialSpawn(
+                'Launch was cancelled before the terminal became ready'
+              )
+              return
+            }
+            wireProxy(new PtyProxy(started.ptyId))
+            settleInitialSpawn(null)
+          })
+          .catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err)
+            term.write(
+              `\r\n\x1b[31mFailed to launch CLI: ${message}\x1b[0m\r\n`
+            )
+            settleInitialSpawn(message)
+          })
+        return
+      }
       window.ptyApi
         .spawn({
-          ...getTerminalLaunch(tabId),
+          ...(launch?.kind === 'shell' ? launch.shell : {}),
           cols: term.cols,
           rows: term.rows
         })

@@ -19,6 +19,7 @@ import type {
 export async function launchApp(options: {
   userDataDir?: string
   cliFixture?: boolean
+  env?: Record<string, string>
 } = {}): Promise<{
   app: ElectronApplication
   window: Page
@@ -33,7 +34,8 @@ export async function launchApp(options: {
       ...process.env,
       VIBING_E2E: '1',
       VIBING_E2E_CLI_FIXTURE: options.cliFixture === false ? '0' : '1',
-      VIBING_USER_DATA_DIR: userDataDir
+      VIBING_USER_DATA_DIR: userDataDir,
+      ...options.env
     }
   })
   try {

@@ -39,6 +39,7 @@ import {
   useSessionsStore,
   type SessionEntry
 } from '../state/sessionsStore'
+import { useAgentEventsStore } from '../state/agentEventsStore'
 import { useTerminalsStore } from '../state/terminalsStore'
 
 export interface VibingDebugShellApi {
@@ -72,7 +73,6 @@ export default function AppShell() {
     (state) => state.setDefaultTerminal
   )
   const sessions = useSessionsStore((state) => state.sessions)
-  const addSession = useSessionsStore((state) => state.addSession)
   const removeSession = useSessionsStore((state) => state.removeSession)
   const updateSession = useSessionsStore((state) => state.updateSession)
   const terminals = useTerminalsStore((state) => state.terminals)
@@ -149,8 +149,11 @@ export default function AppShell() {
       const terminal = addTerminal({
         shellId: shell.id,
         launch: {
-          shell: shell.shell,
-          args: shell.args
+          kind: 'shell',
+          shell: {
+            shell: shell.shell,
+            args: shell.args
+          }
         }
       })
       setNewSessionOpen(false)
@@ -164,20 +167,20 @@ export default function AppShell() {
     if (shell) launchTerminal(shell)
   }, [defaultTerminal, launchTerminal, shells])
 
+  // S1：AI CLI 启动编排在主进程 AgentSessionRuntime 完成；renderer 只建立
+  // provisional terminal 并保存 CliLaunchSelection，TerminalView fit 后调用
+  // agent:start。会话展示副本由主进程 projection 广播 upsert，不再本地推导。
   const launchCli = useCallback(
     async (draft: CliLaunchDraft): Promise<string | null> => {
-      let launch
-      try {
-        launch = await window.cliApi.prepareLaunch(
-          buildCliLaunchSelection(draft)
-        )
-      } catch (error) {
-        return error instanceof Error ? error.message : String(error)
-      }
+      const name = draft.name.trim() || draft.option.definition.displayName
       const terminal = addTerminal({
         shellId: draft.option.definition.adapterId,
         cwd: draft.workspace.trim(),
-        launch
+        launch: {
+          kind: 'agent',
+          selection: buildCliLaunchSelection(draft),
+          name
+        }
       })
       setPageId(terminalPage(terminal.id))
       return new Promise<string | null>((resolve) => {
@@ -190,6 +193,29 @@ export default function AppShell() {
     },
     [addTerminal, pageId]
   )
+
+  // S1：主进程投影是权威状态；renderer 只 upsert 展示副本。
+  // reload 后先 listActive 恢复，再订阅增量；Runtime 保持权威状态。
+  useEffect(() => {
+    let cancelled = false
+    const unsubscribeProjection = window.agentApi.onProjection((projection) => {
+      useSessionsStore.getState().applyProjection(projection)
+    })
+    const unsubscribeEvents = window.agentApi.onEvents((events) => {
+      useAgentEventsStore.getState().record(events)
+    })
+    void window.agentApi.listActive().then((projections) => {
+      if (cancelled) return
+      for (const projection of projections) {
+        useSessionsStore.getState().applyProjection(projection)
+      }
+    })
+    return () => {
+      cancelled = true
+      unsubscribeProjection()
+      unsubscribeEvents()
+    }
+  }, [])
 
   const handleInitialTerminalSpawn = useCallback(
     (terminalId: string, error: string | null): void => {
@@ -209,29 +235,12 @@ export default function AppShell() {
         return
       }
 
-      const { draft } = pending
-      const name = draft.name.trim() || draft.option.definition.displayName
-      addSession({
-        sessionId: crypto.randomUUID(),
-        terminalId,
-        adapterId: draft.option.definition.adapterId,
-        installationId: draft.installationId,
-        name,
-        status: 'working',
-        lastActivityAt: Date.now()
-      })
-      // Only persist a lifecycle start after the PTY has actually been created.
-      void window.statsApi.recordEvent({
-        kind: 'session_start',
-        adapterId: draft.option.definition.adapterId,
-        title: name,
-        detail: draft.workspace.trim()
-      })
+      // 成功路径：会话条目由主进程 session.started 投影创建，无需本地 addSession。
       setNewSessionOpen(false)
       setPageId(terminalPage(terminalId))
       pending.resolve(null)
     },
-    [addSession, closeTerminal]
+    [closeTerminal]
   )
 
   const configureCli = useCallback((option: CliOption): void => {
@@ -259,6 +268,8 @@ export default function AppShell() {
 
   const closeSessionAndTerminal = useCallback(
     (session: SessionEntry): void => {
+      // 主进程权威清理（幂等）；renderer 墓碑保证迟到的退出投影不复活会话。
+      void window.agentApi.stop(session.sessionId)
       removeSession(session.sessionId)
       if (terminalIds.has(session.terminalId)) {
         closeTerminalAndRoute(session.terminalId)

@@ -41,6 +41,14 @@ import {
   type WindowApi,
   type WindowPositionPayload
 } from '../shared/ipc-contract'
+import {
+  AgentEventChannel,
+  AgentInvokeChannel,
+  type AgentApi,
+  type AgentEvent,
+  type AgentSessionProjection,
+  type StartAgentSession
+} from '../shared/agent-events'
 
 /** 推算 Windows build 号（os.release() 形如 "10.0.26200"）。 */
 function windowsBuildNumber(): number {
@@ -175,6 +183,41 @@ const statsApi: StatsApi = {
     ipcRenderer.invoke(StatsInvokeChannel.RecordEvent, input)
 }
 
+const agentApi: AgentApi = {
+  start: (input: StartAgentSession) =>
+    ipcRenderer.invoke(AgentInvokeChannel.Start, input),
+  stop: (sessionId: string) =>
+    ipcRenderer.invoke(AgentInvokeChannel.Stop, { sessionId }),
+  listActive: () => ipcRenderer.invoke(AgentInvokeChannel.ListActive),
+  onEvents: (cb) => {
+    const handler = (_event: IpcRendererEvent, events: unknown): void => {
+      if (Array.isArray(events) && events.length <= 500) {
+        cb(events as AgentEvent[])
+      }
+    }
+    ipcRenderer.on(AgentEventChannel.Events, handler)
+    return () =>
+      ipcRenderer.removeListener(AgentEventChannel.Events, handler)
+  },
+  onProjection: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      projection: AgentSessionProjection
+    ): void => {
+      if (
+        projection &&
+        typeof projection === 'object' &&
+        typeof projection.sessionId === 'string'
+      ) {
+        cb(projection)
+      }
+    }
+    ipcRenderer.on(AgentEventChannel.Projection, handler)
+    return () =>
+      ipcRenderer.removeListener(AgentEventChannel.Projection, handler)
+  }
+}
+
 const appApi: AppApi = {
   setMainPrefs: (update: MainPrefsUpdate) =>
     ipcRenderer.invoke(AppInvokeChannel.SetMainPrefs, update),
@@ -204,6 +247,7 @@ try {
   contextBridge.exposeInMainWorld('shellApi', shellApi)
   contextBridge.exposeInMainWorld('cliApi', cliApi)
   contextBridge.exposeInMainWorld('statsApi', statsApi)
+  contextBridge.exposeInMainWorld('agentApi', agentApi)
   contextBridge.exposeInMainWorld('appApi', appApi)
   contextBridge.exposeInMainWorld('appThemeApi', appThemeApi)
   // E2E：主进程设置 VIBING_E2E 时，向渲染进程注入标记，激活 debugBridge（即便是生产构建）

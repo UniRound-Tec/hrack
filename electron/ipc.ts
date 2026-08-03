@@ -27,6 +27,9 @@ import {
   type RecordEventInput,
   type SpawnOptions
 } from '../shared/ipc-contract'
+import { AgentInvokeChannel } from '../shared/agent-events'
+import type { StartAgentSession } from '../shared/agent-events'
+import type { AgentSessionRuntime } from './agents/AgentSessionRuntime'
 import { listAvailableShells } from './shells'
 import type { AiCliDiscoveryService } from './ai-cli-discovery'
 import { displayRelativePosition } from './window'
@@ -50,6 +53,7 @@ const EVENT_KIND_WHITELIST = new Set<HistoryEventKind>([
   'tool_call',
   'completed',
   'approved',
+  'blocked',
   'message',
   'session_start',
   'session_exit'
@@ -59,6 +63,7 @@ const EVENT_KIND_WHITELIST = new Set<HistoryEventKind>([
 export interface IpcContext {
   eventLog: EventLog
   cliDiscovery: AiCliDiscoveryService
+  agentRuntime: AgentSessionRuntime
   getWindow(): BrowserWindow | null
   getTray(): Tray | null
   rebuildTrayMenu(): void
@@ -182,6 +187,26 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     ctx.cliDiscovery.prepareLaunch(selection as CliLaunchSelection)
   )
 
+  ipcMain.handle(AgentInvokeChannel.Start, (_event, input: unknown) => {
+    if (!isStartAgentSessionShape(input)) {
+      return Promise.reject(new Error('Invalid agent session request'))
+    }
+    return ctx.agentRuntime.start(input as StartAgentSession)
+  })
+  ipcMain.handle(AgentInvokeChannel.Stop, (_event, payload: unknown) => {
+    const sessionId =
+      payload &&
+      typeof payload === 'object' &&
+      typeof (payload as { sessionId?: unknown }).sessionId === 'string'
+        ? (payload as { sessionId: string }).sessionId
+        : null
+    if (!sessionId || sessionId.length > 128) return Promise.resolve()
+    return ctx.agentRuntime.stop(sessionId)
+  })
+  ipcMain.handle(AgentInvokeChannel.ListActive, () =>
+    ctx.agentRuntime.listActive()
+  )
+
   ipcMain.handle(StatsInvokeChannel.AllTime, () => ctx.eventLog.allTimeStats())
   ipcMain.handle(StatsInvokeChannel.HistoryEvents, (_event, query: unknown) => {
     const parsed = parseHistoryQuery(query)
@@ -288,4 +313,41 @@ async function applyMainPrefsUpdate(
   if (patch.language !== undefined) {
     ctx.rebuildTrayMenu()
   }
+}
+
+/** IPC 层形状校验；字段级清洗与语义校验由 Runtime.start 完成。 */
+function isStartAgentSessionShape(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  const raw = value as {
+    terminalId?: unknown
+    selection?: unknown
+    cols?: unknown
+    rows?: unknown
+  }
+  if (
+    typeof raw.terminalId !== 'string' ||
+    raw.terminalId.length === 0 ||
+    raw.terminalId.length > 128
+  ) {
+    return false
+  }
+  if (!raw.selection || typeof raw.selection !== 'object') return false
+  const selection = raw.selection as {
+    installationId?: unknown
+    workspace?: unknown
+    args?: unknown
+  }
+  if (
+    typeof selection.installationId !== 'string' ||
+    typeof selection.workspace !== 'string' ||
+    !Array.isArray(selection.args)
+  ) {
+    return false
+  }
+  return (
+    typeof raw.cols === 'number' &&
+    typeof raw.rows === 'number' &&
+    Number.isFinite(raw.cols) &&
+    Number.isFinite(raw.rows)
+  )
 }

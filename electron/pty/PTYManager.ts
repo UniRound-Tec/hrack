@@ -7,6 +7,7 @@ import {
   ptyDataChannel,
   ptyExitChannel,
   ptyResizeCursorSyncChannel,
+  type ExitPayload,
   type PtyFlowControlSnapshot,
   type PtyHistorySnapshot,
   type SpawnOptions
@@ -90,10 +91,46 @@ async function resolveWindowsExecutable(shell: string): Promise<string | null> {
  * 对外暴露 spawn/write/resize/kill，向上经 IPC 发 data/exit。
  * M2：PtyDataQueue 用 xterm 消费完成后的 ack 控制 node-pty pause/resume，
  * 并对 Main→Renderer 在途与排队数据设置硬上限。
+ *
+ * S1：新增主进程内部 exit 订阅 seam（AgentSessionRuntime 专用），
+ * 并缓存已退出 payload，避免「spawn 后立即退出」与「晚订阅」的竞态。
+ * 本模块不引入 AgentEvent 或品牌判断。
  */
 export class PTYManager {
   private ptys = new Map<string, ManagedPty>()
   private nextId = 1
+  private exitListeners = new Map<string, Set<(payload: ExitPayload) => void>>()
+  private exitedPayloads = new Map<string, ExitPayload>()
+
+  /**
+   * 订阅某 pty 的退出（幂等：已退出则立刻用缓存的 payload 回调）。
+   * 返回取消订阅函数。
+   */
+  onExit(ptyId: string, cb: (payload: ExitPayload) => void): () => void {
+    let active = true
+    const listeners = this.exitListeners.get(ptyId) ?? new Set()
+    listeners.add(cb)
+    this.exitListeners.set(ptyId, listeners)
+    const cached = this.exitedPayloads.get(ptyId)
+    if (cached) queueMicrotask(() => {
+      if (active) cb(cached)
+    })
+    return () => {
+      active = false
+      const current = this.exitListeners.get(ptyId)
+      current?.delete(cb)
+      if (current?.size === 0) this.exitListeners.delete(ptyId)
+    }
+  }
+
+  /** Observer watchdog 只读取时间事实，不接触 PTY 内容。 */
+  lastOutputAt(ptyId: string): number | null {
+    return this.ptys.get(ptyId)?.lastForwardedOutputAt ?? null
+  }
+
+  isRunning(ptyId: string): boolean {
+    return Boolean(this.ptys.get(ptyId)?.pty)
+  }
 
   async spawn(opts: SpawnOptions) {
     const ptyId = String(this.nextId++)
@@ -187,13 +224,21 @@ export class PTYManager {
 
     pty.onExit(({ exitCode, signal }) => {
       const ch = ptyExitChannel(ptyId)
+      const payload: ExitPayload = { code: exitCode, signal }
       for (const win of BrowserWindow.getAllWindows()) {
-        win.webContents.send(ch, { code: exitCode, signal } as never)
+        win.webContents.send(ch, payload as never)
       }
       // 进程退出后仍保留会话历史，直到 renderer 明确 kill/关闭该会话。
       // 否则主进程权威源会在用户最需要回看退出输出时消失。
       const current = this.ptys.get(ptyId)
       if (current?.pty === pty) {
+        // S1：内部生命周期 seam（Runtime 订阅；已退出 payload 缓存供晚订阅者）。
+        this.exitedPayloads.set(ptyId, payload)
+        const listeners = this.exitListeners.get(ptyId)
+        if (listeners) {
+          for (const cb of listeners) cb(payload)
+        }
+        this.exitListeners.delete(ptyId)
         if (current.resizeTimer) clearTimeout(current.resizeTimer)
         current.resizeTimer = undefined
         current.pendingResize = undefined
@@ -281,6 +326,8 @@ export class PTYManager {
     }
     // 即使进程早已自行退出，也必须在会话关闭时释放保留的权威历史。
     this.ptys.delete(ptyId)
+    this.exitListeners.delete(ptyId)
+    this.exitedPayloads.delete(ptyId)
   }
 
   killAll() {
@@ -294,5 +341,7 @@ export class PTYManager {
       }
     }
     this.ptys.clear()
+    this.exitListeners.clear()
+    this.exitedPayloads.clear()
   }
 }

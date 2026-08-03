@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStrings } from '../app/i18n'
 import { useSettingsStore } from '../state/settingsStore'
 import { useTerminalsStore } from '../state/terminalsStore'
-import { useSessionsStore } from '../state/sessionsStore'
 import { useXterm } from './useXterm'
 
 /** xterm 宿主容器：一个占满父级的 div，内部由 xterm 独占渲染。 */
@@ -45,26 +44,8 @@ export default function TerminalView({ tabId, active, onInitialSpawn }: Terminal
     (title) => setTitle(tabId, title),
     (code, respawned) => {
       if (!respawned) markExited(tabId)
-      const sessionIds = useSessionsStore
-        .getState()
-        .sessions.filter((session) => session.terminalId === tabId)
-        .map((session) => session.sessionId)
-      for (const sessionId of sessionIds) {
-        useSessionsStore.getState().markExited(sessionId, code)
-        // M5.c：会话退出写历史事件（detail 带 exit code）；respawn 不算会话结束。
-        if (!respawned) {
-          const session = useSessionsStore.getState().sessions.find(
-            (entry) => entry.sessionId === sessionId
-          )
-          void window.statsApi.recordEvent({
-            kind: 'session_exit',
-            adapterId: session?.adapterId ?? 'unknown',
-            title: session?.name ?? 'Session',
-            detail:
-              code === undefined ? 'exit' : `exit code ${code}`
-          })
-        }
-      }
+      // S1：AI 会话的退出事实由主进程 AgentSessionRuntime 归约并推送投影，
+      // renderer 不再是语义事实来源，不再重复写 markExited / session_exit。
     },
     (error) => onInitialSpawn?.(tabId, error)
   )

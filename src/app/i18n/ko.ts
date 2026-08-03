@@ -48,6 +48,15 @@ export const ko = {
         ? '종료됨'
         : `종료됨: exit code ${exitCode}`
   },
+  agentDetail: {
+    thinking: '생각 중',
+    waitingApproval: '승인 대기',
+    waitingInput: '입력 대기',
+    exited: (exitCode: number | undefined) =>
+      exitCode === undefined
+        ? '종료됨'
+        : `종료됨: exit code ${exitCode}`
+  },
   terminal: {
     copied: '복사됨',
     newTab: '새 탭',

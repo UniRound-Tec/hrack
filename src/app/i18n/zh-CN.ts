@@ -51,6 +51,15 @@ export const zhCN = {
         ? '已退出'
         : `已退出：exit code ${exitCode}`
   },
+  agentDetail: {
+    thinking: '思考中',
+    waitingApproval: '等待批准',
+    waitingInput: '等待输入',
+    exited: (exitCode: number | undefined) =>
+      exitCode === undefined
+        ? '已退出'
+        : `已退出：exit code ${exitCode}`
+  },
   terminal: {
     copied: '已复制',
     newTab: '新建标签页',

@@ -47,6 +47,7 @@ const historyKindTone: Record<HistoryEventKind, string> = {
   tool_call: 'text-text-strong',
   completed: 'text-status-done',
   approved: 'text-status-needs-you',
+  blocked: 'text-status-needs-you',
   message: 'text-text-muted',
   session_start: 'text-status-working',
   session_exit: 'text-status-exited'
@@ -56,6 +57,7 @@ const historyKindDot: Record<HistoryEventKind, string> = {
   tool_call: 'bg-text-faint',
   completed: 'bg-status-done-dot',
   approved: 'bg-status-needs-you-dot',
+  blocked: 'bg-status-needs-you-dot',
   message: 'bg-status-idle-dot',
   session_start: 'bg-status-working-dot',
   session_exit: 'bg-status-exited-dot'

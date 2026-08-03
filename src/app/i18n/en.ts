@@ -48,6 +48,15 @@ export const en = {
         ? 'Exited'
         : `Exited: exit code ${exitCode}`
   },
+  agentDetail: {
+    thinking: 'Thinking',
+    waitingApproval: 'Waiting for approval',
+    waitingInput: 'Waiting for input',
+    exited: (exitCode: number | undefined) =>
+      exitCode === undefined
+        ? 'Exited'
+        : `Exited: exit code ${exitCode}`
+  },
   terminal: {
     copied: 'Copied',
     newTab: 'New tab',

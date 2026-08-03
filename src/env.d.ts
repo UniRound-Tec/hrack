@@ -1,4 +1,7 @@
 import type {
+  AgentApi
+} from '../shared/agent-events'
+import type {
   AppApi,
   AppThemeApi,
   CliApi,
@@ -23,6 +26,7 @@ declare global {
     shellApi: ShellApi
     cliApi: CliApi
     statsApi: StatsApi
+    agentApi: AgentApi
     appApi: AppApi
     appThemeApi: AppThemeApi
     __VIBING_E2E__?: true

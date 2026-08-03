@@ -48,6 +48,15 @@ export const zhTW = {
         ? '已結束'
         : `已結束：exit code ${exitCode}`
   },
+  agentDetail: {
+    thinking: '思考中',
+    waitingApproval: '等待批准',
+    waitingInput: '等待輸入',
+    exited: (exitCode: number | undefined) =>
+      exitCode === undefined
+        ? '已結束'
+        : `已結束：exit code ${exitCode}`
+  },
   terminal: {
     copied: '已複製',
     newTab: '新增分頁',

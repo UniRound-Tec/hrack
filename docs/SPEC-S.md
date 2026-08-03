@@ -1,8 +1,8 @@
 # AI CLI 发现与启动线 — Spec（S 线）
 
-> 状态：**S0 扫描与启动逻辑已完成（2026-08-03）**；跨平台自动化矩阵仍待补齐。
-> 当前只交付：**扫描 → 启动列表 → 点击进入配置 → 按所选环境启动**。
-> 生命周期监听、Hooks、JSONL/ACP、六态语义与通知全部后置，见 §9。
+> 状态：**S1 Agent Observer 基础设施已完成（2026-08-03）**；S0 跨平台自动化矩阵仍待补齐。
+> 当前交付：**扫描 → 启动列表 → 点击进入配置 → 按所选环境启动 → 主进程归约六态投影**。
+> 真实 CLI 语义监听（Hooks/JSONL/ACP）归 S2/S3，见 [PLAN-S2-CLAUDE.md](./PLAN-S2-CLAUDE.md)。
 >
 > 父文档：[SPEC.md](./SPEC.md)。市场事实基线：[RESEARCH-AI-CLI-MARKET.md](./RESEARCH-AI-CLI-MARKET.md)。
 
@@ -378,12 +378,28 @@ S0 新会话应保存 `installationId`，使历史/诊断知道它来自 Windows
 - [x] PTY 创建失败会移除临时 terminal，不创建 session，并在配置层返回可理解错误；
 - [ ] 覆盖 Windows-only、WSL-only、双环境、多 WSL、重名、probe timeout 的自动化测试。
 
+### S1.0 — Agent Observer 基础设施（实施见 [PLAN-S1.md](./PLAN-S1.md)）
+
+- [x] `AgentSessionRuntime` 对 renderer 只暴露 start/stop/list/events/projection；
+- [x] Observer Adapter seam 同时容纳启动前 augmentation 与启动后 attach；
+- [x] thinking、tool、approval、input、usage、turn、lifecycle 均有结构化事件；
+- [x] thinking 内容默认不采集、不持久化；
+- [x] SessionStatus 完全由主进程纯归约器生成，renderer 只 upsert 展示副本；
+- [x] 并行 tool 与多 pending request 不会错误清除 `needs-you`；
+- [x] Observer prepare/attach 失败不终止 CLI PTY，降级为 lifecycle-only；
+- [x] spawn 失败不留下 PTY、Session、历史计数或 temp 文件；
+- [x] Agent Event 队列有界，洪峰不影响 PTY 字节链路；
+- [x] tool/approval 统计按稳定 id 去重；
+- [x] renderer reload 通过 `listActive` 恢复活动 Session 投影；
+- [x] 普通终端启动、输入、resize、背压与退出链路不引入 Agent 依赖；
+- [x] Fixture Adapter 完整事件序列驱动六态并通过 interface 级门禁。
+
 ### 后续（不属于当前实现）
 
 | 阶段 | 结果 |
 |---|---|
-| **S1** | 建立结构化 observer 基础设施，不改变启动列表 |
-| **S2** | 一个参考 CLI 驱动真实 `working / needs-you / done` |
+| **S1** | ✅ 结构化 observer 基础设施（事件、能力、归约、投影、IPC、fixture 门禁）已完成 |
+| **S2** | Claude Code 参考 Adapter 驱动真实 `working / needs-you / done`；实施见 [PLAN-S2-CLAUDE.md](./PLAN-S2-CLAUDE.md) |
 | **S3** | 第二种协议形态验证 observer 抽象；悬浮窗聚合 |
 | **S4** | 注意力通知，仍只看不操作 |
 | **M6** | 在 S3 抽象上铺开更多产品的语义 adapter；扫描定义不需要等到 M6 |
@@ -392,7 +408,10 @@ S0 新会话应保存 `installationId`，使历史/诊断知道它来自 Windows
 
 ## 9. 监听与六态语义（明确后置）
 
-S0 只解决“机器上有什么、从哪里启动、用户点哪个”。监听阶段另行立 PLAN，不与 S0 混做。
+S0 只解决“机器上有什么、从哪里启动、用户点哪个”。通用监听基础设施已由 S1 落地（
+[PLAN-S1.md](./PLAN-S1.md)：事件、能力、归约、投影、IPC 与 fixture 门禁），Claude Code
+参考 Adapter 见 [PLAN-S2-CLAUDE.md](./PLAN-S2-CLAUDE.md)。S2 完成前，六态不宣布为
+全产品通用能力——没有语义 Adapter 的 CLI 只有 lifecycle 观察。
 
 后续 observer 优先级依据市场调研：
 
