@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Settings2, SquarePen } from 'lucide-react'
-import { strings } from './strings'
+import { useStrings } from './i18n'
 
 interface TitleBarProps {
   onNew: () => void
@@ -13,6 +13,7 @@ export default function TitleBar({
   onSettings,
   settingsActive = false
 }: TitleBarProps) {
+  const strings = useStrings()
   const [maximized, setMaximized] = useState(false)
   const isMac = window.windowApi.platform === 'darwin'
 

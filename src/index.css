@@ -68,7 +68,10 @@
   --font-sans: var(--font-pingfang);
   --font-heading: var(--font-pingfang);
   --font-ammonite: "Ammonite", sans-serif;
-  --font-pingfang: "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  /* PingFang 无谚文/部分日文假名；ko/ja 界面字形回退平台系统栈（M5.c §4.6） */
+  --font-pingfang: "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Apple SD Gothic Neo", "Malgun Gothic", "Hiragino Kaku Gothic ProN", Meiryo,
+    "Yu Gothic", sans-serif;
   /* 内嵌标准版 Maple 无中文字形；中文回退到界面普通字体（原型本机装的是
      Maple Mono NF CN），不要落到 generic monospace（Windows 会命中宋体）。 */
   --font-maple: "Maple Mono", "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Microsoft YaHei", ui-monospace, monospace;

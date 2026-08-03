@@ -11,21 +11,54 @@ import { mkdir, readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { PTYManager } from './pty/PTYManager'
 import {
+  AppInvokeChannel,
   ClipboardInvokeChannel,
   DialogInvokeChannel,
   PtyInvokeChannel,
   ShellInvokeChannel,
+  StatsInvokeChannel,
   ThemeInvokeChannel,
   WindowInvokeChannel,
+  type HistoryEvent,
+  type HistoryEventKind,
+  type MainPrefsUpdate,
+  type RecordEventInput,
   type SpawnOptions
 } from '../shared/ipc-contract'
 import { listAvailableShells } from './shells'
 import { displayRelativePosition } from './window'
+import { EventLog } from './events/EventLog'
+import { persistMainPrefs } from './main-prefs'
+import {
+  isGlobalShortcutRegistered,
+  registerGlobalShortcut,
+  unregisterGlobalShortcut
+} from './shortcuts'
+import type { Tray } from './tray'
 
 const MAX_CLIPBOARD_TEXT_LENGTH = 8 * 1024 * 1024
 const MAX_USER_THEME_FILES = 128
 const MAX_USER_THEME_BYTES = 256 * 1024
+const MAX_EVENT_ADAPTER_ID_LENGTH = 128
+const MAX_EVENT_TITLE_LENGTH = 256
+const MAX_EVENT_DETAIL_LENGTH = 512
 
+const EVENT_KIND_WHITELIST = new Set<HistoryEventKind>([
+  'tool_call',
+  'completed',
+  'approved',
+  'message',
+  'session_start',
+  'session_exit'
+])
+
+/** 主进程运行时上下文：窗口 / 托盘由 main.ts 组装后注入。 */
+export interface IpcContext {
+  eventLog: EventLog
+  getWindow(): BrowserWindow | null
+  getTray(): Tray | null
+  rebuildTrayMenu(): void
+}
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   const win = BrowserWindow.fromWebContents(event.sender)
   return win && !win.isDestroyed() ? win : null
@@ -58,7 +91,7 @@ async function listUserThemes() {
 }
 
 /** 注册所有 pty 相关的 invoke handler，委托 PTYManager。 */
-export function registerIpc(manager: PTYManager): void {
+export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(PtyInvokeChannel.Spawn, (_e, opts: SpawnOptions) =>
     manager.spawn(opts)
   )
@@ -139,6 +172,33 @@ export function registerIpc(manager: PTYManager): void {
   )
   ipcMain.handle(ShellInvokeChannel.ListAvailable, listAvailableShells)
 
+  ipcMain.handle(StatsInvokeChannel.AllTime, () => ctx.eventLog.allTimeStats())
+  ipcMain.handle(StatsInvokeChannel.HistoryEvents, (_event, query: unknown) => {
+    const parsed = parseHistoryQuery(query)
+    if (!parsed) return []
+    return ctx.eventLog.query(parsed)
+  })
+  ipcMain.handle(
+    StatsInvokeChannel.RecordEvent,
+    (_event, input: unknown): Promise<void> => {
+      const record = parseRecordEventInput(input)
+      if (!record) return Promise.resolve()
+      const event: HistoryEvent = {
+        id: crypto.randomUUID(),
+        kind: record.kind,
+        adapterId: record.adapterId,
+        occurredAt: Date.now(),
+        title: record.title,
+        detail: record.detail
+      }
+      return ctx.eventLog.record(event)
+    }
+  )
+
+  ipcMain.handle(AppInvokeChannel.SetMainPrefs, (_event, update: unknown) => {
+    applyMainPrefsUpdate(ctx, update)
+  })
+
   // 诊断：渲染进程把 resize 前后的 buffer 快照写到 logs/resize-diag.log，供离线分析。
   // 只在真实 dev 会话里抓证据用，定位后移除。
   const diagPath = join(process.cwd(), 'logs', 'resize-diag.log')
@@ -149,4 +209,73 @@ export function registerIpc(manager: PTYManager): void {
       /* logs/ 不存在时忽略；由渲染侧首次调用前主进程已 ensure */
     }
   })
+}
+
+function parseHistoryQuery(value: unknown): { limit: number; before?: number } | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as { limit?: unknown; before?: unknown }
+  if (typeof raw.limit !== 'number' || !Number.isFinite(raw.limit)) return null
+  const before =
+    typeof raw.before === 'number' && Number.isFinite(raw.before)
+      ? raw.before
+      : undefined
+  return { limit: Math.max(1, Math.min(500, Math.floor(raw.limit))), before }
+}
+
+function parseRecordEventInput(value: unknown): RecordEventInput | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Record<string, unknown>
+  if (typeof raw.kind !== 'string' || !EVENT_KIND_WHITELIST.has(raw.kind as HistoryEventKind)) {
+    return null
+  }
+  const kind = raw.kind as HistoryEventKind
+  const adapterId = boundedString(raw.adapterId, MAX_EVENT_ADAPTER_ID_LENGTH, '')
+  const title = boundedString(raw.title, MAX_EVENT_TITLE_LENGTH, '')
+  const detail = boundedString(raw.detail, MAX_EVENT_DETAIL_LENGTH, '')
+  if (!adapterId && !title && !detail) return null
+  return { kind, adapterId, title, detail }
+}
+
+function boundedString(
+  value: unknown,
+  maxLength: number,
+  fallback: string
+): string {
+  if (typeof value !== 'string') return fallback
+  const trimmed = value.trim().slice(0, maxLength)
+  return trimmed.length > 0 ? trimmed : fallback
+}
+
+/** 校验并应用主进程偏好更新；快捷键/托盘菜单即时生效。 */
+async function applyMainPrefsUpdate(
+  ctx: IpcContext,
+  update: unknown
+): Promise<void> {
+  if (!update || typeof update !== 'object') return
+  const raw = update as Record<string, unknown>
+  const patch: MainPrefsUpdate = {}
+  if (typeof raw.backgroundColor === 'string') {
+    patch.backgroundColor = raw.backgroundColor.trim()
+  }
+  if (typeof raw.globalShortcutEnabled === 'boolean') {
+    patch.globalShortcutEnabled = raw.globalShortcutEnabled
+  }
+  if (typeof raw.language === 'string' && raw.language.length <= 16) {
+    patch.language = raw.language
+  }
+  if (Object.keys(patch).length === 0) return
+
+  const merged = await persistMainPrefs(patch)
+  const win = ctx.getWindow()
+  if (win) {
+    const enabled = merged.globalShortcutEnabled
+    if (enabled && !isGlobalShortcutRegistered()) {
+      registerGlobalShortcut(win)
+    } else if (!enabled && isGlobalShortcutRegistered()) {
+      unregisterGlobalShortcut()
+    }
+  }
+  if (patch.language !== undefined) {
+    ctx.rebuildTrayMenu()
+  }
 }

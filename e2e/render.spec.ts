@@ -18,6 +18,7 @@ type RendererKind = 'webgl' | 'dom'
 
 let app: ElectronApplication
 let page: Page
+let userDataDir: string
 
 test.setTimeout(120_000)
 
@@ -135,7 +136,7 @@ function countDifferentPixels(left: Buffer, right: Buffer): number {
 }
 
 test.beforeEach(async () => {
-  ;({ app, window: page } = await launchApp())
+  ;({ app, window: page, userDataDir } = await launchApp())
 })
 
 test.afterEach(async () => {
@@ -353,16 +354,17 @@ test('persists the light terminal theme while GUI uses semantic light tokens', a
   await expect.poll(appearance).toMatchObject({
     theme: { background: '#f6f8fa', foreground: '#24292f' },
     uiTheme: 'light',
-    appBackground: '#ffffff',
+    appBackground: '#ededec',
     tabBarBackground: '#f5f5f5'
   })
 
   await app.close()
-  ;({ app, window: page } = await launchApp())
+  // 同一 userData 二次启动：持久化偏好跨重启保留。
+  ;({ app, window: page } = await launchApp({ userDataDir }))
   await expect.poll(appearance).toMatchObject({
     theme: { background: '#f6f8fa', foreground: '#24292f' },
     uiTheme: 'light',
-    appBackground: '#ffffff',
+    appBackground: '#ededec',
     tabBarBackground: '#f5f5f5'
   })
 })

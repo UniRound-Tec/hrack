@@ -2,11 +2,13 @@ import { Check, ChevronDown, Minus, Plus } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { ShellOption } from '../../shared/ipc-contract'
-import { appLocales, strings } from './strings'
-import { getUiThemeRegistry } from './themeRuntime'
+import { appLocales, useStrings } from './i18n'
+import { getUiThemeRegistry, useThemeRegistryVersion } from './themeRuntime'
 import { terminalThemes, type ThemeId } from '../terminal/themes'
-import { useSettingsStore, type NavMode } from '../state/settingsStore'
+import { useSettingsStore, defaultSettings, type NavMode } from '../state/settingsStore'
 import ClickSpark from './effects/ClickSpark'
+
+const defaultFontFamily = defaultSettings.fontFamily
 
 const colorKeys = [
   'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
@@ -16,8 +18,23 @@ const colorKeys = [
 
 export default function SettingsPage({ shells }: { shells: readonly ShellOption[] }) {
   const settings = useSettingsStore()
+  const strings = useStrings()
+  // 主题热重载后注册表版本自增，订阅以重新读取当前注册表。
+  useThemeRegistryVersion((state) => state.version)
   const registry = getUiThemeRegistry()
   const terminalTheme = terminalThemes[settings.terminalThemeId].terminal
+
+  const changeLanguage = (value: string): void => {
+    const locale = value as (typeof settings.language)
+    settings.setLanguage(locale)
+    // 托盘菜单是原生 UI：语言变更立即上报主进程同步文案。
+    void window.appApi.setMainPrefs({ language: locale })
+  }
+
+  const changeGlobalShortcut = (enabled: boolean): void => {
+    settings.setGlobalShortcutEnabled(enabled)
+    void window.appApi.setMainPrefs({ globalShortcutEnabled: enabled })
+  }
 
   return (
     <ClickSpark sparkColor="var(--vib-accent-spark)" sparkSize={8} sparkRadius={18} sparkCount={10} duration={450}>
@@ -36,7 +53,7 @@ export default function SettingsPage({ shells }: { shells: readonly ShellOption[
             </Row>
             {registry.errors.length > 0 && <div data-testid="theme-load-errors" className="border-b border-border-faint py-3 text-[11px] text-status-error"><p className="font-semibold">{strings.settings.themeErrors}</p>{registry.errors.map((error) => <p key={error.filename} className="mt-1 font-maple">{error.filename}: {error.message}</p>)}</div>}
             <Row label={strings.settings.language} hint={strings.settings.languageHint}>
-              <Dropdown testId="settings-language" value={settings.language} options={appLocales.map((locale) => ({ value: locale, label: strings.settings.languages[locale] }))} onChange={(value) => settings.setLanguage(value as typeof settings.language)} />
+              <Dropdown testId="settings-language" value={settings.language} options={appLocales.map((locale) => ({ value: locale, label: strings.settings.languages[locale] }))} onChange={changeLanguage} />
             </Row>
           </Section>
 
@@ -50,6 +67,7 @@ export default function SettingsPage({ shells }: { shells: readonly ShellOption[
                 ] as const).map(([mode, label]) => <SegmentButton key={mode} testId={`settings-nav-${mode}`} selected={settings.navMode === mode} onClick={() => settings.setNavMode(mode)}>{label}</SegmentButton>)}
               </div>
             </Row>
+            <Row label={strings.settings.globalShortcut} hint={strings.settings.globalShortcutHint}><Toggle testId="settings-global-shortcut" checked={settings.globalShortcutEnabled} onChange={changeGlobalShortcut} /></Row>
             <Row label={strings.settings.floatingWindow} hint={strings.settings.floatingWindowHint}><Toggle checked={false} disabled /></Row>
           </Section>
 
@@ -58,7 +76,28 @@ export default function SettingsPage({ shells }: { shells: readonly ShellOption[
               <div className="flex items-center justify-between gap-6"><div className="min-w-0"><p className="font-pingfang text-[12px] font-medium text-text-secondary">{strings.settings.terminalTheme}</p><p className="mt-0.5 font-pingfang text-[11px] text-text-faint">{strings.settings.terminalThemeHint}</p></div><div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-control p-0.5">{(['dark', 'light'] as ThemeId[]).map((themeId) => <SegmentButton key={themeId} testId={`settings-terminal-theme-${themeId}`} selected={settings.terminalThemeId === themeId} onClick={() => settings.setTerminalTheme(themeId)}>{strings.settings.terminalThemeNames[themeId]}</SegmentButton>)}</div></div>
               <div data-testid="terminal-theme-preview" className="mt-2.5 flex gap-[3px] overflow-hidden rounded-md">{colorKeys.map((key) => <span key={key} title={terminalTheme[key]} className="h-3.5 min-w-0 flex-1" style={{ background: terminalTheme[key] }} />)}</div>
             </div>
-            <Row label={strings.settings.font} hint={strings.settings.fontHint}><span className="font-maple text-[12px] text-text-secondary">{strings.settings.mapleMono}</span></Row>
+            <Row label={strings.settings.font} hint={strings.settings.fontHint}>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <input
+                  data-testid="settings-font-input"
+                  type="text"
+                  value={settings.fontFamily}
+                  placeholder={strings.settings.fontPlaceholder}
+                  spellCheck={false}
+                  onChange={(event) => settings.setFont(event.target.value, settings.fontSize)}
+                  className="w-[220px] rounded-lg border border-border-default bg-input px-2.5 py-1.5 font-maple text-[12px] text-text-secondary outline-none transition-colors placeholder:text-text-faint focus:border-input-focus focus:bg-input-hover"
+                />
+                <button
+                  type="button"
+                  data-testid="settings-font-reset"
+                  title={strings.settings.restoreDefaultFont}
+                  onClick={() => settings.setFont(defaultFontFamily, settings.fontSize)}
+                  className="cursor-target rounded-lg border border-border-default bg-input px-2 py-1.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary"
+                >
+                  {strings.settings.restoreDefaultFont}
+                </button>
+              </div>
+            </Row>
             <Row label={strings.settings.fontSize}><div className="flex items-center gap-0.5 rounded-lg bg-control p-0.5"><button type="button" data-testid="settings-font-decrease" aria-label={strings.settings.decreaseFontSize} onClick={() => settings.setFont(settings.fontFamily, Math.max(10, settings.fontSize - 1))} className="cursor-target flex size-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-control-active hover:text-text-primary"><Minus className="size-3" strokeWidth={1.75} /></button><span data-testid="settings-font-size" className="w-10 text-center font-maple text-[12px] text-text-secondary">{strings.settings.pixels(settings.fontSize)}</span><button type="button" data-testid="settings-font-increase" aria-label={strings.settings.increaseFontSize} onClick={() => settings.setFont(settings.fontFamily, Math.min(24, settings.fontSize + 1))} className="cursor-target flex size-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-control-active hover:text-text-primary"><Plus className="size-3" strokeWidth={1.75} /></button></div></Row>
             <Row label={strings.settings.ligatures} hint={strings.settings.ligaturesHint}><Toggle testId="settings-ligatures" checked={settings.ligatures} onChange={settings.setLigatures} /></Row>
             <Row label={strings.settings.terminalRounded} hint={strings.settings.terminalRoundedHint}><Toggle testId="settings-terminal-rounded" checked={settings.terminalRounded} onChange={settings.setTerminalRounded} /></Row>

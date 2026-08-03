@@ -1,8 +1,11 @@
 import type {
+  AppApi,
+  AppThemeApi,
   ClipboardApi,
   DialogApi,
   PtyApi,
   ShellApi,
+  StatsApi,
   ThemeApi,
   WindowApi
 } from '../shared/ipc-contract'
@@ -17,6 +20,9 @@ declare global {
     themeApi: ThemeApi
     dialogApi: DialogApi
     shellApi: ShellApi
+    statsApi: StatsApi
+    appApi: AppApi
+    appThemeApi: AppThemeApi
     __VIBING_E2E__?: true
     __vibingDebugShell?: VibingDebugShellApi
   }

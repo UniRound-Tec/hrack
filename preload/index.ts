@@ -5,25 +5,35 @@ import {
 } from 'electron'
 import os from 'node:os'
 import {
+  AppEventChannel,
+  AppInvokeChannel,
   ClipboardInvokeChannel,
   DialogInvokeChannel,
   PtyInvokeChannel,
   ShellInvokeChannel,
+  StatsInvokeChannel,
+  ThemeEventChannel,
   ThemeInvokeChannel,
   WindowEventChannel,
   WindowInvokeChannel,
   ptyDataChannel,
   ptyExitChannel,
   ptyResizeCursorSyncChannel,
+  type AppApi,
+  type AppThemeApi,
   type ClipboardApi,
   type DialogApi,
   type ExitPayload,
+  type HistoryQuery,
+  type MainPrefsUpdate,
   type PtyApi,
   type PtyFlowControlSnapshot,
   type PtyMeta,
   type PtyResizeCursorSync,
+  type RecordEventInput,
   type ShellApi,
   type SpawnOptions,
+  type StatsApi,
   type ThemeApi,
   type WindowApi,
   type WindowPositionPayload
@@ -148,6 +158,34 @@ const shellApi: ShellApi = {
   listAvailable: () => ipcRenderer.invoke(ShellInvokeChannel.ListAvailable)
 }
 
+const statsApi: StatsApi = {
+  allTime: () => ipcRenderer.invoke(StatsInvokeChannel.AllTime),
+  historyEvents: (query: HistoryQuery) =>
+    ipcRenderer.invoke(StatsInvokeChannel.HistoryEvents, query),
+  recordEvent: (input: RecordEventInput) =>
+    ipcRenderer.invoke(StatsInvokeChannel.RecordEvent, input)
+}
+
+const appApi: AppApi = {
+  setMainPrefs: (update: MainPrefsUpdate) =>
+    ipcRenderer.invoke(AppInvokeChannel.SetMainPrefs, update),
+  onOpenNewSession: (cb) => {
+    const handler = (_event: IpcRendererEvent): void => cb()
+    ipcRenderer.on(AppEventChannel.OpenNewSession, handler)
+    return () =>
+      ipcRenderer.removeListener(AppEventChannel.OpenNewSession, handler)
+  }
+}
+
+const appThemeApi: AppThemeApi = {
+  onUserThemesChanged: (cb) => {
+    const handler = (_event: IpcRendererEvent): void => cb()
+    ipcRenderer.on(ThemeEventChannel.UserThemesChanged, handler)
+    return () =>
+      ipcRenderer.removeListener(ThemeEventChannel.UserThemesChanged, handler)
+  }
+}
+
 try {
   contextBridge.exposeInMainWorld('ptyApi', ptyApi)
   contextBridge.exposeInMainWorld('clipboardApi', clipboardApi)
@@ -155,6 +193,9 @@ try {
   contextBridge.exposeInMainWorld('themeApi', themeApi)
   contextBridge.exposeInMainWorld('dialogApi', dialogApi)
   contextBridge.exposeInMainWorld('shellApi', shellApi)
+  contextBridge.exposeInMainWorld('statsApi', statsApi)
+  contextBridge.exposeInMainWorld('appApi', appApi)
+  contextBridge.exposeInMainWorld('appThemeApi', appThemeApi)
   // E2E：主进程设置 VIBING_E2E 时，向渲染进程注入标记，激活 debugBridge（即便是生产构建）
   if (process.env['VIBING_E2E']) {
     contextBridge.exposeInMainWorld('__VIBING_E2E__', true)

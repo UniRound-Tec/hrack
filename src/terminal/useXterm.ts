@@ -97,7 +97,7 @@ export function useXterm(
   active: boolean,
   onCopied?: () => void,
   onTitle?: (title: string) => void,
-  onExit?: (code: number) => void
+  onExit?: (code: number | undefined, respawned: boolean) => void
 ): void {
   const terminalRef = useRef<Terminal | null>(null)
   const rendererRef = useRef<RendererController | null>(null)
@@ -166,6 +166,12 @@ export function useXterm(
     let ptyAckDelayMs = 0
     let ptyRenderingSuspended = false
     const pendingAckTimers = new Set<ReturnType<typeof setTimeout>>()
+    // ConPTY 下 TUI（如 opencode/OpenTUI）在 Windows 上 Ctrl+C 会连带杀死整个
+    // pty，node-pty 报出 undefined exit code。异常退出时在当前 tab 自动重启 shell，
+    // 而不是让终端停在死会话。连续异常只兜底几次，避免坏环境里无限循环。
+    let respawnCount = 0
+    let respawnTimer: ReturnType<typeof setTimeout> | null = null
+    const MAX_ABNORMAL_EXITS = 3
 
     const acknowledgeParsedData = (bytes: number): void => {
       const acknowledge = (): void => {
@@ -314,54 +320,83 @@ export function useXterm(
       }
     )
 
-    // spawn 拿到 ptyId，建立回显双向链路
-    window.ptyApi
-      .spawn({
-        ...getTerminalLaunch(tabId),
-        cols: term.cols,
-        rows: term.rows
-      })
-      .then(({ ptyId }) => {
-        if (disposed) {
-          void window.ptyApi.kill(ptyId)
+    /**
+     * 绑定一个新 pty 到当前 xterm。首次 spawn 与异常退出后的自动重启共用，
+     * 保证两条路径的 data/exit 语义一致。
+     */
+    const wireProxy = (next: PtyProxy): void => {
+      proxy?.dispose()
+      proxy = next
+      // spawn 完成后同步一次尺寸：spawn 期间容器尺寸可能已变，且此时 proxy 才可用。
+      if (ptyResizeTimer) {
+        clearTimeout(ptyResizeTimer)
+        ptyResizeTimer = null
+      }
+      pendingPtyResize = null
+      const { cols, rows } = term
+      sendPtyResize(cols, rows)
+
+      // pty → 屏幕；xterm 解析完成后 ack，驱动主进程高低水位背压。
+      next.onData((d) => {
+        recordPtyData(tabId, d)
+        if (ptyRenderingSuspended) {
+          acknowledgeParsedData(d.byteLength)
           return
         }
-        proxy = new PtyProxy(ptyId)
-        // spawn 完成后同步一次尺寸：spawn 期间容器尺寸可能已变，且此时 proxy 才可用。
-        {
-          if (ptyResizeTimer) {
-            clearTimeout(ptyResizeTimer)
-            ptyResizeTimer = null
-          }
-          pendingPtyResize = null
-          const { cols, rows } = term
-          sendPtyResize(cols, rows)
+        term.write(d, () => acknowledgeParsedData(d.byteLength))
+      })
+      next.onResizeCursorSync(({ row, column }) => {
+        applyConptyCursorSync(term, row, column)
+      })
+      next.onExit(({ code }) => {
+        if (disposed) return
+        const respawned =
+          code === undefined && respawnCount < MAX_ABNORMAL_EXITS
+        if (respawned) {
+          respawnCount++
+          term.write(
+            '\r\n\x1b[90m[shell exited unexpectedly; restarting shell]\x1b[0m'
+          )
+          respawnTimer = setTimeout(() => {
+            respawnTimer = null
+            spawnShell()
+          }, 400)
+        } else {
+          term.write(
+            `\r\n\x1b[90m[process exited${code === undefined ? '' : ` with code ${code}`}]\x1b[0m`
+          )
         }
+        onExitRef.current?.(code, respawned)
+      })
+    }
 
-        // 键盘 → pty
-        term.onData((d) => {
-          void proxy?.write(d)
+    const spawnShell = (): void => {
+      if (disposed) return
+      window.ptyApi
+        .spawn({
+          ...getTerminalLaunch(tabId),
+          cols: term.cols,
+          rows: term.rows
         })
-        // pty → 屏幕；xterm 解析完成后 ack，驱动主进程高低水位背压。
-        proxy.onData((d) => {
-          recordPtyData(tabId, d)
-          if (ptyRenderingSuspended) {
-            acknowledgeParsedData(d.byteLength)
+        .then(({ ptyId }) => {
+          if (disposed) {
+            void window.ptyApi.kill(ptyId)
             return
           }
-          term.write(d, () => acknowledgeParsedData(d.byteLength))
+          wireProxy(new PtyProxy(ptyId))
         })
-        proxy.onResizeCursorSync(({ row, column }) => {
-          applyConptyCursorSync(term, row, column)
+        .catch((err: unknown) => {
+          term.write(
+            `\r\n\x1b[31mFailed to spawn shell: ${String(err)}\x1b[0m\r\n`
+          )
         })
-        proxy.onExit(({ code }) => {
-          term.write(`\r\n\x1b[90m[process exited with code ${code}]\x1b[0m`)
-          onExitRef.current?.(code)
-        })
-      })
-      .catch((err: unknown) => {
-        term.write(`\r\n\x1b[31mFailed to spawn shell: ${String(err)}\x1b[0m\r\n`)
-      })
+    }
+
+    // 键盘 → pty；只在挂载时注册一次，自动重启换 proxy 不重复挂。
+    term.onData((d) => {
+      void proxy?.write(d)
+    })
+    spawnShell()
 
     const ro = new ResizeObserver(scheduleResize)
     ro.observe(container)
@@ -377,6 +412,10 @@ export function useXterm(
       }
       unsubscribeSettings()
       if (ptyResizeTimer) clearTimeout(ptyResizeTimer)
+      if (respawnTimer) {
+        clearTimeout(respawnTimer)
+        respawnTimer = null
+      }
       unregisterDebug()
       bufferChangeDisposable.dispose()
       titleDisposable.dispose()

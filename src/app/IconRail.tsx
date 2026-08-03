@@ -7,7 +7,7 @@ import {
 import { getAdapterIcon } from './adapterIcons'
 import { terminalIdFromPage, terminalPage, type PageId } from './pages'
 import { statusDot } from './sessionStatus'
-import { strings } from './strings'
+import { useStrings } from './i18n'
 import type { SessionEntry } from '../state/sessionsStore'
 import type { TerminalEntry } from '../state/terminalsStore'
 
@@ -36,6 +36,7 @@ export default function IconRail({
   onOpenNewSession,
   onExpand
 }: IconRailProps) {
+  const strings = useStrings()
   const activeTerminalId = terminalIdFromPage(pageId)
   const visibleSessions = sessions.slice(0, 6)
   const visibleTerminals = terminals.slice(0, 3)

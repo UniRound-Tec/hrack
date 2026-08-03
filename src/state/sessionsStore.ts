@@ -2,7 +2,8 @@ import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import {
   type SessionStatus
 } from '../app/sessionStatus'
-import { strings } from '../app/strings'
+import { getStrings } from '../app/i18n'
+import { useSettingsStore } from './settingsStore'
 
 export interface SessionEntry {
   sessionId: string
@@ -23,7 +24,7 @@ export interface SessionsState {
   addSession(session: SessionEntry): void
   upsertSessions(sessions: readonly SessionEntry[]): void
   updateSession(sessionId: string, patch: SessionPatch): void
-  markExited(sessionId: string, exitCode: number, at?: number): void
+  markExited(sessionId: string, exitCode: number | undefined, at?: number): void
   removeSession(sessionId: string): void
   removeSessions(sessionIds: readonly string[]): void
 }
@@ -82,7 +83,9 @@ export function createSessionsStore(): UseBoundStore<
               ? {
                   ...session,
                   status: 'exited',
-                  detail: strings.sessionStatus.exitedDetail(exitCode),
+                  detail: getStrings(
+                    useSettingsStore.getState().language
+                  ).sessionStatus.exitedDetail(exitCode),
                   lastActivityAt: at
                 }
               : session

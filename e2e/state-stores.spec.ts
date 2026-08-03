@@ -6,6 +6,8 @@ import {
   migrateSettings,
   type SettingsState
 } from '../src/state/settingsStore'
+import { getStrings } from '../src/app/i18n'
+import { detectLocale } from '../src/app/i18n/locale'
 import { createTerminalsStore } from '../src/state/terminalsStore'
 import { createSessionsStore } from '../src/state/sessionsStore'
 import {
@@ -41,7 +43,8 @@ test.describe('settingsStore v3', () => {
       navMode: 'sidebar',
       floatEnabled: false,
       defaultTerminal: 'powershell',
-      language: 'zh-CN'
+      language: defaultSettings.language,
+      globalShortcutEnabled: true
     })
 
     const fromV1 = migrateSettings(
@@ -84,7 +87,8 @@ test.describe('settingsStore v3', () => {
       navMode: 'tabs',
       floatEnabled: false,
       defaultTerminal: 'pwsh',
-      language: 'ja'
+      language: 'ja',
+      globalShortcutEnabled: true
     })
     expect(migrated).not.toHaveProperty('themeId')
   })
@@ -98,6 +102,23 @@ test.describe('settingsStore v3', () => {
     expect(
       migrateSettings({ terminalRounded: false, fontSize: 12 }, 3)
     ).toMatchObject({ terminalRounded: false, fontSize: 12 })
+  })
+
+  test('v5 adds the global shortcut toggle and preserves v4 settings', () => {
+    // v4 → v5：快捷键开关默认开；已持久化的选择保留。
+    expect(
+      migrateSettings(
+        { fontFamily: 'Custom Mono', globalShortcutEnabled: false },
+        4
+      )
+    ).toMatchObject({
+      fontFamily: 'Custom Mono',
+      globalShortcutEnabled: false,
+      terminalRounded: true
+    })
+    expect(migrateSettings({ fontSize: 14 }, 4).globalShortcutEnabled).toBe(
+      defaultSettings.globalShortcutEnabled
+    )
   })
 
   test('updates and resets the full settings slice', () => {
@@ -176,7 +197,8 @@ test.describe('sessionsStore and mock provider', () => {
     expect(store.getState().sessions[0]).toMatchObject({
       sessionId: 'real:1',
       status: 'exited',
-      detail: '已退出：exit code 7',
+      // 语言随运行环境（Node 的 navigator 取系统语言）；用同一 getStrings 推导期望值。
+      detail: getStrings(detectLocale()).sessionStatus.exitedDetail(7),
       lastActivityAt: 20_000
     })
 
@@ -231,7 +253,7 @@ test.describe('sessionsStore and mock provider', () => {
     for (const status of sessionStatuses) {
       expect(statusDot[status]).toContain('status-')
       expect(statusTone[status]).toContain('status-')
-      expect(statusLabel[status].length).toBeGreaterThan(0)
+      expect(statusLabel(status).length).toBeGreaterThan(0)
     }
   })
 })

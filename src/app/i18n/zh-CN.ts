@@ -1,8 +1,10 @@
-/** M5.b renderer copy. M5.c will select the active locale at runtime. */
-export const appLocales = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko'] as const
-export type AppLocale = (typeof appLocales)[number]
-
-export const strings = {
+/**
+ * zh-CN 是类型基准：`AppStrings = typeof zhCN`，其余 locale 以
+ * `satisfies AppStrings` 保证 key 完整性（含函数型条目逐语言实现）。
+ * 原型英文微标签（home · getting started / quick launch / sessions 等）
+ * 属设计元素，各语言下保持英文。
+ */
+export const zhCN = {
   titlebar: {
     newSession: '新建',
     settings: '设置',
@@ -16,7 +18,6 @@ export const strings = {
     view: '查看',
     cancel: '取消',
     confirm: '确认',
-    disabledUntilM5c: 'M5.c 开放',
     justNow: '刚刚',
     minutesAgo: (minutes: number) => `${minutes} 分钟前`,
     hoursAgo: (hours: number) => `${hours} 小时前`,
@@ -42,7 +43,16 @@ export const strings = {
     error: '出错',
     idle: '空闲',
     exited: '已退出',
-    exitedDetail: (exitCode: number) => `已退出：exit code ${exitCode}`
+    exitedDetail: (exitCode: number | undefined) =>
+      exitCode === undefined
+        ? '已退出'
+        : `已退出：exit code ${exitCode}`
+  },
+  terminal: {
+    copied: '已复制',
+    newTab: '新建标签页',
+    closeTab: '关闭标签页',
+    exited: '已退出'
   },
   home: {
     greetings: [
@@ -55,7 +65,6 @@ export const strings = {
       { text: 'Good timing. Let’s vibe.', keywords: ['vibe'] },
       { text: 'Pick a CLI and go.', keywords: ['CLI'] }
     ],
-    /** 原型密集态用英文微标签（Maple 大写），与 attn/log/metrics 一致 */
     quickLaunch: 'quick launch',
     terminal: '终端',
     freshLabel: 'home · getting started',
@@ -77,6 +86,7 @@ export const strings = {
     showAll: (count: number) => `展开全部 ${count} 条 ↓`,
     recentHistory: '历史事件',
     allTime: '概览',
+    emptyHistory: '暂无历史事件',
     stats: {
       sessions: '历史启动',
       tools: 'Tools 调用',
@@ -97,7 +107,7 @@ export const strings = {
     light: '浅色',
     dark: '深色',
     language: '界面语言',
-    languageHint: '五语言 i18n 归 M5.c',
+    languageHint: '切换后即时生效',
     languages: {
       'zh-CN': '简体中文',
       'zh-TW': '繁體中文',
@@ -112,12 +122,15 @@ export const strings = {
     tabs: '顶部 Tab 栏',
     floatingWindow: '悬浮窗',
     floatingWindowHint: '独立置顶小窗，随 S3 落地',
+    globalShortcut: '全局快捷键',
+    globalShortcutHint: 'Ctrl+Alt+V 切换窗口显示 / 隐藏',
     terminalTheme: '终端配色',
     terminalThemeHint: '16 色方案，独立于界面主题',
-    /** 原型中终端配色分段按钮直接用主题名 Dark / Light */
     terminalThemeNames: { dark: 'Dark', light: 'Light' },
     font: '字体',
     fontHint: '内嵌 Maple Mono，中文回退栈随平台',
+    fontPlaceholder: '输入字体家族，如 "Maple Mono"',
+    restoreDefaultFont: '恢复默认',
     fontSize: '字号',
     decreaseFontSize: '减小字号',
     increaseFontSize: '增大字号',
@@ -167,36 +180,7 @@ export const strings = {
     homeHint: '首页内容将在 P3 接入；三态导航与终端路由已可用。',
     settingsHint: 'P2 先开放导航模式；完整设置项将在 P3 接入。',
     unavailableTerminal: '这个演示会话没有可打开的终端。'
-  },
-  mock: {
-    sessions: [
-      { name: 'Codex', detail: '运行 pnpm test --filter demo' },
-      { name: 'Claude Code', detail: '思考中：检索 ipc-contract 引用' },
-      { name: 'Codex', detail: '等待批准：写入 src/main.ts' },
-      { name: 'Aider', detail: '等待确认：提交 4 个文件的改动' },
-      { name: 'Gemini CLI', detail: '完成：生成 release notes' },
-      { name: 'Codex', detail: '出错：tests/ipc.test.ts 3 个用例失败' },
-      { name: 'OpenCode', detail: '出错：electron-vite build 退出码 1' },
-      { name: 'Claude Code', detail: '等待批准：删除旧的迁移脚本' },
-      { name: 'Cursor Agent', detail: '等待确认：重构 sidebar 布局' },
-      { name: 'Claude Code', detail: '完成：补齐 tabs e2e 断言' },
-      { name: 'Gemini CLI', detail: '出错：API rate limit exceeded' },
-      { name: 'Codex', detail: '等待批准：更新 package.json 依赖' },
-      { name: 'Aider', detail: '空闲：等待下一个 prompt' },
-      { name: 'OpenCode', detail: '等待确认：迁移到 Tailwind v4' },
-      { name: 'Claude Code', detail: '出错：eslint 12 个问题未修复' },
-      { name: 'Warp Agent', detail: '已退出：exit code 0' },
-      { name: 'Continue', detail: '出错：无法连接本地模型服务' }
-    ],
-    history: [
-      { title: 'tool_call · Write', detail: 'src/App.tsx · 写入 48 行' },
-      { title: 'tool_call · Bash', detail: 'pnpm test --filter demo' },
-      { title: '已批准', detail: '提交 4 个文件的改动' },
-      { title: 'tool_call · Read', detail: 'src/components/TrueFocus.jsx' },
-      { title: '会话完成', detail: '生成 release notes · 成功' },
-      { title: 'tool_call · Edit', detail: 'vite.config.ts · patch' },
-      { title: 'assistant', detail: '已完成 sidebar 布局重构，请 review' },
-      { title: 'tool_call · Glob', detail: '**/*.{ts,tsx} · 126 files' }
-    ]
   }
-} as const
+}
+
+export type AppStrings = typeof zhCN

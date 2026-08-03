@@ -22,13 +22,16 @@ document.head.append(licenseLink)
 applyUiTheme(builtInLightTheme)
 
 async function bootstrap(): Promise<void> {
-  const themeRegistry = await loadUiThemeRegistry()
+  let themeRegistry = await loadUiThemeRegistry()
   setUiThemeRegistry(themeRegistry)
   for (const error of themeRegistry.errors) {
     console.warn(`[theme] ${error.filename}: ${error.message}`)
   }
   const applySelectedUiTheme = (themeId: string): void => {
-    applyUiTheme(themeRegistry.get(themeId) ?? builtInLightTheme)
+    const theme = themeRegistry.get(themeId) ?? builtInLightTheme
+    applyUiTheme(theme)
+    // 首帧底色进主进程偏好文件：下次启动建窗前即可用，消除深色主题启动白闪。
+    void window.appApi.setMainPrefs({ backgroundColor: theme.colors['bg.app'] })
   }
   applySelectedUiTheme(useSettingsStore.getState().uiThemeId)
   const unsubscribeTheme = useSettingsStore.subscribe(
@@ -38,11 +41,40 @@ async function bootstrap(): Promise<void> {
       }
     }
   )
+
+  // 主进程 fs.watch 用户主题目录：新增/修改 → 色值热更；当前主题被删除 → 回退内置浅色并提示。
+  const reloadRegistry = async (): Promise<void> => {
+    const next = await loadUiThemeRegistry()
+    const current = useSettingsStore.getState().uiThemeId
+    if (!next.get(current) && current !== 'light') {
+      themeRegistry = {
+        ...next,
+        errors: [
+          ...next.errors,
+          {
+            filename: '<userData>/themes',
+            message: '当前主题已被删除，已回退内置浅色'
+          }
+        ]
+      }
+    } else {
+      themeRegistry = next
+    }
+    setUiThemeRegistry(themeRegistry)
+    for (const error of themeRegistry.errors) {
+      console.warn(`[theme] ${error.filename}: ${error.message}`)
+    }
+    applySelectedUiTheme(useSettingsStore.getState().uiThemeId)
+  }
+  const unsubscribeThemeWatch = window.appThemeApi.onUserThemesChanged(() => {
+    void reloadRegistry()
+  })
   setRuntimeMockSessions(isMockRuntime())
 
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
       unsubscribeTheme()
+      unsubscribeThemeWatch()
       stopRuntimeMockSessions()
     })
   }

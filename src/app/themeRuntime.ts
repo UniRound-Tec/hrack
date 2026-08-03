@@ -1,5 +1,6 @@
 import lightThemeJson from '../themes/light.json'
 import darkThemeJson from '../themes/dark.json'
+import { create } from 'zustand'
 import {
   UI_COLOR_TOKENS,
   isCssColorLiteral,
@@ -25,8 +26,18 @@ export interface UiThemeRegistry {
 
 let activeUiThemeRegistry: UiThemeRegistry | null = null
 
+/** 注册表版本号：热重载后自增，设置页等 UI 订阅它以触发重渲染。 */
+export const useThemeRegistryVersion = create<{ version: number }>(() => ({
+  version: 0
+}))
+
+function bumpThemeRegistryVersion(): void {
+  useThemeRegistryVersion.setState((state) => ({ version: state.version + 1 }))
+}
+
 export function setUiThemeRegistry(registry: UiThemeRegistry): void {
   activeUiThemeRegistry = registry
+  bumpThemeRegistryVersion()
 }
 
 export function getUiThemeRegistry(): UiThemeRegistry {

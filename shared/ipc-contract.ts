@@ -88,6 +88,8 @@ export type HistoryEventKind =
   | 'completed'
   | 'approved'
   | 'message'
+  | 'session_start'
+  | 'session_exit'
 
 export interface HistoryEvent {
   id: string
@@ -168,10 +170,38 @@ export const ShellInvokeChannel = {
   ListAvailable: 'shell:list-available'
 } as const
 
-/** M5.b defines these contracts; persistence/real event handlers land later. */
+/** M5.c: real persistence behind stats/history; renderer reports lifecycle events. */
 export const StatsInvokeChannel = {
   AllTime: 'stats:all-time',
-  HistoryEvents: 'events:history'
+  HistoryEvents: 'events:history',
+  RecordEvent: 'events:record'
+} as const
+
+export type RecordEventInput = Pick<
+  HistoryEvent,
+  'kind' | 'adapterId' | 'title' | 'detail'
+>
+
+/**
+ * 主进程偏好文件 `<userData>/main-prefs.json` 的可写子集。
+ * renderer 上报界面主题 bg.app、全局快捷键开关与界面语言。
+ */
+export type MainPrefsUpdate = Partial<{
+  backgroundColor: string
+  globalShortcutEnabled: boolean
+  language: string
+}>
+
+export const AppInvokeChannel = {
+  SetMainPrefs: 'app:set-main-prefs'
+} as const
+
+export const AppEventChannel = {
+  OpenNewSession: 'app:open-new-session'
+} as const
+
+export const ThemeEventChannel = {
+  UserThemesChanged: 'theme:user-themes-changed'
 } as const
 
 // ───── Main → Renderer（webContents.send，事件流）─────────
@@ -239,4 +269,25 @@ export interface DialogApi {
 
 export interface ShellApi {
   listAvailable: () => Promise<ShellOption[]>
+}
+
+export interface StatsApi {
+  /** all-time 聚合计数（统计文件单调累加，独立于日志截断）。 */
+  allTime: () => Promise<AllTimeStats>
+  /** 按 occurredAt 降序查询历史事件，`before` 游标支持分页。 */
+  historyEvents: (query: HistoryQuery) => Promise<HistoryEvent[]>
+  /** 写入口：id/occurredAt 由主进程生成。 */
+  recordEvent: (input: RecordEventInput) => Promise<void>
+}
+
+export interface AppApi {
+  /** 上报主进程偏好（backgroundColor / globalShortcutEnabled / language）。 */
+  setMainPrefs: (update: MainPrefsUpdate) => Promise<void>
+  /** 托盘「新建会话」菜单触发；与 Ctrl+Shift+T 同路径。 */
+  onOpenNewSession: (cb: () => void) => () => void
+}
+
+export interface AppThemeApi {
+  /** 用户主题目录变更（新增/修改/删除）后由主进程推送。 */
+  onUserThemesChanged: (cb: () => void) => () => void
 }

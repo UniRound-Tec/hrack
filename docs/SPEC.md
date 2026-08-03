@@ -101,7 +101,12 @@ vibing/
 
 - 创建 / 管理 `BrowserWindow`：无边框、可缩放/最大化/全屏。
 - 平台窗口效果：macOS Vibrancy、Windows Acrylic/Blur、Linux 透明。
-- 系统集成：托盘、全局快捷键、菜单。
+  **M5.c 定论：三端系统窗口材质均不实现**（质感由屏幕锚定环境渐变 + 深浅双主题承担）。
+- 系统集成（M5.c 已实现）：托盘（Windows/Linux 图标单击切换、菜单：显示/隐藏 / 新建会话 / 退出）、
+  全局快捷键 `Ctrl+Alt+V`（quake 式切换，设置开关可关）、关闭到托盘（标题栏 X = 隐藏窗口，
+  仅托盘「退出」真正退出）。
+- 事件持久化（M5.c）：`<userData>/events/events.jsonl` + `stats.json` 单调计数，写入目标为
+  S 线语义事件的共用管道。
 - **PTYManager**：唯一持有 node-pty 实例；对外暴露 `spawn / write / resize / kill`，向上发 `data / exit`。
 - **PtyDataQueue**：见 §4。
 - 打包（electron-builder）：nsis / dmg / AppImage+deb。
@@ -152,8 +157,10 @@ M5.b 新增（详见 [PLAN-M5B.md](./PLAN-M5B.md) §4.1/§4.5/§4.6/§4.11）：
 | `window:get-position`    | —                     | `{x, y, screenWidth, screenHeight}`（相对当前显示器） | M5.b 实现 |
 | `dialog:pick-directory`  | `{defaultPath?}`      | `string \| null`                             | M5.b 实现 |
 | `theme:list-user`        | —                     | 用户主题 JSON 原文列表（renderer 校验）                | M5.b 实现 |
-| `stats:all-time`         | —                     | `{sessions, toolCalls, blocked, approvals}`  | **仅契约**，实现归 M5.c / S 线 |
-| `events:history`         | `{limit, before?}`    | `HistoryEvent[]`                             | **仅契约**，实现归 M5.c / S 线 |
+| `stats:all-time`         | —                     | `{sessions, toolCalls, blocked, approvals}`  | M5.c 实现 |
+| `events:history`         | `{limit, before?}`    | `HistoryEvent[]`                             | M5.c 实现 |
+| `events:record`          | `{kind, adapterId, title, detail}` | `void`（id/occurredAt 由主进程生成） | M5.c 新增（Renderer→Main） |
+| `app:set-main-prefs`     | `{backgroundColor?, globalShortcutEnabled?, language?}` | `void` | M5.c 新增（Renderer→Main） |
 
 
 **Main → Renderer（send，事件流）**
@@ -165,6 +172,8 @@ M5.b 新增（详见 [PLAN-M5B.md](./PLAN-M5B.md) §4.1/§4.5/§4.6/§4.11）：
 | `pty:exit:{ptyId}`         | `{code, signal}` |
 | `window:maximized-changed` | `boolean`（M5.b 新增，驱动最大化/还原图标） |
 | `window:position-changed`  | `{x, y, screenWidth, screenHeight}`（M5.b 新增，主进程节流 ~30ms；驱动侧栏屏幕锚定环境渐变） |
+| `app:open-new-session`     | —（M5.c 新增：托盘「新建会话」菜单 → renderer 打开新建会话面板） |
+| `theme:user-themes-changed`| —（M5.c 新增：`<userData>/themes` 变更推送，renderer 重载主题注册表） |
 
 
 > 约定：`data` 用二进制传输（`Uint8Array`），避免 UTF-8 字符串在多字节边界被 IPC 序列化切坏。xterm 6.0 支持 `write(Uint8Array)`。
@@ -331,7 +340,7 @@ Shell 三态导航取代，`tabsStore` 拆为 `terminalsStore`（终端条目）
 | 打包  | electron-builder      | 三端安装包                              |
 | 样式  | Tailwind CSS          | 原子化、无全局污染、开发快；配 CSS 变量做主题          |
 | GUI 主题 | 语义 token（CSS 变量 + Tailwind `@theme inline` 映射）+ JSON 主题配置文件 | VS Code 模式：内置主题与用户主题（`<userData>/themes/*.json`）同一 schema，运行期热切换；组件禁止硬编码色值；界面主题与终端 16 色分开设置（终端配色仍走 `themes.ts`，schema 预留 `terminal` 段）。见 PLAN-M5B §4.11 |
-| 字体  | 内嵌 Maple Mono（终端）+ PingFang SC（界面中文）+ Ammonite（logo） | 三端视觉一致、离线可用；PingFang 完整字库入库（`src/assets/fonts/pingfang/`），Ammonite 随 M5.b 入库 `src/assets/fonts/ammonite/`，**构建期子集化后打包，禁止全量打包**（见 §9 M5.a 注记与目录内 NOTICE）；Geist 不引入（原型仅作未显式指定字体的兜底，已查证无实际使用） |
+| 字体  | 内嵌 Maple Mono（终端）+ PingFang SC（界面中文）+ Ammonite（logo） | 三端视觉一致、离线可用；PingFang 完整字库入库（`src/assets/fonts/pingfang/`），Ammonite 随 M5.b 入库 `src/assets/fonts/ammonite/`，**构建期子集化后打包，禁止全量打包**（见 §9 M5.a 注记与目录内 NOTICE）；Geist 不引入（原型仅作未显式指定字体的兜底，已查证无实际使用）。**M5.c 注记**：子集化扫描覆盖五语言 UI 文案（`src/app/i18n/*.ts`），mock 演示文案不参与扫描；PingFang SC 无谚文（Hangul），ko 界面中文字体命中不到的字形回退系统栈（Windows Malgun Gothic / macOS Apple SD Gothic Neo），ja 假名同理回退平台字体 |
 
 
 **插件系统**：v1 **不做**。Tabby 的动态模块加载深绑 Angular DI，React 无等价物，强套代价高。若后续需要，用 React Context + 事件总线自建扩展点，届时单独立 Spec。
@@ -352,7 +361,7 @@ Shell 三态导航取代，`tabsStore` 拆为 `terminalsStore`（终端条目）
 | **M4**   | **渲染与体验**                   | WebGL + context-loss 降级链；消除 `opencode` 块字符色块网格缝；主题、内嵌字体与连字                                          |
 | **M5.a** | **App Shell — UI/UX 设计与原型** | 高保真交互原型（`/prototype` 独立 Vite 工程）评审拍板，不另写 UX 规范文档；设计覆盖侧栏/首页/设置/新建会话流、三态导航（侧栏展开为默认 / 侧栏收起图标条 / 顶部 Tab 栏）、§11 监控界面（侧栏 session 六态徽标、独立置顶悬浮窗、Home 注意力队列），实现归 M5.b / S 线 |
 | **M5.b** | **App Shell — 实现**          | 无边框窗口 + 自定义标题栏（原型标题栏设计的前置条件）；侧栏、首页、设置真组件落地；设置面板直读写 `settingsStore`；侧栏 session 区由 mock provider（§11.5 schema）驱动；交互 E2E 全绿且既有门禁不回归 |
-| **M5.c** | **App Shell — 数据与打磨**       | 需新 IPC 的真实数据接入（以 M5.a 定稿为准）、i18n 五语言、视觉打磨（含 vibrancy/acrylic，注意平台差异）、托盘与全局快捷键、全量回归；AI session 真数据不在此（归 S 线）                             |
+| **M5.c** | **App Shell — 数据与打磨**       | 真实数据接入（stats / history 持久化管道，M5.c 只记生命周期事件，语义事件归 S 线沿同一管道补）、i18n 五语言、托盘 + 全局快捷键 `Ctrl+Alt+V`、关闭到托盘、深色首帧底色、主题热重载；质感由环境渐变 + 双主题承担，**不做 vibrancy/acrylic**；全量回归；AI session 真数据不在此（归 S 线）                             |
 | M6       | CLI 适配器矩阵                   | 依赖 S3 定稿的 adapter 抽象；铺开接入剩余主流 CLI（gemini-cli / opencode / aider / cursor-agent 等），每个适配器带独立状态识别策略与回归夹具    |
 | M7       | 打包                          | 三端安装包产出                                                                                             |
 
@@ -384,6 +393,28 @@ token 化 + JSON 主题配置文件（见 §8「GUI 主题」行）；新建 CLI
 （settingsStore v4 `terminalRounded`，默认开）——开时内容区保留 20px 圆角且终端
 两侧加留白防裁字，关时终端贴边直角；终端默认字号 16px → 14px（v4 迁移）；修复
 标题栏关闭键 X 图标的 CSS 旋转错误。
+
+**M5.c 已完成（2026-08-03）**：主进程事件持久化管道（`<userData>/events/events.jsonl`
+逐行 append + 5,000 条压缩、`stats.json` 单调计数，计数独立于日志截断）落地
+`stats:all-time` / `events:history`，新增 `events:record` 写入口（id/occurredAt 主进程
+生成、payload 校验）；现阶段真实事件仅 `session_start` / `session_exit` 两类，由
+renderer 在 CLI 会话启动与 pty 退出时上报，生产构建 Home 切真实数据（dev/E2E 仍
+mock），语义事件由 S 线沿同一管道补写、renderer 与存储层零改动。i18n 五语言
+（zh-CN / zh-TW / en / ja / ko）统一模块化（`src/app/i18n/`，`useStrings` /
+`getStrings` 双入口，`settingsStore` v5 `language` 驱动即时热切换，首装语言跟随
+系统），既有 copy toast 四 key 并入，mock 演示文案迁出 strings 模块不参与字体子集。
+系统集成：三端托盘常驻（菜单：显示/隐藏、新建会话、退出；macOS template image），
+标题栏 X 改为隐藏到托盘（PTY 保活，托盘「退出」才真正退出）；全局快捷键
+`Ctrl+Alt+V` quake 式切换（设置开关，v5 `globalShortcutEnabled`，占用时仅告警）；
+深色首帧底色（renderer 上报活动主题 `bg.app` → `<userData>/main-prefs.json` →
+建窗前 `BrowserWindow.backgroundColor`）；主题热重载（主进程 `fs.watch`
+`<userData>/themes`，300ms debounce 推送，删除当前主题回退内置浅色并提示）。
+字体子集化扫描扩展覆盖五语言文案（ja/ko 缺字形回退平台系统栈）。
+Windows 下 node-pty 裸命令名解析修正（`where.exe`），CLI 会话可真实 spawn。
+E2E：userData 按 launch 隔离（`VIBING_USER_DATA_DIR`），新增 events-log /
+托盘 / 快捷键 / 主题热重载 / 重启持久化用例，整套 94 条通过；已知 flake
+`render.spec.ts`「keeps the terminal functional when WebGL falls back to DOM」
+为 M5.b 基线既有（stash 验证 1/3 复现），定向复跑即绿。
 
 M2 基线：
 
@@ -554,6 +585,13 @@ interface MonitorStrategy {
 | `completed`        | AI 停下、交还控制权 | 结果摘要                         | ✅ 完成  |
 | `error`            | 出错          | 错误信息                         | ✅     |
 | `exited`           | 进程退出        | 退出码                          | ✅     |
+
+> **M5.c 注记**：`HistoryEventKind`（`events:history` / `events:record` 契约）已扩
+> `session_start` / `session_exit` 两类生命周期事件，与上表 `exited` 互补（`session_*`
+> 描述会话壳的起止，语义事件表关注 CLI 内部状态）。事件持久化管道
+> （`<userData>/events/events.jsonl` + `stats.json` 单调计数）是 S 线语义事件的
+> 写入目标——S2 起 SemanticTap 主进程直写同一 EventLog，不经 IPC，renderer 与
+> 存储层零改动；`toolCalls/blocked/approvals` 的累加规则随 S 线写入方定义。
 
 
 

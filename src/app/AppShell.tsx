@@ -29,7 +29,7 @@ import {
 import {
   setRuntimeMockSessions
 } from './mockSessions'
-import { strings } from './strings'
+import { useStrings } from './i18n'
 import {
   buildCliLaunch,
   findDefaultShell,
@@ -106,6 +106,11 @@ export default function AppShell() {
     setNewSessionOpen(true)
   }, [])
 
+  // 托盘「新建会话」菜单：与 Ctrl+Shift+T 同路径。
+  useEffect(() => {
+    return window.appApi.onOpenNewSession(openNewSession)
+  }, [openNewSession])
+
   const launchTerminal = useCallback(
     (shell: ShellOption, remember = false): void => {
       if (remember) setDefaultTerminal(shell.id)
@@ -142,6 +147,13 @@ export default function AppShell() {
         name: draft.name.trim() || draft.option.name,
         status: 'working',
         lastActivityAt: Date.now()
+      })
+      // M5.c：CLI 会话启动记录为历史事件（生命周事件；语义事件由 S 线沿同一管道补）。
+      void window.statsApi.recordEvent({
+        kind: 'session_start',
+        adapterId: draft.option.adapterId,
+        title: draft.name.trim() || draft.option.name,
+        detail: draft.workspace.trim()
       })
       setNewSessionOpen(false)
       setPageId(terminalPage(terminal.id))
@@ -406,6 +418,7 @@ export default function AppShell() {
 }
 
 function UnavailableTerminalPage() {
+  const strings = useStrings()
   return (
     <section
       data-testid="unavailable-terminal-page"

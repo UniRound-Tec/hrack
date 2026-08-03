@@ -4,14 +4,17 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
+import { writeFileSync } from 'fs'
+import { join } from 'path'
 import { UI_COLOR_TOKENS, uiTokenToCssVariable } from '../shared/theme-schema'
 import { launchApp } from './helpers'
 
 let app: ElectronApplication
 let page: Page
+let userDataDir: string
 
 test.beforeEach(async () => {
-  ;({ app, window: page } = await launchApp())
+  ;({ app, window: page, userDataDir } = await launchApp())
 })
 
 test.afterEach(async () => {
@@ -50,8 +53,9 @@ test('toggles maximize from the custom control', async () => {
   test.skip(platform === 'darwin', 'macOS uses the native traffic lights')
 
   const toggle = page.getByTestId('window-toggle-maximize')
+  const before = await toggle.getAttribute('aria-label')
   await toggle.click()
-  await expect(toggle).toHaveAttribute('aria-label', '还原')
+  await expect(toggle).not.toHaveAttribute('aria-label', before)
   await expect
     .poll(() =>
       app.evaluate(({ BrowserWindow }) =>
@@ -79,7 +83,7 @@ test('marks the title-bar center draggable and keeps controls clickable', async 
   expect(regions).toEqual({ drag: 'drag', action: 'no-drag', control: 'no-drag' })
 })
 
-test('minimizes and closes through the narrowed window API', async () => {
+test('minimizes and hides to tray through the narrowed window API', async () => {
   const platform = await page.evaluate(() => window.windowApi.platform)
   test.skip(platform === 'darwin', 'macOS uses the native traffic lights')
 
@@ -92,8 +96,156 @@ test('minimizes and closes through the narrowed window API', async () => {
     )
     .toBe(true)
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].restore())
+  await expect
+    .poll(() =>
+      app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].isVisible()
+      )
+    )
+    .toBe(true)
 
-  const closed = page.waitForEvent('close')
-  await page.getByTestId('window-close').click()
-  await closed
+  // M5.c：标题栏 X = 隐藏到托盘，窗口不销毁，PTY 保活。
+  // 主进程 win.close() 与 X 按钮的 IPC 路径走同一条 close 事件（preventDefault + hide），
+  // 避免 Playwright 输入管线与窗口隐藏竞态（CDP ack 丢失 / target 关闭）。
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].close()
+  )
+  await expect
+    .poll(() =>
+      app.evaluate(({ BrowserWindow }) => {
+        const win = BrowserWindow.getAllWindows()[0]
+        return { visible: win.isVisible(), destroyed: win.isDestroyed() }
+      })
+    )
+    .toEqual({ visible: false, destroyed: false })
+  // 重新显示后终端 buffer 完整（PTY 未被杀）。
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].show()
+  )
+  await expect(page.locator('.xterm:visible')).toHaveCount(1)
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as unknown as { __vibingDebug: { snapshot(): unknown } })
+          .__vibingDebug.snapshot()
+      )
+    )
+    .not.toBeNull()
+})
+
+test('registers and unregisters the global shortcut with the settings toggle', async () => {
+  const shortcut = () =>
+    app.evaluate(() =>
+      (globalThis as unknown as {
+        __vibingMainDebug: { isShortcutRegistered(): boolean }
+      }).__vibingMainDebug.isShortcutRegistered()
+    )
+  await expect.poll(shortcut).toBe(true)
+
+  await page.getByTestId('titlebar-settings').click()
+  const toggle = page.getByTestId('settings-global-shortcut')
+  await toggle.click()
+  await expect.poll(shortcut).toBe(false)
+  await toggle.click()
+  await expect.poll(shortcut).toBe(true)
+})
+
+test('tray menu items drive hide-toggle, new session, and quit callbacks', async () => {
+  // 注意：electronApp.evaluate 的第一个参数始终是 electron 模块，
+  // 真正的入参在第二个位置（index）。
+  const clickTrayItem = (index: number) =>
+    app.evaluate((_electron, value) => {
+      return (globalThis as unknown as {
+        __vibingMainDebug: {
+          clickTrayItem(index: number): {
+            invoked: boolean
+            visible: boolean
+            focused: boolean
+          }
+        }
+      }).__vibingMainDebug.clickTrayItem(value)
+    }, index)
+
+  // 显示/隐藏：菜单项 0 在可见且聚焦时隐藏窗口（quake 语义）。
+  await app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0]
+    win.show()
+    win.focus()
+  })
+  await expect
+    .poll(() =>
+      app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].isFocused()
+      )
+    )
+    .toBe(true)
+  const toggled = await clickTrayItem(0)
+  expect(toggled).toMatchObject({ invoked: true })
+  await expect
+    .poll(() =>
+      app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].isVisible()
+      )
+    )
+    .toBe(false)
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].show())
+
+  // 新建会话：菜单项 1 → renderer 打开 new-session 面板。
+  await clickTrayItem(1)
+  await expect(page.getByTestId('new-session-overlay')).toBeVisible()
+
+  // 退出：菜单项 3 触发 quitting 路径，应用真正退出。
+  await clickTrayItem(3)
+  await app.waitForEvent('close', { timeout: 10_000 })
+})
+
+test('hot-reloads the theme registry and CSS variables when themes change on disk', async () => {
+  const themesDir = join(userDataDir, 'themes')
+  const themePath = join(themesDir, 'm5c-test.json')
+  writeFileSync(
+    themePath,
+    JSON.stringify({
+      id: 'm5c-test',
+      name: 'M5C Test',
+      type: 'dark',
+      colors: { 'bg.app': '#123456' }
+    })
+  )
+
+  // 主进程 watch 推送 → 注册表出现新主题，设置页可选中。
+  await page.getByTestId('titlebar-settings').click()
+  const segment = page.getByTestId('settings-ui-theme-m5c-test')
+  await expect(segment).toBeVisible({ timeout: 15_000 })
+  await segment.click()
+
+  // 应用后 bg.app 生效为磁盘上的色值。
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--vib-bg-app')
+          .trim()
+      )
+    )
+    .toBe('#123456')
+
+  // 修改色值 → 不重启即热更。
+  writeFileSync(
+    themePath,
+    JSON.stringify({
+      id: 'm5c-test',
+      name: 'M5C Test',
+      type: 'dark',
+      colors: { 'bg.app': '#654321' }
+    })
+  )
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--vib-bg-app')
+          .trim()
+      )
+    )
+    .toBe('#654321')
 })

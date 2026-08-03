@@ -22,7 +22,7 @@ test('fills omitted user-theme tokens from the built-in theme of the same type',
   expect(registry.errors).toEqual([])
   expect(registry.get('paper')?.colors).toMatchObject({
     'accent.flame': '#123456',
-    'bg.app': '#ffffff',
+    'bg.app': '#ededec',
     'text.primary': '#171717'
   })
 })

@@ -4,6 +4,8 @@ import {
   WindowEventChannel,
   type WindowPositionPayload
 } from '../shared/ipc-contract'
+import { DEFAULT_BACKGROUND_COLOR, type MainPrefs } from './main-prefs'
+import { isQuitting } from './quitting'
 
 /** 窗口位置换算成"相对当前显示器"坐标（多显示器下渐变坐标系跟随窗口所在屏）。 */
 export function displayRelativePosition(
@@ -27,15 +29,19 @@ const DESIGN_HEIGHT = 900
  * 创建主窗口。
  * 安全基线（SPEC §2.2）：contextIsolation=true、nodeIntegration=false，
  * 只通过 preload 的 contextBridge 收窄暴露 API。
+ *
+ * M5.c 关闭语义：非 quitting 的 close 一律 preventDefault + hide（关闭到托盘），
+ * 托盘「退出」/ app.before-quit 置位 quitting 后 close 才真正销毁窗口。
+ * 首帧底色取主进程偏好文件里最近一次活动主题的 bg.app，消除深色主题启动白闪。
  */
-export function createWindow(): BrowserWindow {
+export function createWindow(prefs: MainPrefs): BrowserWindow {
   const workArea = screen.getPrimaryDisplay().workAreaSize
   const win = new BrowserWindow({
     width: Math.min(DESIGN_WIDTH, workArea.width),
     height: Math.min(DESIGN_HEIGHT, workArea.height),
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: '#ffffff',
+    backgroundColor: prefs.backgroundColor || DEFAULT_BACKGROUND_COLOR,
     ...(process.platform === 'darwin'
       ? { titleBarStyle: 'hiddenInset' as const }
       : { frame: false }),
@@ -45,6 +51,12 @@ export function createWindow(): BrowserWindow {
       nodeIntegration: false,
       sandbox: false
     }
+  })
+
+  win.on('close', (event) => {
+    if (isQuitting()) return
+    event.preventDefault()
+    win.hide()
   })
 
   win.on('ready-to-show', () => win.show())

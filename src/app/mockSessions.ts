@@ -6,7 +6,6 @@ import type {
 import {
   type SessionStatus
 } from './sessionStatus'
-import { strings } from './strings'
 import {
   useSessionsStore,
   type SessionEntry,
@@ -18,6 +17,41 @@ const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 const MOCK_SESSION_PREFIX = 'mock:session:'
+
+/**
+ * 演示文案固定 zh-CN（dev/E2E 专用，不翻译、不参与字体子集扫描），
+ * M5.c 起与 i18n 模块解耦。
+ */
+const mockSessionCopy: readonly { name: string; detail: string }[] = [
+  { name: 'Codex', detail: '运行 pnpm test --filter demo' },
+  { name: 'Claude Code', detail: '思考中：检索 ipc-contract 引用' },
+  { name: 'Codex', detail: '等待批准：写入 src/main.ts' },
+  { name: 'Aider', detail: '等待确认：提交 4 个文件的改动' },
+  { name: 'Gemini CLI', detail: '完成：生成 release notes' },
+  { name: 'Codex', detail: '出错：tests/ipc.test.ts 3 个用例失败' },
+  { name: 'OpenCode', detail: '出错：electron-vite build 退出码 1' },
+  { name: 'Claude Code', detail: '等待批准：删除旧的迁移脚本' },
+  { name: 'Cursor Agent', detail: '等待确认：重构 sidebar 布局' },
+  { name: 'Claude Code', detail: '完成：补齐 tabs e2e 断言' },
+  { name: 'Gemini CLI', detail: '出错：API rate limit exceeded' },
+  { name: 'Codex', detail: '等待批准：更新 package.json 依赖' },
+  { name: 'Aider', detail: '空闲：等待下一个 prompt' },
+  { name: 'OpenCode', detail: '等待确认：迁移到 Tailwind v4' },
+  { name: 'Claude Code', detail: '出错：eslint 12 个问题未修复' },
+  { name: 'Warp Agent', detail: '已退出：exit code 0' },
+  { name: 'Continue', detail: '出错：无法连接本地模型服务' }
+]
+
+const mockHistoryCopy: readonly { title: string; detail: string }[] = [
+  { title: 'tool_call · Write', detail: 'src/App.tsx · 写入 48 行' },
+  { title: 'tool_call · Bash', detail: 'pnpm test --filter demo' },
+  { title: '已批准', detail: '提交 4 个文件的改动' },
+  { title: 'tool_call · Read', detail: 'src/components/TrueFocus.jsx' },
+  { title: '会话完成', detail: '生成 release notes · 成功' },
+  { title: 'tool_call · Edit', detail: 'vite.config.ts · patch' },
+  { title: 'assistant', detail: '已完成 sidebar 布局重构，请 review' },
+  { title: 'tool_call · Glob', detail: '**/*.{ts,tsx} · 126 files' }
+]
 
 const sessionFixtures: readonly {
   adapterId: string
@@ -67,7 +101,7 @@ export const mockAllTimeStats: AllTimeStats = {
 
 export function createMockSessions(now = Date.now()): SessionEntry[] {
   return sessionFixtures.map((fixture, index) => {
-    const copy = strings.mock.sessions[index]
+    const copy = mockSessionCopy[index]
     const suffix = String(index + 1).padStart(2, '0')
     return {
       sessionId: `${MOCK_SESSION_PREFIX}${suffix}`,
@@ -87,8 +121,8 @@ export function createMockHistoryEvents(now = Date.now()): HistoryEvent[] {
     kind: fixture.kind,
     adapterId: fixture.adapterId,
     occurredAt: now - fixture.age,
-    title: strings.mock.history[index].title,
-    detail: strings.mock.history[index].detail
+    title: mockHistoryCopy[index].title,
+    detail: mockHistoryCopy[index].detail
   }))
 }
 

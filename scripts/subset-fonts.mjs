@@ -16,11 +16,15 @@ const PRINTABLE_ASCII = Array.from(
 const textSources = [
   join(sourceRoot, 'app'),
   join(sourceRoot, 'App.tsx'),
-  join(sourceRoot, 'i18n.ts'),
   join(sourceRoot, 'main.tsx'),
   join(sourceRoot, 'terminal', 'TerminalView.tsx'),
   join(repositoryRoot, 'shared', 'theme-schema.ts')
 ]
+
+/** 扫描文本源中的文件；mock 演示文案不参与子集化（不进产物字体）。 */
+const excludedFiles = new Set([
+  join(sourceRoot, 'app', 'mockSessions.ts')
+])
 
 async function sourceFiles(path) {
   if (['.ts', '.tsx'].includes(extname(path))) return [path]
@@ -34,7 +38,7 @@ async function sourceFiles(path) {
           : []
     )
   )
-  return nested.flat()
+  return nested.flat().filter((filename) => !excludedFiles.has(filename))
 }
 
 function collectLiteralText(source, filename, characters) {

@@ -10,7 +10,7 @@ import {
   type CliOption,
   type CliRuntime
 } from './launchOptions'
-import { strings } from './strings'
+import { useStrings } from './i18n'
 
 const LAST_WORKSPACE_KEY = 'vibing.lastWorkspace'
 
@@ -51,6 +51,7 @@ export default function NewSessionFlow({
   onLaunchTerminal,
   onLaunchCli
 }: NewSessionFlowProps) {
+  const strings = useStrings()
   const [terminalPickerOpen, setTerminalPickerOpen] = useState(false)
   const [rememberDefault, setRememberDefault] = useState(false)
   const [draft, setDraft] = useState<CliLaunchDraft | null>(null)
@@ -194,6 +195,7 @@ function RuntimeButton({ id, selected, title, hint, onSelect }: { id: CliRuntime
 }
 
 function ModalShell({ testId, width, iconAdapterId, title, hint, onClose, children }: { testId: string; width: string; iconAdapterId?: string; title: string; hint: string; onClose: () => void; children: React.ReactNode }) {
+  const strings = useStrings()
   const Icon = iconAdapterId ? getAdapterIcon(iconAdapterId) : null
   return <><motion.button type="button" aria-label={strings.common.close} className="absolute inset-0 z-[60] bg-backdrop-strong backdrop-blur-[3px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }} onClick={onClose} /><motion.div className="pointer-events-none absolute inset-0 z-[70] flex items-center justify-center p-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}><motion.div data-testid={testId} role="dialog" aria-modal="true" className="pointer-events-auto w-full overflow-hidden rounded-2xl border border-border-default bg-surface shadow-2xl" style={{ maxWidth: width }} initial={{ opacity: 0, scale: 0.94, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 10 }} transition={{ type: 'spring', stiffness: 480, damping: 34, mass: 0.8 }}><div className="flex items-start justify-between px-4 pt-4 pb-3"><div className="flex items-center gap-2.5">{Icon && <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-strong"><Icon size={16} className="size-4" /></span>}<div><h2 className="font-pingfang text-[14px] font-semibold text-text-primary">{title}</h2><p className="mt-0.5 font-pingfang text-[11px] text-text-faint">{hint}</p></div></div><button type="button" onClick={onClose} className="flex size-7 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-surface-strong hover:text-text-secondary"><X className="size-3.5" strokeWidth={1.75} /></button></div>{children}</motion.div></motion.div></>
 }

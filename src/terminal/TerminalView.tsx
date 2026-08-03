@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { detectLocale, translate } from '../i18n'
+import { useStrings } from '../app/i18n'
+import { useSettingsStore } from '../state/settingsStore'
 import { useTerminalsStore } from '../state/terminalsStore'
 import { useSessionsStore } from '../state/sessionsStore'
 import { useXterm } from './useXterm'
@@ -13,7 +14,8 @@ interface TerminalViewProps {
 export default function TerminalView({ tabId, active }: TerminalViewProps) {
   const ref = useRef<HTMLDivElement>(null)
   const hideCopiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [locale] = useState(detectLocale)
+  const language = useSettingsStore((state) => state.language)
+  const strings = useStrings()
   const [copiedVisible, setCopiedVisible] = useState(false)
   const setTitle = useTerminalsStore((state) => state.setTitle)
   const markExited = useTerminalsStore((state) => state.markExited)
@@ -28,11 +30,11 @@ export default function TerminalView({ tabId, active }: TerminalViewProps) {
   }, [])
 
   useEffect(() => {
-    document.documentElement.lang = locale
+    document.documentElement.lang = language
     return () => {
       if (hideCopiedTimer.current) clearTimeout(hideCopiedTimer.current)
     }
-  }, [locale])
+  }, [language])
 
   useXterm(
     ref,
@@ -40,14 +42,27 @@ export default function TerminalView({ tabId, active }: TerminalViewProps) {
     active,
     showCopied,
     (title) => setTitle(tabId, title),
-    (code) => {
-      markExited(tabId)
+    (code, respawned) => {
+      if (!respawned) markExited(tabId)
       const sessionIds = useSessionsStore
         .getState()
         .sessions.filter((session) => session.terminalId === tabId)
         .map((session) => session.sessionId)
       for (const sessionId of sessionIds) {
         useSessionsStore.getState().markExited(sessionId, code)
+        // M5.c：会话退出写历史事件（detail 带 exit code）；respawn 不算会话结束。
+        if (!respawned) {
+          const session = useSessionsStore.getState().sessions.find(
+            (entry) => entry.sessionId === sessionId
+          )
+          void window.statsApi.recordEvent({
+            kind: 'session_exit',
+            adapterId: session?.adapterId ?? 'unknown',
+            title: session?.name ?? 'Session',
+            detail:
+              code === undefined ? 'exit' : `exit code ${code}`
+          })
+        }
       }
     }
   )
@@ -62,7 +77,7 @@ export default function TerminalView({ tabId, active }: TerminalViewProps) {
           data-testid="copy-toast"
           className="copy-toast pointer-events-none absolute right-4 bottom-4 z-10 rounded-md border px-3 py-2 text-sm shadow-lg"
         >
-          {translate(locale, 'copied')}
+          {strings.terminal.copied}
         </div>
       )}
     </div>

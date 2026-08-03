@@ -3,7 +3,7 @@ import { Home, Plus, Terminal as TerminalIcon, X } from 'lucide-react'
 import { getAdapterIcon } from './adapterIcons'
 import { terminalIdFromPage, terminalPage, type PageId } from './pages'
 import { statusDot, statusLabel, statusTone } from './sessionStatus'
-import { strings } from './strings'
+import { useStrings } from './i18n'
 import type { SessionEntry } from '../state/sessionsStore'
 import type { TerminalEntry } from '../state/terminalsStore'
 
@@ -46,6 +46,7 @@ export default function TopTabBar({
   onCloseSession,
   onCloseTerminal
 }: TopTabBarProps) {
+  const strings = useStrings()
   const barRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [hovered, setHovered] = useState<HoveredTab | null>(null)
@@ -231,7 +232,7 @@ function SessionHoverCard({ session }: { session: SessionEntry }) {
         <span
           className={`ml-auto shrink-0 font-maple text-[10px] ${statusTone[session.status]}`}
         >
-          {statusLabel[session.status]}
+          {statusLabel(session.status)}
         </span>
       </div>
       {session.detail && (

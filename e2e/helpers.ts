@@ -1,4 +1,6 @@
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { mkdtempSync } from 'fs'
+import { tmpdir } from 'os'
 import { resolve } from 'path'
 import { PNG } from 'pngjs'
 import type {
@@ -9,12 +11,24 @@ import type {
 /**
  * 启动打包后的 Electron 应用（需先 npm run build 产出 out/main/index.js）。
  * 设置 VIBING_E2E=1 让 preload 注入 __VIBING_E2E__ 标记，激活 window.__vibingDebug 调试桥。
+ *
+ * M5.c：默认每次 launch 使用独立 userData 临时目录（VIBING_USER_DATA_DIR），
+ * 保证 stats / 主题热重载 / 重启持久化等断言从干净状态出发。
+ * 传入 userDataDir 可复用同一目录（重启持久化验证）。
  */
-export async function launchApp(): Promise<{ app: ElectronApplication; window: Page }> {
+export async function launchApp(options: {
+  userDataDir?: string
+} = {}): Promise<{
+  app: ElectronApplication
+  window: Page
+  userDataDir: string
+}> {
   const main = resolve(__dirname, '../out/main/index.js')
+  const userDataDir =
+    options.userDataDir ?? mkdtempSync(resolve(tmpdir(), 'vibing-e2e-'))
   const app = await electron.launch({
     args: [main],
-    env: { ...process.env, VIBING_E2E: '1' }
+    env: { ...process.env, VIBING_E2E: '1', VIBING_USER_DATA_DIR: userDataDir }
   })
   try {
     const window = await app.firstWindow()
@@ -49,7 +63,28 @@ export async function launchApp(): Promise<{ app: ElectronApplication; window: P
         debugWindow.__vibingDebugShell.navigate(`terminal:${terminalId}`)
       }
     })
-    return { app, window }
+    // M5.c：等待 shell 提示符就绪再返回——调试桥在 TerminalView 挂载时即注册，
+    // 早于 pty 首帧；直接输入会与提示符竞态（fresh userData 首启更慢，更易触发）。
+    await window
+      .waitForFunction(
+        () => {
+          const lines = (
+            window as unknown as {
+              __vibingDebug: { dumpBuffer(): string[] }
+            }
+          ).__vibingDebug.dumpBuffer()
+          return lines.some(
+            (line) =>
+              line.includes('PS ') || /[>#$] ?$/.test(line.trim())
+          )
+        },
+        null,
+        { polling: 100, timeout: 15_000 }
+      )
+      .catch(() => {
+        // 非终端断言（Home/Settings）或异常环境不阻塞 launch。
+      })
+    return { app, window, userDataDir }
   } catch (error) {
     await app.close().catch(() => {})
     throw error

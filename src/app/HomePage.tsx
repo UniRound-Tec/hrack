@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
 import { Settings2, Terminal as TerminalIcon } from 'lucide-react'
 import type {
+  AllTimeStats,
+  HistoryEvent,
   HistoryEventKind,
   ShellOption
 } from '../../shared/ipc-contract'
@@ -13,11 +15,22 @@ import CountUp from './effects/CountUp'
 import ShinyText from './effects/ShinyText'
 import TextType from './effects/TextType'
 import { cliOptions, findDefaultShell, type CliOption } from './launchOptions'
-import { createMockHistoryEvents, mockAllTimeStats } from './mockSessions'
+import {
+  createMockHistoryEvents,
+  isMockSessionsEnabled,
+  mockAllTimeStats
+} from './mockSessions'
 import { statusDot, statusLabel, statusTone, type SessionStatus } from './sessionStatus'
-import { strings } from './strings'
+import { useStrings } from './i18n'
 
 const ATTENTION_COLLAPSED_ROWS = 8
+
+const EMPTY_STATS: AllTimeStats = {
+  sessions: 0,
+  toolCalls: 0,
+  blocked: 0,
+  approvals: 0
+}
 
 /** 原型全局 ClickSpark 参数（App.tsx：#1a1a1a / 8 / 18 / 10 / 450）。 */
 const clickSparkProps = {
@@ -33,14 +46,18 @@ const historyKindTone: Record<HistoryEventKind, string> = {
   tool_call: 'text-text-strong',
   completed: 'text-status-done',
   approved: 'text-status-needs-you',
-  message: 'text-text-muted'
+  message: 'text-text-muted',
+  session_start: 'text-status-working',
+  session_exit: 'text-status-exited'
 }
 
 const historyKindDot: Record<HistoryEventKind, string> = {
   tool_call: 'bg-text-faint',
   completed: 'bg-status-done-dot',
   approved: 'bg-status-needs-you-dot',
-  message: 'bg-status-idle-dot'
+  message: 'bg-status-idle-dot',
+  session_start: 'bg-status-working-dot',
+  session_exit: 'bg-status-exited-dot'
 }
 
 type AttentionFilter = 'all' | Extract<SessionStatus, 'needs-you' | 'error'>
@@ -56,7 +73,10 @@ interface HomePageProps {
   onViewSession: (session: SessionEntry) => void
 }
 
-function relativeTime(timestamp: number): string {
+function relativeTime(
+  strings: ReturnType<typeof useStrings>,
+  timestamp: number
+): string {
   const elapsed = Math.max(0, Date.now() - timestamp)
   const minutes = Math.floor(elapsed / 60_000)
   if (minutes < 1) return strings.common.justNow
@@ -83,11 +103,40 @@ export default function HomePage({
 }: HomePageProps) {
   const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>('all')
   const [attentionExpanded, setAttentionExpanded] = useState(false)
+  const [realHistory, setRealHistory] = useState<readonly HistoryEvent[] | null>(null)
+  const [realStats, setRealStats] = useState<AllTimeStats | null>(null)
+  const strings = useStrings()
+  const mockEnabled = isMockSessionsEnabled({
+    dev: import.meta.env.DEV,
+    e2e: Boolean(window.__VIBING_E2E__)
+  })
+
+  // 生产构建走 IPC 真实数据；dev/E2E 维持 mock 数据源。
+  useEffect(() => {
+    if (mockEnabled) return
+    let cancelled = false
+    void Promise.all([
+      window.statsApi.historyEvents({ limit: 50 }),
+      window.statsApi.allTime()
+    ])
+      .then(([history, stats]) => {
+        if (cancelled) return
+        setRealHistory(history)
+        setRealStats(stats)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [mockEnabled])
+
   const greeting = useMemo(
     () => strings.home.greetings[Math.floor(Math.random() * strings.home.greetings.length)],
     []
   )
-  const history = useMemo(() => createMockHistoryEvents(), [])
+  const history = mockEnabled
+    ? useMemo(() => createMockHistoryEvents(), [])
+    : realHistory ?? []
   const fresh = sessions.length === 0 && terminals.length === 0
   const attention = sessions.filter(
     (session) => session.status === 'needs-you' || session.status === 'error'
@@ -273,11 +322,12 @@ export default function HomePage({
     { id: 'needs-you' as const, label: strings.sessionStatus.needsYou, count: needsYou },
     { id: 'error' as const, label: strings.sessionStatus.error, count: errors }
   ]
+  const statsSource = mockEnabled ? mockAllTimeStats : (realStats ?? EMPTY_STATS)
   const stats = [
-    { id: 'sessions', label: strings.home.stats.sessions, hint: 'sessions', value: mockAllTimeStats.sessions },
-    { id: 'tools', label: strings.home.stats.tools, hint: 'tool_call', value: mockAllTimeStats.toolCalls },
-    { id: 'alerts', label: strings.home.stats.alerts, hint: 'blocked', value: mockAllTimeStats.blocked },
-    { id: 'approvals', label: strings.home.stats.approvals, hint: 'approved', value: mockAllTimeStats.approvals }
+    { id: 'sessions', label: strings.home.stats.sessions, hint: 'sessions', value: statsSource.sessions },
+    { id: 'tools', label: strings.home.stats.tools, hint: 'tool_call', value: statsSource.toolCalls },
+    { id: 'alerts', label: strings.home.stats.alerts, hint: 'blocked', value: statsSource.blocked },
+    { id: 'approvals', label: strings.home.stats.approvals, hint: 'approved', value: statsSource.approvals }
   ]
 
   return (
@@ -385,8 +435,8 @@ export default function HomePage({
                     <span className="min-w-0 flex-1 truncate text-[13px] text-text-secondary">{session.detail ?? session.name}</span>
                     <span className="ml-auto hidden shrink-0 items-baseline gap-2 font-maple text-[10px] text-text-faint transition-opacity group-hover:opacity-0 sm:flex">
                       <span className="text-text-muted">{session.name}</span>
-                      <span className={statusTone[session.status]}>{statusLabel[session.status]}</span>
-                      <span>{relativeTime(session.lastActivityAt)}</span>
+                      <span className={statusTone[session.status]}>{statusLabel(session.status)}</span>
+                      <span>{relativeTime(strings, session.lastActivityAt)}</span>
                     </span>
                   </button>
                   {/* v1 只看不操作：hover 仅提供「查看」跳转到对应终端 */}
@@ -426,6 +476,11 @@ export default function HomePage({
               <span className="font-maple text-[10px] tracking-wide text-text-faint">tools · sessions</span>
             </div>
             <ul className="flex flex-col">
+              {history.length === 0 && (
+                <li className="border-b border-border-faint py-3 font-pingfang text-[11px] text-text-faint last:border-b-0">
+                  {strings.home.emptyHistory}
+                </li>
+              )}
               {history.map((event) => {
                 const Icon = getAdapterIcon(event.adapterId)
                 return (
@@ -442,7 +497,7 @@ export default function HomePage({
                         <span className="flex items-baseline gap-2">
                           <span className="text-[12px] font-semibold text-text-primary">{getAdapterName(event.adapterId)}</span>
                           <span className={`truncate font-maple text-[10px] ${historyKindTone[event.kind]}`}>{event.title}</span>
-                          <span className="ml-auto shrink-0 font-maple text-[10px] text-text-faint">{relativeTime(event.occurredAt)}</span>
+                          <span className="ml-auto shrink-0 font-maple text-[10px] text-text-faint">{relativeTime(strings, event.occurredAt)}</span>
                         </span>
                         <span className="mt-0.5 block truncate font-maple text-[11px] leading-snug text-text-muted">{event.detail}</span>
                       </span>

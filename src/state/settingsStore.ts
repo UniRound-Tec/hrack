@@ -1,6 +1,7 @@
 import { create, type StateCreator } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { AppLocale } from '../app/strings'
+import type { AppLocale } from '../app/i18n'
+import { detectLocale } from '../app/i18n/locale'
 import type { ThemeId } from '../terminal/themes'
 
 const LEGACY_DEFAULT_FONT_FAMILY =
@@ -22,6 +23,8 @@ export interface SettingsSnapshot {
   floatEnabled: boolean
   defaultTerminal: string
   language: AppLocale
+  /** M5.c v5：全局快捷键 Ctrl+Alt+V 开关（默认开）。 */
+  globalShortcutEnabled: boolean
 }
 
 /** v3 及更早版本的默认字号；v4 起默认 14，迁移时把旧默认值一并带过去。 */
@@ -38,7 +41,9 @@ export const defaultSettings: SettingsSnapshot = {
   navMode: 'sidebar',
   floatEnabled: false,
   defaultTerminal: 'powershell',
-  language: 'zh-CN'
+  // M5.c 决策 7：首装语言跟随系统；已有用户保留持久化偏好。
+  language: detectLocale(),
+  globalShortcutEnabled: true
 }
 
 /** Terminal consumers only need this stable subset. */
@@ -64,6 +69,7 @@ export interface SettingsState extends SettingsSnapshot {
   setNavMode(navMode: NavMode): void
   setDefaultTerminal(defaultTerminal: string): void
   setLanguage(language: AppLocale): void
+  setGlobalShortcutEnabled(enabled: boolean): void
   reset(): void
 }
 
@@ -168,7 +174,11 @@ export function migrateSettings(
         : defaultSettings.defaultTerminal,
     language: isAppLocale(legacy.language)
       ? legacy.language
-      : defaultSettings.language
+      : defaultSettings.language,
+    globalShortcutEnabled:
+      typeof legacy.globalShortcutEnabled === 'boolean'
+        ? legacy.globalShortcutEnabled
+        : defaultSettings.globalShortcutEnabled
   }
 }
 
@@ -194,13 +204,15 @@ export const createSettingsState: StateCreator<SettingsState> = (set) => ({
         defaultTerminal.trim() || defaultSettings.defaultTerminal
     }),
   setLanguage: (language) => set({ language }),
+  setGlobalShortcutEnabled: (globalShortcutEnabled) =>
+    set({ globalShortcutEnabled }),
   reset: () => set(defaultSettings)
 })
 
 export const useSettingsStore = create<SettingsState>()(
   persist(createSettingsState, {
     name: 'vibing-terminal-settings',
-    version: 4,
+    version: 5,
     migrate: migrateSettings,
     partialize: ({
       uiThemeId,
@@ -212,7 +224,8 @@ export const useSettingsStore = create<SettingsState>()(
       navMode,
       floatEnabled,
       defaultTerminal,
-      language
+      language,
+      globalShortcutEnabled
     }) => ({
       uiThemeId,
       terminalThemeId,
@@ -223,7 +236,8 @@ export const useSettingsStore = create<SettingsState>()(
       navMode,
       floatEnabled,
       defaultTerminal,
-      language
+      language,
+      globalShortcutEnabled
     })
   })
 )

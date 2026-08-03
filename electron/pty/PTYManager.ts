@@ -1,5 +1,7 @@
 import type { IPty } from 'node-pty'
 import { spawn } from 'node-pty'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { BrowserWindow } from 'electron'
 import {
   ptyDataChannel,
@@ -54,6 +56,36 @@ function defaultShellCandidates(req?: string): string[] {
 }
 
 /**
+ * Windows 下 node-pty 的 CreateProcess 不会走 PATH 解析裸命令名
+ * （M5.c 真实 CLI 会话依赖这一点）。含路径分隔符的 shell 直接返回；
+ * 否则用 where.exe 解析出首个可执行文件。
+ */
+function looksLikePath(shell: string): boolean {
+  return shell.includes('\\') || shell.includes('/')
+}
+
+async function resolveWindowsExecutable(shell: string): Promise<string | null> {
+  if (!looksLikePath(shell)) {
+    try {
+      const execFileAsync = promisify(execFile)
+      const { stdout } = await execFileAsync(
+        'where.exe',
+        [shell.replace(/\.exe$/i, '')],
+        { timeout: 1_500, windowsHide: true }
+      )
+      const resolved = stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find(Boolean)
+      if (resolved) return resolved
+    } catch {
+      /* 未命中 PATH：保留原值让 spawn 报真实错误 */
+    }
+  }
+  return null
+}
+
+/**
  * 唯一持有 node-pty 实例的管理器（主进程）。
  * 对外暴露 spawn/write/resize/kill，向上经 IPC 发 data/exit。
  * M2：PtyDataQueue 用 xterm 消费完成后的 ack 控制 node-pty pause/resume，
@@ -63,15 +95,22 @@ export class PTYManager {
   private ptys = new Map<string, ManagedPty>()
   private nextId = 1
 
-  spawn(opts: SpawnOptions) {
+  async spawn(opts: SpawnOptions) {
     const ptyId = String(this.nextId++)
     const cols = opts.cols ?? 80
     const rows = opts.rows ?? 24
     console.log(`[vibing] spawn ptyId=${ptyId} shell=${opts.shell ?? '(default)'}`)
 
+    // Windows：裸命令名先解析成绝对路径，避免 CreateProcess 找不到可执行文件。
+    let resolvedShell: string | undefined
+    if (process.platform === 'win32' && opts.shell) {
+      const resolved = await resolveWindowsExecutable(opts.shell)
+      if (resolved) resolvedShell = resolved
+    }
+
     let pty: IPty | undefined
     let lastErr: unknown
-    for (const shell of defaultShellCandidates(opts.shell)) {
+    for (const shell of defaultShellCandidates(resolvedShell ?? opts.shell)) {
       try {
         pty = spawn(shell, opts.args ?? [], {
           name: 'xterm-256color',

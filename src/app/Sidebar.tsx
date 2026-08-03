@@ -8,7 +8,7 @@ import ShinyText from './effects/ShinyText'
 import { getAdapterIcon } from './adapterIcons'
 import { terminalIdFromPage, terminalPage, type PageId } from './pages'
 import { statusDot, statusTone } from './sessionStatus'
-import { strings } from './strings'
+import { useStrings, type AppStrings } from './i18n'
 import type { SessionEntry } from '../state/sessionsStore'
 import type { TerminalEntry } from '../state/terminalsStore'
 
@@ -23,7 +23,7 @@ interface SidebarProps {
   onCloseTerminal: (terminalId: string) => void
 }
 
-function relativeTime(timestamp: number): string {
+function relativeTime(strings: AppStrings, timestamp: number): string {
   const elapsed = Math.max(0, Date.now() - timestamp)
   const minutes = Math.floor(elapsed / 60_000)
   if (minutes < 1) return strings.common.justNow
@@ -51,6 +51,7 @@ export default function Sidebar({
   onCloseSession,
   onCloseTerminal
 }: SidebarProps) {
+  const strings = useStrings()
   const activeTerminalId = terminalIdFromPage(pageId)
 
   return (
@@ -134,7 +135,7 @@ export default function Sidebar({
                       className={`size-1.5 shrink-0 rounded-full ${statusDot[session.status]}`}
                     />
                     <span className="ml-auto shrink-0 text-[11px] text-text-faint transition-opacity group-hover:opacity-0">
-                      {relativeTime(session.lastActivityAt)}
+                      {relativeTime(strings, session.lastActivityAt)}
                     </span>
                   </div>
                   {session.detail && (

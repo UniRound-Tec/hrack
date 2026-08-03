@@ -1,4 +1,5 @@
-import { strings } from './strings'
+import { getStrings, type AppStrings } from './i18n'
+import { useSettingsStore } from '../state/settingsStore'
 
 /** SPEC §11.5 normalized six-state UI contract. */
 export const sessionStatuses = [
@@ -31,11 +32,21 @@ export const statusTone: Record<SessionStatus, string> = {
   exited: 'text-status-exited'
 }
 
-export const statusLabel: Record<SessionStatus, string> = {
-  working: strings.sessionStatus.working,
-  'needs-you': strings.sessionStatus.needsYou,
-  done: strings.sessionStatus.done,
-  error: strings.sessionStatus.error,
-  idle: strings.sessionStatus.idle,
-  exited: strings.sessionStatus.exited
+const statusStringKey: Record<
+  SessionStatus,
+  keyof AppStrings['sessionStatus']
+> = {
+  working: 'working',
+  'needs-you': 'needsYou',
+  done: 'done',
+  error: 'error',
+  idle: 'idle',
+  exited: 'exited'
+}
+
+/** 语言感知标签：组件渲染时读取当前持久化语言（组件本身订阅 language 触发重渲染）。 */
+export function statusLabel(status: SessionStatus): string {
+  const group = getStrings(useSettingsStore.getState().language).sessionStatus
+  // statusStringKey 保证命中纯字符串键（exitedDetail 为函数，不在映射内）。
+  return group[statusStringKey[status]] as string
 }
