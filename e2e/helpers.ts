@@ -24,6 +24,8 @@ import type {
 export async function launchApp(options: {
   userDataDir?: string
   cliFixture?: boolean
+  /** 既有终端门禁默认显式启动一个终端；空态用例可关闭。 */
+  createDefaultTerminal?: boolean
   env?: Record<string, string>
 } = {}): Promise<{
   app: ElectronApplication
@@ -50,9 +52,6 @@ export async function launchApp(options: {
     await window.waitForFunction(
       () =>
         Boolean(
-          (window as unknown as Record<string, unknown>)['__vibingDebug']
-        ) &&
-        Boolean(
           (window as unknown as Record<string, unknown>)[
             '__vibingDebugShell'
           ]
@@ -60,17 +59,56 @@ export async function launchApp(options: {
       null,
       { polling: 100, timeout: 30_000 }
     )
-    // 既有终端门禁仍以“启动后可直接操作终端”为前提。产品默认页已经改为
-    // Home，因此 helper 统一导航到首个常驻终端；Shell 自身用例可再切回 Home。
+    await window.evaluate(() => {
+      const debugWindow = window as unknown as {
+        __vibingDebugShell: {
+          navigate(pageId: 'home'): void
+          setNavMode(mode: 'sidebar'): void
+        }
+      }
+      debugWindow.__vibingDebugShell.setNavMode('sidebar')
+      debugWindow.__vibingDebugShell.navigate('home')
+    })
+
+    if (options.createDefaultTerminal === false) {
+      return { app, window, userDataDir }
+    }
+
+    // 产品启动保持零实例。既有终端门禁由 helper 明确点击 Home 入口，
+    // 测试便利性不再通过产品恢复代码偷偷创建 PTY。
+    await expect
+      .poll(
+        () =>
+          window.evaluate(() =>
+            window.shellApi.listAvailable().then((shells) => shells.length)
+          ),
+        {
+          timeout: 30_000,
+          message: '至少应发现一个可启动终端'
+        }
+      )
+      .toBeGreaterThan(0)
+    await window.getByTestId('home-quick-terminal').click()
+    await window.waitForFunction(
+      () =>
+        Boolean(
+          (window as unknown as Record<string, unknown>)['__vibingDebug']
+        ) &&
+        Boolean(
+          (window as unknown as Record<string, unknown>)[
+            '__vibingDebugTabs'
+          ]
+        ),
+      null,
+      { polling: 100, timeout: 30_000 }
+    )
     await window.evaluate(() => {
       const debugWindow = window as unknown as {
         __vibingDebugTabs: { list(): string[] }
         __vibingDebugShell: {
           navigate(pageId: `terminal:${string}`): void
-          setNavMode(mode: 'sidebar'): void
         }
       }
-      debugWindow.__vibingDebugShell.setNavMode('sidebar')
       const [terminalId] = debugWindow.__vibingDebugTabs.list()
       if (terminalId) {
         debugWindow.__vibingDebugShell.navigate(`terminal:${terminalId}`)

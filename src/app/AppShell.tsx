@@ -186,8 +186,8 @@ export default function AppShell() {
   )
 
   // 主进程同时持有 PTY 与 Agent projection。renderer reload 时先订阅
-  // 增量，再恢复稳定 terminalId 和展示投影；只有主进程确认没有
-  // 任何可恢复 PTY 时，才创建首个默认终端。
+  // 增量，再恢复稳定 terminalId 和展示投影。没有可恢复 PTY 时保持
+  // 真正的零实例空态；只有用户明确点击入口才创建进程。
   useEffect(() => {
     let cancelled = false
     const unsubscribeProjection = window.agentApi.onProjection((projection) => {
@@ -206,25 +206,16 @@ export default function AppShell() {
         for (const projection of projections) {
           useSessionsStore.getState().applyProjection(projection)
         }
-        if (
-          recoverable.length === 0 &&
-          useTerminalsStore.getState().terminals.length === 0
-        ) {
-          addTerminal()
-        }
       })
       .catch(() => {
-        // 恢复通道失败不应让应用停在“无终端且无法新建”的状态。
-        if (!cancelled && useTerminalsStore.getState().terminals.length === 0) {
-          addTerminal()
-        }
+        // 恢复失败也不能擅自创建进程；用户仍可从 Home / New Session 启动。
       })
     return () => {
       cancelled = true
       unsubscribeProjection()
       unsubscribeEvents()
     }
-  }, [addTerminal, restoreTerminals])
+  }, [restoreTerminals])
 
   const handleInitialTerminalSpawn = useCallback(
     (terminalId: string, error: string | null): void => {
