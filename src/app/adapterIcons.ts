@@ -2,8 +2,11 @@ import ClaudeCode from '@lobehub/icons/es/ClaudeCode/components/Mono'
 import Codex from '@lobehub/icons/es/Codex/components/Mono'
 import Cursor from '@lobehub/icons/es/Cursor/components/Mono'
 import GeminiCLI from '@lobehub/icons/es/GeminiCLI/components/Mono'
+import Grok from '@lobehub/icons/es/Grok/components/Mono'
+import Kimi from '@lobehub/icons/es/Kimi/components/Mono'
 import LobeHub from '@lobehub/icons/es/LobeHub/components/Mono'
 import OpenCode from '@lobehub/icons/es/OpenCode/components/Mono'
+import Pi from '@lobehub/icons/es/Pi/components/Mono'
 import type { ComponentType, SVGProps } from 'react'
 
 export type BrandIcon = ComponentType<
@@ -16,6 +19,9 @@ const adapterIcons: Record<string, BrandIcon> = {
   'cursor-agent': Cursor,
   gemini: GeminiCLI,
   opencode: OpenCode,
+  kimi: Kimi,
+  grok: Grok,
+  pi: Pi,
   aider: LobeHub,
   'warp-agent': LobeHub,
   continue: LobeHub
@@ -32,6 +38,9 @@ const adapterNames: Record<string, string> = {
   'cursor-agent': 'Cursor Agent',
   gemini: 'Gemini CLI',
   opencode: 'OpenCode',
+  kimi: 'Kimi Code',
+  grok: 'Grok Build',
+  pi: 'Pi',
   aider: 'Aider',
   'warp-agent': 'Warp Agent',
   continue: 'Continue'

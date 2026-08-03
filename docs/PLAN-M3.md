@@ -106,7 +106,7 @@ App
   终端里已有的 `[process exited with code N]` 提示保持。理由:
   `PTYManager` 在 exit 后特意保留权威历史直到显式 kill——用户最需要回看
   退出前输出的时刻,不能替他把 Tab 关掉。Tab 标题加视觉标记(变灰/徽标)。
-  这也与 SPEC §11.5 语义状态 `exited` 的展示语义一致。
+  这也与 [SPEC-S](./SPEC-S.md) §5 语义状态 `exited` 的展示语义一致。
 - **关闭最后一个 Tab**:关闭窗口(与主流终端一致;窗口生命周期已有
   `window-all-closed` 处理)。若想保窗口,M5 首页落地后再改为"回到首页"。
 - **窗口关闭**:主进程既有 `killAll` 兜底,不变。
@@ -224,5 +224,5 @@ App
   已确认当前 DOM renderer 会让 `opencode` 的连续 `▀` 色块出现网格缝；M4 的
   WebGL 首选路径必须消除此现象，并为 context loss 提供 DOM 降级和视觉回归测试。
 - **M5(App Shell)**:TabBar 归入 Shell 布局;"关最后一个 Tab"改为回首页。
-- **S 线(语义监控)**:`tab.id` 即 SPEC §11.6 `sessionId ↔ tabId` 关联键;
+- **S 线(语义监控)**:`tab.id` 即 [SPEC-S](./SPEC-S.md) §7 `sessionId ↔ terminalId` 关联键（M5 起 tab→terminal）;
   Tab 栏状态徽标的挂载点在本计划的 TabBar 上预留(仅 DOM 结构,不实现)。

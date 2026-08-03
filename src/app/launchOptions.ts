@@ -1,65 +1,17 @@
-import type { ShellOption } from '../../shared/ipc-contract'
+import type {
+  CliLaunchSelection,
+  LaunchableCli,
+  ShellOption
+} from '../../shared/ipc-contract'
 
-export const cliOptions = [
-  {
-    id: 'codex',
-    adapterId: 'codex',
-    name: 'Codex',
-    hint: 'OpenAI coding agent',
-    executable: 'codex',
-    defaultArgs: '--full-auto'
-  },
-  {
-    id: 'claude',
-    adapterId: 'claude-code',
-    name: 'Claude Code',
-    hint: 'Anthropic CLI',
-    executable: 'claude',
-    defaultArgs: '--dangerously-skip-permissions'
-  },
-  {
-    id: 'cursor',
-    adapterId: 'cursor-agent',
-    name: 'Cursor Agent',
-    hint: 'In-editor agent',
-    executable: 'cursor-agent',
-    defaultArgs: ''
-  },
-  {
-    id: 'gemini',
-    adapterId: 'gemini',
-    name: 'Gemini CLI',
-    hint: 'Google AI CLI',
-    executable: 'gemini',
-    defaultArgs: '--yolo'
-  },
-  {
-    id: 'opencode',
-    adapterId: 'opencode',
-    name: 'OpenCode',
-    hint: 'Open-source agent',
-    executable: 'opencode',
-    defaultArgs: ''
-  },
-  {
-    id: 'aider',
-    adapterId: 'aider',
-    name: 'Aider',
-    hint: 'Pair programming CLI',
-    executable: 'aider',
-    defaultArgs: '--yes'
-  }
-] as const
-
-export type CliOption = (typeof cliOptions)[number]
-export type CliRuntime = 'windows' | 'wsl'
+export type CliOption = LaunchableCli
 
 export interface CliLaunchDraft {
   option: CliOption
+  installationId: string
   name: string
   workspace: string
   args: string
-  runtime: CliRuntime
 }
 
 /** Shell-like argument splitting without invoking a command interpreter. */
@@ -106,20 +58,14 @@ export function parseCommandLine(source: string): string[] {
   return args
 }
 
-export function buildCliLaunch(draft: CliLaunchDraft) {
-  const userArgs = parseCommandLine(draft.args)
-  const cwd = draft.workspace.trim() || undefined
-  return draft.runtime === 'wsl'
-    ? {
-        shell: 'wsl.exe',
-        args: ['-e', draft.option.executable, ...userArgs],
-        cwd
-      }
-    : {
-        shell: draft.option.executable,
-        args: userArgs,
-        cwd
-      }
+export function buildCliLaunchSelection(
+  draft: CliLaunchDraft
+): CliLaunchSelection {
+  return {
+    installationId: draft.installationId,
+    workspace: draft.workspace.trim(),
+    args: parseCommandLine(draft.args)
+  }
 }
 
 export function findDefaultShell(

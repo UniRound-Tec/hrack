@@ -31,7 +31,10 @@ export const ko = {
     expandSidebar: '사이드바 펼치기',
     collapseSidebar: '사이드바 접기',
     closeTerminal: '터미널 닫기',
-    closeSession: '세션 닫기'
+    closeSession: '세션 닫기',
+    sessionActions: '세션 작업',
+    renameSession: '이름 바꾸기',
+    sessionNameRequired: '세션 이름을 입력하세요'
   },
   sessionStatus: {
     working: '실행 중',
@@ -75,9 +78,11 @@ export const ko = {
     live: (count: number) => `${count} live`,
     defaultTerminal: (name: string) => `기본: ${name}`,
     terminalOptions: '터미널 옵션',
+    previousLaunchPage: '이전 페이지',
+    nextLaunchPage: '다음 페이지',
     attention: '주의 우선',
     allStatuses: '전체',
-    emptyAttention: '확인 필요 또는 오류 세션이 없습니다',
+    emptyAttention: '현재 필터와 일치하는 세션이 없습니다',
     showMore: '더 보기',
     showLess: '접기 ↑',
     showAll: (count: number) => `전체 ${count}개 보기 ↓`,
@@ -137,6 +142,7 @@ export const ko = {
     terminalRoundedHint: '콘텐츠 영역을 둥글게 하고 양쪽 여백 추가. 끄면 가장자리 밀착',
     defaultTerminal: '기본 터미널',
     defaultTerminalHint: 'quick launch의 터미널 칩이 이것으로 시작',
+    cliDiscovery: 'AI CLI 검색',
     preferences: 'settings · preferences',
     description: '레이아웃과 컨트롤은 확정된 프로토타입을 따르며 설정은 settingsStore에 직접 기록됩니다.',
     mapleMono: 'Maple Mono',
@@ -169,6 +175,13 @@ export const ko = {
     terminalFallback: '시스템 기본 터미널',
     workspacePlaceholder: '작업 공간 선택',
     argumentsPlaceholder: '--flag value',
+    scanningClis: 'Windows 및 WSL 검색 중…',
+    noClisFound: '실행 가능한 AI CLI를 찾지 못했습니다',
+    refreshClis: '다시 검색',
+    clisFound: (count: number) => `AI CLI ${count}개 발견`,
+    partialScanErrors: (count: number) => `검증 실패 ${count}건`,
+    installation: '설치 위치',
+    launching: '실행 중…',
     p2Placeholder: 'CLI 및 실행 환경 옵션은 P3에서 추가'
   },
   shell: {

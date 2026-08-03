@@ -1,29 +1,30 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
-import { Settings2, Terminal as TerminalIcon } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Settings2,
+  Terminal as TerminalIcon
+} from 'lucide-react'
 import type {
   AllTimeStats,
   HistoryEvent,
   HistoryEventKind,
+  LaunchableCli,
   ShellOption
 } from '../../shared/ipc-contract'
 import type { SessionEntry } from '../state/sessionsStore'
-import type { TerminalEntry } from '../state/terminalsStore'
 import { getAdapterIcon, getAdapterName } from './adapterIcons'
 import ClickSpark from './effects/ClickSpark'
 import CountUp from './effects/CountUp'
 import ShinyText from './effects/ShinyText'
 import TextType from './effects/TextType'
-import { cliOptions, findDefaultShell, type CliOption } from './launchOptions'
-import {
-  createMockHistoryEvents,
-  isMockSessionsEnabled,
-  mockAllTimeStats
-} from './mockSessions'
+import { findDefaultShell, type CliOption } from './launchOptions'
 import { statusDot, statusLabel, statusTone, type SessionStatus } from './sessionStatus'
 import { useStrings } from './i18n'
 
-const ATTENTION_COLLAPSED_ROWS = 8
+const WELCOME_LAUNCH_PAGE_SIZE = 8
 
 const EMPTY_STATS: AllTimeStats = {
   sessions: 0,
@@ -62,14 +63,25 @@ const historyKindDot: Record<HistoryEventKind, string> = {
 
 type AttentionFilter = 'all' | Extract<SessionStatus, 'needs-you' | 'error'>
 
+const sessionAttentionPriority: Record<SessionStatus, number> = {
+  'needs-you': 0,
+  error: 1,
+  working: 2,
+  idle: 3,
+  done: 4,
+  exited: 5
+}
+
 interface HomePageProps {
   sessions: readonly SessionEntry[]
-  terminals: readonly TerminalEntry[]
   shells: readonly ShellOption[]
+  clis: readonly LaunchableCli[]
+  cliScanning: boolean
   defaultTerminal: string
   onLaunchDefaultTerminal: () => void
   onChooseTerminal: () => void
   onConfigureCli: (option: CliOption) => void
+  onRefreshClis: () => void
   onViewSession: (session: SessionEntry) => void
 }
 
@@ -87,33 +99,44 @@ function relativeTime(
 }
 
 function LaunchIcon({ option }: { option: CliOption }) {
-  const Icon = getAdapterIcon(option.adapterId)
+  const Icon = getAdapterIcon(option.definition.adapterId)
   return <Icon size={16} className="size-4" />
+}
+
+function runtimeSummary(option: CliOption): string {
+  return option.installations
+    .map((installation) =>
+      installation.runtime.kind === 'wsl'
+        ? `WSL · ${installation.runtime.distro}`
+        : installation.runtime.platform === 'windows'
+          ? 'Windows'
+          : installation.runtime.platform === 'macos'
+            ? 'macOS'
+            : 'Linux'
+    )
+    .join(' · ')
 }
 
 export default function HomePage({
   sessions,
-  terminals,
   shells,
+  clis,
+  cliScanning,
   defaultTerminal,
   onLaunchDefaultTerminal,
   onChooseTerminal,
   onConfigureCli,
+  onRefreshClis,
   onViewSession
 }: HomePageProps) {
   const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>('all')
-  const [attentionExpanded, setAttentionExpanded] = useState(false)
+  const [launchPage, setLaunchPage] = useState(0)
   const [realHistory, setRealHistory] = useState<readonly HistoryEvent[] | null>(null)
   const [realStats, setRealStats] = useState<AllTimeStats | null>(null)
   const strings = useStrings()
-  const mockEnabled = isMockSessionsEnabled({
-    dev: import.meta.env.DEV,
-    e2e: Boolean(window.__VIBING_E2E__)
-  })
 
-  // 生产构建走 IPC 真实数据；dev/E2E 维持 mock 数据源。
+  // 所有环境都通过 IPC 读取真实的历史与累计统计。
   useEffect(() => {
-    if (mockEnabled) return
     let cancelled = false
     void Promise.all([
       window.statsApi.historyEvents({ limit: 50 }),
@@ -128,33 +151,34 @@ export default function HomePage({
     return () => {
       cancelled = true
     }
-  }, [mockEnabled])
+  }, [])
 
   const greeting = useMemo(
     () => strings.home.greetings[Math.floor(Math.random() * strings.home.greetings.length)],
     []
   )
-  const history = mockEnabled
-    ? useMemo(() => createMockHistoryEvents(), [])
-    : realHistory ?? []
-  const fresh = sessions.length === 0 && terminals.length === 0
-  const attention = sessions.filter(
-    (session) => session.status === 'needs-you' || session.status === 'error'
+  const history = realHistory ?? []
+  // 普通终端不属于 AI 会话；只有真实 AI CLI session 才进入信息密度布局。
+  const fresh = sessions.length === 0
+  const attention = useMemo(
+    () => [...sessions].sort((left, right) => {
+      const priority =
+        sessionAttentionPriority[left.status] -
+        sessionAttentionPriority[right.status]
+      return priority || right.lastActivityAt - left.lastActivityAt
+    }),
+    [sessions]
   )
-  const needsYou = attention.filter((session) => session.status === 'needs-you').length
-  const errors = attention.length - needsYou
+  const needsYou = sessions.filter((session) => session.status === 'needs-you').length
+  const errors = sessions.filter((session) => session.status === 'error').length
   const live = sessions.filter((session) => session.status !== 'exited').length
   const filtered = attentionFilter === 'all'
     ? attention
     : attention.filter((session) => session.status === attentionFilter)
-  const visible = attentionExpanded
-    ? filtered
-    : filtered.slice(0, ATTENTION_COLLAPSED_ROWS)
   const defaultShell = findDefaultShell(shells, defaultTerminal)
 
   const pickAttentionFilter = (id: AttentionFilter): void => {
     setAttentionFilter(id)
-    setAttentionExpanded(false)
   }
 
   const launchCardClass =
@@ -197,12 +221,12 @@ export default function HomePage({
         </>
       )
     },
-    ...cliOptions.map((option) => ({
-      key: option.id,
+    ...clis.map((option) => ({
+      key: option.definition.id,
       body: (
         <button
           type="button"
-          data-testid={`home-quick-${option.id}`}
+          data-testid={`home-quick-${option.definition.id}`}
           onClick={() => onConfigureCli(option)}
           className={launchCardClass}
         >
@@ -210,13 +234,25 @@ export default function HomePage({
             <LaunchIcon option={option} />
           </span>
           <span className="w-full min-w-0">
-            <span className="block text-[12px] font-semibold text-text-primary">{option.name}</span>
-            <span className="block truncate text-[10px] text-text-faint">{option.hint}</span>
+            <span className="block text-[12px] font-semibold text-text-primary">{option.definition.displayName}</span>
+            <span className="block truncate text-[10px] text-text-faint">{runtimeSummary(option)}</span>
           </span>
         </button>
       )
     }))
   ]
+  const launchPageCount = Math.max(
+    1,
+    Math.ceil(launchers.length / WELCOME_LAUNCH_PAGE_SIZE)
+  )
+  const visibleLaunchers = launchers.slice(
+    launchPage * WELCOME_LAUNCH_PAGE_SIZE,
+    (launchPage + 1) * WELCOME_LAUNCH_PAGE_SIZE
+  )
+
+  useEffect(() => {
+    setLaunchPage((page) => Math.min(page, launchPageCount - 1))
+  }, [launchPageCount])
 
   const denseLaunchers = (
     <>
@@ -246,18 +282,18 @@ export default function HomePage({
           <Settings2 className="size-3" strokeWidth={1.75} />
         </button>
       </div>
-      {cliOptions.map((option) => (
+      {clis.map((option) => (
         <button
-          key={option.id}
+          key={option.definition.id}
           type="button"
-          data-testid={`home-quick-${option.id}`}
+          data-testid={`home-quick-${option.definition.id}`}
           onClick={() => onConfigureCli(option)}
           className="cursor-target flex shrink-0 items-center gap-2 rounded-full border border-border-default bg-surface py-1.5 pr-3 pl-1.5 font-pingfang transition-colors hover:border-border-strong hover:bg-surface-hover"
         >
           <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-strong">
             <LaunchIcon option={option} />
           </span>
-          <span className="text-[12px] font-medium whitespace-nowrap text-text-secondary">{option.name}</span>
+          <span className="text-[12px] font-medium whitespace-nowrap text-text-secondary">{option.definition.displayName}</span>
         </button>
       ))}
     </>
@@ -287,8 +323,24 @@ export default function HomePage({
             className="mt-6 text-center font-pingfang text-[24px] font-semibold leading-tight tracking-wide text-text-primary"
           />
           <p className="mt-3 text-center font-pingfang text-[13px] text-text-muted">{strings.home.freshHint}</p>
-          <div className="mt-9 flex w-full max-w-[620px] flex-wrap justify-center gap-2">
-            {launchers.map(({ key, body }, index) => (
+          <div className="mt-8 flex w-full max-w-[620px] justify-end">
+            <button
+              type="button"
+              data-testid="cli-scan-refresh"
+              onClick={onRefreshClis}
+              disabled={cliScanning}
+              aria-busy={cliScanning}
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-pingfang text-[10px] text-text-faint transition-colors hover:bg-surface-strong hover:text-text-secondary disabled:cursor-wait disabled:opacity-70"
+            >
+              <RefreshCw
+                className={`size-3 ${cliScanning ? 'animate-spin' : ''}`}
+                strokeWidth={1.75}
+              />
+              {strings.newSession.refreshClis}
+            </button>
+          </div>
+          <div className="mt-2 flex w-full max-w-[620px] flex-wrap justify-center gap-2">
+            {visibleLaunchers.map(({ key, body }, index) => (
               <motion.div
                 key={key}
                 initial={{ opacity: 0, y: 10 }}
@@ -305,7 +357,40 @@ export default function HomePage({
               </motion.div>
             ))}
           </div>
-          <p className="mt-11 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 font-maple text-[10px] text-text-faint">
+          {launchPageCount > 1 && (
+            <nav
+              data-testid="home-launch-pagination"
+              aria-label={`${launchPage + 1} / ${launchPageCount}`}
+              className="mt-4 flex items-center justify-center gap-2"
+            >
+              <button
+                type="button"
+                data-testid="home-launch-previous"
+                aria-label={strings.home.previousLaunchPage}
+                title={strings.home.previousLaunchPage}
+                disabled={launchPage === 0}
+                onClick={() => setLaunchPage((page) => Math.max(0, page - 1))}
+                className="flex size-7 items-center justify-center rounded-md border border-border-default text-text-muted transition-colors hover:bg-surface-strong hover:text-text-secondary disabled:cursor-default disabled:opacity-30"
+              >
+                <ChevronLeft className="size-3.5" strokeWidth={1.75} />
+              </button>
+              <span className="min-w-10 text-center font-maple text-[10px] text-text-faint">
+                {launchPage + 1} / {launchPageCount}
+              </span>
+              <button
+                type="button"
+                data-testid="home-launch-next"
+                aria-label={strings.home.nextLaunchPage}
+                title={strings.home.nextLaunchPage}
+                disabled={launchPage === launchPageCount - 1}
+                onClick={() => setLaunchPage((page) => Math.min(launchPageCount - 1, page + 1))}
+                className="flex size-7 items-center justify-center rounded-md border border-border-default text-text-muted transition-colors hover:bg-surface-strong hover:text-text-secondary disabled:cursor-default disabled:opacity-30"
+              >
+                <ChevronRight className="size-3.5" strokeWidth={1.75} />
+              </button>
+            </nav>
+          )}
+          <p className={`${launchPageCount > 1 ? 'mt-7' : 'mt-11'} flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 font-maple text-[10px] text-text-faint`}>
             <span>{strings.home.freshCollect}</span>
             <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-status-needs-you-dot" />{strings.sessionStatus.needsYou}</span>
             <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-status-error-dot" />{strings.sessionStatus.error}</span>
@@ -322,7 +407,7 @@ export default function HomePage({
     { id: 'needs-you' as const, label: strings.sessionStatus.needsYou, count: needsYou },
     { id: 'error' as const, label: strings.sessionStatus.error, count: errors }
   ]
-  const statsSource = mockEnabled ? mockAllTimeStats : (realStats ?? EMPTY_STATS)
+  const statsSource = realStats ?? EMPTY_STATS
   const stats = [
     { id: 'sessions', label: strings.home.stats.sessions, hint: 'sessions', value: statsSource.sessions },
     { id: 'tools', label: strings.home.stats.tools, hint: 'tool_call', value: statsSource.toolCalls },
@@ -382,7 +467,23 @@ export default function HomePage({
         </header>
 
         <section className="px-8 pb-8">
-          <p className="mb-2.5 font-maple text-[10px] tracking-[0.22em] text-text-faint uppercase">{strings.home.quickLaunch}</p>
+          <div className="mb-2.5 flex items-center gap-2">
+            <p className="font-maple text-[10px] tracking-[0.22em] text-text-faint uppercase">{strings.home.quickLaunch}</p>
+            <button
+              type="button"
+              data-testid="cli-scan-refresh"
+              onClick={onRefreshClis}
+              disabled={cliScanning}
+              aria-busy={cliScanning}
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-pingfang text-[10px] text-text-faint transition-colors hover:bg-surface-strong hover:text-text-secondary disabled:cursor-wait disabled:opacity-70"
+            >
+              <RefreshCw
+                className={`size-3 ${cliScanning ? 'animate-spin' : ''}`}
+                strokeWidth={1.75}
+              />
+              {strings.newSession.refreshClis}
+            </button>
+          </div>
           <div className="flex flex-wrap items-center gap-2">{denseLaunchers}</div>
         </section>
 
@@ -417,16 +518,20 @@ export default function HomePage({
               })}
             </div>
           </div>
-          {visible.length === 0 && <p className="py-4 font-pingfang text-[11px] text-text-faint">{strings.home.emptyAttention}</p>}
-          <ul className="flex flex-col">
-            {visible.map((session) => {
+          <ul className="sidebar-scroll flex min-h-36 max-h-72 flex-col overflow-x-hidden overflow-y-auto pr-1">
+            {filtered.length === 0 && (
+              <li className="py-4 font-pingfang text-[11px] text-text-faint">
+                {strings.home.emptyAttention}
+              </li>
+            )}
+            {filtered.map((session) => {
               const Icon = getAdapterIcon(session.adapterId)
               return (
                 <li key={session.sessionId} className="group relative border-b border-border-faint last:border-b-0">
                   <button
                     type="button"
                     onClick={() => onViewSession(session)}
-                    className="cursor-target -mx-3 flex w-[calc(100%+1.5rem)] items-center gap-3 rounded-lg px-3 py-3 text-left font-pingfang transition-colors hover:bg-surface-strong"
+                    className="cursor-target flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left font-pingfang transition-colors hover:bg-surface-strong"
                   >
                     <span className={`size-1.5 shrink-0 rounded-full ${statusDot[session.status]}`} />
                     <span className="inline-flex size-6 shrink-0 items-center justify-center">
@@ -454,16 +559,6 @@ export default function HomePage({
               )
             })}
           </ul>
-          {filtered.length > ATTENTION_COLLAPSED_ROWS && (
-            <button
-              type="button"
-              data-testid="home-attention-expand"
-              onClick={() => setAttentionExpanded((value) => !value)}
-              className="cursor-target mt-2.5 font-maple text-[11px] tracking-wide text-text-muted transition-colors hover:text-text-primary"
-            >
-              {attentionExpanded ? strings.home.showLess : strings.home.showAll(filtered.length)}
-            </button>
-          )}
         </section>
 
         <section className="grid grid-cols-1 gap-x-10 gap-y-8 px-8 pb-10 lg:grid-cols-5">
@@ -475,7 +570,7 @@ export default function HomePage({
               </div>
               <span className="font-maple text-[10px] tracking-wide text-text-faint">tools · sessions</span>
             </div>
-            <ul className="flex flex-col">
+            <ul className="sidebar-scroll flex min-h-36 max-h-72 flex-col overflow-x-hidden overflow-y-auto pr-1">
               {history.length === 0 && (
                 <li className="border-b border-border-faint py-3 font-pingfang text-[11px] text-text-faint last:border-b-0">
                   {strings.home.emptyHistory}
@@ -487,7 +582,7 @@ export default function HomePage({
                   <li key={event.id} className="border-b border-border-faint last:border-b-0">
                     <button
                       type="button"
-                      className="cursor-target -mx-3 flex w-[calc(100%+1.5rem)] items-start gap-3 rounded-lg px-3 py-2.5 text-left font-pingfang transition-colors hover:bg-surface-strong"
+                      className="cursor-target flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left font-pingfang transition-colors hover:bg-surface-strong"
                     >
                       <span className={`mt-1.5 size-1.5 shrink-0 rounded-full ${historyKindDot[event.kind]}`} />
                       <span className="mt-0.5 inline-flex size-6 shrink-0 items-center justify-center opacity-80">

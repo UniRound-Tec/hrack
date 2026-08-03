@@ -1,6 +1,7 @@
 import type {
   AppApi,
   AppThemeApi,
+  CliApi,
   ClipboardApi,
   DialogApi,
   PtyApi,
@@ -20,6 +21,7 @@ declare global {
     themeApi: ThemeApi
     dialogApi: DialogApi
     shellApi: ShellApi
+    cliApi: CliApi
     statsApi: StatsApi
     appApi: AppApi
     appThemeApi: AppThemeApi

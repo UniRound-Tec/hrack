@@ -1,7 +1,7 @@
 # 方案 2：主进程权威历史源 —— 架构计划
 
 > 状态：**P0 已通过；已知 ConPTY resize 重画已在主进程确定性隔离，REPRO2 转绿；历史分页/回放兜底待实施**。
-> 关联：[SPEC.md](./SPEC.md) §11（语义监控）、[PLAN-M0-M1.md](./PLAN-M0-M1.md)。
+> 关联：[SPEC-S.md](./SPEC-S.md)（语义监控线）、[SPEC.md](./SPEC.md)、[PLAN-M0-M1.md](./PLAN-M0-M1.md)。
 > 起因：resize 时终端历史丢失，经 E2E 逐层排查，**病根锁定为 ConPTY 行为，与 xterm 配置无关**（见 §1）。
 
 ---
@@ -40,7 +40,7 @@ ESC[?25l  ESC[8;43;32t(设为43行)  ESC[H(光标归位)  <当前屏8行内容,�
 
 这是结构性根治：不是"抢救"被覆盖的历史，而是"历史压根不放在会被覆盖的地方"。
 
-**一石二鸟**：SPEC §11 的语义监控本来就要在主进程建 headless 终端读 AI CLI 屏幕状态。历史真相源与语义监控源可共享**同一个 pty 数据 tap**，是一次共用的架构投资。
+**未来可一石二鸟**：[SPEC-S.md](./SPEC-S.md) §9 将 PTY/headless 识别列为语义监听的最后兜底。若后续确实采用该路径，历史真相源与语义监控源可共享**同一个 pty 数据 tap**；但 SPEC-S 当前 S0 只做发现与启动，不提前建设 SemanticTap。
 
 ---
 
@@ -119,8 +119,8 @@ ESC[?25l  ESC[8;43;32t(设为43行)  ESC[H(光标归位)  <当前屏8行内容,�
 - 这解决了当前已复现的丢历史路径，但尚未替代“从主进程分页回放”的灾难恢复能力。
   未识别的新 ConPTY 变体会安全放行；若它破坏 renderer 缓存，后续仍需靠回放兜底。
 
-### 阶段 P3：与语义监控合流（SPEC §11）
-- 同一个 pty tap 同时喂：历史结构（本计划）+ 语义 headless（§11.3 的 HeadlessScreen）。
+### 阶段 P3：与语义监控合流（[SPEC-S.md](./SPEC-S.md)）
+- 同一个 pty tap 同时喂：历史结构（本计划）+ 语义 headless（SPEC-S §9 的 PTY/HeadlessScreen 兜底）。
 - 确认二者是否可共用一个 headless 实例，还是需分开的数据结构（很可能：历史=append-only 记录器，语义=当前屏 headless，两者共享 tap 但结构不同）。
 
 ---
@@ -131,13 +131,13 @@ ESC[?25l  ESC[8;43;32t(设为43行)  ESC[H(光标归位)  <当前屏8行内容,�
                     ┌─ 原始历史记录器（先写、未经修改，resize 免疫）── 本计划
 node-pty 'data' ──┤
                     ├─ ConptyResizeFilter → PtyDataQueue(背压) → IPC → 渲染 xterm
-                    └─ SemanticTap ───────→ 语义 headless（当前屏状态）── SPEC §11
+                    └─ SemanticTap（未来）→ 语义 headless（当前屏状态）── SPEC-S §9
                                               ↑ 共享同一原始 tap
 渲染进程滚动回看 / resize 后重建 → IPC 向主进程历史记录器按需取数
 ```
 
 - 渲染 xterm 从"历史唯一持有者"降级为"当前屏显示器 + 历史缓存视图"。
-- 主进程成为历史的单一事实来源（与 SPEC §11「语义放主进程、单一事实来源」一致）。
+- 主进程成为历史的单一事实来源（与 SPEC-S「语义放主进程、单一事实来源」一致）。
 
 ---
 
@@ -145,7 +145,7 @@ node-pty 'data' ──┤
 
 - **不在 M1**。M1 是最小回显链路，本方案是 M3+ 架构量级。
 - 依赖：M1（拿到 pty 字节流）已完成 ✅。
-- 建议与 SPEC §11 的 S0（SemanticTap + 主进程 headless）**同期启动**，因为二者共用 tap 基建，一起做省一次架构改动。
+- 不与 [SPEC-S](./SPEC-S.md) 当前 S0 绑定；S0 只做跨环境扫描与按安装启动。等 S1 observer 立项且确认需要 PTY/headless 兜底时，再评估与本计划共用 tap。
 - `REPRO2` 已于 2026-07-31 转绿；它继续作为真实 ConPTY 回归测试长期保留。
 
 ---

@@ -1,9 +1,11 @@
 # M5.b 实施计划 —— App Shell 实现
 
 > 状态：**已完成**（P0–P5 全部完成，2026-08-02）。
+> **后续修订（2026-08-03）**：本计划中的 mock provider、17 条演示会话、8 条演示历史、
+> 假统计与 `setMockSessions` 调试开关已全部删除；当前实现只读取真实 session / history / stats。
 > 目标：按 `/prototype` 定稿原型 **1:1 落地** App Shell——无边框窗口 + 自定义标题栏、
 > 三态导航（侧栏展开 / 图标条 / 顶部 Tab）、首页（含空态欢迎页）、设置页、新建会话流；
-> 设置面板直读写 `settingsStore`；侧栏 session 区由 mock provider（SPEC §11.5 schema）驱动。
+> 设置面板直读写 `settingsStore`；侧栏 session 区读取真实 `sessionsStore`（[SPEC-S](./SPEC-S.md) §5 schema）。
 > 对应 [SPEC.md](./SPEC.md) §9 里程碑 M5.b。前置：M4 已完成，M5.a 原型已评审拍板。
 >
 > **原型即规范**：原型特意使用 React + Tailwind（v4）编写，与主仓库技术栈一致，
@@ -19,12 +21,12 @@
 - 无边框窗口 + 自定义标题栏（新建会话 / 设置入口 + 窗口控制），平台分支见 §4.1。
 - 三态导航互斥切换：侧栏展开（默认）/ 侧栏收起图标条 / 顶部 Tab 栏，随 `settingsStore` 持久化。
 - 首页：问候语 + 注意力队列（六态过滤）+ quick launch + 历史事件 + all-time 概览；
-  无会话且无终端时重排为居中欢迎页。
+  无 AI CLI 会话时重排为居中欢迎页，普通终端不影响欢迎态。
 - 新建会话流：bottom sheet（CLI 列表）→ 终端选择 modal / CLI 配置 modal → **真实 spawn pty**。
 - 设置页：外观 / 布局 / 终端 / 会话 四区，直读写 `settingsStore`。
 - `settingsStore` 拆分：M4 单一 `themeId` → `uiTheme` + `terminalThemeId`（persist 迁移 v3）。
-- `tabsStore` 演进为 `terminalsStore` + `sessionsStore`（§11.5 Session 形状），M3 Tab 栏删除。
-- Mock provider：dev/E2E 注入六态演示会话与事件，驱动侧栏 / 首页 / 徽标。
+- `tabsStore` 演进为 `terminalsStore` + `sessionsStore`（[SPEC-S](./SPEC-S.md) §5 Session 形状），M3 Tab 栏删除。
+- 侧栏 / 首页 / 徽标只读取真实 session 与持久化事件。
 - 新增 IPC：窗口控制、目录选择；**仅定契约不实现**：all-time 统计、跨 session 历史事件。
 - 字体管线：PingFang / Ammonite 构建期子集化落地（SPEC §9 M5.a 注记的强制要求）。
 - 原型特效组件迁移：ShinyText / TextType / CountUp / ClickSpark / TargetCursor（作用域见 §3 决策 2）。
@@ -54,7 +56,7 @@
 | `themes.ts`：terminal ITheme + chrome 变量绑在同一 ThemeId | terminal 16 色继续用；chrome 部分被原型的 Tailwind token 体系取代（§4.2） |
 | Tailwind v4 已接入 renderer（`@tailwindcss/vite`） | 直接可用，原型样式零翻译成本 |
 | `i18n.ts` 五语言四个 key（copy toast 等） | 保留不动；新增文案走集中 strings 模块（zh-CN） |
-| `debugBridge` 按 tabId 注册表 + settings 调试入口 | 保留；补充 shell 级调试入口（导航/新建面板/mock provider 开关）供 E2E |
+| `debugBridge` 按 tabId 注册表 + settings 调试入口 | 保留；补充 shell 级调试入口（导航/新建面板）供 E2E |
 | E2E 门禁大量依赖 `tab-item`/`tab-new` testid | Tab 栏删除后必失效；断言保留、选择器迁移（§5） |
 | 主进程 PTYManager / 背压 / 历史 | **零改动**；新建会话复用 `pty:spawn`（shell/args/cwd 已支持） |
 
@@ -67,8 +69,7 @@
 2. **特效作用域**：TargetCursor 与 ClickSpark 仅在 chrome 区域（首页/设置/侧栏/弹层）
    生效，**终端视图内禁用**（不干扰 xterm 选区、I-beam 与 WebGL 渲染）。
 3. **新建会话真实行为**：按配置（cwd/args/Windows|WSL runtime）真实 spawn pty 跑 CLI；
-   侧栏出现真实条目，但语义状态只有「运行中 / 已退出」兜底；六态演示数据仅由
-   dev/E2E 的 mock provider 注入。
+   侧栏只出现真实条目，语义状态当前只有「运行中 / 已退出」兜底。
 4. **界面主题**：仅实现浅色；设置里深色选项禁用占位（原型如此），深色归 M5.c。
 5. **悬浮窗**：不实现；设置开关禁用 + 提示「随 S3 落地」。
 6. **标题栏**：Win/Linux 自绘右侧 最小化/最大化/关闭 三键，**不要左侧三个装饰灰点**
@@ -173,7 +174,7 @@ type PageId = 'home' | 'settings' | `terminal:${string}`
 - 点击侧栏/图标条/顶部 Tab 的 session 或 terminal 条目 → `PageId = terminal:<id>`
   进入对应终端（替代 M3 Tab 栏的核心交互，SPEC 已定）。
 - 注意力队列「查看」按钮 → 同上跳转。
-- 原型左下角 `mock · 空状态` 开关不进正式 UI，改由调试桥暴露（§5）。
+- 原型左下角的演示数据开关不落地。
 - 导航模式存 `settingsStore.navMode`；侧栏底部收起键 / 图标条展开键只在
   sidebar↔rail 间切换并写回 store（与设置页三段控件同源）。
 
@@ -197,10 +198,10 @@ interface SettingsState {
 `addTab()` 改为 `addTerminal(opts: { shellId?, cwd? })`；关闭/激活/标题语义不变
 （M3 不变量：每条目常驻独立 xterm/pty，隐藏时继续消费并 ack）。
 
-**sessionsStore**（新增，SPEC §11.5 Session 形状）：
+**sessionsStore**（新增，[SPEC-S](./SPEC-S.md) §5 Session 形状）：
 
 ```ts
-interface SessionEntry {           // §11.5 Session 的 M5.b 子集
+interface SessionEntry {           // SPEC-S §5 Session 的 M5.b 子集
   sessionId: string
   terminalId: string               // ↔ tabId，会话固定归属其终端（不迁移）
   adapterId: string                // 'codex' | 'claude-code' | ...（决定图标）
@@ -215,16 +216,13 @@ interface SessionEntry {           // §11.5 Session 的 M5.b 子集
 `src/app/sessionStatus.ts`；色值改引 status token 工具类（§4.11），文案出自
 strings 模块。
 
-**mock provider**（`src/app/mockSessions.ts`）：dev 或 E2E 标志开启时，向
-`sessionsStore` 注入原型 App.tsx 里那 17 条六态数据（含时间字段换算），并周期性
-更新 `lastActivityAt`/status 模拟活动；同时提供首页历史事件与 all-time 统计的
-mock 数据源。**正式构建默认关闭**，真实会话条目与 mock 条目可共存（E2E 需要）。
+**演示数据已退役（2026-08-03）**：原 `src/app/mockSessions.ts` 及其运行时注入、
+假历史、假统计和 E2E 开关均已删除。所有环境只显示真实会话并读取真实 IPC 数据。
 
 **P1 实施结果（2026-08-02）**：persist schema 已升至 v3，保留 v0/v1 字体迁移并
 覆盖 v2 `themeId` 拆分；`tabsStore` 已演进为 `terminalsStore`，既有终端常驻挂载行为
-保持不变；新增 `sessionsStore`、六态 token/文案映射、17 条 dev/E2E mock 会话、首页
-历史与 all-time mock 数据，并定稿 `stats:all-time` / `events:history` 共享契约。正式
-构建不注入 mock。状态层与迁移共 7 条定向测试通过，另有 6 条直接受影响的终端回归
+保持不变；新增 `sessionsStore`、六态 token/文案映射，并定稿
+`stats:all-time` / `events:history` 共享契约。状态层与迁移共 7 条定向测试通过，另有 6 条直接受影响的终端回归
 通过；按测试纪律未运行整套 E2E。
 
 ### 4.5 新建会话流（真实 spawn）
@@ -252,18 +250,18 @@ mock 数据源。**正式构建默认关闭**，真实会话条目与 mock 条�
 
 ### 4.6 首页
 
-- 布局照原型两态：`isFreshHome`（无会话且无终端）→ 居中欢迎页；否则信息密度布局。
+- 布局两态：`isFreshHome`（无 AI CLI 会话，普通终端不计入）→ 居中欢迎页；否则信息密度布局。
 - 问候语池、`TextType` 打字机、`CountUp`、quick launch 芯片、注意力队列
   （六态过滤 + 折叠 8 行 + 展开）全部照原型参数。
-- 数据源：注意力队列/侧栏徽标 ← `sessionsStore`（真实 + mock）；
-  历史事件、all-time 概览 ← mock 数据源（M5.b），同时在 `ipc-contract.ts` 定契约：
+- 数据源：注意力队列/侧栏徽标 ← 真实 `sessionsStore`；
+  历史事件、all-time 概览 ← 主进程持久化 IPC：
 
 ```ts
 export const StatsInvokeChannel = {
   AllTime: 'stats:all-time',       // → { sessions, toolCalls, blocked, approvals }
   HistoryEvents: 'events:history'  // (opts: { limit, before? }) → HistoryEvent[]
 } as const
-// 实现（主进程持久化与真实事件流）归 M5.c / S 线；M5.b renderer 仍读 mock
+// 主进程持久化与真实事件流由 M5.c 落地
 ```
 
 ### 4.7 终端视图整合与快捷键
@@ -272,7 +270,7 @@ export const StatsInvokeChannel = {
   `PageId` 匹配时显示、否则 `display:none`——与 M3 完全相同的 keep-alive 机制，
   只是"是否可见"的判定从 activeTabId 变为当前 PageId。Home/设置页时全部隐藏。
 - `debugBridge` 注册表按 terminalId 不变；补 `__vibingDebugShell`：
-  `{ navigate(pageId), openNewSession(), setNavMode(mode), setMockSessions(on) }`。
+  `{ navigate(pageId), openNewSession(), setNavMode(mode) }`。
 - 快捷键语义调整（原型 TopTabBar 已标注 Ctrl+Shift+T = 新建会话）：
   - `Ctrl+Shift+T`：打开新建会话面板（原：直接新建终端）；
   - `Ctrl+Shift+W`：当前在终端页时关闭该终端；最后一个终端关闭后回 Home，
@@ -307,7 +305,7 @@ E2E。Home/Settings 当前只承载 P2 路由与导航模式骨架，完整页�
 目录选择与 shell 列表 IPC；终端及 CLI 配置都把 `shell/args/cwd` 固定到对应终端的
 PTY 启动参数。新建会话 bottom sheet、终端选择 modal、CLI 配置 modal、Home 空态/
 密集态与四区 Settings 已按原型接入；CLI 退出会同步把所属真实 session 标记为
-`exited`。Home 的历史与 all-time 仍按范围使用 mock 数据，设置页用户主题错误会显示
+`exited`。Home 的历史与 all-time 读取真实 IPC 数据，设置页用户主题错误会显示
 明确原因。Shell 回归 5 条与 P3 新增/定向用例 5 条通过；按测试纪律未运行整套 E2E。
 
 ### 4.9 字体子集化管线（SPEC 强制项）
@@ -425,7 +423,7 @@ PingFang 字重不得出现。P5 最终产物 PingFang 合计 206,992 字节，A
   表单与 WSL 参数组装（组装函数单测 + UI 冒烟）。
 - `settings.spec.ts`：各控件读写 settingsStore、terminalThemeId 即时应用
   （复用 M4 `terminalAppearance()` 调试断言）、navMode 持久化重启生效。
-- `home-empty.spec.ts`：mock off + 无终端 → 欢迎页；开终端 → 信息密度布局。
+- `home-empty.spec.ts`：只有普通终端时仍为欢迎页；欢迎页提供 CLI 重新扫描入口。
 - 既有 `terminal-stress / resize / render / clipboard / pty-*` 门禁在新 Shell 下
   全量回归（terminal 挂载机制未变，预期仅 helpers 改动）。
 
@@ -436,7 +434,7 @@ PingFang 字重不得出现。P5 最终产物 PingFang 合计 206,992 字节，A
 | 阶段 | 内容 | 验收 |
 |---|---|---|
 | P0 基建（**已完成**） | frameless + TitleBar + 窗口控制 IPC；依赖引入；**token 体系 + 主题 schema/加载器/运行期接线（§4.11）**；字体迁移；特效组件迁移 | 窗口可拖动/最大化/关闭；内置 light.json 驱动全部 chrome 颜色；typecheck 过 |
-| P1 状态层（**已完成**） | settingsStore v3 迁移；terminalsStore/sessionsStore；mock provider；strings.ts | store 单测 + 迁移用例（v0/v1/v2→v3）通过 |
+| P1 状态层（**已完成**） | settingsStore v3 迁移；terminalsStore/sessionsStore；strings.ts | store 单测 + 迁移用例（v0/v1/v2→v3）通过 |
 | P2 Shell（**已完成**） | AppShell/Sidebar/IconRail/TopTabBar/页面路由；TerminalPage 整合；快捷键 | 三态导航、keep-alive、快捷键定向门禁通过 |
 | P3 流程页（**已完成**） | 新建会话流（真实 spawn + dialog IPC）；HomePage 两态；SettingsPage 绑定 | new-session/home-empty/settings E2E 绿 |
 | P4 字体管线（**已完成**） | subset-fonts 脚本 + 构建接入 + NOTICE | 构建产物中文字体 < 1 MB 断言 |

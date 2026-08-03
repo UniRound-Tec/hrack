@@ -1,7 +1,7 @@
 # M5.c 实施计划 —— App Shell 数据与打磨
 
 > 状态：**已完成**。P0–P4 全部落地（2026-08-03）；决策 1–6 与拟定项 7–11 按本计划执行，
-> 决策 7（首装语言跟随系统）、8（greetings 保持英文）、10（mock 文案外迁）、11（托盘三项）
+> 决策 7（首装语言跟随系统）、8（greetings 保持英文）、10（演示数据退役）、11（托盘三项）
 > 照办；决策 9（Linux 拖拽区双击最大化降范围）维持 M5.b 现状。SPEC 回写见 §8 已执行。
 > 目标：完成 App Shell 里程碑线的收尾——真实数据接入（stats / history 持久化管道）、
 > 五语言 i18n、系统集成（托盘、全局快捷键、关闭到托盘）、遗留打磨项
@@ -32,8 +32,7 @@
 - **主题文件热重载**：watch `<userData>/themes/`，变更后 renderer 自动重载主题注册表
   （M5.b §4.11 遗留）。
 - **fontFamily 设置 UI 化**：设置页字体行改为可编辑输入 + 恢复默认（决策 6）。
-- **字体子集化扩展**：扫描范围覆盖五语言文案；mock 演示文案移出 strings 模块
-  （不再进产物字体）。
+- **字体子集化扩展**：扫描范围覆盖五语言文案。
 - **全量回归**：整套 E2E 一次 + 失败项定向复跑；五语言 × 明暗主题逐页视觉核对。
 
 **不做（明确出局或归后续）**：
@@ -52,7 +51,7 @@
 | 现状 | 对 M5.c 的影响 |
 |---|---|
 | `stats:all-time` / `events:history` 契约已定稿（`AllTimeStats` / `HistoryEvent` / `HistoryQuery`），主进程无 handler | 补主进程实现 + `events:record` 写入口；`HistoryEventKind` 需扩两类生命周期事件 |
-| Home 历史 / 概览读 `mockSessions.ts`（dev/E2E 注入） | 生产改走 IPC；mock 数据源保留给 dev/E2E，切换沿用 `isMockSessionsEnabled` 同一环境判定 |
+| Home 历史 / 概览曾读取演示数据 | 全部环境统一改走 IPC 真实数据，空库显示零统计与空历史 |
 | `strings.ts` 单份 zh-CN const，全组件直接 `import { strings }`；`sessionsStore.markExited` 等非 React 消费者也直接引用 | 拆 locale 字典 + `useStrings()`（组件）/ `getStrings()`（store 等非 React 场景）双入口，全量机械替换 |
 | `i18n.ts` 五语言四 key（copy toast），`resolveLocale/detectLocale` 可复用 | 文案并入统一模块；locale 探测函数保留，用于首装默认语言（决策 7） |
 | `settingsStore` persist v4；`language` 字段已存偏好但未生效 | v5 迁移：新增 `globalShortcutEnabled`；`language` 开始驱动 UI |
@@ -60,7 +59,7 @@
 | `window:close` IPC = `win.close()` | 语义改为隐藏到托盘；`before-quit` 仍 `killAll()` |
 | `BrowserWindow.backgroundColor` 写死 `#ffffff` | 从主进程偏好文件读取上次主题的 `bg.app` |
 | 主题注册表启动 + 打开设置页时刷新，无 watch | 加 `fs.watch` + 变更事件推送 |
-| `scripts/subset-fonts.mjs` 扫描 strings + 组件字面量 + ASCII 全集 | 扫描源改为 `src/app/i18n/*.ts` + 组件；mock 文案外迁后自然缩体积 |
+| `scripts/subset-fonts.mjs` 扫描 strings + 组件字面量 + ASCII 全集 | 扫描源改为 `src/app/i18n/*.ts` + 组件 |
 | E2E `helpers.ts` 直接用默认 userData，未隔离 | 新增 env 覆盖（`VIBING_USER_DATA_DIR`，主进程 ready 前 `app.setPath`），E2E 每次 launch 建临时目录——stats 从 0 计数、主题热重载写入、重启持久化断言都依赖它 |
 | 设置页字体行只读展示 | 改可编辑（走既有 `setFont` → fit → resize 链路，无新机制） |
 
@@ -94,8 +93,8 @@
 9. **Linux 拖拽区双击最大化降范围**：Electron drag 区域吞 pointer event 的限制不变，
    窗口层 hack（手动拖拽实现）代价与风险不成比例；显式最大化按钮为唯一确定性入口，
    Windows 双击由系统语义提供。
-10. **mock 演示文案移出 strings 模块**：17 条会话 + 8 条历史的演示文案迁入
-    `mockSessions.ts` 固定为 zh-CN（dev/E2E 专用，不翻译、不参与字体子集扫描）。
+10. **演示数据退役**：删除 17 条假会话、8 条假历史、假统计以及运行时注入和调试开关；
+    dev/E2E 与正式构建使用同一真实数据路径。
 11. **托盘菜单固定三项**：显示/隐藏、新建会话、退出；左键单击托盘图标 = 切换显示
     （Windows/Linux），macOS 点击弹菜单。图标用品牌 v 字形单色 PNG
     （macOS 用 template image 适配深浅菜单栏）。
@@ -188,9 +187,8 @@ export const StatsInvokeChannel = {
 
 - 新建 CLI 会话 spawn 成功 → `recordEvent({ kind: 'session_start', adapterId,
   title: 会话名, detail: 工作区 })`；pty exit → `session_exit`（detail 带 exit code）。
-  纯终端（非 CLI 会话）不记录——历史流语义是 AI 会话事件，与 SPEC §11.5 对齐。
-- Home 数据源切换：`isMockSessionsEnabled`（dev/E2E）时维持 mock；否则历史 /
-  概览走 IPC 真实数据。历史列表新 kind 的图标 / 标签映射补进
+  纯终端（非 CLI 会话）不记录——历史流语义是 AI 会话事件，与 [SPEC-S](./SPEC-S.md) §5 对齐。
+- Home 的历史 / 概览统一走 IPC 真实数据。历史列表新 kind 的图标 / 标签映射补进
   `HomePage` 渲染表（五语言文案）。
 
 ### 4.5 i18n 五语言
@@ -211,7 +209,7 @@ export const StatsInvokeChannel = {
   新分组）；`resolveLocale` / `detectLocale` 迁到 `i18n/locale.ts` 保留，
   服务于首装默认语言（决策 7）。既有 i18n E2E 门禁断言不变、选择器不变，
   仅 helper 里的取文案路径调整。
-- mock 文案迁 `mockSessions.ts`（决策 10），固定 zh-CN。
+- 删除演示数据与其专用文案（决策 10）。
 - 设置页语言下拉：去掉「归 M5.c」hint，选择即时生效；`common.disabledUntilM5c`
   等失效占位文案清理。
 - 语言变更同时上报 `SetMainPrefs({ language })` 驱动托盘菜单文案（§4.1）。
@@ -285,8 +283,8 @@ shell-nav / settings / home-empty / new-session 因 strings 模块重构只动 h
 | 阶段 | 内容 | 验收 |
 |---|---|---|
 | P0 系统集成 | tray.ts / shortcuts.ts / 关闭到托盘 / main-prefs.json / 深色首帧 / `app:*` 契约与 preload / E2E userData 隔离（`VIBING_USER_DATA_DIR`） | X 隐藏不退出、托盘三项可用、`Ctrl+Alt+V` 切换、深色主题重启无白闪、E2E 从干净 userData 启动 |
-| P1 数据层 | EventLog + stats.json / `events:record` 与查询 handler / renderer 生命周期上报 + Home 真实数据切换 | events-log.spec 绿；生产构建 Home 显示真实（含空态）数据，dev/E2E 仍 mock |
-| P2 i18n | i18n 目录五语言字典 / useStrings 全量替换 / i18n.ts 合并 / mock 文案外迁 / 语言热切换 + 托盘文案联动 / 子集化扩展 | typecheck 过；语言切换即时生效；五语言截图无豆腐块；字体门禁 < 1 MB 不放宽 |
+| P1 数据层 | EventLog + stats.json / `events:record` 与查询 handler / renderer 生命周期上报 + Home 真实数据切换 | events-log.spec 绿；所有环境的 Home 显示真实（含空态）数据 |
+| P2 i18n | i18n 目录五语言字典 / useStrings 全量替换 / i18n.ts 合并 / 语言热切换 + 托盘文案联动 / 子集化扩展 | typecheck 过；语言切换即时生效；五语言截图无豆腐块；字体门禁 < 1 MB 不放宽 |
 | P3 设置与主题收尾 | fontFamily 编辑 UI / 快捷键开关（v5 迁移）/ 主题热重载 | settings.spec 扩展项绿；v4→v5 迁移用例过；watch 热更断言过 |
 | P4 全量回归 | 整套 E2E 一次 + 定向复跑 / 五语言 × 明暗视觉核对 / SPEC 回写 | 全部用例取得通过结果；SPEC §9 M5.c 标记完成 |
 
@@ -319,6 +317,6 @@ shell-nav / settings / home-empty / new-session 因 strings 模块重构只动 h
 - §2.1 主进程职责：托盘、全局快捷键从「(native)」占位变为已实现描述；
   关闭到托盘语义入档。
 - §5.2 字体注记：界面字体子集化扫描扩展到五语言；ja/ko 回退栈补充。
-- §11.5 注记：`HistoryEventKind` 扩 `session_start` / `session_exit`；
+- [SPEC-S](./SPEC-S.md) §5/§6 注记：`HistoryEventKind` 扩 `session_start` / `session_exit`；
   事件持久化管道（EventLog）为 S 线语义事件的写入目标。
 - §9 进度注记：记录决策 1–11。

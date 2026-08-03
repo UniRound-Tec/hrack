@@ -1,7 +1,7 @@
 import { getStrings, type AppStrings } from './i18n'
 import { useSettingsStore } from '../state/settingsStore'
 
-/** SPEC §11.5 normalized six-state UI contract. */
+/** SPEC-S §3.3 running-session six-state UI contract. */
 export const sessionStatuses = [
   'working',
   'needs-you',

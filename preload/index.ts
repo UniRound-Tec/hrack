@@ -8,6 +8,7 @@ import {
   AppEventChannel,
   AppInvokeChannel,
   ClipboardInvokeChannel,
+  CliInvokeChannel,
   DialogInvokeChannel,
   PtyInvokeChannel,
   ShellInvokeChannel,
@@ -22,6 +23,8 @@ import {
   type AppApi,
   type AppThemeApi,
   type ClipboardApi,
+  type CliApi,
+  type CliLaunchSelection,
   type DialogApi,
   type ExitPayload,
   type HistoryQuery,
@@ -158,6 +161,12 @@ const shellApi: ShellApi = {
   listAvailable: () => ipcRenderer.invoke(ShellInvokeChannel.ListAvailable)
 }
 
+const cliApi: CliApi = {
+  scan: (force = false) => ipcRenderer.invoke(CliInvokeChannel.Scan, force),
+  prepareLaunch: (selection: CliLaunchSelection) =>
+    ipcRenderer.invoke(CliInvokeChannel.PrepareLaunch, selection)
+}
+
 const statsApi: StatsApi = {
   allTime: () => ipcRenderer.invoke(StatsInvokeChannel.AllTime),
   historyEvents: (query: HistoryQuery) =>
@@ -193,6 +202,7 @@ try {
   contextBridge.exposeInMainWorld('themeApi', themeApi)
   contextBridge.exposeInMainWorld('dialogApi', dialogApi)
   contextBridge.exposeInMainWorld('shellApi', shellApi)
+  contextBridge.exposeInMainWorld('cliApi', cliApi)
   contextBridge.exposeInMainWorld('statsApi', statsApi)
   contextBridge.exposeInMainWorld('appApi', appApi)
   contextBridge.exposeInMainWorld('appThemeApi', appThemeApi)

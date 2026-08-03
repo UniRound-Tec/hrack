@@ -11,13 +11,6 @@ import { detectLocale } from '../src/app/i18n/locale'
 import { createTerminalsStore } from '../src/state/terminalsStore'
 import { createSessionsStore } from '../src/state/sessionsStore'
 import {
-  createMockHistoryEvents,
-  createMockSessions,
-  isMockSessionsEnabled,
-  mockAllTimeStats,
-  startMockSessionsProvider
-} from '../src/app/mockSessions'
-import {
   sessionStatuses,
   statusDot,
   statusLabel,
@@ -177,8 +170,8 @@ test.describe('terminalsStore', () => {
   })
 })
 
-test.describe('sessionsStore and mock provider', () => {
-  test('sorts by activity, updates exit state, and preserves real/mock coexistence', () => {
+test.describe('sessionsStore', () => {
+  test('sorts by activity, updates exit state, and removes sessions', () => {
     const store = createSessionsStore()
     store.getState().addSession({
       sessionId: 'real:1',
@@ -188,10 +181,17 @@ test.describe('sessionsStore and mock provider', () => {
       status: 'working',
       lastActivityAt: 100
     })
-    store.getState().upsertSessions(createMockSessions(10_000))
+    store.getState().addSession({
+      sessionId: 'real:2',
+      terminalId: 'terminal:2',
+      adapterId: 'claude-code',
+      name: 'Second real session',
+      status: 'working',
+      lastActivityAt: 10_000
+    })
 
-    expect(store.getState().sessions).toHaveLength(18)
-    expect(store.getState().sessions[0].sessionId).toBe('mock:session:01')
+    expect(store.getState().sessions).toHaveLength(2)
+    expect(store.getState().sessions[0].sessionId).toBe('real:2')
 
     store.getState().markExited('real:1', 7, 20_000)
     expect(store.getState().sessions[0]).toMatchObject({
@@ -202,54 +202,13 @@ test.describe('sessionsStore and mock provider', () => {
       lastActivityAt: 20_000
     })
 
-    const mockIds = store
-      .getState()
-      .sessions.filter((session) => session.sessionId.startsWith('mock:'))
-      .map((session) => session.sessionId)
-    store.getState().removeSessions(mockIds)
+    store.getState().removeSession('real:2')
     expect(store.getState().sessions.map((session) => session.sessionId)).toEqual([
       'real:1'
     ])
   })
 
-  test('ships all six prototype states and only injects in dev/E2E', () => {
-    expect(isMockSessionsEnabled({ dev: false, e2e: false })).toBe(false)
-    expect(isMockSessionsEnabled({ dev: true, e2e: false })).toBe(true)
-    expect(isMockSessionsEnabled({ dev: false, e2e: true })).toBe(true)
-
-    const fixtures = createMockSessions(100_000)
-    expect(fixtures).toHaveLength(17)
-    expect(new Set(fixtures.map((session) => session.status))).toEqual(
-      new Set(sessionStatuses)
-    )
-
-    const store = createSessionsStore()
-    const stopDisabled = startMockSessionsProvider({
-      enabled: false,
-      store
-    })
-    expect(store.getState().sessions).toHaveLength(0)
-    stopDisabled()
-
-    const stopEnabled = startMockSessionsProvider({
-      enabled: true,
-      now: () => 100_000,
-      store
-    })
-    expect(store.getState().sessions).toHaveLength(17)
-    stopEnabled()
-    expect(store.getState().sessions).toHaveLength(0)
-  })
-
-  test('provides home history/stats and tokenized status presentation', () => {
-    expect(createMockHistoryEvents(100_000)).toHaveLength(8)
-    expect(mockAllTimeStats).toEqual({
-      sessions: 1_284,
-      toolCalls: 9_632,
-      blocked: 156,
-      approvals: 412
-    })
-
+  test('provides tokenized status presentation', () => {
     for (const status of sessionStatuses) {
       expect(statusDot[status]).toContain('status-')
       expect(statusTone[status]).toContain('status-')

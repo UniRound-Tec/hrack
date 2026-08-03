@@ -13,6 +13,7 @@ import { PTYManager } from './pty/PTYManager'
 import {
   AppInvokeChannel,
   ClipboardInvokeChannel,
+  CliInvokeChannel,
   DialogInvokeChannel,
   PtyInvokeChannel,
   ShellInvokeChannel,
@@ -20,12 +21,14 @@ import {
   ThemeInvokeChannel,
   WindowInvokeChannel,
   type HistoryEvent,
+  type CliLaunchSelection,
   type HistoryEventKind,
   type MainPrefsUpdate,
   type RecordEventInput,
   type SpawnOptions
 } from '../shared/ipc-contract'
 import { listAvailableShells } from './shells'
+import type { AiCliDiscoveryService } from './ai-cli-discovery'
 import { displayRelativePosition } from './window'
 import { EventLog } from './events/EventLog'
 import { persistMainPrefs } from './main-prefs'
@@ -55,6 +58,7 @@ const EVENT_KIND_WHITELIST = new Set<HistoryEventKind>([
 /** 主进程运行时上下文：窗口 / 托盘由 main.ts 组装后注入。 */
 export interface IpcContext {
   eventLog: EventLog
+  cliDiscovery: AiCliDiscoveryService
   getWindow(): BrowserWindow | null
   getTray(): Tray | null
   rebuildTrayMenu(): void
@@ -171,6 +175,12 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     }
   )
   ipcMain.handle(ShellInvokeChannel.ListAvailable, listAvailableShells)
+  ipcMain.handle(CliInvokeChannel.Scan, (_event, force: unknown) =>
+    ctx.cliDiscovery.scan(force === true)
+  )
+  ipcMain.handle(CliInvokeChannel.PrepareLaunch, (_event, selection: unknown) =>
+    ctx.cliDiscovery.prepareLaunch(selection as CliLaunchSelection)
+  )
 
   ipcMain.handle(StatsInvokeChannel.AllTime, () => ctx.eventLog.allTimeStats())
   ipcMain.handle(StatsInvokeChannel.HistoryEvents, (_event, query: unknown) => {

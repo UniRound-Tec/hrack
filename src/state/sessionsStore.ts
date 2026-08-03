@@ -9,6 +9,7 @@ export interface SessionEntry {
   sessionId: string
   terminalId: string
   adapterId: string
+  installationId?: string
   name: string
   status: SessionStatus
   detail?: string

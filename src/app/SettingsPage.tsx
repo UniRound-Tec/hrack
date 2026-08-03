@@ -1,7 +1,7 @@
-import { Check, ChevronDown, Minus, Plus } from 'lucide-react'
+import { Check, ChevronDown, Minus, Plus, RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import type { ShellOption } from '../../shared/ipc-contract'
+import type { CliRuntimeError, ShellOption } from '../../shared/ipc-contract'
 import { appLocales, useStrings } from './i18n'
 import { getUiThemeRegistry, useThemeRegistryVersion } from './themeRuntime'
 import { terminalThemes, type ThemeId } from '../terminal/themes'
@@ -16,7 +16,23 @@ const colorKeys = [
   'brightMagenta', 'brightCyan', 'brightWhite'
 ] as const
 
-export default function SettingsPage({ shells }: { shells: readonly ShellOption[] }) {
+interface SettingsPageProps {
+  shells: readonly ShellOption[]
+  cliCount: number
+  cliScanning: boolean
+  cliScanError: string | null
+  cliRuntimeErrors: readonly CliRuntimeError[]
+  onRefreshClis: () => void
+}
+
+export default function SettingsPage({
+  shells,
+  cliCount,
+  cliScanning,
+  cliScanError,
+  cliRuntimeErrors,
+  onRefreshClis
+}: SettingsPageProps) {
   const settings = useSettingsStore()
   const strings = useStrings()
   // 主题热重载后注册表版本自增，订阅以重新读取当前注册表。
@@ -105,6 +121,40 @@ export default function SettingsPage({ shells }: { shells: readonly ShellOption[
 
           <Section label="session" title={strings.settings.sections.session}>
             <Row label={strings.settings.defaultTerminal} hint={strings.settings.defaultTerminalHint}><Dropdown testId="settings-default-terminal" direction="up" value={shells.some((shell) => shell.id === settings.defaultTerminal) ? settings.defaultTerminal : shells[0]?.id ?? ''} disabled={shells.length === 0} options={shells.map((shell) => ({ value: shell.id, label: shell.name }))} onChange={(value) => settings.setDefaultTerminal(value)} /></Row>
+            <Row
+              label={strings.settings.cliDiscovery}
+              hint={cliScanning
+                ? strings.newSession.scanningClis
+                : cliScanError ?? (cliCount === 0
+                  ? strings.newSession.noClisFound
+                  : strings.newSession.clisFound(cliCount))}
+            >
+              <button
+                type="button"
+                data-testid="settings-cli-refresh"
+                disabled={cliScanning}
+                aria-busy={cliScanning}
+                onClick={onRefreshClis}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border-default bg-input px-2.5 py-1.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary disabled:cursor-wait disabled:opacity-70"
+              >
+                <RefreshCw className={`size-3 ${cliScanning ? 'animate-spin' : ''}`} strokeWidth={1.75} />
+                {strings.newSession.refreshClis}
+              </button>
+            </Row>
+            {!cliScanning && cliRuntimeErrors.length > 0 && (
+              <details className="border-b border-border-faint py-3 font-pingfang text-[11px]">
+                <summary className="cursor-pointer text-status-error">
+                  {strings.newSession.partialScanErrors(cliRuntimeErrors.length)}
+                </summary>
+                <ul className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-border-default bg-surface-strong p-2 text-text-muted">
+                  {cliRuntimeErrors.map((item, index) => (
+                    <li key={`${item.detail}-${index}`} className="break-words py-1">
+                      {item.detail}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </Section>
         </div>
       </section>

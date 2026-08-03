@@ -1,23 +1,36 @@
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
-import { buildCliLaunch, cliOptions, parseCommandLine } from '../src/app/launchOptions'
+import { buildCliLaunchSelection, parseCommandLine } from '../src/app/launchOptions'
+import type { LaunchableCli } from '../shared/ipc-contract'
 import { launchApp } from './helpers'
 
-test('splits quoted CLI arguments and assembles Windows/WSL launches', () => {
+test('splits quoted CLI arguments and builds an installation-bound selection', () => {
   expect(parseCommandLine('--flag "two words" C:\\work\\demo')).toEqual([
     '--flag',
     'two words',
     'C:\\work\\demo'
   ])
-  const option = cliOptions[0]
-  expect(buildCliLaunch({ option, name: 'Codex', workspace: 'C:\\repo', args: '--full-auto "two words"', runtime: 'windows' })).toEqual({
-    shell: 'codex',
-    args: ['--full-auto', 'two words'],
-    cwd: 'C:\\repo'
-  })
-  expect(buildCliLaunch({ option, name: 'Codex', workspace: 'C:\\repo', args: '--full-auto', runtime: 'wsl' })).toEqual({
-    shell: 'wsl.exe',
-    args: ['-e', 'codex', '--full-auto'],
-    cwd: 'C:\\repo'
+  const option = {
+    definition: {
+      id: 'codex', adapterId: 'codex', displayName: 'Codex',
+      hint: 'OpenAI coding agent', iconId: 'codex'
+    },
+    installations: [{
+      id: 'codex:windows', definitionId: 'codex',
+      runtime: { kind: 'host', platform: 'windows' },
+      resolvedExecutable: 'C:\\bin\\codex.exe', detectedVia: 'path',
+      verification: 'verified'
+    }]
+  } satisfies LaunchableCli
+  expect(buildCliLaunchSelection({
+    option,
+    installationId: 'codex:windows',
+    name: 'Codex',
+    workspace: 'C:\\repo',
+    args: '--flag "two words"'
+  })).toEqual({
+    installationId: 'codex:windows',
+    args: ['--flag', 'two words'],
+    workspace: 'C:\\repo'
   })
 })
 
@@ -50,11 +63,20 @@ test.describe('new session flow', () => {
   test('opens CLI configuration from Home and binds all draft fields', async () => {
     await page.getByTestId('home-quick-codex').click()
     await expect(page.getByTestId('cli-config')).toBeVisible()
+    await expect(page.getByTestId('new-session-overlay')).toHaveCount(0)
     await expect(page.getByTestId('cli-session-name')).toHaveValue('Codex')
     await page.getByTestId('cli-session-name').fill('Repo agent')
     await page.getByTestId('cli-workspace').fill('C:\\repo')
-    await page.getByTestId('cli-arguments').fill('--full-auto "two words"')
-    await page.getByTestId('cli-runtime-wsl').click()
-    await expect(page.getByTestId('cli-runtime-wsl')).toHaveClass(/bg-button-primary/)
+    await page.getByTestId('cli-arguments').fill('--model "two words"')
+    await page.getByTestId('cli-installation-wsl-Ubuntu-Test').click()
+    await expect(page.getByTestId('cli-installation-wsl-Ubuntu-Test')).toHaveClass(/bg-button-primary/)
+    const exitStayedMounted = await page.evaluate(() => {
+      const backdrop = document.querySelector<HTMLElement>('[data-testid="cli-config-backdrop"]')
+      backdrop?.click()
+      return Boolean(document.querySelector('[data-testid="cli-config"]'))
+    })
+    expect(exitStayedMounted).toBe(true)
+    await expect(page.getByTestId('cli-config')).toHaveCount(0)
+    await expect(page.getByTestId('new-session-overlay')).toHaveCount(0)
   })
 })

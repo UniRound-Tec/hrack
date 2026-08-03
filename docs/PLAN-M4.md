@@ -284,6 +284,6 @@ animation frame 亮度比例”断言在 2026-08-02 降级，因为 compositor �
   background 保留 alpha 通道语义;届时评估 xterm `allowTransparency` 的
   WebGL 性能成本,在 M5.c 计划里处理。
 - **S 线(语义监控)**:不受影响——渲染是纯 Renderer 显示话题,SemanticTap
-  在主进程,正交(SPEC §11.2)。
+  在主进程,正交([SPEC-S](./SPEC-S.md) §9)。
 - **打包(M7)**:WebGL 在各平台打包产物中的可用性(GPU 黑名单、软件渲染)
   届时纳入冒烟清单;降级链保证最坏情况仍是可用的 DOM 终端。

@@ -1,21 +1,23 @@
 import { expect, test } from '@playwright/test'
 import { launchApp } from './helpers'
 
-test('Home switches between dense and fresh states around the final terminal', async () => {
+test('Home stays fresh with ordinary terminals and exposes CLI rescan', async () => {
   const { app, window: page } = await launchApp()
   try {
     await page.evaluate(() => {
       window.__vibingDebugShell?.setNavMode('sidebar')
-      window.__vibingDebugShell?.setMockSessions(false)
       window.__vibingDebugShell?.navigate('home')
     })
-    await expect(page.getByTestId('home-page')).toHaveAttribute('data-home-state', 'dense')
-    const item = page.getByTestId('sidebar-terminal-item').first()
-    await item.hover()
-    await page.getByTestId('sidebar-terminal-close').first().click()
     await expect(page.getByTestId('home-page')).toHaveAttribute('data-home-state', 'fresh')
+    await expect(page.getByTestId('sidebar-terminal-item')).toHaveCount(1)
+    await expect(page.getByTestId('cli-scan-refresh')).toBeVisible()
+
     await page.getByTestId('home-quick-terminal').click()
     await expect(page.locator('.xterm:visible')).toHaveCount(1)
+    await expect(page.getByTestId('sidebar-terminal-item')).toHaveCount(2)
+
+    await page.evaluate(() => window.__vibingDebugShell?.navigate('home'))
+    await expect(page.getByTestId('home-page')).toHaveAttribute('data-home-state', 'fresh')
   } finally {
     await app.close()
   }

@@ -18,6 +18,7 @@ import type {
  */
 export async function launchApp(options: {
   userDataDir?: string
+  cliFixture?: boolean
 } = {}): Promise<{
   app: ElectronApplication
   window: Page
@@ -28,7 +29,12 @@ export async function launchApp(options: {
     options.userDataDir ?? mkdtempSync(resolve(tmpdir(), 'vibing-e2e-'))
   const app = await electron.launch({
     args: [main],
-    env: { ...process.env, VIBING_E2E: '1', VIBING_USER_DATA_DIR: userDataDir }
+    env: {
+      ...process.env,
+      VIBING_E2E: '1',
+      VIBING_E2E_CLI_FIXTURE: options.cliFixture === false ? '0' : '1',
+      VIBING_USER_DATA_DIR: userDataDir
+    }
   })
   try {
     const window = await app.firstWindow()

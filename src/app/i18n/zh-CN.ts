@@ -34,7 +34,10 @@ export const zhCN = {
     expandSidebar: '展开侧栏',
     collapseSidebar: '收起侧栏',
     closeTerminal: '关闭终端',
-    closeSession: '关闭会话'
+    closeSession: '关闭会话',
+    sessionActions: '会话操作',
+    renameSession: '重命名',
+    sessionNameRequired: '会话名称不能为空'
   },
   sessionStatus: {
     working: '运行中',
@@ -78,9 +81,11 @@ export const zhCN = {
     live: (count: number) => `${count} live`,
     defaultTerminal: (name: string) => `默认：${name}`,
     terminalOptions: '终端选项',
+    previousLaunchPage: '上一页',
+    nextLaunchPage: '下一页',
     attention: '注意力优先',
     allStatuses: '全部',
-    emptyAttention: '当前没有待处理或出错的会话',
+    emptyAttention: '当前筛选下没有会话',
     showMore: '展开更多',
     showLess: '收起 ↑',
     showAll: (count: number) => `展开全部 ${count} 条 ↓`,
@@ -140,6 +145,7 @@ export const zhCN = {
     terminalRoundedHint: '内容区圆角并为终端加两侧留白；关闭后终端贴边显示',
     defaultTerminal: '默认终端',
     defaultTerminalHint: 'quick launch 的「终端」芯片按此启动',
+    cliDiscovery: 'AI CLI 扫描',
     preferences: 'settings · preferences',
     description: '布局与控件沿用定稿原型；各项设置直读写 settingsStore。',
     mapleMono: 'Maple Mono',
@@ -172,6 +178,13 @@ export const zhCN = {
     terminalFallback: '系统默认终端',
     workspacePlaceholder: '请选择工作区',
     argumentsPlaceholder: '--flag value',
+    scanningClis: '正在扫描 Windows 与 WSL…',
+    noClisFound: '未发现可启动的 AI CLI',
+    refreshClis: '重新扫描',
+    clisFound: (count: number) => `已发现 ${count} 个 AI CLI`,
+    partialScanErrors: (count: number) => `${count} 项未通过验证`,
+    installation: '安装位置',
+    launching: '启动中…',
     p2Placeholder: 'CLI 与运行环境选项将在 P3 接入'
   },
   shell: {

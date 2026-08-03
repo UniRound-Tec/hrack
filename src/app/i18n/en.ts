@@ -31,7 +31,10 @@ export const en = {
     expandSidebar: 'Expand sidebar',
     collapseSidebar: 'Collapse sidebar',
     closeTerminal: 'Close terminal',
-    closeSession: 'Close session'
+    closeSession: 'Close session',
+    sessionActions: 'Session actions',
+    renameSession: 'Rename',
+    sessionNameRequired: 'Session name is required'
   },
   sessionStatus: {
     working: 'Working',
@@ -76,9 +79,11 @@ export const en = {
     live: (count: number) => `${count} live`,
     defaultTerminal: (name: string) => `Default: ${name}`,
     terminalOptions: 'Terminal options',
+    previousLaunchPage: 'Previous page',
+    nextLaunchPage: 'Next page',
     attention: 'Attention first',
     allStatuses: 'All',
-    emptyAttention: 'No sessions need you or failed right now',
+    emptyAttention: 'No sessions match this filter',
     showMore: 'Show more',
     showLess: 'Collapse ↑',
     showAll: (count: number) => `Show all ${count} ↓`,
@@ -139,6 +144,7 @@ export const en = {
       'Rounds the content area and pads the terminal; off hugs the edges',
     defaultTerminal: 'Default terminal',
     defaultTerminalHint: 'The Terminal chip on quick launch starts this',
+    cliDiscovery: 'AI CLI scan',
     preferences: 'settings · preferences',
     description: 'Layout and controls follow the locked prototype; settings write through.',
     mapleMono: 'Maple Mono',
@@ -171,6 +177,13 @@ export const en = {
     terminalFallback: 'System default terminal',
     workspacePlaceholder: 'Choose a workspace',
     argumentsPlaceholder: '--flag value',
+    scanningClis: 'Scanning Windows and WSL…',
+    noClisFound: 'No launchable AI CLI found',
+    refreshClis: 'Scan again',
+    clisFound: (count: number) => `${count} AI CLI${count === 1 ? '' : 's'} found`,
+    partialScanErrors: (count: number) => `${count} probe${count === 1 ? '' : 's'} failed`,
+    installation: 'Installation',
+    launching: 'Launching…',
     p2Placeholder: 'CLI and runtime options land in P3'
   },
   shell: {

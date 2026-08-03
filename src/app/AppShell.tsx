@@ -5,7 +5,7 @@ import {
   useState
 } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import type { ShellOption } from '../../shared/ipc-contract'
+import type { CliScanReport, ShellOption } from '../../shared/ipc-contract'
 import TitleBar from './TitleBar'
 import Sidebar from './Sidebar'
 import IconRail from './IconRail'
@@ -26,12 +26,9 @@ import {
   handleShellShortcut,
   registerShellShortcutActions
 } from './shellShortcuts'
-import {
-  setRuntimeMockSessions
-} from './mockSessions'
 import { useStrings } from './i18n'
 import {
-  buildCliLaunch,
+  buildCliLaunchSelection,
   findDefaultShell,
   type CliLaunchDraft,
   type CliOption
@@ -47,7 +44,6 @@ export interface VibingDebugShellApi {
   navigate(pageId: PageId): void
   openNewSession(): void
   setNavMode(mode: NavMode): void
-  setMockSessions(enabled: boolean): void
 }
 
 export default function AppShell() {
@@ -57,6 +53,9 @@ export default function AppShell() {
     'sheet' | 'terminal' | CliOption
   >('sheet')
   const [shells, setShells] = useState<readonly ShellOption[]>([])
+  const [cliReport, setCliReport] = useState<CliScanReport | null>(null)
+  const [cliScanning, setCliScanning] = useState(true)
+  const [cliScanError, setCliScanError] = useState<string | null>(null)
   const navMode = useSettingsStore((state) => state.navMode)
   const setNavMode = useSettingsStore((state) => state.setNavMode)
   const terminalRounded = useSettingsStore((state) => state.terminalRounded)
@@ -67,6 +66,7 @@ export default function AppShell() {
   const sessions = useSessionsStore((state) => state.sessions)
   const addSession = useSessionsStore((state) => state.addSession)
   const removeSession = useSessionsStore((state) => state.removeSession)
+  const updateSession = useSessionsStore((state) => state.updateSession)
   const terminals = useTerminalsStore((state) => state.terminals)
   const addTerminal = useTerminalsStore((state) => state.addTerminal)
   const activateTerminal = useTerminalsStore(
@@ -84,10 +84,34 @@ export default function AppShell() {
     }
   }, [])
 
+  const scanClis = useCallback(async (force = false): Promise<void> => {
+    setCliScanning(true)
+    setCliScanError(null)
+    try {
+      setCliReport(await window.cliApi.scan(force))
+    } catch (error) {
+      setCliScanError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setCliScanning(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void scanClis(false)
+  }, [scanClis])
+
   const terminalIds = useMemo(
     () => new Set(terminals.map((terminal) => terminal.id)),
     [terminals]
   )
+  const standaloneTerminals = useMemo(() => {
+    const sessionTerminalIds = new Set(
+      sessions.map((session) => session.terminalId)
+    )
+    return terminals.filter(
+      (terminal) => !sessionTerminalIds.has(terminal.id)
+    )
+  }, [sessions, terminals])
   const activeTerminalId = terminalIdFromPage(pageId)
 
   const navigate = useCallback(
@@ -133,30 +157,39 @@ export default function AppShell() {
   }, [defaultTerminal, launchTerminal, shells])
 
   const launchCli = useCallback(
-    (draft: CliLaunchDraft): void => {
-      const launch = buildCliLaunch(draft)
+    async (draft: CliLaunchDraft): Promise<string | null> => {
+      let launch
+      try {
+        launch = await window.cliApi.prepareLaunch(
+          buildCliLaunchSelection(draft)
+        )
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error)
+      }
       const terminal = addTerminal({
-        shellId: draft.option.adapterId,
+        shellId: draft.option.definition.adapterId,
         cwd: draft.workspace.trim(),
         launch
       })
       addSession({
         sessionId: crypto.randomUUID(),
         terminalId: terminal.id,
-        adapterId: draft.option.adapterId,
-        name: draft.name.trim() || draft.option.name,
+        adapterId: draft.option.definition.adapterId,
+        installationId: draft.installationId,
+        name: draft.name.trim() || draft.option.definition.displayName,
         status: 'working',
         lastActivityAt: Date.now()
       })
       // M5.c：CLI 会话启动记录为历史事件（生命周事件；语义事件由 S 线沿同一管道补）。
       void window.statsApi.recordEvent({
         kind: 'session_start',
-        adapterId: draft.option.adapterId,
-        title: draft.name.trim() || draft.option.name,
+        adapterId: draft.option.definition.adapterId,
+        title: draft.name.trim() || draft.option.definition.displayName,
         detail: draft.workspace.trim()
       })
       setNewSessionOpen(false)
       setPageId(terminalPage(terminal.id))
+      return null
     },
     [addSession, addTerminal]
   )
@@ -251,8 +284,7 @@ export default function AppShell() {
         if (isPageId(nextPage)) navigate(nextPage)
       },
       openNewSession,
-      setNavMode,
-      setMockSessions: setRuntimeMockSessions
+      setNavMode
     }
     window.__vibingDebugShell = api
     return () => {
@@ -287,10 +319,13 @@ export default function AppShell() {
               <Sidebar
                 pageId={pageId}
                 sessions={sessions}
-                terminals={terminals}
+                terminals={standaloneTerminals}
                 onNavigate={navigate}
                 onOpenNewSession={openNewSession}
                 onCollapse={() => setNavMode('rail')}
+                onRenameSession={(sessionId, name) =>
+                  updateSession(sessionId, { name })
+                }
                 onCloseSession={closeSessionAndTerminal}
                 onCloseTerminal={closeTerminalAndRoute}
               />
@@ -307,7 +342,7 @@ export default function AppShell() {
               <IconRail
                 pageId={pageId}
                 sessions={sessions}
-                terminals={terminals}
+                terminals={standaloneTerminals}
                 onNavigate={navigate}
                 onOpenNewSession={openNewSession}
                 onExpand={() => setNavMode('sidebar')}
@@ -345,7 +380,7 @@ export default function AppShell() {
             <TopTabBar
               pageId={pageId}
               sessions={sessions}
-              terminals={terminals}
+              terminals={standaloneTerminals}
               onNavigate={navigate}
               onOpenNewSession={openNewSession}
               onCloseSession={closeSessionAndTerminal}
@@ -357,8 +392,9 @@ export default function AppShell() {
             {pageId === 'home' && (
               <HomePage
                 sessions={sessions}
-                terminals={terminals}
                 shells={shells}
+                clis={cliReport?.launchable ?? []}
+                cliScanning={cliScanning}
                 defaultTerminal={defaultTerminal}
                 onLaunchDefaultTerminal={launchDefaultTerminal}
                 onChooseTerminal={() => {
@@ -366,12 +402,22 @@ export default function AppShell() {
                   setNewSessionOpen(true)
                 }}
                 onConfigureCli={configureCli}
+                onRefreshClis={() => void scanClis(true)}
                 onViewSession={(session) =>
                   navigate(terminalPage(session.terminalId))
                 }
               />
             )}
-            {pageId === 'settings' && <SettingsPage shells={shells} />}
+            {pageId === 'settings' && (
+              <SettingsPage
+                shells={shells}
+                cliCount={cliReport?.launchable.length ?? 0}
+                cliScanning={cliScanning}
+                cliScanError={cliScanError}
+                cliRuntimeErrors={cliReport?.runtimeErrors ?? []}
+                onRefreshClis={() => void scanClis(true)}
+              />
+            )}
             {activeTerminalId && !terminalIds.has(activeTerminalId) && (
               <UnavailableTerminalPage />
             )}
@@ -401,6 +447,7 @@ export default function AppShell() {
       <NewSessionFlow
         open={newSessionOpen}
         shells={shells}
+        clis={cliReport?.launchable ?? []}
         defaultTerminal={defaultTerminal}
         initialCli={
           typeof newSessionIntent === 'object' ? newSessionIntent : undefined

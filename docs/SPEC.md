@@ -8,10 +8,9 @@
 > 技术路线：**Electron 原生窗口壳 + React 应用 UI + xterm.js 6.x（WebGL 渲染）+ node-pty 原生 PTY**。
 > 架构参考 Tabby，UI 层由 Angular 换为 React。
 >
-> **两条能力线并行**：终端功能线（§1–§9）与 AI 语义监控线（§11）正交推进，后者依赖前者的 pty 字节流但不侵入其显示链路。
+> **两条能力线并行**：终端功能线（§1–§9）与 AI CLI 发现/语义线（[SPEC-S.md](./SPEC-S.md)，原 §11）正交推进；当前 S0 只做发现与启动，后续语义监听才可能依赖 pty 字节流且不得侵入显示链路。
 >
-> **监控范围决策（v1）**：**仅监控在本应用终端 Tab 内启动的 AI CLI 会话**。我们拥有这些会话的 pty → 全量字节流 + 可注入，无需进程扫描 / 跨进程日志监视 / ptrace。外部终端（VS Code、系统终端、tmux）里的会话**不在 v1 范围**。
-> **监控策略决策**：框架同时提供两套采集基建（headless VT 抓屏 + 旁路结构化信号如 hooks/transcript），**每个 CLI 适配器自行选择并排序**其监控手段。
+> **S 线当前闭环（S0）** 详见 [SPEC-S.md](./SPEC-S.md)：扫描 Windows 主机与各 WSL 发行版 → 真启动列表 → 点击进入配置 → 按所选安装启动；监听与六态语义后置。
 
 ---
 
@@ -298,7 +297,7 @@ M4.1 改用 xterm 6 的 character joiner proposed API：应用只识别连续操
 
 **M5.b 演进**（详见 [PLAN-M5B.md](./PLAN-M5B.md) §4.4/§4.7）：M3 Tab 栏被 App
 Shell 三态导航取代，`tabsStore` 拆为 `terminalsStore`（终端条目）+
-`sessionsStore`（AI CLI 会话，§11.5 Session 形状，`sessionId ↔ terminalId` 固定
+`sessionsStore`（AI CLI 会话，[SPEC-S](./SPEC-S.md) §5 Session 形状，`sessionId ↔ terminalId` 固定
 归属）。xterm 常驻挂载与隐藏时继续消费/ack 的机制**不变**，仅"是否可见"的判定从
 `activeTabId` 换成页面路由 `PageId`（`home | settings | terminal:{id}`）。关闭
 最后一个终端回 Home，不再关窗口（M3 语义废止）；`Ctrl+Shift+T` 改为打开新建会话
@@ -340,7 +339,7 @@ Shell 三态导航取代，`tabsStore` 拆为 `terminalsStore`（终端条目）
 | 打包  | electron-builder      | 三端安装包                              |
 | 样式  | Tailwind CSS          | 原子化、无全局污染、开发快；配 CSS 变量做主题          |
 | GUI 主题 | 语义 token（CSS 变量 + Tailwind `@theme inline` 映射）+ JSON 主题配置文件 | VS Code 模式：内置主题与用户主题（`<userData>/themes/*.json`）同一 schema，运行期热切换；组件禁止硬编码色值；界面主题与终端 16 色分开设置（终端配色仍走 `themes.ts`，schema 预留 `terminal` 段）。见 PLAN-M5B §4.11 |
-| 字体  | 内嵌 Maple Mono（终端）+ PingFang SC（界面中文）+ Ammonite（logo） | 三端视觉一致、离线可用；PingFang 完整字库入库（`src/assets/fonts/pingfang/`），Ammonite 随 M5.b 入库 `src/assets/fonts/ammonite/`，**构建期子集化后打包，禁止全量打包**（见 §9 M5.a 注记与目录内 NOTICE）；Geist 不引入（原型仅作未显式指定字体的兜底，已查证无实际使用）。**M5.c 注记**：子集化扫描覆盖五语言 UI 文案（`src/app/i18n/*.ts`），mock 演示文案不参与扫描；PingFang SC 无谚文（Hangul），ko 界面中文字体命中不到的字形回退系统栈（Windows Malgun Gothic / macOS Apple SD Gothic Neo），ja 假名同理回退平台字体 |
+| 字体  | 内嵌 Maple Mono（终端）+ PingFang SC（界面中文）+ Ammonite（logo） | 三端视觉一致、离线可用；PingFang 完整字库入库（`src/assets/fonts/pingfang/`），Ammonite 随 M5.b 入库 `src/assets/fonts/ammonite/`，**构建期子集化后打包，禁止全量打包**（见 §9 M5.a 注记与目录内 NOTICE）；Geist 不引入（原型仅作未显式指定字体的兜底，已查证无实际使用）。**M5.c 注记**：子集化扫描覆盖五语言 UI 文案（`src/app/i18n/*.ts`）；PingFang SC 无谚文（Hangul），ko 界面中文字体命中不到的字形回退系统栈（Windows Malgun Gothic / macOS Apple SD Gothic Neo），ja 假名同理回退平台字体 |
 
 
 **插件系统**：v1 **不做**。Tabby 的动态模块加载深绑 Angular DI，React 无等价物，强套代价高。若后续需要，用 React Context + 事件总线自建扩展点，届时单独立 Spec。
@@ -359,16 +358,16 @@ Shell 三态导航取代，`tabsStore` 拆为 `terminalsStore`（终端条目）
 | **M2**   | **resize + 背压**             | 窗口缩放行列同步；`yes`/`cat bigfile` 不卡 UI                                                                  |
 | **M3**   | **多 Tab**                   | 新建/切换/关闭 Tab，各自独立 pty 与缓冲                                                                           |
 | **M4**   | **渲染与体验**                   | WebGL + context-loss 降级链；消除 `opencode` 块字符色块网格缝；主题、内嵌字体与连字                                          |
-| **M5.a** | **App Shell — UI/UX 设计与原型** | 高保真交互原型（`/prototype` 独立 Vite 工程）评审拍板，不另写 UX 规范文档；设计覆盖侧栏/首页/设置/新建会话流、三态导航（侧栏展开为默认 / 侧栏收起图标条 / 顶部 Tab 栏）、§11 监控界面（侧栏 session 六态徽标、独立置顶悬浮窗、Home 注意力队列），实现归 M5.b / S 线 |
-| **M5.b** | **App Shell — 实现**          | 无边框窗口 + 自定义标题栏（原型标题栏设计的前置条件）；侧栏、首页、设置真组件落地；设置面板直读写 `settingsStore`；侧栏 session 区由 mock provider（§11.5 schema）驱动；交互 E2E 全绿且既有门禁不回归 |
+| **M5.a** | **App Shell — UI/UX 设计与原型** | 高保真交互原型（`/prototype` 独立 Vite 工程）评审拍板，不另写 UX 规范文档；设计覆盖侧栏/首页/设置/新建会话流、三态导航（侧栏展开为默认 / 侧栏收起图标条 / 顶部 Tab 栏）、[SPEC-S](./SPEC-S.md) 监控界面（侧栏 session 六态徽标、独立置顶悬浮窗、Home 注意力队列），实现归 M5.b / S 线 |
+| **M5.b** | **App Shell — 实现**          | 无边框窗口 + 自定义标题栏（原型标题栏设计的前置条件）；侧栏、首页、设置真组件落地；设置面板直读写 `settingsStore`；侧栏 session 区读取真实 `sessionsStore`（[SPEC-S](./SPEC-S.md) §5 schema）；交互 E2E 全绿且既有门禁不回归 |
 | **M5.c** | **App Shell — 数据与打磨**       | 真实数据接入（stats / history 持久化管道，M5.c 只记生命周期事件，语义事件归 S 线沿同一管道补）、i18n 五语言、托盘 + 全局快捷键 `Ctrl+Alt+V`、关闭到托盘、深色首帧底色、主题热重载；质感由环境渐变 + 双主题承担，**不做 vibrancy/acrylic**；全量回归；AI session 真数据不在此（归 S 线）                             |
-| M6       | CLI 适配器矩阵                   | 依赖 S3 定稿的 adapter 抽象；铺开接入剩余主流 CLI（gemini-cli / opencode / aider / cursor-agent 等），每个适配器带独立状态识别策略与回归夹具    |
+| M6       | CLI 适配器矩阵                   | 依赖 [SPEC-S](./SPEC-S.md) S3 定稿的 adapter 抽象；铺开接入剩余主流 CLI（gemini-cli / opencode / aider / cursor-agent 等），每个适配器带独立状态识别策略与回归夹具    |
 | M7       | 打包                          | 三端安装包产出                                                                                             |
 
 
 优先级：**M1 是地基**，其余按需推进。
 
-**当前进度（2026-08-02）：M4 已完成。M5.a 原型（`/prototype`）已覆盖全部设计范围，待评审拍板后进入 M5.b。已定决策：侧栏替代 M3 Tab 栏，导航三态互斥：侧栏展开 / 侧栏收起（图标条）/ 顶部 Tab 栏（无侧栏，Home 常驻最左、新建常驻 tabs 右、hover 出详情卡）；标题栏左侧以实际功能入口（新建会话 / 设置）取代占位菜单（文件/编辑/视图/帮助），三种导航形态下全局恒定；侧栏底部保留快速收展开关；界面（chrome）主题与终端 16 色配色在设置中分开设置——M4 的单一 `themeId` 于 M5.b 拆分为界面/终端两个字段，`themes.ts` 色值结构不变；session/terminal 归属按启动方式固定不迁移；悬浮窗为独立置顶小窗（第二 BrowserWindow，实现归 S3）；v1 只看不操作（注意力列表仅"查看"跳转，无批准/重试）；all-time 统计与跨 session 历史事件需新增 IPC 契约与主进程持久化（契约定于 M5.b，实现归 M5.c / S 线）；中文 UI 字体内嵌 PingFang——SC 六字重 woff2 已入库 `src/assets/fonts/pingfang/`（完整 CJK 字库约 5MB/字重，共约 30MB，来源与授权见目录内 `NOTICE.md`，版权由项目方自行解决），仓库保存完整字体，**构建时按产物实际用字子集化（如 fonttools `pyftsubset` 生成 woff2 子集，或按 unicode-range 切片），未用字重不进产物，禁止全量打包**（子集化管线随 M5.b 首次接入 UI 字体时落地）；Home 空状态（无会话且无终端）重排为居中欢迎页——logo + 问候 + 快速启动入口保留，注意力队列/历史/统计不渲染，有会话后恢复信息密度布局；悬浮窗为紧凑模式——默认仅显示按最新事件排序的前 3 个活跃（未退出）会话，可展开查看全部，头部仅保留 need-you 计数；里程碑重排——原 M6「窗口质感」拆解并入 M5 线（无边框 + 自定义标题栏归 M5.b，vibrancy/acrylic、托盘、全局快捷键归 M5.c），M6 重定义为「CLI 适配器矩阵」（依赖 S3，见 §11.7）。**
+**当前进度（2026-08-02）：M4 已完成。M5.a 原型（`/prototype`）已覆盖全部设计范围，待评审拍板后进入 M5.b。已定决策：侧栏替代 M3 Tab 栏，导航三态互斥：侧栏展开 / 侧栏收起（图标条）/ 顶部 Tab 栏（无侧栏，Home 常驻最左、新建常驻 tabs 右、hover 出详情卡）；标题栏左侧以实际功能入口（新建会话 / 设置）取代占位菜单（文件/编辑/视图/帮助），三种导航形态下全局恒定；侧栏底部保留快速收展开关；界面（chrome）主题与终端 16 色配色在设置中分开设置——M4 的单一 `themeId` 于 M5.b 拆分为界面/终端两个字段，`themes.ts` 色值结构不变；session/terminal 归属按启动方式固定不迁移；悬浮窗为独立置顶小窗（第二 BrowserWindow，实现归 S3）；v1 只看不操作（注意力列表仅"查看"跳转，无批准/重试）；all-time 统计与跨 session 历史事件需新增 IPC 契约与主进程持久化（契约定于 M5.b，实现归 M5.c / S 线）；中文 UI 字体内嵌 PingFang——SC 六字重 woff2 已入库 `src/assets/fonts/pingfang/`（完整 CJK 字库约 5MB/字重，共约 30MB，来源与授权见目录内 `NOTICE.md`，版权由项目方自行解决），仓库保存完整字体，**构建时按产物实际用字子集化（如 fonttools `pyftsubset` 生成 woff2 子集，或按 unicode-range 切片），未用字重不进产物，禁止全量打包**（子集化管线随 M5.b 首次接入 UI 字体时落地）；Home 空状态（无会话且无终端）重排为居中欢迎页——logo + 问候 + 快速启动入口保留，注意力队列/历史/统计不渲染，有会话后恢复信息密度布局；悬浮窗为紧凑模式——默认仅显示按最新事件排序的前 3 个活跃（未退出）会话，可展开查看全部，头部仅保留 need-you 计数；里程碑重排——原 M6「窗口质感」拆解并入 M5 线（无边框 + 自定义标题栏归 M5.b，vibrancy/acrylic、托盘、全局快捷键归 M5.c），M6 重定义为「CLI 适配器矩阵」（依赖 S3，见 [SPEC-S.md](./SPEC-S.md) §8）。**
 
 **M5.b 已立项（2026-08-02）**：实施计划与 12 条评审决策见
 [PLAN-M5B.md](./PLAN-M5B.md)。对原型/既有约定的修订摘要：标题栏 Win/Linux 自绘右侧
@@ -377,8 +376,31 @@ Shell 三态导航取代，`tabsStore` 拆为 `terminalsStore`（终端条目）
 全量显示 + 横向滚动；侧栏条目补 hover 关闭键（原型未画，评审确认）；关闭最后一个
 终端回 Home 不关窗口、`Ctrl+Shift+T` 改为打开新建会话面板（M3 语义调整）；GUI 全面
 token 化 + JSON 主题配置文件（见 §8「GUI 主题」行）；新建 CLI 会话真实 spawn，
-语义状态仅 working/exited 兜底，六态演示数据由 dev/E2E mock provider 注入；深色
+语义状态仅 working/exited 兜底，侧栏只显示真实启动的 CLI 会话；深色
 界面主题、悬浮窗（S3）、统计/历史真数据（M5.c / S 线）均不在 M5.b。
+
+**Home 欢迎态修订（2026-08-03）**：欢迎态只以 AI CLI session 是否存在为判断依据；
+普通终端不计入，因此只有普通终端时 Home 仍显示居中欢迎页。欢迎页启动卡上方不显示
+Quick Launch 标签，仅在右侧提供「重新扫描」；扫描期间图标持续旋转并禁用重复点击。
+欢迎页每页最多显示 8 个启动入口，超过时在卡片下方显示上一页、页码与下一页控件；
+扫描结果数量变化时自动将当前页校正到有效范围。
+
+**导航条目去重（2026-08-03）**：AI CLI session 底层仍绑定一个 PTY terminal，但该
+terminal 只作为运行载体，不在 Terminal 区重复显示；Session 区显示 CLI 会话，Terminal
+区仅显示用户直接创建的普通终端。侧栏、图标栏与顶部 Tab 使用同一过滤规则。
+
+**Home Session 队列（2026-08-03）**：注意力区域默认展示全部现存 Session，不再只显示
+待处理与出错项；排序优先级为待处理 → 出错 → 运行中 → 空闲 → 完成 → 已退出，同一状态
+内按最近活动时间降序。顶部「全部 / 待处理 / 出错」仍作为快速筛选。Session 队列与
+历史事件列表均使用统一最小高度与最大高度，内容超出后仅纵向滚动并强制隐藏横向溢出；
+不使用“展开全部”继续撑高 Home 页面。
+
+**侧栏长列表与 Session 操作（2026-08-03）**：Session / Terminal 两区按内容紧邻排列，
+不均分侧栏高度；每个列表达到高度上限后独立滚动，侧栏本身不被无限撑长。Session 条目
+保留独立关闭图标，并新增 `…` 操作入口；附加操作显示在 portal 化悬浮下拉菜单中，不改变
+条目或列表高度，后续克隆、分屏等操作沿同一菜单扩展。首批附加操作为重命名。
+重命名编辑器不提供取消 `×`：回车、确认按钮或点击编辑区外均保存；仅空白名称保持
+编辑状态并显示必填错误。条目右侧用于关闭 Session 的独立 `×` 不受此规则影响。
 
 **M5.b 已完成（2026-08-02）**：无边框 Shell、三态导航、Home 两态、完整设置页与
 新建会话三层流已落地；可用终端按平台探测，目录选择和 CLI 的 Windows/WSL 参数会
@@ -398,11 +420,11 @@ token 化 + JSON 主题配置文件（见 §8「GUI 主题」行）；新建 CLI
 逐行 append + 5,000 条压缩、`stats.json` 单调计数，计数独立于日志截断）落地
 `stats:all-time` / `events:history`，新增 `events:record` 写入口（id/occurredAt 主进程
 生成、payload 校验）；现阶段真实事件仅 `session_start` / `session_exit` 两类，由
-renderer 在 CLI 会话启动与 pty 退出时上报，生产构建 Home 切真实数据（dev/E2E 仍
-mock），语义事件由 S 线沿同一管道补写、renderer 与存储层零改动。i18n 五语言
+renderer 在 CLI 会话启动与 pty 退出时上报，Home 在所有环境均读取真实 IPC 数据，
+语义事件由 S 线沿同一管道补写、renderer 与存储层零改动。i18n 五语言
 （zh-CN / zh-TW / en / ja / ko）统一模块化（`src/app/i18n/`，`useStrings` /
 `getStrings` 双入口，`settingsStore` v5 `language` 驱动即时热切换，首装语言跟随
-系统），既有 copy toast 四 key 并入，mock 演示文案迁出 strings 模块不参与字体子集。
+系统），既有 copy toast 四 key 并入。
 系统集成：三端托盘常驻（菜单：显示/隐藏、新建会话、退出；macOS template image），
 标题栏 X 改为隐藏到托盘（PTY 保活，托盘「退出」才真正退出）；全局快捷键
 `Ctrl+Alt+V` quake 式切换（设置开关，v5 `globalShortcutEnabled`，占用时仅告警）；
@@ -475,8 +497,8 @@ tracking；TUI 内鼠标交互不变，退出后立即恢复文案选择。
 
 ## 10. 明确的非目标（v1）
 
-- 插件生态 / 动态模块加载（**但 AI CLI 适配器注册表是核心扩展点，必做——见 §11.4**）
-- **监控外部终端里的 AI CLI 会话**（VS Code / 系统终端 / tmux）——需进程扫描 + 跨进程日志监视，v1 不做；架构在 §11 预留信号来源抽象，未来可加
+- 插件生态 / 动态模块加载（**但 AI CLI 适配器注册表是核心扩展点，必做——见 [SPEC-S.md](./SPEC-S.md) §4**）
+- **监控外部终端里的 AI CLI 会话**（VS Code / 系统终端 / tmux）——需进程扫描 + 跨进程日志监视，v1 不做；架构在 [SPEC-S](./SPEC-S.md) 预留信号来源抽象，未来可加
 - SSH / Serial / 其他 session 类型（先只做本地 shell；架构预留 `session kind` 字段）
 - 云同步、账户体系
 - 移动端
@@ -485,211 +507,21 @@ tracking；TUI 内鼠标交互不变，退出后立即恢复文案选择。
 
 
 
-## 11. AI CLI 语义监控（核心子系统）
+## 11. AI CLI 语义监控（已拆出）
 
-> 这是本产品区别于普通终端的核心。目标：在跑 AI CLI 的同时，把它的运行状态结构化出来，驱动 Dashboard / 侧栏。
+> 本产品区别于普通终端的核心子系统。**完整规格见 [SPEC-S.md](./SPEC-S.md)**（S 线）。
+>
+> 体验主循环：**扫可启动 CLI → 启动列表 → 点启动后再挂 Hooks/监听**（v1 只看不操作）。
 
+**衔接摘要：**
 
-
-### 11.1 根本难点：AI CLI 是 TUI，不是流
-
-Claude Code / Codex CLI 都是**全屏 TUI**——用 alternate screen buffer、光标移动、区域重绘。原始 pty 字节流里全是 `\x1b[2J` / 光标跳转 / 局部重画，**直接正则字节流无法可靠判断状态**。必须先把字节流**重建成屏幕网格**，再从网格读语义。这条决定了下面的架构。
-
-### 11.2 采集点：pty 管道上的语义分流（tap）
-
-由 §4，pty 数据流本就经过主进程 → 主进程是天然分流点。同一份字节流一路发 Renderer 显示，一路喂语义分析：
-
-```
-node-pty 'data'
-   ├──► PtyDataQueue → IPC → Renderer 的 xterm（显示，原样，带背压）
-   └──► SemanticTap ──► HeadlessScreen（屏幕重建）
-                   └──► SidebandSources（旁路信号）
-                          ↓
-                   AiCliAdapter（语义提取）
-                          ↓
-                   SessionState（归一化模型）→ IPC → Renderer Dashboard/侧栏
-```
-
-分流是**非阻塞旁路**：语义分析再慢也不能拖累显示链路与背压。
-
-### 11.3 两套采集基建（适配器按需选用）
-
-**A. HeadlessScreen —— 主进程内的无头终端**
-
-- 用 `@xterm/headless`（xterm 官方无渲染构建，同一套 VT 解析器）在主进程为每个被监控会话重建屏幕网格。
-- 适配器读 `buffer.active` 的单元格 / 行文本提取状态。
-- **放主进程、用独立 headless 实例的理由**：语义层不绑定任何 Tab 的 UI 生命周期，是单一事实来源，且未来扩展后台/未聚焦会话时天然支持。
-- **固有成本：同一字节流被 VT 解析两次**（Renderer 的 xterm 一次用于显示、主进程的 headless 一次用于语义）。这是"语义独立于 UI"的代价，**不是主进程方案的缺点**——若改为复用 Renderer buffer 只解析一次，就会把语义绑死在 UI 上。对"几个 AI CLI 会话"量级，多一次解析的开销可忽略（xterm 解析器本就为全屏高刷 TUI 设计）。
-
-**B. SidebandSources —— 旁路结构化信号（比抓屏可靠）**
-
-
-| 手段                                                   | 可靠性  | 说明                 |
-| ---------------------------------------------------- | ---- | ------------------ |
-| **Hooks**（如 Claude Code settings.json 事件钩子）          | ★★★★ | CLI 主动上报事件，最稳      |
-| **Transcript 日志**（如 `~/.claude/projects/**/*.jsonl`） | ★★★★ | 结构化，可 tail         |
-| **OSC 标记注入**                                         | ★★★  | 若能包裹/配置 CLI 输出     |
-| **屏幕抓取**（HeadlessScreen）                             | ★★   | 通用兜底，CLI 改 UI 可能失效 |
-
-
-原则：**优先旁路信号，抓屏兜底**。旁路信号能拿到屏幕外信息（如 token 用量），抓屏对任意 TUI 都能上手但脆。
-
-### 11.4 CLI 适配器注册表（核心扩展点）
-
-每种 AI CLI 一个适配器；框架启动时注册。**这是本产品真正需要的"插件点"**（区别于 §10 排除的通用 Angular 式动态模块系统）。
-
-```ts
-interface AiCliAdapter {
-  id: string                          // 'claude-code' | 'codex' | ...
-  displayName: string
-  detect(ctx: DetectContext): boolean // 靠 argv / 进程名 / 首屏输出特征识别会话类型
-  strategies: MonitorStrategy[]       // 按可靠性排序，逐个尝试；此即"按适配器各自决定"的落点
-}
-
-interface MonitorStrategy {
-  kind: 'sideband-hook' | 'sideband-log' | 'osc' | 'screen-scrape'
-  attach(session: MonitoredSession): Disposable
-  // 产出 partial SessionState，framework 合并
-  onUpdate(patch: Partial<SessionState>): void
-}
-```
-
-- `detect`：新开 Tab 跑命令时，框架依次问各适配器"这是不是你负责的 CLI"。
-- `strategies`：一个适配器可组合多策略（如 claude-code = transcript 日志 + 抓屏兜底）。框架按序 attach，高可靠信号覆盖低可靠信号。
-
-
-
-### 11.5 归一化会话状态模型（UI 的唯一数据契约）
-
-> 目标不是抓 model/cwd 这类静态元数据，而是**监听一个 AI CLI 会话正在做什么任务、进行到哪一步、要不要你介入**。用户开一个悬浮框看多个 session 的状态，不必一直盯屏；关键事件绑定通知来提醒。
-
-
-
-#### 核心思路：事件流是事实来源，"当前状态"是它的归约结果
-
-适配器只负责**吐事件**（它观察到什么就报什么）；框架把事件流**归约（reduce）**成一个"当前状态"给 UI。UI 只读归约结果。好处：适配器简单无状态、没有多信号覆写的竞态、通知天然挂在事件上。
-
-**不设 "Turn / 一轮任务" 这层结构。** 一轮任务的边界（哪开始、哪结束）恰恰最难可靠判断——抓屏时 AI 中途停顿、多步骤、被打断都会导致误切或误并，一旦切错，挂在其上的时间线与"完成"通知全错。因此模型只有两层：**Session（=一个 Tab，长期）+ 扁平事件流**。需要"当前在做什么 prompt"时，取**最近一次** `prompt-submitted` **事件**作为派生字段即可，不建容器去框住它 → 框架永不需要判断任务边界，也就没有误判空间。
-
-#### 事件类型（会话生命周期）
-
-
-| 事件 type            | 触发          | 关键 payload                   | 注意力事件 |
-| ------------------ | ----------- | ---------------------------- | ----- |
-| `prompt-submitted` | 用户提交 prompt | prompt 文本                    | 否     |
-| `thinking`         | AI 开始思考     | —                            | 否     |
-| `tool-call`        | 调用工具        | 工具名、参数摘要（如 `Bash: npm test`） | 否     |
-| `tool-result`      | 工具返回        | ok / 失败                      | 否     |
-| `question`         | AI 向用户提问    | 问题文本                         | ✅ 需要你 |
-| `approval`         | 请求批准操作      | 要批准什么                        | ✅ 需要你 |
-| `completed`        | AI 停下、交还控制权 | 结果摘要                         | ✅ 完成  |
-| `error`            | 出错          | 错误信息                         | ✅     |
-| `exited`           | 进程退出        | 退出码                          | ✅     |
-
-> **M5.c 注记**：`HistoryEventKind`（`events:history` / `events:record` 契约）已扩
-> `session_start` / `session_exit` 两类生命周期事件，与上表 `exited` 互补（`session_*`
-> 描述会话壳的起止，语义事件表关注 CLI 内部状态）。事件持久化管道
-> （`<userData>/events/events.jsonl` + `stats.json` 单调计数）是 S 线语义事件的
-> 写入目标——S2 起 SemanticTap 主进程直写同一 EventLog，不经 IPC，renderer 与
-> 存储层零改动；`toolCalls/blocked/approvals` 的累加规则随 S 线写入方定义。
-
-
-
-
-#### 派生的当前状态：注意力导向
-
-悬浮框真正要回答的是"**这个 session 现在要不要我**"，所以主状态是注意力导向而非技术导向：
-
-
-| status      | 含义                          | 归约规则（示例）                                 |
-| ----------- | --------------------------- | ---------------------------------------- |
-| `working`   | 在思考/跑工具，别管它                 | 最近事件是 thinking / tool-call 且未见 completed |
-| `needs-you` | **卡在等你**（批准 / 回答）← 悬浮框存在的意义 | 最近事件是 question / approval                |
-| `done`      | 完成一轮，等你下个 prompt            | 最近事件是 completed                          |
-| `error`     | 出错                          | 最近事件是 error                              |
-| `idle`      | 会话开着但无活动                    | 无事件 / 久未活动                               |
-| `exited`    | 进程结束                        | exited                                   |
-
-
-
-
-#### Schema（草图，讨论用）
-
-```ts
-type SessionStatus = 'working' | 'needs-you' | 'done' | 'error' | 'idle' | 'exited'
-
-interface Session {
-  sessionId: string
-  tabId: string
-  adapterId: string            // 'claude-code' | 'codex' | ...
-  status: SessionStatus        // 派生自事件流；悬浮框主状态（颜色/图标）
-  detail?: string              // 一行细节："运行 npm test" / "等待批准：写入 src/main.ts"
-  lastPrompt?: string          // 最近一次 prompt-submitted（派生，非容器）
-  lastActivityAt: number
-  recentEvents: SessionEvent[] // 仅保留最近 N 条，用于侧栏展开看细节；非完整历史
-}
-
-interface SessionEvent {
-  type: 'prompt-submitted' | 'thinking' | 'tool-call' | 'tool-result'
-      | 'question' | 'approval' | 'completed' | 'error' | 'exited'
-  at: number
-  summary: string              // 一行人类可读摘要，UI 直接显示
-  attention?: boolean          // 是否"需要你"，驱动状态与通知
-  // payload 按 type 细化，后续定
-}
-```
-
-> **v1：只看不操作。** 悬浮框/侧栏纯展示状态与事件；要批准/回答就回到对应终端 Tab 手动做。**不做**"从悬浮框直接响应 → 反向注入 pty"这条链路，`question`/`approval` 事件只携带"在等什么"用于展示与通知，不携带可点击选项。（反向注入作为未来增强，届时单独设计。）
-
-
-
-#### 可靠性：关键事件优先走旁路信号
-
-上表事件几乎一对一映射到 **Claude Code 官方 hook 事件**：
-
-```
-UserPromptSubmit → prompt-submitted    PreToolUse  → tool-call
-PostToolUse      → tool-result          Notification→ approval / question
-Stop             → completed            (进程退出) → exited
-```
-
-**通知语义上：误报烦，漏报致命。** "需要你"这类注意力事件应优先从 **hooks / transcript** 拿（CLI 主动上报，稳），抓屏只作没有旁路能力的 CLI 的兜底——抓屏判断"是否在等批准"太脆（TUI 一重绘就可能误判）。这正是 §11.3「优先旁路，抓屏兜底」在状态模型上的体现。
-
-#### 通知绑定
-
-标记了 `attention` 的事件（question / approval / completed / error）可触发通知；用户可配规则，如"needs-you 立即通知""done 仅当 app 不在前台时通知"。
-
-状态推送：主进程维护每 session 的归约状态，变化时 diff 后经 IPC 推给 Renderer（`session:state:{sessionId}`），存入 Zustand 的 `sessionsStore` 驱动悬浮框 / 侧栏 / 通知。
-
-### 11.6 与终端 UI 的关系
-
-- 语义状态**不影响**终端字符显示——xterm 照常原样渲染 CLI 的 TUI。
-- 语义状态**额外**驱动：Tab Header 上的状态徽标、侧栏摘要、Dashboard 聚合视图、（可选）系统通知（如"等待你批准"时提醒）。
-- 这与 §6 多 Tab 模型正交：`tabsStore` 管 Tab，`sessionsStore` 管语义状态，通过 `sessionId ↔ tabId` 关联。
-
-
-
-### 11.7 里程碑增补
-
-语义监控作为独立里程碑线，**依赖 M1（拿到 pty 字节流）后即可起步**，与终端功能线并行：
-
-
-| 阶段  | 目标                                                                                           |
-| --- | -------------------------------------------------------------------------------------------- |
-| S0  | SemanticTap 分流 + 主进程 HeadlessScreen 重建屏幕（能 dump 出网格文本）                                       |
-| S1  | 第一个适配器（claude-code）：抓屏策略识别 working / needs-you / done，归约出 status 推到侧栏                        |
-| S2  | 加旁路信号（hooks + transcript tail）：拿到可靠的 prompt-submitted / tool-call / approval / completed 事件流 |
-| S3  | 第二个适配器（codex）验证抽象是否够用；悬浮框聚合多 session 状态                                                      |
-| S4  | 通知系统：注意力事件（needs-you / done / error）按用户规则触发通知（v1 只看不操作，不做反向注入）                               |
-
-S 线与 M6 的分工：S 线负责**跑通架构**——分流、抓屏、旁路信号、以 claude-code 与
-codex 两个参考适配器验证 adapter 抽象是否够用；M6 负责**铺开覆盖面**——在 S3 抽象
-定稿后接入剩余主流 CLI，两者不重叠。适配器接口若在 M6 期间需要变更，属抽象验证失败，
-应回溯 S3 而非在 M6 内打补丁。
+- 扫：本机哪些 AI CLI **装了、能拉起来**（不是扫已有进程）。
+- 列：**启动列表**只展示扫到的候选（M5 静态 `cliOptions` 将被替换）。
+- 启：用户点启动并 spawn 成功后，才按 adapter 注入 Hooks / 其它监听；运行态侧栏在后。
+- M6 依赖 S 线先完成 S0「扫 / 列 / 按安装启动」，再由 S3 用第二种协议形态验证 observer 抽象（见 SPEC-S §8）。
 
 
 ---
-
 
 
 ## 附：数据流总图
@@ -704,7 +536,7 @@ shell 输出
   → PtyProxy.onData → xterm.write(bytes, cb) → VT 解析 → Buffer → WebGL 渲染
   → cb 触发 → PtyProxy.ack → IPC(pty:ack) → 流控放行
 
-语义监控（旁路，非阻塞）
+语义监控（旁路，非阻塞）——详见 [SPEC-S.md](./SPEC-S.md)
   → node-pty 'data' → SemanticTap
        ├→ HeadlessScreen(@xterm/headless) → 屏幕网格
        └→ SidebandSources(hooks / transcript / osc)

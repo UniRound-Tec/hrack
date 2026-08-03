@@ -8,10 +8,6 @@ import {
   loadUiThemeRegistry,
   setUiThemeRegistry
 } from './app/themeRuntime'
-import {
-  setRuntimeMockSessions,
-  stopRuntimeMockSessions
-} from './app/mockSessions'
 import { useSettingsStore } from './state/settingsStore'
 
 const licenseLink = document.createElement('link')
@@ -69,13 +65,10 @@ async function bootstrap(): Promise<void> {
   const unsubscribeThemeWatch = window.appThemeApi.onUserThemesChanged(() => {
     void reloadRegistry()
   })
-  setRuntimeMockSessions(isMockRuntime())
-
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
       unsubscribeTheme()
       unsubscribeThemeWatch()
-      stopRuntimeMockSessions()
     })
   }
 
@@ -93,13 +86,6 @@ async function bootstrap(): Promise<void> {
   // 注意：不使用 <React.StrictMode>。StrictMode 会在 dev 下双触发 effect，
   // 导致 xterm 被 mount→dispose→mount 且 pty 重复 spawn，违背 SPEC §5.1「只挂载一次」。
   createRoot(document.getElementById('root')!).render(<App />)
-}
-
-function isMockRuntime(): boolean {
-  return (
-    import.meta.env.DEV ||
-    Boolean((globalThis as Record<string, unknown>)['__VIBING_E2E__'])
-  )
 }
 
 void bootstrap()

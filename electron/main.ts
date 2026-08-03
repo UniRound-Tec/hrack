@@ -23,6 +23,7 @@ import {
 } from './tray'
 import { startThemeWatcher, stopThemeWatcher } from './themes-watch'
 import { AppEventChannel } from '../shared/ipc-contract'
+import { AiCliDiscoveryService } from './ai-cli-discovery'
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
 // 必须在 app ready 之前调用。
@@ -32,6 +33,9 @@ if (userDataOverride) {
 }
 
 const manager = new PTYManager()
+const cliDiscovery = new AiCliDiscoveryService(
+  join(app.getPath('userData'), 'ai-cli-scan.json')
+)
 
 app.whenReady().then(async () => {
   // M0 验收：抵达此行即证明 node-pty 已按 Electron ABI 成功加载
@@ -75,6 +79,7 @@ app.whenReady().then(async () => {
 
   const ctx: IpcContext = {
     eventLog,
+    cliDiscovery,
     getWindow: () => (winRef && !winRef.isDestroyed() ? winRef : null),
     getTray: () => trayRef,
     rebuildTrayMenu: () => {

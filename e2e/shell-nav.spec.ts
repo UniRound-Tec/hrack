@@ -65,18 +65,9 @@ test('switches sidebar, rail and scrolling top-tab navigation', async () => {
   await page.getByTestId('settings-nav-tabs').click()
   await expect(page.getByTestId('top-tab-bar')).toBeVisible()
   await expect(page.getByTestId('sidebar')).toHaveCount(0)
-  await expect(page.getByTestId('toptab-session-item')).toHaveCount(17)
+  await expect(page.getByTestId('toptab-session-item')).toHaveCount(0)
   await expect(page.getByTestId('toptab-terminal-item')).toHaveCount(1)
   await expect(page.getByTestId('toptab-new-session')).toBeVisible()
-
-  const overflow = await page.getByTestId('toptab-scroll').evaluate((node) => ({
-    clientWidth: node.clientWidth,
-    scrollWidth: node.scrollWidth
-  }))
-  expect(overflow.scrollWidth).toBeGreaterThan(overflow.clientWidth)
-
-  await page.getByTestId('toptab-session-item').first().hover()
-  await expect(page.getByTestId('toptab-hover-card')).toBeVisible()
 
   await page.evaluate(() =>
     window.__vibingDebugShell?.setNavMode('sidebar')
@@ -117,16 +108,4 @@ test('cycles between opened terminals and closes to the active neighbor', async 
   await expect(terminals).toHaveCount(1)
   await expect(terminals.first()).toHaveAttribute('aria-current', 'page')
   await expect(page.locator('.xterm:visible')).toHaveCount(1)
-})
-
-test('toggles prototype sessions through the E2E shell bridge', async () => {
-  await expect(page.getByTestId('sidebar-session-item')).toHaveCount(17)
-  await page.evaluate(() =>
-    window.__vibingDebugShell?.setMockSessions(false)
-  )
-  await expect(page.getByTestId('sidebar-session-item')).toHaveCount(0)
-  await page.evaluate(() =>
-    window.__vibingDebugShell?.setMockSessions(true)
-  )
-  await expect(page.getByTestId('sidebar-session-item')).toHaveCount(17)
 })

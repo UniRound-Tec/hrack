@@ -31,7 +31,10 @@ export const zhTW = {
     expandSidebar: '展開側欄',
     collapseSidebar: '收合側欄',
     closeTerminal: '關閉終端機',
-    closeSession: '關閉工作階段'
+    closeSession: '關閉工作階段',
+    sessionActions: '工作階段操作',
+    renameSession: '重新命名',
+    sessionNameRequired: '工作階段名稱不能為空'
   },
   sessionStatus: {
     working: '執行中',
@@ -75,9 +78,11 @@ export const zhTW = {
     live: (count: number) => `${count} live`,
     defaultTerminal: (name: string) => `預設：${name}`,
     terminalOptions: '終端機選項',
+    previousLaunchPage: '上一頁',
+    nextLaunchPage: '下一頁',
     attention: '注意力優先',
     allStatuses: '全部',
-    emptyAttention: '目前沒有待處理或發生錯誤的工作階段',
+    emptyAttention: '目前篩選條件下沒有工作階段',
     showMore: '展開更多',
     showLess: '收起 ↑',
     showAll: (count: number) => `展開全部 ${count} 條 ↓`,
@@ -137,6 +142,7 @@ export const zhTW = {
     terminalRoundedHint: '內容區圓角並為終端機加兩側留白；關閉後終端機貼邊顯示',
     defaultTerminal: '預設終端機',
     defaultTerminalHint: 'quick launch 的「終端機」晶片依此啟動',
+    cliDiscovery: 'AI CLI 掃描',
     preferences: 'settings · preferences',
     description: '版面與控制項沿用定稿原型；各項設定直讀寫 settingsStore。',
     mapleMono: 'Maple Mono',
@@ -169,6 +175,13 @@ export const zhTW = {
     terminalFallback: '系統預設終端機',
     workspacePlaceholder: '請選擇工作區',
     argumentsPlaceholder: '--flag value',
+    scanningClis: '正在掃描 Windows 與 WSL…',
+    noClisFound: '未發現可啟動的 AI CLI',
+    refreshClis: '重新掃描',
+    clisFound: (count: number) => `已發現 ${count} 個 AI CLI`,
+    partialScanErrors: (count: number) => `${count} 項未通過驗證`,
+    installation: '安裝位置',
+    launching: '啟動中…',
     p2Placeholder: 'CLI 與執行環境選項將在 P3 接入'
   },
   shell: {

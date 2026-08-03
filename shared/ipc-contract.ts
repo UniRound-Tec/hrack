@@ -11,7 +11,8 @@ import type { UserThemeFile } from './theme-schema'
 export interface SpawnOptions {
   /** 未提供时由主进程按平台选默认 shell（Windows→pwsh，类 Unix→$SHELL/bash）。 */
   shell?: string
-  args?: string[]
+  /** Windows command shims may require a verbatim command line for node-pty. */
+  args?: string[] | string
   cwd?: string
   env?: Record<string, string>
   cols?: number
@@ -113,6 +114,52 @@ export interface ShellOption {
   args?: string[]
 }
 
+export type CliRuntime =
+  | { kind: 'host'; platform: 'windows' | 'macos' | 'linux' }
+  | { kind: 'wsl'; distro: string }
+
+export interface CliInstallation {
+  id: string
+  definitionId: string
+  runtime: CliRuntime
+  resolvedExecutable: string
+  detectedVia: 'path' | 'known-path'
+  version?: string
+  verification: 'verified'
+}
+
+export interface LaunchableCliDefinition {
+  id: string
+  adapterId: string
+  displayName: string
+  hint: string
+  iconId: string
+}
+
+export interface LaunchableCli {
+  definition: LaunchableCliDefinition
+  installations: CliInstallation[]
+}
+
+export interface CliRuntimeError {
+  runtime: CliRuntime
+  code: 'unavailable' | 'timeout' | 'probe-failed'
+  detail: string
+}
+
+export interface CliScanReport {
+  startedAt: number
+  finishedAt: number
+  launchable: LaunchableCli[]
+  runtimeErrors: CliRuntimeError[]
+}
+
+export interface CliLaunchSelection {
+  installationId: string
+  workspace: string
+  args: string[]
+}
+
 /** 平台元信息。 */
 export interface PtyMeta {
   platform: string
@@ -168,6 +215,11 @@ export const DialogInvokeChannel = {
 
 export const ShellInvokeChannel = {
   ListAvailable: 'shell:list-available'
+} as const
+
+export const CliInvokeChannel = {
+  Scan: 'cli:scan',
+  PrepareLaunch: 'cli:prepare-launch'
 } as const
 
 /** M5.c: real persistence behind stats/history; renderer reports lifecycle events. */
@@ -269,6 +321,11 @@ export interface DialogApi {
 
 export interface ShellApi {
   listAvailable: () => Promise<ShellOption[]>
+}
+
+export interface CliApi {
+  scan: (force?: boolean) => Promise<CliScanReport>
+  prepareLaunch: (selection: CliLaunchSelection) => Promise<SpawnOptions>
 }
 
 export interface StatsApi {

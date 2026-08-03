@@ -31,7 +31,10 @@ export const ja = {
     expandSidebar: 'サイドバーを展開',
     collapseSidebar: 'サイドバーを折りたたむ',
     closeTerminal: 'ターミナルを閉じる',
-    closeSession: 'セッションを閉じる'
+    closeSession: 'セッションを閉じる',
+    sessionActions: 'セッション操作',
+    renameSession: '名前を変更',
+    sessionNameRequired: 'セッション名を入力してください'
   },
   sessionStatus: {
     working: '実行中',
@@ -75,9 +78,11 @@ export const ja = {
     live: (count: number) => `${count} live`,
     defaultTerminal: (name: string) => `デフォルト：${name}`,
     terminalOptions: 'ターミナルオプション',
+    previousLaunchPage: '前のページ',
+    nextLaunchPage: '次のページ',
     attention: '注意優先',
     allStatuses: 'すべて',
-    emptyAttention: '現在、要対応またはエラーのセッションはありません',
+    emptyAttention: 'このフィルターに一致するセッションはありません',
     showMore: 'さらに表示',
     showLess: '折りたたむ ↑',
     showAll: (count: number) => `すべて表示 ${count} 件 ↓`,
@@ -137,6 +142,7 @@ export const ja = {
     terminalRoundedHint: 'コンテンツ領域を角丸にして両側に余白。オフで端まで表示',
     defaultTerminal: 'デフォルトターミナル',
     defaultTerminalHint: 'quick launch の「ターミナル」チップがこれで起動します',
+    cliDiscovery: 'AI CLI スキャン',
     preferences: 'settings · preferences',
     description: 'レイアウトとコントロールは確定プロトタイプに準拠。設定は settingsStore に直書き。',
     mapleMono: 'Maple Mono',
@@ -169,6 +175,13 @@ export const ja = {
     terminalFallback: 'システム既定のターミナル',
     workspacePlaceholder: 'ワークスペースを選択',
     argumentsPlaceholder: '--flag value',
+    scanningClis: 'Windows と WSL をスキャン中…',
+    noClisFound: '起動可能な AI CLI が見つかりません',
+    refreshClis: '再スキャン',
+    clisFound: (count: number) => `${count} 個の AI CLI を検出`,
+    partialScanErrors: (count: number) => `${count} 件の検証に失敗`,
+    installation: 'インストール先',
+    launching: '起動中…',
     p2Placeholder: 'CLI と実行環境のオプションは P3 で追加'
   },
   shell: {
