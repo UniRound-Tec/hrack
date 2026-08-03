@@ -9,9 +9,10 @@ import { useXterm } from './useXterm'
 interface TerminalViewProps {
   tabId: string
   active: boolean
+  onInitialSpawn?: (terminalId: string, error: string | null) => void
 }
 
-export default function TerminalView({ tabId, active }: TerminalViewProps) {
+export default function TerminalView({ tabId, active, onInitialSpawn }: TerminalViewProps) {
   const ref = useRef<HTMLDivElement>(null)
   const hideCopiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const language = useSettingsStore((state) => state.language)
@@ -64,7 +65,8 @@ export default function TerminalView({ tabId, active }: TerminalViewProps) {
           })
         }
       }
-    }
+    },
+    (error) => onInitialSpawn?.(tabId, error)
   )
 
   return (

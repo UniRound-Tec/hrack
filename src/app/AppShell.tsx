@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
@@ -46,6 +47,12 @@ export interface VibingDebugShellApi {
   setNavMode(mode: NavMode): void
 }
 
+interface PendingCliLaunch {
+  draft: CliLaunchDraft
+  previousPage: PageId
+  resolve: (error: string | null) => void
+}
+
 export default function AppShell() {
   const [pageId, setPageId] = useState<PageId>('home')
   const [newSessionOpen, setNewSessionOpen] = useState(false)
@@ -56,6 +63,7 @@ export default function AppShell() {
   const [cliReport, setCliReport] = useState<CliScanReport | null>(null)
   const [cliScanning, setCliScanning] = useState(true)
   const [cliScanError, setCliScanError] = useState<string | null>(null)
+  const pendingCliLaunches = useRef(new Map<string, PendingCliLaunch>())
   const navMode = useSettingsStore((state) => state.navMode)
   const setNavMode = useSettingsStore((state) => state.setNavMode)
   const terminalRounded = useSettingsStore((state) => state.terminalRounded)
@@ -171,27 +179,59 @@ export default function AppShell() {
         cwd: draft.workspace.trim(),
         launch
       })
+      setPageId(terminalPage(terminal.id))
+      return new Promise<string | null>((resolve) => {
+        pendingCliLaunches.current.set(terminal.id, {
+          draft,
+          previousPage: pageId,
+          resolve
+        })
+      })
+    },
+    [addTerminal, pageId]
+  )
+
+  const handleInitialTerminalSpawn = useCallback(
+    (terminalId: string, error: string | null): void => {
+      const pending = pendingCliLaunches.current.get(terminalId)
+      if (!pending) return
+      pendingCliLaunches.current.delete(terminalId)
+
+      if (error) {
+        closeTerminal(terminalId)
+        const previousTerminalId = terminalIdFromPage(pending.previousPage)
+        const previousPageStillExists = !previousTerminalId ||
+          useTerminalsStore.getState().terminals.some(
+            (terminal) => terminal.id === previousTerminalId
+          )
+        setPageId(previousPageStillExists ? pending.previousPage : 'home')
+        pending.resolve(error)
+        return
+      }
+
+      const { draft } = pending
+      const name = draft.name.trim() || draft.option.definition.displayName
       addSession({
         sessionId: crypto.randomUUID(),
-        terminalId: terminal.id,
+        terminalId,
         adapterId: draft.option.definition.adapterId,
         installationId: draft.installationId,
-        name: draft.name.trim() || draft.option.definition.displayName,
+        name,
         status: 'working',
         lastActivityAt: Date.now()
       })
-      // M5.c：CLI 会话启动记录为历史事件（生命周事件；语义事件由 S 线沿同一管道补）。
+      // Only persist a lifecycle start after the PTY has actually been created.
       void window.statsApi.recordEvent({
         kind: 'session_start',
         adapterId: draft.option.definition.adapterId,
-        title: draft.name.trim() || draft.option.definition.displayName,
+        title: name,
         detail: draft.workspace.trim()
       })
       setNewSessionOpen(false)
-      setPageId(terminalPage(terminal.id))
-      return null
+      setPageId(terminalPage(terminalId))
+      pending.resolve(null)
     },
-    [addSession, addTerminal]
+    [addSession, closeTerminal]
   )
 
   const configureCli = useCallback((option: CliOption): void => {
@@ -426,6 +466,7 @@ export default function AppShell() {
                 key={terminal.id}
                 terminal={terminal}
                 active={activeTerminalId === terminal.id}
+                onInitialSpawn={handleInitialTerminalSpawn}
               />
             ))}
           </div>

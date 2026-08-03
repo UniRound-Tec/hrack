@@ -1,12 +1,18 @@
 import ClaudeCode from '@lobehub/icons/es/ClaudeCode/components/Mono'
+import CodeBuddy from '@lobehub/icons/es/CodeBuddy/components/Mono'
 import Codex from '@lobehub/icons/es/Codex/components/Mono'
 import Cursor from '@lobehub/icons/es/Cursor/components/Mono'
 import GeminiCLI from '@lobehub/icons/es/GeminiCLI/components/Mono'
 import Grok from '@lobehub/icons/es/Grok/components/Mono'
 import Kimi from '@lobehub/icons/es/Kimi/components/Mono'
+import Junie from '@lobehub/icons/es/Junie/components/Mono'
+import KiloCode from '@lobehub/icons/es/KiloCode/components/Mono'
 import LobeHub from '@lobehub/icons/es/LobeHub/components/Mono'
+import Mistral from '@lobehub/icons/es/Mistral/components/Mono'
 import OpenCode from '@lobehub/icons/es/OpenCode/components/Mono'
 import Pi from '@lobehub/icons/es/Pi/components/Mono'
+import Qoder from '@lobehub/icons/es/Qoder/components/Mono'
+import Trae from '@lobehub/icons/es/Trae/components/Mono'
 import type { ComponentType, SVGProps } from 'react'
 
 export type BrandIcon = ComponentType<
@@ -22,6 +28,12 @@ const adapterIcons: Record<string, BrandIcon> = {
   kimi: Kimi,
   grok: Grok,
   pi: Pi,
+  'mistral-vibe': Mistral,
+  junie: Junie,
+  qoder: Qoder,
+  'codebuddy-code': CodeBuddy,
+  kilo: KiloCode,
+  'trae-agent': Trae,
   aider: LobeHub,
   'warp-agent': LobeHub,
   continue: LobeHub
@@ -41,6 +53,14 @@ const adapterNames: Record<string, string> = {
   kimi: 'Kimi Code',
   grok: 'Grok Build',
   pi: 'Pi',
+  'factory-droid': 'Factory Droid',
+  auggie: 'Auggie',
+  'mistral-vibe': 'Mistral Vibe',
+  junie: 'Junie',
+  qoder: 'Qoder CLI',
+  'codebuddy-code': 'CodeBuddy Code',
+  kilo: 'Kilo Code',
+  'trae-agent': 'Trae Agent',
   aider: 'Aider',
   'warp-agent': 'Warp Agent',
   continue: 'Continue'

@@ -1,6 +1,6 @@
 # AI CLI 发现与启动线 — Spec（S 线）
 
-> 状态：**S0 实施规格**。
+> 状态：**S0 扫描与启动逻辑已完成（2026-08-03）**；跨平台自动化矩阵仍待补齐。
 > 当前只交付：**扫描 → 启动列表 → 点击进入配置 → 按所选环境启动**。
 > 生命周期监听、Hooks、JSONL/ACP、六态语义与通知全部后置，见 §9。
 >
@@ -11,7 +11,8 @@
 ## 0. 当前产品闭环
 
 ```text
-扫描 Windows 主机 + 每个可用 WSL 发行版
+扫描当前主机（Windows / macOS / Linux）
+  + Windows 上的每个可用 WSL 发行版
   ↓
 只列出已验证、可启动的 AI CLI
   ↓
@@ -27,7 +28,7 @@
 本阶段的“点击”不是在卡片上直接执行 CLI，而是进入现有 `NewSessionFlow` 配置层；
 真正 spawn 仍由配置层的“启动”按钮触发。
 
-M5 现状是 renderer 中的 `cliOptions` 静态品牌墙，不论本机是否安装都展示。S0 将它拆成：
+S0 已移除 renderer 中不论安装状态都展示的静态品牌墙，并拆成：
 
 - 产品维护的静态 **CLI 定义**；
 - 主进程实际扫描得到的 **CLI 安装**；
@@ -204,6 +205,9 @@ Aider `--yes` 固化成品牌默认值。
 | **Extended（同一数据机制）** | Factory Droid、Auggie、Mistral Vibe、Junie、Qoder CLI、CodeBuddy Code、Kilo、Trae Agent |
 | **Legacy metadata（默认隐藏）** | Amazon Q `q`、`warp-cli`、Continue `cn`、旧 `gh copilot`；iFlow 已停运，不作为可启动产品 |
 
+当前内置注册表已覆盖 18 个 Core 与 8 个 Extended 产品。Legacy 只保留调研元数据，尚不进入
+默认扫描和启动列表。
+
 Extended 不要求 S0 为其实现监听，只要求一旦定义的身份探针被确认，就能复用同一扫描、列表与
 启动数据流。ACP Registry 的 38 个 entry 不直接等于 38 个 TUI 产品；wrapper、framework、
 云端代理和垂直工具按 [市场调研](./RESEARCH-AI-CLI-MARKET.md) 的分类决定是否加入定义。
@@ -309,11 +313,12 @@ S0 新会话应保存 `installationId`，使历史/诊断知道它来自 Windows
 
 ### 6.1 扫描时机与缓存
 
-- App 启动后由主进程后台扫描一次，结果在本次应用进程内缓存；
-- Home 与新建会话订阅/读取该缓存；无结果时等待同一正在进行的扫描，不重复发起；
+- App 启动后先读取带 schema version 的 `<userData>/ai-cli-scan.json`，缓存缺失、损坏或版本
+  不兼容时才后台完整扫描；
+- Home 与新建会话读取主进程同一份缓存；无结果时等待同一正在进行的扫描，不重复发起；
 - 用户点击刷新时强制新一轮扫描；同一时间只允许一个扫描任务；
 - 不因窗口 focus 自动重扫，避免反复启动 WSL；
-- S0 不要求跨应用重启持久化扫描结果，避免展示已经卸载的 CLI。
+- 完整扫描结果与 WSL 登录 PATH 原子覆盖持久化缓存；卸载或 PATH 变化后由用户主动重新扫描刷新。
 
 ---
 
@@ -348,28 +353,29 @@ S0 新会话应保存 `installationId`，使历史/诊断知道它来自 Windows
 
 ### S0.1 — 注册表与跨环境扫描
 
-- [ ] 静态 CLI 定义与扫描结果分离；
-- [ ] Windows 主机按 PATH/PATHEXT 解析并运行品牌探针；
-- [ ] 枚举每个用户 WSL 发行版，分别 resolve + verify；
-- [ ] PATH 未命中时仅检查定义声明的固定路径；
-- [ ] 超时、重名、错误发行版不会产生假安装；
-- [ ] 扫描结果包含准确 runtime、distro、path、version（若可取得）。
+- [x] 静态 CLI 定义与扫描结果分离；
+- [x] Windows 主机按 PATH/PATHEXT 解析并运行品牌探针；
+- [x] macOS/Linux 合并登录 Shell PATH、进程 PATH 与标准 bin 目录后逐候选 resolve + verify；
+- [x] 枚举每个用户 WSL 发行版，分别 resolve + verify；
+- [x] PATH 未命中时仅检查定义声明的固定路径；
+- [x] 超时、重名、错误发行版不会产生假安装；
+- [x] 扫描结果包含准确 runtime、distro、path、version（若可取得）。
 
 ### S0.2 — 真启动列表与点击进入
 
-- [ ] Home 与新建会话不再直接读取静态 `cliOptions`；
-- [ ] 只展示至少有一个 verified installation 的产品；
-- [ ] 点击产品进入现有配置层；
-- [ ] 多安装产品可以选择 Windows 或具体 WSL 发行版；
-- [ ] 无结果、扫描中、部分失败和手动刷新状态可见。
+- [x] Home 与新建会话不再直接读取静态 `cliOptions`；
+- [x] 只展示至少有一个 verified installation 的产品；
+- [x] 点击产品进入现有配置层；
+- [x] 多安装产品可以选择 Windows 或具体 WSL 发行版；
+- [x] 无结果、扫描中、部分失败和手动刷新状态可见。
 
 ### S0.3 — 按所选安装启动
 
-- [ ] Windows 使用扫描到的准确路径；
-- [ ] WSL 使用扫描到的准确发行版、路径与转换后的 cwd；
-- [ ] 默认不附加任何权限绕过参数；
-- [ ] 启动成功建立 terminal/session/installation 关联；
-- [ ] 启动失败不创建幽灵 session，并返回可理解错误；
+- [x] Windows/macOS/Linux 使用扫描到的准确路径；
+- [x] WSL 使用扫描到的准确发行版、路径与转换后的 cwd；
+- [x] 默认不附加任何权限绕过参数；
+- [x] PTY 创建成功后才建立 terminal/session/installation 关联；
+- [x] PTY 创建失败会移除临时 terminal，不创建 session，并在配置层返回可理解错误；
 - [ ] 覆盖 Windows-only、WSL-only、双环境、多 WSL、重名、probe timeout 的自动化测试。
 
 ### 后续（不属于当前实现）

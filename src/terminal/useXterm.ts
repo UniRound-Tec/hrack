@@ -97,7 +97,8 @@ export function useXterm(
   active: boolean,
   onCopied?: () => void,
   onTitle?: (title: string) => void,
-  onExit?: (code: number | undefined, respawned: boolean) => void
+  onExit?: (code: number | undefined, respawned: boolean) => void,
+  onInitialSpawn?: (error: string | null) => void
 ): void {
   const terminalRef = useRef<Terminal | null>(null)
   const rendererRef = useRef<RendererController | null>(null)
@@ -108,11 +109,13 @@ export function useXterm(
   const onCopiedRef = useRef(onCopied)
   const onTitleRef = useRef(onTitle)
   const onExitRef = useRef(onExit)
+  const onInitialSpawnRef = useRef(onInitialSpawn)
   useEffect(() => {
     onCopiedRef.current = onCopied
     onTitleRef.current = onTitle
     onExitRef.current = onExit
-  }, [onCopied, onExit, onTitle])
+    onInitialSpawnRef.current = onInitialSpawn
+  }, [onCopied, onExit, onInitialSpawn, onTitle])
 
   useEffect(() => {
     const container = containerRef.current
@@ -162,6 +165,12 @@ export function useXterm(
     })
 
     let proxy: PtyProxy | null = null
+    let initialSpawnPending = true
+    const settleInitialSpawn = (error: string | null): void => {
+      if (!initialSpawnPending) return
+      initialSpawnPending = false
+      onInitialSpawnRef.current?.(error)
+    }
     let disposed = false
     let ptyAckDelayMs = 0
     let ptyRenderingSuspended = false
@@ -381,14 +390,18 @@ export function useXterm(
         .then(({ ptyId }) => {
           if (disposed) {
             void window.ptyApi.kill(ptyId)
+            settleInitialSpawn('Launch was cancelled before the terminal became ready')
             return
           }
           wireProxy(new PtyProxy(ptyId))
+          settleInitialSpawn(null)
         })
         .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err)
           term.write(
-            `\r\n\x1b[31mFailed to spawn shell: ${String(err)}\x1b[0m\r\n`
+            `\r\n\x1b[31mFailed to spawn shell: ${message}\x1b[0m\r\n`
           )
+          settleInitialSpawn(message)
         })
     }
 

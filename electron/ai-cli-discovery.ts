@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { constants as fsConstants } from 'node:fs'
 import {
   access,
   mkdir,
@@ -8,7 +9,8 @@ import {
   stat,
   writeFile
 } from 'node:fs/promises'
-import { dirname, extname, join } from 'node:path'
+import { homedir } from 'node:os'
+import { delimiter, dirname, extname, join } from 'node:path'
 import type {
   CliInstallation,
   CliLaunchSelection,
@@ -22,7 +24,7 @@ import type {
 const COMMAND_TIMEOUT_MS = 2_500
 const COMMAND_MAX_BUFFER = 64 * 1024
 const SCAN_CONCURRENCY = 4
-const CLI_SCAN_CACHE_VERSION = 1
+const CLI_SCAN_CACHE_VERSION = 2
 const SYSTEM_WSL_DISTROS = new Set([
   'docker-desktop',
   'docker-desktop-data',
@@ -42,6 +44,7 @@ export interface CliDefinition {
   hint: string
   iconId: string
   executables: { windows?: string[]; unix?: string[] }
+  identityProbe?: CliProbe
   probes: CliProbe[]
   knownPaths?: { windows?: string[]; unixHomeRelative?: string[] }
   launchArgs?: string[]
@@ -145,6 +148,7 @@ export const cliDefinitions: readonly CliDefinition[] = [
     id: 'pi', adapterId: 'pi', displayName: 'Pi',
     hint: 'Minimal coding agent', iconId: 'pi',
     executables: { windows: ['pi'], unix: ['pi'] },
+    identityProbe: { args: ['--help'], outputPattern: /pi\s+-\s+AI coding assistant/i },
     probes: [versionProbe(/pi(?: coding)?/i)],
     knownPaths: { unixHomeRelative: ['.local/bin/pi'] }
   },
@@ -189,6 +193,69 @@ export const cliDefinitions: readonly CliDefinition[] = [
     hint: 'Pair programming CLI', iconId: 'aider',
     executables: { windows: ['aider'], unix: ['aider'] },
     probes: [versionProbe(/aider/i)]
+  },
+  {
+    id: 'factory-droid', adapterId: 'factory-droid', displayName: 'Factory Droid',
+    hint: 'Factory coding agent', iconId: 'factory-droid',
+    executables: { windows: ['droid'], unix: ['droid'] },
+    identityProbe: { args: ['--help'], outputPattern: /(?:factory|droid CLI)/i },
+    probes: [{ args: ['-v'], outputPattern: brandedOrVersion(/(?:factory|droid)/i) }],
+    knownPaths: {
+      windows: ['%USERPROFILE%\\.local\\bin\\droid.exe'],
+      unixHomeRelative: ['.local/bin/droid']
+    }
+  },
+  {
+    id: 'auggie', adapterId: 'auggie', displayName: 'Auggie',
+    hint: 'Augment Code terminal agent', iconId: 'auggie',
+    executables: { unix: ['auggie'] },
+    probes: [versionProbe(/(?:auggie|augment)/i)]
+  },
+  {
+    id: 'mistral-vibe', adapterId: 'mistral-vibe', displayName: 'Mistral Vibe',
+    hint: 'Mistral coding agent', iconId: 'mistral-vibe',
+    executables: { windows: ['vibe'], unix: ['vibe'] },
+    probes: [versionProbe(/(?:mistral|vibe)/i)],
+    knownPaths: { unixHomeRelative: ['.local/bin/vibe'] }
+  },
+  {
+    id: 'junie', adapterId: 'junie', displayName: 'Junie',
+    hint: 'JetBrains coding agent', iconId: 'junie',
+    executables: { windows: ['junie'], unix: ['junie'] },
+    probes: [versionProbe(/junie/i)],
+    knownPaths: { unixHomeRelative: ['.local/bin/junie'] }
+  },
+  {
+    id: 'qoder', adapterId: 'qoder', displayName: 'Qoder CLI',
+    hint: 'Qoder terminal agent', iconId: 'qoder',
+    executables: { windows: ['qodercli'], unix: ['qodercli'] },
+    probes: [versionProbe(/qoder/i)],
+    knownPaths: { unixHomeRelative: ['.local/bin/qodercli'] }
+  },
+  {
+    id: 'codebuddy-code', adapterId: 'codebuddy-code', displayName: 'CodeBuddy Code',
+    hint: 'Tencent coding agent', iconId: 'codebuddy-code',
+    executables: { windows: ['codebuddy', 'cbc'], unix: ['codebuddy', 'cbc'] },
+    probes: [versionProbe(/(?:codebuddy|tencent)/i)],
+    knownPaths: {
+      windows: ['%LOCALAPPDATA%\\codebuddy\\bin\\codebuddy.exe'],
+      unixHomeRelative: ['.local/bin/codebuddy']
+    }
+  },
+  {
+    id: 'kilo', adapterId: 'kilo', displayName: 'Kilo Code',
+    hint: 'Kilo coding agent', iconId: 'kilo',
+    executables: { windows: ['kilo'], unix: ['kilo'] },
+    probes: [versionProbe(/kilo/i)],
+    knownPaths: { unixHomeRelative: ['.local/bin/kilo'] }
+  },
+  {
+    id: 'trae-agent', adapterId: 'trae-agent', displayName: 'Trae Agent',
+    hint: 'ByteDance software engineering agent', iconId: 'trae-agent',
+    executables: { windows: ['trae-cli'], unix: ['trae-cli'] },
+    probes: [{ args: ['--help'], outputPattern: /trae(?: agent|-cli)/i }],
+    knownPaths: { unixHomeRelative: ['.local/bin/trae-cli'] },
+    launchArgs: ['interactive']
   }
 ] as const
 
@@ -304,6 +371,17 @@ async function verifyHost(
   definition: CliDefinition,
   path: string
 ): Promise<{ version?: string; timedOut: boolean } | null> {
+  if (definition.identityProbe) {
+    const identity = await runCommand(path, definition.identityProbe.args)
+    const accepted = definition.identityProbe.acceptedExitCodes ?? [0]
+    const output = `${identity.stdout}\n${identity.stderr}`
+    if (identity.timedOut) return { timedOut: true }
+    if (
+      identity.code === null ||
+      !accepted.includes(identity.code) ||
+      !definition.identityProbe.outputPattern.test(output)
+    ) return null
+  }
   for (const probe of definition.probes) {
     const result = await runCommand(path, probe.args)
     const output = `${result.stdout}\n${result.stderr}`
@@ -323,40 +401,42 @@ function expandWindowsPath(template: string): string | null {
   return expanded.includes('%') || !expanded ? null : expanded
 }
 
-async function firstExisting(paths: readonly string[]): Promise<string | null> {
-  for (const path of paths) {
-    try {
-      await access(path)
-      return path
-    } catch {
-      // Try the next fixed candidate.
-    }
+async function isExecutableFile(path: string, requireExecute = false): Promise<boolean> {
+  try {
+    await access(path, requireExecute ? fsConstants.X_OK : fsConstants.F_OK)
+    return (await stat(path)).isFile()
+  } catch {
+    return false
   }
-  return null
 }
 
-function windowsExecutable(paths: string): string | null {
+function windowsExecutables(paths: string): string[] {
   return paths
     .split(/\r?\n/)
     .map((path) => path.trim())
-    .find((path) => ['.exe', '.com', '.cmd', '.bat'].includes(extname(path).toLowerCase())) ?? null
+    .filter((path) => ['.exe', '.com', '.cmd', '.bat'].includes(extname(path).toLowerCase()))
 }
 
-async function resolveWindows(
+async function resolveWindowsCandidates(
   definition: CliDefinition
-): Promise<{ path: string; via: 'path' | 'known-path' } | null> {
+): Promise<ResolvedCandidate[]> {
+  const fromPath: ResolvedCandidate[] = []
   for (const executable of definition.executables.windows ?? []) {
     const result = await runCommand('where.exe', [executable])
     if (result.code === 0) {
-      const path = windowsExecutable(result.stdout)
-      if (path) return { path, via: 'path' }
+      for (const path of windowsExecutables(result.stdout)) {
+        fromPath.push({ path, via: 'path' })
+      }
     }
   }
-  const known = (definition.knownPaths?.windows ?? [])
+  const knownPaths = (definition.knownPaths?.windows ?? [])
     .map(expandWindowsPath)
     .filter((path): path is string => Boolean(path))
-  const path = await firstExisting(known)
-  return path ? { path, via: 'known-path' } : null
+  const known: ResolvedCandidate[] = []
+  for (const path of knownPaths) {
+    if (await isExecutableFile(path)) known.push({ path, via: 'known-path' })
+  }
+  return dedupeCandidates([...fromPath, ...known])
 }
 
 async function scanWindowsDefinition(
@@ -364,26 +444,32 @@ async function scanWindowsDefinition(
   errors: CliRuntimeError[]
 ): Promise<CliInstallation | null> {
   const runtime: CliRuntime = { kind: 'host', platform: 'windows' }
-  const resolved = await resolveWindows(definition)
-  if (!resolved) return null
-  const verified = await verifyHost(definition, resolved.path)
-  if (!verified || verified.timedOut) {
-    errors.push({
+  const candidates = await resolveWindowsCandidates(definition)
+  if (candidates.length === 0) return null
+  let timedOut = false
+  for (const resolved of candidates) {
+    const verified = await verifyHost(definition, resolved.path)
+    if (!verified) continue
+    if (verified.timedOut) {
+      timedOut = true
+      continue
+    }
+    return {
+      id: installationId(definition.id, runtime, resolved.path),
+      definitionId: definition.id,
       runtime,
-      code: verified?.timedOut ? 'timeout' : 'probe-failed',
-      detail: `${definition.displayName}: ${resolved.path}`
-    })
-    return null
+      resolvedExecutable: resolved.path,
+      detectedVia: resolved.via,
+      version: verified.version,
+      verification: 'verified'
+    }
   }
-  return {
-    id: installationId(definition.id, runtime, resolved.path),
-    definitionId: definition.id,
+  errors.push({
     runtime,
-    resolvedExecutable: resolved.path,
-    detectedVia: resolved.via,
-    version: verified.version,
-    verification: 'verified'
-  }
+    code: timedOut ? 'timeout' : 'probe-failed',
+    detail: `${definition.displayName}: ${candidates.map((candidate) => candidate.path).join(', ')}`
+  })
+  return null
 }
 
 async function runWsl(
@@ -486,22 +572,109 @@ async function resolveWslCandidates(
   return dedupeCandidates([...nativePath, ...knownPath, ...interopPath])
 }
 
-async function resolveUnix(
-  definition: CliDefinition,
+interface NativeUserEnvironment {
   home: string
-): Promise<{ path: string; via: 'path' | 'known-path' } | null> {
-  for (const executable of definition.executables.unix ?? []) {
-    const result = await runCommand('sh', [
-      '-lc', 'command -v -- "$1"', 'vibing-resolve', executable
-    ])
-    if (result.code === 0 && result.stdout.trim()) {
-      return { path: result.stdout.trim().split(/\r?\n/)[0], via: 'path' }
+  pathDirectories: string[]
+}
+
+function splitPathDirectories(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(delimiter)
+    .map((path) => path.trim())
+    .filter(Boolean)
+}
+
+async function nativeUserEnvironment(): Promise<NativeUserEnvironment> {
+  const home = homedir()
+  const shellCandidates = [
+    process.env.SHELL,
+    process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash',
+    '/bin/sh'
+  ].filter((shell, index, values): shell is string =>
+    Boolean(shell) && values.indexOf(shell) === index
+  )
+  let loginPath = ''
+  for (const shell of shellCandidates) {
+    const result = await runCommand(shell, ['-lic', 'env'])
+    if (result.code !== 0) continue
+    const value = result.stdout
+      .split(/\r?\n/)
+      .find((line) => line.startsWith('PATH='))
+      ?.slice('PATH='.length)
+    if (value) {
+      loginPath = value
+      break
     }
   }
-  const known = (definition.knownPaths?.unixHomeRelative ?? [])
-    .map((relative) => join(home, ...relative.split('/')))
-  const path = await firstExisting(known)
-  return path ? { path, via: 'known-path' } : null
+  const commonDirectories = [
+    join(home, '.local', 'bin'),
+    join(home, 'bin'),
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin'
+  ]
+  return {
+    home,
+    pathDirectories: [...new Set([
+      ...splitPathDirectories(loginPath),
+      ...splitPathDirectories(process.env.PATH),
+      ...commonDirectories
+    ])]
+  }
+}
+
+async function resolveNativeCandidates(
+  definition: CliDefinition,
+  environment: NativeUserEnvironment
+): Promise<ResolvedCandidate[]> {
+  const fromPath: ResolvedCandidate[] = []
+  for (const executable of definition.executables.unix ?? []) {
+    for (const directory of environment.pathDirectories) {
+      const path = join(directory, executable)
+      if (await isExecutableFile(path, true)) fromPath.push({ path, via: 'path' })
+    }
+  }
+  const known: ResolvedCandidate[] = []
+  for (const relative of definition.knownPaths?.unixHomeRelative ?? []) {
+    const path = join(environment.home, ...relative.split('/'))
+    if (await isExecutableFile(path, true)) known.push({ path, via: 'known-path' })
+  }
+  return dedupeCandidates([...fromPath, ...known])
+}
+
+async function scanNativeDefinition(
+  definition: CliDefinition,
+  runtime: Extract<CliRuntime, { kind: 'host' }>,
+  environment: NativeUserEnvironment,
+  errors: CliRuntimeError[]
+): Promise<CliInstallation | null> {
+  const candidates = await resolveNativeCandidates(definition, environment)
+  if (candidates.length === 0) return null
+  let timedOut = false
+  for (const resolved of candidates) {
+    const verified = await verifyHost(definition, resolved.path)
+    if (!verified) continue
+    if (verified.timedOut) {
+      timedOut = true
+      continue
+    }
+    return {
+      id: installationId(definition.id, runtime, resolved.path),
+      definitionId: definition.id,
+      runtime,
+      resolvedExecutable: resolved.path,
+      detectedVia: resolved.via,
+      version: verified.version,
+      verification: 'verified'
+    }
+  }
+  errors.push({
+    runtime,
+    code: timedOut ? 'timeout' : 'probe-failed',
+    detail: `${definition.displayName}: ${candidates.map((candidate) => candidate.path).join(', ')}`
+  })
+  return null
 }
 
 async function verifyWsl(
@@ -510,6 +683,21 @@ async function verifyWsl(
   path: string,
   environmentPath: string
 ): Promise<{ version?: string; timedOut: boolean } | null> {
+  if (definition.identityProbe) {
+    const identity = await runWsl(distro, 'env', [
+      `PATH=${environmentPath}`,
+      path,
+      ...definition.identityProbe.args
+    ])
+    const accepted = definition.identityProbe.acceptedExitCodes ?? [0]
+    const output = `${identity.stdout}\n${identity.stderr}`
+    if (identity.timedOut) return { timedOut: true }
+    if (
+      identity.code === null ||
+      !accepted.includes(identity.code) ||
+      !definition.identityProbe.outputPattern.test(output)
+    ) return null
+  }
   for (const probe of definition.probes) {
     const result = await runWsl(distro, 'env', [
       `PATH=${environmentPath}`,
@@ -893,22 +1081,10 @@ export class AiCliDiscoveryService {
         kind: 'host',
         platform: process.platform === 'darwin' ? 'macos' : 'linux'
       }
-      const home = process.env.HOME ?? ''
-      const found = await mapLimit(cliDefinitions, SCAN_CONCURRENCY, async (definition): Promise<CliInstallation | null> => {
-        const resolved = await resolveUnix(definition, home)
-        if (!resolved) return null
-        const verified = await verifyHost(definition, resolved.path)
-        if (!verified || verified.timedOut) return null
-        return {
-          id: installationId(definition.id, runtime, resolved.path),
-          definitionId: definition.id,
-          runtime,
-          resolvedExecutable: resolved.path,
-          detectedVia: resolved.via,
-          version: verified.version,
-          verification: 'verified'
-        } satisfies CliInstallation
-      })
+      const environment = await nativeUserEnvironment()
+      const found = await mapLimit(cliDefinitions, SCAN_CONCURRENCY, (definition) =>
+        scanNativeDefinition(definition, runtime, environment, errors)
+      )
       installations = found.filter((value): value is CliInstallation => Boolean(value))
     }
 
