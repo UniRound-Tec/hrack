@@ -48,6 +48,12 @@ export const ja = {
         ? 'セッションは終了しました'
         : `セッションは終了しました · exit code ${exitCode}`
   },
+  floating: {
+    empty: 'アクティブなセッションはありません',
+    attention: '要対応',
+    expand: (count: number) => `${count} 件すべて表示`,
+    collapse: '折りたたむ'
+  },
   agentDetail: {
     thinking: 'タスクを分析して次の手順を計画しています',
     liveThinking: (seconds: number | undefined, tokens: number | undefined) =>
@@ -142,7 +148,7 @@ export const ja = {
     rail: 'サイドバー折りたたみ',
     tabs: '上部タブバー',
     floatingWindow: 'フローティングウィンドウ',
-    floatingWindowHint: '常に手前に表示する小窓。S3 で実装',
+    floatingWindowHint: 'AI CLI セッションの状態を常に手前に表示',
     globalShortcut: 'グローバルショートカット',
     globalShortcutHint: 'Ctrl+Alt+V でウィンドウの表示 / 非表示を切替',
     terminalTheme: 'ターミナル配色',

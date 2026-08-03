@@ -23,6 +23,10 @@ import {
 } from './tray'
 import { startThemeWatcher, stopThemeWatcher } from './themes-watch'
 import { AppEventChannel } from '../shared/ipc-contract'
+import {
+  ElectronFloatingWindowController,
+  type FloatingWindowController
+} from './floating/FloatingWindowController'
 import { AiCliDiscoveryService } from './ai-cli-discovery'
 import { AgentSessionRuntime } from './agents/AgentSessionRuntime'
 import { ObserverRegistry } from './agents/ObserverRegistry'
@@ -66,6 +70,7 @@ const agentRuntime = new AgentSessionRuntime({
   }
 })
 let shutdownStarted = false
+let floatingController: FloatingWindowController | null = null
 
 app.whenReady().then(async () => {
   // M0 验收：抵达此行即证明 node-pty 已按 Electron ABI 成功加载
@@ -112,6 +117,7 @@ app.whenReady().then(async () => {
     agentRuntime,
     getWindow: () => (winRef && !winRef.isDestroyed() ? winRef : null),
     getTray: () => trayRef,
+    getFloatingWindowController: () => floatingController,
     rebuildTrayMenu: () => {
       if (trayRef) rebuildTrayMenu(trayRef, getMainPrefs().language, trayCallbacks)
     }
@@ -119,6 +125,15 @@ app.whenReady().then(async () => {
 
   registerIpc(manager, ctx)
   winRef = createWindow(prefs)
+  floatingController = new ElectronFloatingWindowController({
+    getMainWindow: () =>
+      winRef && !winRef.isDestroyed() ? winRef : null,
+    findActiveSession: (sessionId) =>
+      agentRuntime
+        .listActive()
+        .find((projection) => projection.sessionId === sessionId)
+  })
+  await floatingController.setEnabled(prefs.floatingWindowEnabled)
   trayRef = createTray(prefs.language, trayCallbacks)
   if (prefs.globalShortcutEnabled) {
     registerGlobalShortcut(winRef)
@@ -168,6 +183,7 @@ app.on('before-quit', (event) => {
     // Agent Runtime 先写入退出事实并回收 observer；随后兜底关闭普通终端。
     await agentRuntime.disposeAll()
     await hookIngress.dispose()
+    floatingController?.dispose()
     manager.killAll()
     unregisterGlobalShortcut()
     stopThemeWatcher()

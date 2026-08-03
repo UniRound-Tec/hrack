@@ -274,6 +274,10 @@ export interface PublishAgentCaption {
 export interface AgentApi {
   start(input: StartAgentSession): Promise<StartedAgentSession>
   stop(sessionId: string): Promise<void>
+  rename(
+    sessionId: string,
+    name: string
+  ): Promise<AgentSessionProjection | null>
   publishCaption(input: PublishAgentCaption): Promise<void>
   listActive(): Promise<AgentSessionProjection[]>
   onEvents(cb: (events: AgentEvent[]) => void): () => void
@@ -283,6 +287,7 @@ export interface AgentApi {
 export const AgentInvokeChannel = {
   Start: 'agent:start',
   Stop: 'agent:stop',
+  Rename: 'agent:rename',
   PublishCaption: 'agent:publish-caption',
   ListActive: 'agent:list-active'
 } as const

@@ -402,7 +402,7 @@ S0 新会话应保存 `installationId`，使历史/诊断知道它来自 Windows
 | **S2** | ✅ Claude Code 参考 Adapter 驱动真实 `working / needs-you / done`；实施见 [PLAN-S2-CLAUDE.md](./PLAN-S2-CLAUDE.md) |
 | **S3** | ✅ OpenCode Server/SSE Adapter（Windows + WSL）验证第二种协议形态；实施见 [PLAN-S3-OPENCODE.md](./PLAN-S3-OPENCODE.md) |
 | **S4** | 注意力通知，仍只看不操作 |
-| **F1** | 独立置顶悬浮窗，只消费 Agent projection；实施见 [PLAN-F1-FLOATING-WINDOW.md](./PLAN-F1-FLOATING-WINDOW.md) |
+| **F1** | ✅ 独立置顶悬浮窗核心实现与 Windows 真窗口 E2E 已完成；macOS/Linux 真机 smoke 待补；实施见 [PLAN-F1-FLOATING-WINDOW.md](./PLAN-F1-FLOATING-WINDOW.md) |
 | **M6** | 在 S3 抽象上铺开更多产品的语义 adapter；扫描定义不需要等到 M6 |
 
 ---

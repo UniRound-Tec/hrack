@@ -7,6 +7,7 @@ import type {
   CliApi,
   ClipboardApi,
   DialogApi,
+  FloatingWindowApi,
   PtyApi,
   ShellApi,
   StatsApi,
@@ -21,6 +22,7 @@ declare global {
     ptyApi: PtyApi
     clipboardApi: ClipboardApi
     windowApi: WindowApi
+    floatingWindowApi: FloatingWindowApi
     themeApi: ThemeApi
     dialogApi: DialogApi
     shellApi: ShellApi

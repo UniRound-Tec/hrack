@@ -93,7 +93,7 @@ export function createSessionsStore(): UseBoundStore<
           terminalId: projection.terminalId,
           adapterId: projection.adapterId,
           installationId: projection.installationId,
-          name: existing?.name ?? projection.name ?? 'Session',
+          name: projection.name ?? existing?.name ?? 'Session',
           status: projection.status,
           detail: renderAgentDetail(
             projection.detail,

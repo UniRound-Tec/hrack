@@ -48,6 +48,12 @@ export const ko = {
         ? '세션이 종료되었습니다'
         : `세션이 종료되었습니다 · exit code ${exitCode}`
   },
+  floating: {
+    empty: '활성 세션 없음',
+    attention: '확인 필요',
+    expand: (count: number) => `세션 ${count}개 모두 보기`,
+    collapse: '접기'
+  },
   agentDetail: {
     thinking: '작업을 분석하고 다음 단계를 계획하고 있습니다',
     liveThinking: (seconds: number | undefined, tokens: number | undefined) =>
@@ -142,7 +148,7 @@ export const ko = {
     rail: '사이드바 접힘',
     tabs: '상단 탭 바',
     floatingWindow: '플로팅 창',
-    floatingWindowHint: '항상 위에 표시되는 작은 창. S3에서 구현',
+    floatingWindowHint: '현재 AI CLI 세션 상태를 항상 위에 표시',
     globalShortcut: '전역 단축키',
     globalShortcutHint: 'Ctrl+Alt+V로 창 표시/숨기기 전환',
     terminalTheme: '터미널 색상',

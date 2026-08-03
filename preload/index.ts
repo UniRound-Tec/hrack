@@ -6,6 +6,8 @@ import {
   ClipboardInvokeChannel,
   CliInvokeChannel,
   DialogInvokeChannel,
+  FloatingWindowEventChannel,
+  FloatingWindowInvokeChannel,
   PtyInvokeChannel,
   ShellInvokeChannel,
   StatsInvokeChannel,
@@ -22,9 +24,13 @@ import {
   type CliApi,
   type CliLaunchSelection,
   type DialogApi,
+  type FloatingWindowApi,
+  type FloatingWindowState,
+  type FocusSessionPayload,
   type ExitPayload,
   type HistoryQuery,
   type MainPrefsUpdate,
+  type MainPrefsSnapshot,
   type PtyApi,
   type PtyFlowControlSnapshot,
   type PtyMeta,
@@ -165,6 +171,27 @@ const windowApi: WindowApi = {
   }
 }
 
+const floatingWindowApi: FloatingWindowApi = {
+  getState: () => ipcRenderer.invoke(FloatingWindowInvokeChannel.GetState),
+  setEnabled: (enabled) =>
+    ipcRenderer.invoke(FloatingWindowInvokeChannel.SetEnabled, enabled),
+  resizeToContent: (height) =>
+    ipcRenderer.invoke(FloatingWindowInvokeChannel.ResizeToContent, height),
+  focusSession: (sessionId) =>
+    ipcRenderer.invoke(FloatingWindowInvokeChannel.FocusSession, sessionId),
+  onStateChanged: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      state: FloatingWindowState
+    ): void => {
+      if (state && typeof state.enabled === 'boolean') cb(state)
+    }
+    ipcRenderer.on(FloatingWindowEventChannel.StateChanged, handler)
+    return () =>
+      ipcRenderer.removeListener(FloatingWindowEventChannel.StateChanged, handler)
+  }
+}
+
 const themeApi: ThemeApi = {
   listUser: () => ipcRenderer.invoke(ThemeInvokeChannel.ListUser)
 }
@@ -197,6 +224,8 @@ const agentApi: AgentApi = {
     ipcRenderer.invoke(AgentInvokeChannel.Start, input),
   stop: (sessionId: string) =>
     ipcRenderer.invoke(AgentInvokeChannel.Stop, { sessionId }),
+  rename: (sessionId: string, name: string) =>
+    ipcRenderer.invoke(AgentInvokeChannel.Rename, { sessionId, name }),
   publishCaption: (input: PublishAgentCaption) =>
     ipcRenderer.invoke(AgentInvokeChannel.PublishCaption, input),
   listActive: () => ipcRenderer.invoke(AgentInvokeChannel.ListActive),
@@ -236,6 +265,40 @@ const appApi: AppApi = {
     ipcRenderer.on(AppEventChannel.OpenNewSession, handler)
     return () =>
       ipcRenderer.removeListener(AppEventChannel.OpenNewSession, handler)
+  },
+  onFocusSession: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      payload: FocusSessionPayload
+    ): void => {
+      if (
+        payload &&
+        typeof payload.sessionId === 'string' &&
+        typeof payload.terminalId === 'string'
+      ) {
+        cb(payload)
+      }
+    }
+    ipcRenderer.on(AppEventChannel.FocusSession, handler)
+    return () =>
+      ipcRenderer.removeListener(AppEventChannel.FocusSession, handler)
+  },
+  onMainPrefsChanged: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      prefs: MainPrefsSnapshot
+    ): void => {
+      if (
+        prefs &&
+        typeof prefs.uiThemeId === 'string' &&
+        typeof prefs.language === 'string'
+      ) {
+        cb(prefs)
+      }
+    }
+    ipcRenderer.on(AppEventChannel.MainPrefsChanged, handler)
+    return () =>
+      ipcRenderer.removeListener(AppEventChannel.MainPrefsChanged, handler)
   }
 }
 
@@ -252,6 +315,7 @@ try {
   contextBridge.exposeInMainWorld('ptyApi', ptyApi)
   contextBridge.exposeInMainWorld('clipboardApi', clipboardApi)
   contextBridge.exposeInMainWorld('windowApi', windowApi)
+  contextBridge.exposeInMainWorld('floatingWindowApi', floatingWindowApi)
   contextBridge.exposeInMainWorld('themeApi', themeApi)
   contextBridge.exposeInMainWorld('dialogApi', dialogApi)
   contextBridge.exposeInMainWorld('shellApi', shellApi)

@@ -40,6 +40,20 @@ export default function SettingsPage({
   const registry = getUiThemeRegistry()
   const terminalTheme = terminalThemes[settings.terminalThemeId].terminal
 
+  useEffect(() => {
+    let cancelled = false
+    const unsubscribe = window.floatingWindowApi.onStateChanged((state) => {
+      settings.setFloatEnabled(state.enabled)
+    })
+    void window.floatingWindowApi.getState().then((state) => {
+      if (!cancelled) settings.setFloatEnabled(state.enabled)
+    })
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [settings.setFloatEnabled])
+
   const changeLanguage = (value: string): void => {
     const locale = value as (typeof settings.language)
     settings.setLanguage(locale)
@@ -50,6 +64,12 @@ export default function SettingsPage({
   const changeGlobalShortcut = (enabled: boolean): void => {
     settings.setGlobalShortcutEnabled(enabled)
     void window.appApi.setMainPrefs({ globalShortcutEnabled: enabled })
+  }
+
+  const changeFloatingWindow = (enabled: boolean): void => {
+    void window.floatingWindowApi.setEnabled(enabled).then((state) => {
+      settings.setFloatEnabled(state.enabled)
+    })
   }
 
   return (
@@ -84,7 +104,7 @@ export default function SettingsPage({
               </div>
             </Row>
             <Row label={strings.settings.globalShortcut} hint={strings.settings.globalShortcutHint}><Toggle testId="settings-global-shortcut" checked={settings.globalShortcutEnabled} onChange={changeGlobalShortcut} /></Row>
-            <Row label={strings.settings.floatingWindow} hint={strings.settings.floatingWindowHint}><Toggle checked={false} disabled /></Row>
+            <Row label={strings.settings.floatingWindow} hint={strings.settings.floatingWindowHint}><Toggle testId="settings-floating-window" checked={settings.floatEnabled} onChange={changeFloatingWindow} /></Row>
           </Section>
 
           <Section label="terminal" title={strings.settings.sections.terminal}>

@@ -12,9 +12,11 @@ import { join } from 'node:path'
 import { PTYManager } from './pty/PTYManager'
 import {
   AppInvokeChannel,
+  AppEventChannel,
   ClipboardInvokeChannel,
   CliInvokeChannel,
   DialogInvokeChannel,
+  FloatingWindowInvokeChannel,
   PtyInvokeChannel,
   ShellInvokeChannel,
   StatsInvokeChannel,
@@ -41,6 +43,7 @@ import {
   unregisterGlobalShortcut
 } from './shortcuts'
 import type { Tray } from './tray'
+import type { FloatingWindowController } from './floating/FloatingWindowController'
 
 const MAX_CLIPBOARD_TEXT_LENGTH = 8 * 1024 * 1024
 const MAX_USER_THEME_FILES = 128
@@ -66,11 +69,22 @@ export interface IpcContext {
   agentRuntime: AgentSessionRuntime
   getWindow(): BrowserWindow | null
   getTray(): Tray | null
+  getFloatingWindowController(): FloatingWindowController | null
   rebuildTrayMenu(): void
 }
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   const win = BrowserWindow.fromWebContents(event.sender)
   return win && !win.isDestroyed() ? win : null
+}
+
+function isFloatingWindowSender(event: IpcMainInvokeEvent): boolean {
+  const win = senderWindow(event)
+  if (!win) return false
+  try {
+    return new URL(win.webContents.getURL()).searchParams.get('surface') === 'floating'
+  } catch {
+    return false
+  }
 }
 
 async function listUserThemes() {
@@ -172,6 +186,42 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     if (!win) return { x: 0, y: 0, screenWidth: 1, screenHeight: 1 }
     return displayRelativePosition(win)
   })
+  ipcMain.handle(FloatingWindowInvokeChannel.GetState, () =>
+    ctx.getFloatingWindowController()?.getState() ?? { enabled: false }
+  )
+  ipcMain.handle(
+    FloatingWindowInvokeChannel.SetEnabled,
+    (_event, enabled: unknown) => {
+      const controller = ctx.getFloatingWindowController()
+      if (!controller || typeof enabled !== 'boolean') {
+        return { enabled: false }
+      }
+      return controller.setEnabled(enabled)
+    }
+  )
+  ipcMain.handle(
+    FloatingWindowInvokeChannel.ResizeToContent,
+    (event, height: unknown) => {
+      if (
+        isFloatingWindowSender(event) &&
+        typeof height === 'number' &&
+        Number.isFinite(height)
+      ) {
+        ctx.getFloatingWindowController()?.resizeToContent(height)
+      }
+    }
+  )
+  ipcMain.handle(
+    FloatingWindowInvokeChannel.FocusSession,
+    (event, sessionId: unknown) =>
+      isFloatingWindowSender(event) &&
+      typeof sessionId === 'string' &&
+      sessionId.length <= 128
+        ? Boolean(
+            ctx.getFloatingWindowController()?.focusSession(sessionId)
+          )
+        : false
+  )
   ipcMain.handle(ThemeInvokeChannel.ListUser, listUserThemes)
   ipcMain.handle(
     DialogInvokeChannel.PickDirectory,
@@ -214,6 +264,14 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
         : null
     if (!sessionId || sessionId.length > 128) return Promise.resolve()
     return ctx.agentRuntime.stop(sessionId)
+  })
+  ipcMain.handle(AgentInvokeChannel.Rename, (_event, payload: unknown) => {
+    if (!payload || typeof payload !== 'object') return null
+    const raw = payload as Record<string, unknown>
+    if (typeof raw.sessionId !== 'string' || typeof raw.name !== 'string') {
+      return null
+    }
+    return ctx.agentRuntime.rename(raw.sessionId, raw.name)
   })
   ipcMain.handle(AgentInvokeChannel.PublishCaption, (_event, input: unknown) =>
     ctx.agentRuntime.publishCaption(input)
@@ -316,6 +374,12 @@ async function applyMainPrefsUpdate(
   if (typeof raw.backgroundColor === 'string') {
     patch.backgroundColor = raw.backgroundColor.trim()
   }
+  if (
+    typeof raw.uiThemeId === 'string' &&
+    raw.uiThemeId.trim().length <= 128
+  ) {
+    patch.uiThemeId = raw.uiThemeId.trim()
+  }
   if (typeof raw.globalShortcutEnabled === 'boolean') {
     patch.globalShortcutEnabled = raw.globalShortcutEnabled
   }
@@ -336,6 +400,16 @@ async function applyMainPrefsUpdate(
   }
   if (patch.language !== undefined) {
     ctx.rebuildTrayMenu()
+  }
+  if (patch.uiThemeId !== undefined || patch.language !== undefined) {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.webContents.isDestroyed()) {
+        window.webContents.send(AppEventChannel.MainPrefsChanged, {
+          uiThemeId: merged.uiThemeId,
+          language: merged.language
+        })
+      }
+    }
   }
 }
 

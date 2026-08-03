@@ -11,9 +11,17 @@ import { dirname, join } from 'node:path'
 export interface MainPrefs {
   /** 最近一次活动界面主题的 bg.app 色值；建窗前用作 BrowserWindow.backgroundColor。 */
   backgroundColor: string
+  uiThemeId: string
   globalShortcutEnabled: boolean
   /** 托盘菜单文案语言（AppLocale）。 */
   language: string
+  /** 独立置顶悬浮窗由主进程建窗，偏好也由主进程持久化。 */
+  floatingWindowEnabled: boolean
+  floatingWindowPosition: {
+    x: number
+    y: number
+    displayId: number
+  } | null
 }
 
 export const DEFAULT_BACKGROUND_COLOR = '#ffffff'
@@ -21,8 +29,11 @@ export const DEFAULT_LANGUAGE = 'zh-CN'
 
 export const defaultMainPrefs: MainPrefs = {
   backgroundColor: DEFAULT_BACKGROUND_COLOR,
+  uiThemeId: 'light',
   globalShortcutEnabled: true,
-  language: DEFAULT_LANGUAGE
+  language: DEFAULT_LANGUAGE,
+  floatingWindowEnabled: false,
+  floatingWindowPosition: null
 }
 
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/
@@ -47,6 +58,36 @@ function sanitize(parsed: unknown): MainPrefs {
     raw.language.length <= 16
   ) {
     prefs.language = raw.language
+  }
+  if (
+    typeof raw.uiThemeId === 'string' &&
+    raw.uiThemeId.trim().length > 0 &&
+    raw.uiThemeId.trim().length <= 128
+  ) {
+    prefs.uiThemeId = raw.uiThemeId.trim()
+  }
+  if (typeof raw.floatingWindowEnabled === 'boolean') {
+    prefs.floatingWindowEnabled = raw.floatingWindowEnabled
+  }
+  if (
+    raw.floatingWindowPosition &&
+    typeof raw.floatingWindowPosition === 'object'
+  ) {
+    const position = raw.floatingWindowPosition as Record<string, unknown>
+    if (
+      typeof position.x === 'number' &&
+      Number.isFinite(position.x) &&
+      typeof position.y === 'number' &&
+      Number.isFinite(position.y) &&
+      typeof position.displayId === 'number' &&
+      Number.isFinite(position.displayId)
+    ) {
+      prefs.floatingWindowPosition = {
+        x: Math.round(position.x),
+        y: Math.round(position.y),
+        displayId: Math.round(position.displayId)
+      }
+    }
   }
   return prefs
 }

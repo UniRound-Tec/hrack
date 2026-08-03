@@ -213,6 +213,21 @@ export const WindowInvokeChannel = {
   GetPosition: 'window:get-position'
 } as const
 
+export interface FloatingWindowState {
+  enabled: boolean
+}
+
+export const FloatingWindowInvokeChannel = {
+  GetState: 'floating-window:get-state',
+  SetEnabled: 'floating-window:set-enabled',
+  ResizeToContent: 'floating-window:resize-to-content',
+  FocusSession: 'floating-window:focus-session'
+} as const
+
+export const FloatingWindowEventChannel = {
+  StateChanged: 'floating-window:state-changed'
+} as const
+
 /**
  * 窗口左上角相对"当前所在显示器"的位置与该显示器尺寸。
  * 侧栏环境渐变把一张显示器大小的虚拟渐变画布锚定在屏幕上，
@@ -260,17 +275,30 @@ export type RecordEventInput = Pick<
  */
 export type MainPrefsUpdate = Partial<{
   backgroundColor: string
+  uiThemeId: string
   globalShortcutEnabled: boolean
   language: string
 }>
+
+export interface MainPrefsSnapshot {
+  uiThemeId: string
+  language: string
+}
 
 export const AppInvokeChannel = {
   SetMainPrefs: 'app:set-main-prefs'
 } as const
 
 export const AppEventChannel = {
-  OpenNewSession: 'app:open-new-session'
+  OpenNewSession: 'app:open-new-session',
+  FocusSession: 'app:focus-session',
+  MainPrefsChanged: 'app:main-prefs-changed'
 } as const
+
+export interface FocusSessionPayload {
+  sessionId: string
+  terminalId: string
+}
 
 export const ThemeEventChannel = {
   UserThemesChanged: 'theme:user-themes-changed'
@@ -334,6 +362,16 @@ export interface WindowApi {
   ) => () => void
 }
 
+export interface FloatingWindowApi {
+  getState: () => Promise<FloatingWindowState>
+  setEnabled: (enabled: boolean) => Promise<FloatingWindowState>
+  resizeToContent: (height: number) => Promise<void>
+  focusSession: (sessionId: string) => Promise<boolean>
+  onStateChanged: (
+    cb: (state: FloatingWindowState) => void
+  ) => () => void
+}
+
 export interface ThemeApi {
   /** Main only reads files; renderer owns schema and CSS color validation. */
   listUser: () => Promise<UserThemeFile[]>
@@ -366,6 +404,9 @@ export interface AppApi {
   setMainPrefs: (update: MainPrefsUpdate) => Promise<void>
   /** 托盘「新建会话」菜单触发；与 Ctrl+Shift+T 同路径。 */
   onOpenNewSession: (cb: () => void) => () => void
+  /** 悬浮窗条目 → 主窗口恢复并进入既有 Session terminal。 */
+  onFocusSession: (cb: (payload: FocusSessionPayload) => void) => () => void
+  onMainPrefsChanged: (cb: (prefs: MainPrefsSnapshot) => void) => () => void
 }
 
 export interface AppThemeApi {

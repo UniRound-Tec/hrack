@@ -48,6 +48,12 @@ export const en = {
         ? 'Session ended'
         : `Session ended · exit code ${exitCode}`
   },
+  floating: {
+    empty: 'No active sessions',
+    attention: 'need you',
+    expand: (count: number) => `Show all ${count} sessions`,
+    collapse: 'Collapse'
+  },
   agentDetail: {
     thinking: 'Analyzing the task and planning the next step',
     liveThinking: (seconds: number | undefined, tokens: number | undefined) =>
@@ -143,7 +149,7 @@ export const en = {
     rail: 'Collapsed sidebar',
     tabs: 'Top tab bar',
     floatingWindow: 'Floating window',
-    floatingWindowHint: 'Standalone always-on-top window, ships with S3',
+    floatingWindowHint: 'Always-on-top status for current AI CLI sessions',
     globalShortcut: 'Global shortcut',
     globalShortcutHint: 'Ctrl+Alt+V toggles window visibility',
     terminalTheme: 'Terminal palette',

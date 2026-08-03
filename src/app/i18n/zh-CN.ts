@@ -51,6 +51,12 @@ export const zhCN = {
         ? '会话已结束'
         : `会话已结束 · exit code ${exitCode}`
   },
+  floating: {
+    empty: '暂无活跃会话',
+    attention: '需处理',
+    expand: (count: number) => `展开全部 ${count} 个会话`,
+    collapse: '收起'
+  },
   agentDetail: {
     thinking: '正在分析并规划下一步',
     liveThinking: (seconds: number | undefined, tokens: number | undefined) =>
@@ -145,7 +151,7 @@ export const zhCN = {
     rail: '侧栏收起',
     tabs: '顶部 Tab 栏',
     floatingWindow: '悬浮窗',
-    floatingWindowHint: '独立置顶小窗，随 S3 落地',
+    floatingWindowHint: '独立置顶显示当前 AI CLI 会话状态',
     globalShortcut: '全局快捷键',
     globalShortcutHint: 'Ctrl+Alt+V 切换窗口显示 / 隐藏',
     terminalTheme: '终端配色',

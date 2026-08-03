@@ -134,6 +134,20 @@ export default function AppShell() {
     return window.appApi.onOpenNewSession(openNewSession)
   }, [openNewSession])
 
+  useEffect(() => {
+    return window.appApi.onFocusSession(({ terminalId }) => {
+      if (
+        useTerminalsStore
+          .getState()
+          .terminals.some((terminal) => terminal.id === terminalId)
+      ) {
+        navigate(terminalPage(terminalId))
+      } else {
+        navigate('home')
+      }
+    })
+  }, [navigate])
+
   const launchTerminal = useCallback(
     (shell: ShellOption, remember = false): void => {
       if (remember) setDefaultTerminal(shell.id)
@@ -377,9 +391,16 @@ export default function AppShell() {
                 onNavigate={navigate}
                 onOpenNewSession={openNewSession}
                 onCollapse={() => setNavMode('rail')}
-                onRenameSession={(sessionId, name) =>
+                onRenameSession={(sessionId, name) => {
                   updateSession(sessionId, { name })
-                }
+                  void window.agentApi
+                    .rename(sessionId, name)
+                    .then((projection) => {
+                      if (projection) {
+                        useSessionsStore.getState().applyProjection(projection)
+                      }
+                    })
+                }}
                 onCloseSession={closeSessionAndTerminal}
                 onCloseTerminal={closeTerminalAndRoute}
               />

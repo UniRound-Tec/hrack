@@ -119,6 +119,14 @@ export class FixtureObserverAdapter implements AgentObserverAdapter {
         running: RunningAgentContext,
         emit: (event: AdapterEvent) => void
       ): Promise<ObserverHandle> => {
+        // 多会话 UI 门禁需要 Session 稳定存活；仍走真实 Runtime/PTY，
+        // 仅暂停 fixture 的自动退出脚本。
+        if (process.env['VIBING_FIXTURE_OBSERVER_HOLD'] === '1') {
+          return {
+            capabilities: this.capabilities,
+            dispose: async (): Promise<void> => {}
+          }
+        }
         const script = buildFixtureScript().slice(0, MAX_SCRIPT_EVENTS)
         let index = 0
         const timer = setInterval(() => {

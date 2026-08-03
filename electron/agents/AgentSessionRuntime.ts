@@ -651,6 +651,24 @@ export class AgentSessionRuntime {
     await this.finalize(session, true)
   }
 
+  /** 活动 Session 显示名属于权威 projection；改名不伪造语义活动时间。 */
+  rename(sessionId: string, rawName: string): AgentSessionProjection | null {
+    const session = this.sessions.get(sessionId)
+    const name = bounded(rawName, 128)?.trim()
+    if (!session || session.finalized || !name) return null
+    session.name = name
+    session.projection = {
+      ...session.projection,
+      name,
+      lastSeq: ++session.seq
+    }
+    this.deps.options.broadcast(
+      AgentEventChannel.Projection,
+      session.projection
+    )
+    return session.projection
+  }
+
   /**
    * Renderer 只上报已经由 xterm 解析完成的低敏状态标记；不接受屏幕正文。
    * terminalId 在主进程重新关联到权威 Session，伪造/过期 id 会被忽略。

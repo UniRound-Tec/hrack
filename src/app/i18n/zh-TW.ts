@@ -48,6 +48,12 @@ export const zhTW = {
         ? '工作階段已結束'
         : `工作階段已結束 · exit code ${exitCode}`
   },
+  floating: {
+    empty: '暫無活躍工作階段',
+    attention: '需處理',
+    expand: (count: number) => `展開全部 ${count} 個工作階段`,
+    collapse: '收合'
+  },
   agentDetail: {
     thinking: '正在分析並規劃下一步',
     liveThinking: (seconds: number | undefined, tokens: number | undefined) =>
@@ -142,7 +148,7 @@ export const zhTW = {
     rail: '側欄收合',
     tabs: '頂部分頁欄',
     floatingWindow: '浮動視窗',
-    floatingWindowHint: '獨立置頂小窗，隨 S3 落地',
+    floatingWindowHint: '獨立置頂顯示目前 AI CLI 工作階段狀態',
     globalShortcut: '全域快速鍵',
     globalShortcutHint: 'Ctrl+Alt+V 切換視窗顯示 / 隱藏',
     terminalTheme: '終端機配色',

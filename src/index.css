@@ -145,6 +145,12 @@ body {
   overflow: hidden;
 }
 
+html[data-surface="floating"],
+html[data-surface="floating"] body,
+html[data-surface="floating"] #root {
+  background: transparent;
+}
+
 /* 应用壳层文案不可拖选；可编辑控件仍保留光标选区能力。终端页面在
    TerminalPage 上单独恢复 select-text，避免影响终端复制。 */
 input,

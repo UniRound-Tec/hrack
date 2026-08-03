@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import FloatingApp from './floating/FloatingApp'
 import './index.css'
 import mapleMonoLicenseUrl from './assets/fonts/maple-mono/LICENSE.txt?url'
 import {
@@ -8,6 +9,7 @@ import {
   loadUiThemeRegistry,
   setUiThemeRegistry
 } from './app/themeRuntime'
+import { appLocales, type AppLocale } from './app/i18n'
 import { useSettingsStore } from './state/settingsStore'
 
 const licenseLink = document.createElement('link')
@@ -18,6 +20,11 @@ document.head.append(licenseLink)
 applyUiTheme(builtInLightTheme)
 
 async function bootstrap(): Promise<void> {
+  const surface = new URLSearchParams(window.location.search).get('surface')
+  const floatingSurface = surface === 'floating'
+  document.documentElement.dataset.surface = floatingSurface
+    ? 'floating'
+    : 'main'
   let themeRegistry = await loadUiThemeRegistry()
   setUiThemeRegistry(themeRegistry)
   for (const error of themeRegistry.errors) {
@@ -27,7 +34,10 @@ async function bootstrap(): Promise<void> {
     const theme = themeRegistry.get(themeId) ?? builtInLightTheme
     applyUiTheme(theme)
     // 首帧底色进主进程偏好文件：下次启动建窗前即可用，消除深色主题启动白闪。
-    void window.appApi.setMainPrefs({ backgroundColor: theme.colors['bg.app'] })
+    void window.appApi.setMainPrefs({
+      backgroundColor: theme.colors['bg.app'],
+      uiThemeId: theme.id
+    })
   }
   applySelectedUiTheme(useSettingsStore.getState().uiThemeId)
   const unsubscribeTheme = useSettingsStore.subscribe(
@@ -65,10 +75,20 @@ async function bootstrap(): Promise<void> {
   const unsubscribeThemeWatch = window.appThemeApi.onUserThemesChanged(() => {
     void reloadRegistry()
   })
+  const unsubscribeMainPrefs = window.appApi.onMainPrefsChanged((prefs) => {
+    const settings = useSettingsStore.getState()
+    if (themeRegistry.get(prefs.uiThemeId)) {
+      settings.setUiTheme(prefs.uiThemeId)
+    }
+    if (appLocales.includes(prefs.language as AppLocale)) {
+      settings.setLanguage(prefs.language as AppLocale)
+    }
+  })
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
       unsubscribeTheme()
       unsubscribeThemeWatch()
+      unsubscribeMainPrefs()
     })
   }
 
@@ -85,7 +105,9 @@ async function bootstrap(): Promise<void> {
 
   // 注意：不使用 <React.StrictMode>。StrictMode 会在 dev 下双触发 effect，
   // 导致 xterm 被 mount→dispose→mount 且 pty 重复 spawn，违背 SPEC §5.1「只挂载一次」。
-  createRoot(document.getElementById('root')!).render(<App />)
+  createRoot(document.getElementById('root')!).render(
+    floatingSurface ? <FloatingApp /> : <App />
+  )
 }
 
 void bootstrap()

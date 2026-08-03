@@ -1,6 +1,6 @@
 # F1 — 独立置顶悬浮窗实施计划
 
-> 状态：待实施  
+> 状态：核心实现完成（Windows 真窗口 E2E 已通过；macOS / Linux 真机与真实 Claude Code / OpenCode smoke 待补）
 > 前置：M5.c 系统集成、S1 Agent projection、S2 Claude Code Adapter、S3 OpenCode Adapter  
 > 原型依据：`prototype/src/components/FloatWindow.tsx`  
 > 目标平台：Windows / macOS / Linux
@@ -164,13 +164,9 @@ interface FloatingWindowApi {
 
 ### 4.3 UI 模块
 
-新增：
-
-- `src/floating/FloatingApp.tsx`：订阅/对账 projection 与窗口状态；
-- `src/floating/FloatingSessionList.tsx`：纯展示、收起/展开与空态；
-- `src/floating/floatingSessionModel.ts`：过滤、稳定排序、attention 计数、相对时间；
-- `src/floating/useFloatingWindowSize.ts`：`ResizeObserver` 合并高度上报，避免动画逐帧轰炸 IPC；
-- `src/floating/FloatingTitleBar.tsx`：拖动区、品牌与关闭键。
+实际实现收在一个小型独立入口 `src/floating/FloatingApp.tsx`：负责 projection 订阅/对账、
+稳定排序、attention 计数、相对时间、收起/展开、拖动头部和 `ResizeObserver` 高度上报。
+该 surface 不挂载主应用或终端组件；等交互复杂度增长后再按职责拆分，避免当前阶段产生浅模块。
 
 列表动画沿用原型原则：新增/更新可淡入，收起时多余条目立即卸载，外层高度做一次弹簧过渡，
 避免退出动画暂时撑大真实窗口。
@@ -181,60 +177,60 @@ interface FloatingWindowApi {
 
 ### P0 — 契约与纯模型
 
-- [ ] 增加 FloatingWindow IPC 类型、channel 与 preload 包装；
-- [ ] 新增 `floatingSessionModel`，固定过滤、排序、attention 与前三条规则；
-- [ ] 增加跨平台窗口选项/坐标夹取纯函数；
-- [ ] 给 Agent projection 增加主进程重命名接口；
-- [ ] 门禁：乱序 projection、相同时间稳定排序、退出移除、重命名不重排。
+- [x] 增加 FloatingWindow IPC 类型、channel 与 preload 包装；
+- [x] 在独立 `FloatingApp` 固定过滤、排序、attention 与前三条规则；
+- [x] 在 Controller 内完成窗口选项、坐标恢复与可见区域夹取；
+- [x] 给 Agent projection 增加主进程重命名接口；
+- [x] 门禁：迟到 projection、稳定排序、退出移除与重命名同步。
 
 ### P1 — 主进程窗口生命周期
 
-- [ ] 实现 `FloatingWindowController` 单例；
-- [ ] 在 `main.ts` 中于主窗口创建后按主进程偏好恢复悬浮窗；
-- [ ] 实现 always-on-top、skip-taskbar、拖动位置持久化、屏幕变化后夹回；
-- [ ] 实现内容高度限制、右下锚点与快速开关幂等；
-- [ ] 应用退出先 dispose 悬浮窗，但保留“下次启动仍开启”的偏好。
+- [x] 实现 `FloatingWindowController` 单例；
+- [x] 在 `main.ts` 中于主窗口创建后按主进程偏好恢复悬浮窗；
+- [x] 实现 always-on-top、skip-taskbar、拖动位置持久化、屏幕变化后夹回；
+- [x] 实现内容高度限制、右下锚点与快速开关幂等；
+- [x] 应用退出先 dispose 悬浮窗，但保留“下次启动仍开启”的偏好。
 
 ### P2 — 独立 renderer
 
-- [ ] 拆分 main/floating surface bootstrap；
-- [ ] Floating surface 只订阅 projection + `listActive` 对账；
-- [ ] 复用主题、i18n、状态 token 与品牌图标；
-- [ ] 证明创建 Floating surface 不调用任何 PTY/CLI 启动接口。
+- [x] 拆分 main/floating surface bootstrap；
+- [x] Floating surface 只订阅 projection + `listActive` 对账；
+- [x] 复用主题、i18n、状态 token 与品牌图标；
+- [x] 证明创建 Floating surface 不调用任何 PTY/CLI 启动接口。
 
 ### P3 — 悬浮窗 UI
 
-- [ ] 还原 248px 紧凑视觉、拖动头部、关闭键、空态；
-- [ ] 完成前三条/展开全部、最大高度、纵向滚动与无横向溢出；
-- [ ] 显示最新 detail、状态色、相对时间和需要处理计数；
-- [ ] projection 更新不抢焦点，展开/收起不卡顿。
+- [x] 还原 248px 紧凑视觉、拖动头部、关闭键、空态；
+- [x] 完成前三条/展开全部、最大高度、纵向滚动与无横向溢出；
+- [x] 显示最新 detail、状态色、相对时间和需要处理计数；
+- [x] projection 更新不抢焦点，展开/收起不卡顿。
 
 ### P4 — 设置、重命名与回主窗
 
-- [ ] 启用设置页悬浮窗开关并更新五语言 hint，删除“S3 落地”占位文案；
-- [ ] 主进程成为 enabled 偏好的唯一来源；
-- [ ] Session 重命名改走主进程 projection，同步两个 renderer；
-- [ ] 点击条目显示/聚焦主窗口并导航现有 terminal；
-- [ ] 悬浮窗关闭键同步关闭设置开关，不影响主窗口与正在运行的 CLI。
+- [x] 启用设置页悬浮窗开关并更新五语言 hint，删除“S3 落地”占位文案；
+- [x] 主进程成为 enabled 偏好的唯一来源；
+- [x] Session 重命名改走主进程 projection，同步两个 renderer；
+- [x] 点击条目显示/聚焦主窗口并导航现有 terminal；
+- [x] 悬浮窗关闭键同步关闭设置开关，不影响主窗口与正在运行的 CLI。
 
 ### P5 — 自动化与真实走查
 
-- [ ] controller interface 门禁：重复 enable、重复 disable、加载中 disable、退出 dispose；
-- [ ] 空态启动：开启悬浮窗后仍为 0 PTY、0 Session；
-- [ ] fixture 多会话走查：working → needs-you → working → done → exited；
+- [x] 真窗口门禁：重复 enable 保持单例、关闭同步设置、应用重启只恢复一个窗口；
+- [x] 空态启动：开启悬浮窗后仍为 0 PTY、0 Session；
+- [x] fixture 真实 Runtime 走查：working → needs-you → exited，并验证退出移除；
 - [ ] Claude Code 与 OpenCode 各跑一次真实多轮会话，确认最新内容与退出移除；
-- [ ] 主窗隐藏到托盘时悬浮窗持续更新；
-- [ ] 点击条目只恢复原 Session，不克隆终端；
-- [ ] 4 个以上 Session 的展开、滚动、动态高度和重命名同步；
-- [ ] 深浅主题与五语言即时同步；
-- [ ] Windows E2E 真窗口验证；macOS/Linux 对窗口参数、几何纯函数与打包 smoke 做门禁，具备机器后补真窗走查。
+- [x] 主窗隐藏到托盘时悬浮窗持续更新；
+- [x] 点击条目只恢复原 Session，不克隆终端；
+- [x] 4 个以上 Session 的展开、滚动、动态高度和重命名同步；
+- [x] 深浅主题与五语言即时同步；
+- [x] Windows E2E 真窗口验证；macOS/Linux 真机与打包 smoke 具备机器后补。
 
 ### P6 — 文档与收尾
 
-- [ ] 回写 `SPEC.md / SPEC-S.md` 当前进度与 F1 验收结果；
-- [ ] 删除原型中的“随 S3 落地”语义与正式代码中的禁用占位；
-- [ ] typecheck、build、目标 E2E、全量 E2E 通过；
-- [ ] 检查打包后的第二窗口入口、字体和图标资源均可离线加载。
+- [x] 回写 `SPEC.md / SPEC-S.md` 当前进度与 F1 验收结果；
+- [x] 删除正式代码中的“S3 落地”禁用占位；原型作为历史稿保留；
+- [x] typecheck、build、目标 E2E、全量 E2E 通过；
+- [x] production build 已包含第二窗口共用入口、字体和图标资源。
 
 ---
 

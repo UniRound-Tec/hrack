@@ -367,14 +367,16 @@ Shell 三态导航取代，`tabsStore` 拆为 `terminalsStore`（终端条目）
 
 优先级：**M1 是地基**，其余按需推进。
 
-**F1 悬浮窗已完成实施设计（2026-08-03）**：原先暂挂在 S3 名下的独立置顶小窗现单列为
+**F1 悬浮窗已完成核心实现（2026-08-03）**：原先暂挂在 S3 名下的独立置顶小窗现单列为
 F1，避免与已经用于 OpenCode Adapter 的 S3 重名。悬浮窗是第二个 `BrowserWindow`，只消费
 S1 主进程 `AgentSessionProjection`，默认展示最近 3 个未退出 Session，可展开查看全部，
 点击只负责恢复主窗口并进入原终端。窗口生命周期、偏好、跨显示器几何、独立 renderer、
-设置同步、重命名同步与三端门禁见 [PLAN-F1-FLOATING-WINDOW.md](./PLAN-F1-FLOATING-WINDOW.md)。
+设置同步与重命名同步均已落地；Windows 真窗口 7 条 E2E 与全量 151 条门禁通过。三端策略及
+待补真机 smoke 见 [PLAN-F1-FLOATING-WINDOW.md](./PLAN-F1-FLOATING-WINDOW.md)。
 
 **当前进度（2026-08-03）：M0–M5.c、S0、S1、S2 Claude Code Adapter 与 S3 OpenCode
-Adapter 已完成；跨平台自动化矩阵仍待补。F1 悬浮窗已完成实施设计、尚未编码；S4 注意力
+Adapter 已完成；跨平台自动化矩阵仍待补。F1 悬浮窗核心实现与 Windows E2E 已完成，
+macOS/Linux 真机 smoke 待补；S4 注意力
 通知、M6 其余 Adapter 矩阵与 M7 三端打包尚未开始。**
 
 **M5.a → M5.b 历史决策记录（2026-08-02）：**M5.a 原型（`/prototype`）已覆盖全部设计范围。已定决策：侧栏替代 M3 Tab 栏，导航三态互斥：侧栏展开 / 侧栏收起（图标条）/ 顶部 Tab 栏（无侧栏，Home 常驻最左、新建常驻 tabs 右、hover 出详情卡）；标题栏左侧以实际功能入口（新建会话 / 设置）取代占位菜单（文件/编辑/视图/帮助），三种导航形态下全局恒定；侧栏底部保留快速收展开关；界面（chrome）主题与终端 16 色配色在设置中分开设置——M4 的单一 `themeId` 于 M5.b 拆分为界面/终端两个字段，`themes.ts` 色值结构不变；session/terminal 归属按启动方式固定不迁移；悬浮窗为独立置顶小窗（第二 BrowserWindow，实现归 S3）；v1 只看不操作（注意力列表仅"查看"跳转，无批准/重试）；all-time 统计与跨 session 历史事件需新增 IPC 契约与主进程持久化（契约定于 M5.b，实现归 M5.c / S 线）；中文 UI 字体内嵌 PingFang——SC 六字重 woff2 已入库 `src/assets/fonts/pingfang/`（完整 CJK 字库约 5MB/字重，共约 30MB，来源与授权见目录内 `NOTICE.md`，版权由项目方自行解决），仓库保存完整字体，**构建时按产物实际用字子集化（如 fonttools `pyftsubset` 生成 woff2 子集，或按 unicode-range 切片），未用字重不进产物，禁止全量打包**（子集化管线随 M5.b 首次接入 UI 字体时落地）；Home 空状态（无会话且无终端）重排为居中欢迎页——logo + 问候 + 快速启动入口保留，注意力队列/历史/统计不渲染，有会话后恢复信息密度布局；悬浮窗为紧凑模式——默认仅显示按最新事件排序的前 3 个活跃（未退出）会话，可展开查看全部，头部仅保留 need-you 计数；里程碑重排——原 M6「窗口质感」拆解并入 M5 线（无边框 + 自定义标题栏归 M5.b，vibrancy/acrylic、托盘、全局快捷键归 M5.c），M6 重定义为「CLI 适配器矩阵」（依赖 S3，见 [SPEC-S.md](./SPEC-S.md) §8）。**

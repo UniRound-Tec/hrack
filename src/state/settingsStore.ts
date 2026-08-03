@@ -67,6 +67,7 @@ export interface SettingsState extends SettingsSnapshot {
   setLigatures(ligatures: boolean): void
   setTerminalRounded(terminalRounded: boolean): void
   setNavMode(navMode: NavMode): void
+  setFloatEnabled(floatEnabled: boolean): void
   setDefaultTerminal(defaultTerminal: string): void
   setLanguage(language: AppLocale): void
   setGlobalShortcutEnabled(enabled: boolean): void
@@ -198,6 +199,7 @@ export const createSettingsState: StateCreator<SettingsState> = (set) => ({
   setLigatures: (ligatures) => set({ ligatures }),
   setTerminalRounded: (terminalRounded) => set({ terminalRounded }),
   setNavMode: (navMode) => set({ navMode }),
+  setFloatEnabled: (floatEnabled) => set({ floatEnabled }),
   setDefaultTerminal: (defaultTerminal) =>
     set({
       defaultTerminal:
@@ -212,7 +214,7 @@ export const createSettingsState: StateCreator<SettingsState> = (set) => ({
 export const useSettingsStore = create<SettingsState>()(
   persist(createSettingsState, {
     name: 'vibing-terminal-settings',
-    version: 5,
+    version: 6,
     migrate: migrateSettings,
     partialize: ({
       uiThemeId,
@@ -222,7 +224,6 @@ export const useSettingsStore = create<SettingsState>()(
       ligatures,
       terminalRounded,
       navMode,
-      floatEnabled,
       defaultTerminal,
       language,
       globalShortcutEnabled
@@ -234,7 +235,6 @@ export const useSettingsStore = create<SettingsState>()(
       ligatures,
       terminalRounded,
       navMode,
-      floatEnabled,
       defaultTerminal,
       language,
       globalShortcutEnabled
