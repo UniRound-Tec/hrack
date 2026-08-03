@@ -31,7 +31,15 @@ test('rendered Claude token status reaches the sidebar latest detail', async () 
       await window.evaluate(async () => {
         window.__vibingDebug?.setPtyRenderingSuspended(true)
         await window.__vibingDebug?.writeRenderFixture(
-          '\x1b[999;1H✢ Photosynthesizing… (15s · still thinking)'
+          '\x1b[2J\x1b[8;1H* Twisting… (6s · thinking)\x1b[12;1H> '
+        )
+      })
+      await expect(session).toContainText('正在思考 · 6秒', {
+        timeout: 10_000
+      })
+      await window.evaluate(async () => {
+        await window.__vibingDebug?.writeRenderFixture(
+          '\x1b[8;1H\x1b[2K✢ Photosynthesizing… (15s · still thinking)\x1b[12;1H> '
         )
       })
       await expect(session).toContainText('正在思考 · 15秒', {
@@ -39,7 +47,7 @@ test('rendered Claude token status reaches the sidebar latest detail', async () 
       })
       await window.evaluate(async () => {
         await window.__vibingDebug?.writeRenderFixture(
-          '\r\x1b[2K· Connecting… (3s · ↓ 1.2k tokens · thought for 1s)'
+          '\x1b[8;1H\x1b[2K· Connecting… (3s · ↓ 1.2k tokens · thought for 1s)\x1b[12;1H> '
         )
       })
       await expect(session).toContainText('正在思考 · 3秒 · 1,200 tokens', {

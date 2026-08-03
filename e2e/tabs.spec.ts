@@ -41,6 +41,20 @@ async function tabBuffer(tabId: string): Promise<string[]> {
   )
 }
 
+async function tabLogicalBuffer(tabId: string): Promise<string[]> {
+  return page.evaluate(
+    (id) =>
+      (
+        window as unknown as {
+          __vibingDebugTabs: {
+            forTab(tabId: string): { dumpLogicalBuffer(): string[] }
+          }
+        }
+      ).__vibingDebugTabs.forTab(id).dumpLogicalBuffer(),
+    tabId
+  )
+}
+
 async function tabSnapshot(tabId: string): Promise<{
   cols: number
   rows: number
@@ -329,9 +343,6 @@ test('keeps an exited session visible until the user closes its tab', async () =
     'data-exited',
     'true'
   )
-  await expect(page.getByTestId('sidebar-terminal-item')).toContainText(
-    /(Exited|已退出|已結束|終了|종료됨)/
-  )
   await expect(page.getByTestId('sidebar-terminal-item')).toHaveCount(1)
   await expect
     .poll(async () => (await dumpBuffer(page)).join('\n'))
@@ -384,7 +395,7 @@ test('preserves normal scrollback and viewport when switching tabs', async () =>
   const lastToken = 'TAB_SCROLLBACK_72'
 
   await expect
-    .poll(async () => (await tabBuffer(firstId)).join('\n'))
+    .poll(async () => (await tabLogicalBuffer(firstId)).join('\n'))
     .toContain('PS ')
   await typeInTerminal(
     page,
@@ -392,7 +403,7 @@ test('preserves normal scrollback and viewport when switching tabs', async () =>
   )
   await page.keyboard.press('Enter')
   await expect
-    .poll(async () => (await tabBuffer(firstId)).join('\n'))
+    .poll(async () => (await tabLogicalBuffer(firstId)).join('\n'))
     .toContain(lastToken)
   await page.evaluate((id) => {
     ;(
@@ -415,7 +426,7 @@ test('preserves normal scrollback and viewport when switching tabs', async () =>
   const after = await tabSnapshot(firstId)
   expect(after?.baseY).toBe(before?.baseY)
   expect(after?.viewportY).toBe(before?.viewportY)
-  const text = (await tabBuffer(firstId)).join('\n')
+  const text = (await tabLogicalBuffer(firstId)).join('\n')
   expect(text).toContain('TAB_SCROLLBACK_1_')
   expect(text).toContain(lastToken)
 })

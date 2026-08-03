@@ -145,6 +145,14 @@ body {
   overflow: hidden;
 }
 
+/* 应用壳层文案不可拖选；可编辑控件仍保留光标选区能力。终端页面在
+   TerminalPage 上单独恢复 select-text，避免影响终端复制。 */
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
+}
+
 /* 注意：不要在这里写未分层的 button { font: inherit } —— 未分层规则会压过
    @layer utilities，导致按钮上的 text-[NNpx] 全部失效（Tailwind preflight
    已在 @layer base 内做了同样的 reset）。 */

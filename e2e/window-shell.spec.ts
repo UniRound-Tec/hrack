@@ -134,6 +134,8 @@ test('minimizes and hides to tray through the narrowed window API', async () => 
 })
 
 test('registers and unregisters the global shortcut with the settings toggle', async () => {
+  // 默认 E2E 使用内存注册器，避免 Ctrl+Alt+V 被宿主机其他应用占用；
+  // VIBING_E2E_REAL_GLOBAL_SHORTCUT=1 可切换到真实 OS smoke。
   const shortcut = () =>
     app.evaluate(() =>
       (globalThis as unknown as {

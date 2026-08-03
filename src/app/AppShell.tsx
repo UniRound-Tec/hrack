@@ -410,7 +410,7 @@ export default function AppShell() {
     ) : null
 
   return (
-    <div className="app-shell isolate relative flex h-full w-full flex-col overflow-hidden">
+    <div className="app-shell isolate relative flex h-full w-full select-none flex-col overflow-hidden">
       {/* 环境渐变垫在全部镶边（标题栏/侧栏/圆角缺口）下面；内容面板不透明底色自然盖住自己的区域 */}
       <SidebarTint />
       <TitleBar

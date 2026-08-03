@@ -1,4 +1,9 @@
-import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import {
+  _electron as electron,
+  expect,
+  type ElectronApplication,
+  type Page
+} from '@playwright/test'
 import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { resolve } from 'path'
@@ -71,27 +76,9 @@ export async function launchApp(options: {
         debugWindow.__vibingDebugShell.navigate(`terminal:${terminalId}`)
       }
     })
-    // M5.c：等待 shell 提示符就绪再返回——调试桥在 TerminalView 挂载时即注册，
-    // 早于 pty 首帧；直接输入会与提示符竞态（fresh userData 首启更慢，更易触发）。
-    await window
-      .waitForFunction(
-        () => {
-          const lines = (
-            window as unknown as {
-              __vibingDebug: { dumpBuffer(): string[] }
-            }
-          ).__vibingDebug.dumpBuffer()
-          return lines.some(
-            (line) =>
-              line.includes('PS ') || /[>#$] ?$/.test(line.trim())
-          )
-        },
-        null,
-        { polling: 100, timeout: 15_000 }
-      )
-      .catch(() => {
-        // 非终端断言（Home/Settings）或异常环境不阻塞 launch。
-      })
+    // 调试桥早于 PTY 首帧注册。等待权威 PTY 流完成首轮输出与尺寸重绘，
+    // 避免第一条测试命令和 PowerShell 初始化竞争，也不污染终端 scrollback。
+    await waitForShellReady(window)
     return { app, window, userDataDir }
   } catch (error) {
     await app.close().catch(() => {})
@@ -130,6 +117,90 @@ export async function dumpLogicalBuffer(window: Page): Promise<string[]> {
       __vibingDebug: { dumpLogicalBuffer(): string[] }
     }).__vibingDebug.dumpLogicalBuffer()
   )
+}
+
+async function waitForAuthoritativePtyQuiet(
+  window: Page,
+  timeout: number
+): Promise<void> {
+  let previousSequence = -1
+  let stableSamples = 0
+  await expect
+    .poll(
+      async () => {
+        const history = await dumpAuthoritativeHistory(window)
+        if (!history?.events.some((event) => event.kind === 'output')) {
+          previousSequence = -1
+          stableSamples = 0
+          return stableSamples
+        }
+        const sequence = history.events.at(-1)?.sequence ?? -1
+        if (sequence === previousSequence) {
+          stableSamples++
+        } else {
+          previousSequence = sequence
+          stableSamples = 0
+        }
+        return stableSamples
+      },
+      {
+        timeout,
+        intervals: [100, 150, 250, 400],
+        message: 'PTY 输出应在发送下一条命令前进入稳定态'
+      }
+    )
+    .toBeGreaterThanOrEqual(2)
+}
+
+export async function waitForShellReady(
+  window: Page,
+  timeout = 20_000
+): Promise<void> {
+  await expect
+    .poll(() => dumpAuthoritativeHistory(window), {
+      timeout,
+      message: 'PTY 应在发送 shell 命令前完成绑定'
+    })
+    .not.toBeNull()
+  await waitForAuthoritativePtyQuiet(window, timeout)
+}
+
+/**
+ * 证明当前终端已经接通 shell：等待 PTY 句柄后发送一个很短的唯一标记，
+ * 再从主进程权威原始流等待输出。探针把标记拆成变量和前缀，命令回显不会
+ * 包含最终值；同时绕过 PowerShell/ConPTY 随后覆盖 xterm 行尾的重绘。
+ */
+export async function waitForShellRoundTrip(
+  window: Page,
+  timeout = 20_000
+): Promise<void> {
+  await waitForShellReady(window, timeout)
+
+  const nonce = Math.random().toString(36).slice(2, 8)
+  const expected = `VIB_${nonce}`
+  const platform = await window.evaluate(() => window.windowApi.platform)
+  const command =
+    platform === 'win32'
+      ? `$x='${nonce}'; echo VIB_$x`
+      : `x='${nonce}'; echo VIB_$x`
+
+  await typeInTerminal(window, command)
+  await window.keyboard.press('Enter')
+  await expect
+    .poll(async () => {
+      const history = await dumpAuthoritativeHistory(window)
+      return (
+        history?.events
+          .filter((event) => event.kind === 'output')
+          .map((event) => event.data)
+          .join('') ?? ''
+      )
+    }, {
+      timeout,
+      message: 'shell 应执行并返回唯一就绪探针'
+    })
+    .toContain(expected)
+  await waitForAuthoritativePtyQuiet(window, timeout)
 }
 
 /** 读取当前 xterm 选择文本；空字符串表示高亮已经取消。 */

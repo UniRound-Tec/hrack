@@ -13,7 +13,8 @@ import {
   scrollToTop,
   setPtyAckDelay,
   snapshot,
-  typeInTerminal
+  typeInTerminal,
+  waitForShellRoundTrip
 } from './helpers'
 
 interface TerminalSnapshot {
@@ -56,21 +57,8 @@ async function waitForBufferText(text: string, timeout = 15_000): Promise<void> 
     .toContain(text)
 }
 
-async function lastNonEmptyLine(): Promise<string> {
-  // App Shell leaves less horizontal room than the former full-width M3 tab
-  // surface, so a valid long prompt can soft-wrap with only `> ` on its final
-  // physical row. Judge prompt integrity on xterm logical lines.
-  const lines = await dumpLogicalBuffer(page)
-  return [...lines].reverse().find((line) => line.trim().length > 0) ?? ''
-}
-
 async function waitForCompletePrompt(): Promise<void> {
-  await expect
-    .poll(lastNonEmptyLine, {
-      timeout: 15_000,
-      message: '最后一行应恢复成完整的 PowerShell 提示符'
-    })
-    .toMatch(/PS .+>\s*$/)
+  await waitForShellRoundTrip(page)
 }
 
 async function setWindowSize(width: number, height: number): Promise<void> {

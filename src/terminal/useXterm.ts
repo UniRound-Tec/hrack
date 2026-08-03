@@ -312,12 +312,19 @@ export function useXterm(
       ? setInterval(() => {
           if (disposed || !agentSessionReady) return
           const buffer = term.buffer.active
-          const bottom = Math.min(
+          // Claude 的活动状态行位于输入光标上方，而不是 viewport 底部。
+          // TUI 在下半屏留空时，扫描最后 12 行会漏掉仍然可见的 spinner；
+          // 以当前 cursor 为锚点也能避免捡到上一轮残留的旧状态行。
+          const cursorRow = Math.min(
             buffer.length - 1,
-            buffer.viewportY + term.rows - 1
+            buffer.baseY + buffer.cursorY
           )
           const lines: string[] = []
-          for (let index = Math.max(0, bottom - 11); index <= bottom; index++) {
+          for (
+            let index = Math.max(0, cursorRow - 11);
+            index <= cursorRow;
+            index++
+          ) {
             const line = buffer.getLine(index)
             if (line) lines.push(line.translateToString(true))
           }

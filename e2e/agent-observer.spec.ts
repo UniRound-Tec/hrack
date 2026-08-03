@@ -49,14 +49,13 @@ test.describe('agent observer (fixture adapter, app level)', () => {
       timeout: 15_000
     })
 
-    // working → needs-you → working → done → exited
+    // working → needs-you → working；done 是持久化事件事实，最终 UI 为 exited。
+    // 不在 DOM 上等待瞬时 done：当 CLI 紧接着退出时，renderer 可能在两次
+    // paint 之间直接收到 exited。下面的 history 断言会验证 completed 没有丢失。
     await expect(sessionItem.locator('.bg-status-needs-you-dot')).toBeVisible({
       timeout: 15_000
     })
     await expect(sessionItem.locator('.bg-status-working-dot')).toBeVisible({
-      timeout: 15_000
-    })
-    await expect(sessionItem.locator('.bg-status-done-dot')).toBeVisible({
       timeout: 15_000
     })
     await expect(sessionItem.locator('.border-status-exited')).toBeVisible({

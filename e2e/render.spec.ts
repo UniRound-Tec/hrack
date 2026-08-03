@@ -7,6 +7,7 @@ import {
 import { PNG } from 'pngjs'
 import {
   dumpBuffer,
+  dumpLogicalBuffer,
   forceResize,
   launchApp,
   openDefaultTerminal,
@@ -184,7 +185,7 @@ test('falls back to DOM after real context loss and retries after tab reactivati
   await typeInTerminal(page, `Write-Output "${beforeToken}"`)
   await page.keyboard.press('Enter')
   await expect
-    .poll(async () => (await dumpBuffer(page)).join('\n'))
+    .poll(async () => (await dumpLogicalBuffer(page)).join('\n'))
     .toContain(beforeToken)
 
   expect(await forceContextLoss(firstId)).toBe(true)
@@ -196,16 +197,16 @@ test('falls back to DOM after real context loss and retries after tab reactivati
   await typeInTerminal(page, `Write-Output "${afterToken}"`)
   await page.keyboard.press('Enter')
   await expect
-    .poll(async () => (await dumpBuffer(page)).join('\n'))
+    .poll(async () => (await dumpLogicalBuffer(page)).join('\n'))
     .toContain(afterToken)
-  expect((await dumpBuffer(page)).join('\n')).toContain(beforeToken)
+  expect((await dumpLogicalBuffer(page)).join('\n')).toContain(beforeToken)
 
   await openDefaultTerminal(page)
   await expect.poll(() => rendererKind(firstId)).toBe('dom')
   await page.getByTestId('sidebar-terminal-item').first().click()
   await expect.poll(() => rendererKind(firstId)).toBe('webgl')
-  expect((await dumpBuffer(page)).join('\n')).toContain(beforeToken)
-  expect((await dumpBuffer(page)).join('\n')).toContain(afterToken)
+  expect((await dumpLogicalBuffer(page)).join('\n')).toContain(beforeToken)
+  expect((await dumpLogicalBuffer(page)).join('\n')).toContain(afterToken)
 })
 
 for (const zoom of [1, 1.25, 0.8]) {
