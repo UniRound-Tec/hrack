@@ -1,7 +1,8 @@
 # S1 实施计划 —— Agent Observer 基础设施
 
 > 状态：**已完成（2026-08-03）**。实现与验收见下方 §11 各 P 的勾选与 §12 清单；
-> SPEC-S 已回写。真实 CLI 协议接入归 S2/S3，不因本计划完成而提前冻结公共事件模型。
+> SPEC-S 已回写。S2 Claude Hooks 与 S3 OpenCode Server/SSE 已完成第二协议验证；公共事件与
+> Adapter seam 自 2026-08-04 起进入 v1 冻结，后续按跨产品事实做兼容扩展。
 >
 > 目标：在不解析 xterm 画面、不阻塞 PTY 输入输出、不修改用户全局 CLI 配置的前提下，建立
 > 统一的 Agent Event、Observer Adapter seam、主进程状态归约和 renderer 推送链路。
@@ -23,7 +24,7 @@
 - 语义事件到既有 `EventLog` / all-time stats 的低敏投影；
 - 收窄的 preload IPC：启动/停止 Agent 会话、订阅事件和 Session 投影；
 - `LifecycleObserverAdapter` 与可编程 fixture adapter，用于证明深模块 interface 和降级路径；
-- Claude Code、Codex 两种真实 Adapter 的接口位置与验收合同，但真实协议接入分别归 S2/S3。
+- Claude Code、OpenCode 两种真实 Adapter 的接口位置与验收合同；真实协议接入分别归 S2/S3。
 
 ### 1.2 S1 不交付
 
@@ -95,7 +96,7 @@ Renderer NewSessionFlow / TerminalView
     │ Lifecycle Adapter   │          │
     │ Fixture Adapter     │          ├─ data → renderer（原链路）
     │ Claude Adapter (S2) │          └─ exit → Runtime
-    │ Codex Adapter (S3)  │
+    │ OpenCode Adapter(S3)│
     └─────────────────────┘
                │ AgentEvent
                ▼
@@ -144,7 +145,8 @@ Interface 合同：
 
 ### 3.3 内部 Adapter seam
 
-Claude 与 Codex 至少需要两种真实协议形态，因此这个 seam 不是为单一实现制造的假抽象。
+Claude Hooks 与 OpenCode Server/SSE 提供两种真实协议形态，因此这个 seam 不是为单一实现制造的
+假抽象。产品原生字段必须留在各 Adapter 私有层，公共接口只接受跨产品事实。
 
 ```ts
 interface AgentObserverAdapter {
@@ -582,8 +584,8 @@ electron/agents/
     types.ts                   # 内部 Adapter seam
     lifecycle.ts               # 无语义能力的默认 Adapter
     fixture.ts                 # S1 验证夹具
-    claude-code.ts             # S2
-    codex.ts                   # S3
+    claude/                    # S2 Claude Code Hooks
+    opencode/                  # S3 OpenCode Server/SSE
 
 preload/
   index.ts                     # agentApi contextBridge
@@ -654,7 +656,7 @@ PTYManager 只增加主进程内部生命周期订阅 seam，不引入 AgentEven
 1. SPEC-S S1 标记完成；
 2. 把真实协议事实核验任务放入 `PLAN-S2-CLAUDE.md`；
 3. 固定 Claude Adapter 必须满足的 thinking/tool/approval/usage contract；
-4. S2 完成前不宣布六态为全产品通用能力。
+4. S2 完成前不宣布六态为全产品通用能力；S2/S3 完成第二协议验证后按能力声明启用。
 
 ---
 
@@ -718,16 +720,18 @@ PTYManager 只增加主进程内部生命周期订阅 seam，不引入 AgentEven
 - 原生事实缺失时 capability 标 `none`，不从 TUI 文本补猜；
 - 用 Claude fixture 固化 native event → AgentEvent 映射。
 
-### S3 — Codex 第二协议 Adapter
+### S3 — OpenCode 第二协议 Adapter
 
-- 使用与 Claude 不同的结构化协议形态验证 seam；
-- 如果 Codex 接入迫使修改公共事件，可新增真正跨产品的事实，但禁止泄漏 Codex native 字段；
-- 两个真实 Adapter 都稳定后，才冻结 M6 Adapter contract；
-- S3 同时实现独立置顶悬浮窗聚合，但悬浮窗只消费 projection/event，不访问 Adapter。
+- 详细实施见 [PLAN-S3-OPENCODE.md](./PLAN-S3-OPENCODE.md)；
+- 使用与 Claude 不同的 Server/SSE 协议形态验证 seam；
+- Windows 与 WSL 真实 thinking/tool 多轮已验收，permission/error 与更多 host 平台作为扩展矩阵；
+- 两个真实 Adapter 已稳定，M6 Adapter contract 自 2026-08-04 起进入 v1 冻结；
+- 独立置顶悬浮窗只消费 projection/event，不访问 Adapter。
 
 ### M6 — 批量 Adapter
 
-按市场优先级接入 Gemini CLI、OpenCode、Kimi、Grok、Pi、Cline 等。每个 Adapter 必须提交：
+按市场优先级接入 Codex、Pi、Kimi、Grok、Gemini CLI、Cline 等。每个 Adapter 必须使用
+[Adapter 验收模板](./ADAPTER-ACCEPTANCE-TEMPLATE.md)，并至少提交：
 
 - 支持的平台、安装版本与能力声明；
 - native event → AgentEvent 映射表；
@@ -742,7 +746,7 @@ PTYManager 只增加主进程内部生命周期订阅 seam，不引入 AgentEven
 
 | 风险 | 约束 |
 |---|---|
-| 为 Claude 先写出 Claude 专用“通用接口” | S1 用 fixture 固定事实模型，S2 Claude，S3 Codex 验证后才冻结 seam |
+| 为 Claude 先写出 Claude 专用“通用接口” | S1 fixture 固定事实模型，S2 Claude Hooks 与 S3 OpenCode SSE 完成第二协议验证后冻结 v1 seam |
 | Adapter 修改用户 Hooks/settings | 只允许 `<userData>/observer-runs` 临时资源和官方显式覆盖入口 |
 | thinking 变成隐私/合规风险 | 只记录 phase；隐藏推理默认丢弃，summary 白名单化 |
 | 高频 delta 卡 UI 或挤压 PTY | 独立有界队列、合并 progress、批量 IPC，绝不调用 PTY pause |
@@ -760,6 +764,6 @@ PTYManager 只增加主进程内部生命周期订阅 seam，不引入 AgentEven
 2. thinking 是否确认只存阶段与官方 summary，永不存隐藏推理 delta？
 3. 原始 Agent Event 是否确认 S1 不做完整持久化，只投影低敏 HistoryEvent？
 4. Observer attach 失败是否确认默认降级、不中止 CLI？
-5. Claude Code 是否作为 S2 第一 Adapter，Codex 作为 S3 第二协议验证？
+5. Claude Code 作为 S2 第一 Adapter、OpenCode 作为 S3 第二协议验证（已决）；Codex 进入 M6 首批。
 6. idle 是否由主进程显式生成确定性事件，而不是 renderer 各自计时？
 7. 通知、悬浮窗和批准操作是否继续严格后置，不混入 S1？

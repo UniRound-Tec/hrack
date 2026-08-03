@@ -1,6 +1,7 @@
 # S3 实施计划 —— OpenCode Observer Adapter（Windows + WSL）
 
-> 状态：**核心监听已完成；真实 permission/error 矩阵待补**。
+> 状态：**首版完成（2026-08-04）**。Windows + WSL 真实 thinking/tool 多轮、SSE 对账与幂等
+> 清理已验收；permission/error、更多 host 平台与设置页 capability 展示作为扩展矩阵持续补齐。
 >
 > 目标：在 [PLAN-S1.md](./PLAN-S1.md) 已落地的 `AgentObserverAdapter` seam 上，实现第二种
 > 真实协议形态：通过 OpenCode TUI 自带的 HTTP Server 与 SSE 事件流，监听 Vibing 启动的
@@ -580,6 +581,9 @@ Session；只有用户 stop 或 PTY exit 进入 Runtime finalize。
 - [ ] macOS/Linux host 验收；
 - [ ] 复用证据充分后提取通用 SSE Module；
 - [ ] 设置页展示 OpenCode 真实 capability / degraded reason。
+
+新增或复核场景统一使用 [Adapter 验收模板](./ADAPTER-ACCEPTANCE-TEMPLATE.md)；P0/P2/P3/P5 中
+仍未勾选的版本、网络和异常组合是扩展覆盖台账，不再阻塞 S3 首版或 M6 启动。
 
 ---
 

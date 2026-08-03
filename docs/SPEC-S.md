@@ -1,8 +1,8 @@
 # AI CLI 发现与启动线 — Spec（S 线）
 
-> 状态：**S1 Agent Observer 基础设施已完成（2026-08-03）**；S0 跨平台自动化矩阵仍待补齐。
-> 当前交付：**扫描 → 启动列表 → 点击进入配置 → 按所选环境启动 → 主进程归约六态投影**。
-> 真实 CLI 语义监听（Hooks/JSONL/ACP）归 S2/S3，见 [PLAN-S2-CLAUDE.md](./PLAN-S2-CLAUDE.md)。
+> 状态：**S0 扫描/启动、S1 Observer 基础设施、S2 Claude Code、S3 OpenCode 与 F1 悬浮窗首版均已完成（2026-08-04）**；跨平台与异常场景的扩展矩阵持续补齐。
+> 当前交付：**扫描 → 启动列表 → 点击进入配置 → 按所选环境启动 → 语义 Adapter → 主进程六态投影 → 主窗/悬浮窗聚合**。
+> Claude Code Hooks 与 OpenCode Server/SSE 已共同验证 Adapter seam；后续产品按 [Adapter 验收模板](./ADAPTER-ACCEPTANCE-TEMPLATE.md) 进入 M6。
 >
 > 父文档：[SPEC.md](./SPEC.md)。市场事实基线：[RESEARCH-AI-CLI-MARKET.md](./RESEARCH-AI-CLI-MARKET.md)。
 
@@ -394,7 +394,7 @@ S0 新会话应保存 `installationId`，使历史/诊断知道它来自 Windows
 - [x] 普通终端启动、输入、resize、背压与退出链路不引入 Agent 依赖；
 - [x] Fixture Adapter 完整事件序列驱动六态并通过 interface 级门禁。
 
-### 后续（不属于当前实现）
+### 阶段总览
 
 | 阶段 | 结果 |
 |---|---|
@@ -403,16 +403,17 @@ S0 新会话应保存 `installationId`，使历史/诊断知道它来自 Windows
 | **S3** | ✅ OpenCode Server/SSE Adapter（Windows + WSL）验证第二种协议形态；实施见 [PLAN-S3-OPENCODE.md](./PLAN-S3-OPENCODE.md) |
 | **S4** | 注意力通知，仍只看不操作 |
 | **F1** | ✅ 独立置顶悬浮窗核心实现与 Windows 真窗口 E2E 已完成；macOS/Linux 真机 smoke 待补；实施见 [PLAN-F1-FLOATING-WINDOW.md](./PLAN-F1-FLOATING-WINDOW.md) |
-| **M6** | 在 S3 抽象上铺开更多产品的语义 adapter；扫描定义不需要等到 M6 |
+| **M6** | 🔜 按统一验收模板铺开 Codex、Pi、Kimi、Grok、Gemini 等语义 Adapter；扫描定义已独立完成 |
 
 ---
 
-## 9. 监听与六态语义（明确后置）
+## 9. 监听与六态语义
 
-S0 只解决“机器上有什么、从哪里启动、用户点哪个”。通用监听基础设施已由 S1 落地（
-[PLAN-S1.md](./PLAN-S1.md)：事件、能力、归约、投影、IPC 与 fixture 门禁），Claude Code
-参考 Adapter 见 [PLAN-S2-CLAUDE.md](./PLAN-S2-CLAUDE.md)。S2 完成前，六态不宣布为
-全产品通用能力——没有语义 Adapter 的 CLI 只有 lifecycle 观察。
+S0 只解决“机器上有什么、从哪里启动、用户点哪个”。通用监听基础设施由 S1 落地（
+[PLAN-S1.md](./PLAN-S1.md)：事件、能力、归约、投影、IPC 与 fixture 门禁）；Claude Code
+参考 Adapter 见 [PLAN-S2-CLAUDE.md](./PLAN-S2-CLAUDE.md)，OpenCode 第二协议 Adapter 见
+[PLAN-S3-OPENCODE.md](./PLAN-S3-OPENCODE.md)。六态现在是公共投影契约，但只有注册了语义
+Adapter 的产品能够驱动完整状态；其余 CLI 继续诚实降级为 lifecycle-only。
 
 后续 observer 优先级依据市场调研：
 
@@ -424,8 +425,9 @@ JSONL / native event stream
   → PTY tap / HeadlessScreen（最后兜底）
 ```
 
-未来 observer 输出统一事件，再推导六态；进程生命周期与语义状态必须分开。Devin/Oz 等云端任务还需
-把本地 launcher 与远端 run 分开建模。
+M6 observer 必须输出统一事件，再由主进程推导六态；进程生命周期与语义状态继续分开。Devin/Oz
+等云端任务还需把本地 launcher 与远端 run 分开建模。公共 Adapter 契约按
+[Adapter 验收模板](./ADAPTER-ACCEPTANCE-TEMPLATE.md) 的 v1 冻结规则维护。
 
 S0 明确不做：
 

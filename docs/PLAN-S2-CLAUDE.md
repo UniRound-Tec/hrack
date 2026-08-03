@@ -1,6 +1,7 @@
 # S2 实施计划 —— Claude Code Observer Adapter
 
-> 状态：**实施中**。2026-08-03 已落地 P1–P4 主链路，真实会话验收与 P5 设置页展示待完成。
+> 状态：**首版完成（2026-08-04）**。Windows 真实 thinking/tool/permission 多轮与统一投影已验收；
+> WSL/更多 host 平台、managed policy 和设置页 capability 展示作为扩展矩阵持续补齐，不阻塞 M6。
 >
 > 目标：在 [PLAN-S1.md](./PLAN-S1.md) 的 `AgentSessionRuntime` 与 `AgentObserverAdapter`
 > seam 上，实现第一个真实 Adapter。通过 Claude Code 官方 Hooks，把 turn、thinking phase、tool、
@@ -815,8 +816,8 @@ file-first 选择、300ms drop poller 与 lifecycle-only 降级；真实 distro 
 
 ### P5 — Runtime/UI 收尾
 
-实现状态：Runtime/PTY 的 input-submit seam、统一清理与 Claude 注册已完成；设置页能力/transport
-展示和真实会话验收记录待完成。
+实现状态：Runtime/PTY 的 input-submit seam、统一清理、Claude 注册、Windows 真实会话记录与
+Sidebar/悬浮窗投影已完成；设置页 capability/transport 展示及更多平台矩阵转入非阻塞跟进。
 
 1. 删除 renderer Agent lifecycle 双写；
 2. SessionStore 只 upsert main projection；
@@ -824,6 +825,9 @@ file-first 选择、300ms drop poller 与 lifecycle-only 降级；真实 distro 
 4. EventLog 低敏投影与去重；
 5. 设置页显示 Adapter capability、transport 和降级 reason；
 6. 补真实会话验收记录。
+
+M6 起新增或复核场景统一使用 [Adapter 验收模板](./ADAPTER-ACCEPTANCE-TEMPLATE.md)；本节未勾选的
+跨平台/策略组合继续保留为覆盖台账，不再代表 S2 首版未完成。
 
 验收：关闭、失败、reload、重复 Hook、WSL 断桥均不留幽灵 Session。
 
@@ -937,16 +941,15 @@ P6 不阻塞 S2 完成。
 
 ---
 
-## 15. 进入 S3 前必须回答的问题
+## 15. S3 验证结论与 M6 交接
 
-1. `AgentObserverAdapter.prepare/attach/dispose` 是否在 Claude 实现中保持足够小，还是暴露了 Hook
-   transport 细节？
-2. Claude 私有 Projector 是否完全吸收了 PermissionRequest 无 tool id、并行 batch、SessionEnd reset、
-   background task 等复杂度？
-3. 公共 `AgentEvent` 是否有任何字段只对 Claude 有意义？有则在 S3 前移回 Adapter 私有类型；
-4. lifecycle-only 降级是否真的不影响 CLI 启动，而不是“Observer 失败 = Session error”？
-5. 真实 Windows/macOS/Linux/WSL 验收是否证明路径、权限和清理实现跨端成立？
-6. Codex 的第二种协议能否复用 Runtime interface；若不能，新增事实必须证明是跨产品需求。
+1. `AgentObserverAdapter.prepare/attach/dispose` 保持小接口，Hook transport、PermissionRequest 关联、
+   batch、SessionEnd reset 与 background task 均留在 Claude 私有实现；
+2. OpenCode 使用完全不同的 Server/SSE + reconcile 协议复用了同一 Runtime、事件与 projection；
+3. Observer 失败与 Agent error 已分离，lifecycle-only 降级不影响可用 CLI；
+4. 公共事件没有引入只服务 Claude Hook 的 native 字段；
+5. Windows/WSL 已提供真实协议证据，macOS/Linux 与 managed policy 继续作为扩展矩阵，不伪称已验收；
+6. S3 OpenCode 已完成第二协议验证，M6 v1 contract 自 2026-08-04 起冻结；Codex 进入 M6 首批。
 
-S2 完成后进入 [PLAN-S1.md](./PLAN-S1.md) 定义的 S3：实现 Codex Adapter，以第二种协议验证 seam，
-再冻结 M6 的批量 Adapter contract。
+后续产品统一使用 [Adapter 验收模板](./ADAPTER-ACCEPTANCE-TEMPLATE.md)。如确需修改公共契约，必须
+给出至少两个产品的共同事实与现有 Adapter 回归证据。
