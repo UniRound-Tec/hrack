@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, X } from 'lucide-react'
 import type { AgentSessionProjection } from '../../shared/agent-events'
 import { getAdapterIcon } from '../app/adapterIcons'
@@ -42,7 +42,7 @@ export default function FloatingApp() {
     }
   }, [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = rootRef.current
     if (!root) return
     let frame = 0
@@ -61,7 +61,7 @@ export default function FloatingApp() {
       cancelAnimationFrame(frame)
       observer.disconnect()
     }
-  }, [])
+  })
 
   const active = useMemo(
     () =>
@@ -79,104 +79,107 @@ export default function FloatingApp() {
   const hasMore = active.length > COLLAPSED_COUNT
 
   return (
-    <aside
-      ref={rootRef}
-      data-testid="floating-window"
-      className="w-full select-none overflow-hidden rounded-xl border border-border-default bg-overlay shadow-2xl"
-    >
-      <header className="app-drag-region flex h-8 shrink-0 items-center gap-2 px-2.5">
-        <span className="font-ammonite text-[13px] leading-none text-brand-logo-muted">
-          vibing
-        </span>
-        {attentionCount > 0 && (
-          <span className="font-pingfang text-[9px] text-status-needs-you">
-            <span data-testid="floating-attention-count">
-              {attentionCount}
-            </span>{' '}
-            {strings.floating.attention}
+    <main ref={rootRef} className="box-border w-full p-2">
+      <aside
+        data-testid="floating-window"
+        className="w-full select-none overflow-hidden rounded-xl border border-border-default bg-overlay shadow-[0_3px_8px_-4px_rgba(0,0,0,0.28)]"
+      >
+        <header className="app-drag-region flex h-8 shrink-0 items-center gap-2 px-2.5">
+          <span className="font-ammonite text-[13px] leading-none text-brand-logo-muted">
+            vibing
           </span>
-        )}
-        <button
-          type="button"
-          data-testid="floating-close"
-          aria-label={strings.common.close}
-          onClick={() => void window.floatingWindowApi.setEnabled(false)}
-          className="app-no-drag ml-auto flex size-5 items-center justify-center rounded-md text-text-faint transition-colors hover:bg-surface-hover hover:text-text-secondary"
-        >
-          <X className="size-3" strokeWidth={1.75} />
-        </button>
-      </header>
+          {attentionCount > 0 && (
+            <span className="font-pingfang text-[9px] text-status-needs-you">
+              <span data-testid="floating-attention-count">
+                {attentionCount}
+              </span>{' '}
+              {strings.floating.attention}
+            </span>
+          )}
+          <button
+            type="button"
+            data-testid="floating-close"
+            aria-label={strings.common.close}
+            onClick={() => void window.floatingWindowApi.setEnabled(false)}
+            className="app-no-drag ml-auto flex size-5 items-center justify-center rounded-md text-text-faint transition-colors hover:bg-surface-hover hover:text-text-secondary"
+          >
+            <X className="size-3" strokeWidth={1.75} />
+          </button>
+        </header>
 
-      {visible.length > 0 ? (
-        <ul
-          data-testid="floating-session-list"
-          className={`app-no-drag px-1 pb-1 ${
-            expanded ? 'sidebar-scroll max-h-[264px] overflow-y-auto' : ''
-          }`}
-        >
-          {visible.map((session) => {
-            const Icon = getAdapterIcon(session.adapterId)
-            const detail =
-              renderAgentDetail(session.detail, strings) ?? session.name ?? ''
-            return (
-              <li key={session.sessionId}>
-                <button
-                  type="button"
-                  data-testid="floating-session-item"
-                  data-session-id={session.sessionId}
-                  onClick={() =>
-                    void window.floatingWindowApi.focusSession(session.sessionId)
-                  }
-                  className="flex w-full items-center gap-1.5 rounded-lg px-1.5 py-[5px] text-left transition-colors hover:bg-surface-hover"
-                >
-                  <span
-                    className={`size-1.5 shrink-0 rounded-full ${statusDot[session.status]}`}
-                  />
-                  <span className="inline-flex size-4 shrink-0 items-center justify-center text-text-muted">
-                    <Icon size={12} className="size-3" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-pingfang text-[10px] font-medium text-text-secondary">
-                      {session.name ?? session.adapterId}
-                    </span>
+        {visible.length > 0 ? (
+          <ul
+            data-testid="floating-session-list"
+            className={`app-no-drag px-1 pb-1 ${
+              expanded ? 'sidebar-scroll max-h-[264px] overflow-y-auto' : ''
+            }`}
+          >
+            {visible.map((session) => {
+              const Icon = getAdapterIcon(session.adapterId)
+              const detail =
+                renderAgentDetail(session.detail, strings) ?? session.name ?? ''
+              return (
+                <li key={session.sessionId}>
+                  <button
+                    type="button"
+                    data-testid="floating-session-item"
+                    data-session-id={session.sessionId}
+                    onClick={() =>
+                      void window.floatingWindowApi.focusSession(
+                        session.sessionId
+                      )
+                    }
+                    className="flex w-full items-center gap-1.5 rounded-lg px-1.5 py-[5px] text-left transition-colors hover:bg-surface-hover"
+                  >
                     <span
-                      className={`block truncate font-pingfang text-[10px] leading-snug ${statusTone[session.status]}`}
-                    >
-                      {detail}
+                      className={`size-1.5 shrink-0 rounded-full ${statusDot[session.status]}`}
+                    />
+                    <span className="inline-flex size-4 shrink-0 items-center justify-center text-text-muted">
+                      <Icon size={12} className="size-3" />
                     </span>
-                  </span>
-                  <RelativeTime timestamp={session.lastActivityAt} />
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      ) : (
-        <div
-          data-testid="floating-empty"
-          className="flex h-[58px] items-center px-3 pb-2 font-pingfang text-[10px] text-text-faint"
-        >
-          {strings.floating.empty}
-        </div>
-      )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-pingfang text-[10px] font-medium text-text-secondary">
+                        {session.name ?? session.adapterId}
+                      </span>
+                      <span
+                        className={`block truncate font-pingfang text-[10px] leading-snug ${statusTone[session.status]}`}
+                      >
+                        {detail}
+                      </span>
+                    </span>
+                    <RelativeTime timestamp={session.lastActivityAt} />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <div
+            data-testid="floating-empty"
+            className="flex h-[58px] items-center px-3 pb-2 font-pingfang text-[10px] text-text-faint"
+          >
+            {strings.floating.empty}
+          </div>
+        )}
 
-      {hasMore && (
-        <button
-          type="button"
-          data-testid="floating-expand"
-          onClick={() => setExpanded((value) => !value)}
-          className="app-no-drag flex w-full items-center justify-center gap-1 border-t border-border-faint py-1.5 font-pingfang text-[10px] text-text-faint transition-colors hover:bg-surface-hover hover:text-text-secondary"
-        >
-          <ChevronDown
-            className={`size-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
-            strokeWidth={1.75}
-          />
-          {expanded
-            ? strings.floating.collapse
-            : strings.floating.expand(active.length)}
-        </button>
-      )}
-    </aside>
+        {hasMore && (
+          <button
+            type="button"
+            data-testid="floating-expand"
+            onClick={() => setExpanded((value) => !value)}
+            className="app-no-drag flex w-full items-center justify-center gap-1 border-t border-border-faint py-1.5 font-pingfang text-[10px] text-text-faint transition-colors hover:bg-surface-hover hover:text-text-secondary"
+          >
+            <ChevronDown
+              className={`size-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
+              strokeWidth={1.75}
+            />
+            {expanded
+              ? strings.floating.collapse
+              : strings.floating.expand(active.length)}
+          </button>
+        )}
+      </aside>
+    </main>
   )
 }
 

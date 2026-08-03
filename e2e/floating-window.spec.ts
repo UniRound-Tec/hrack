@@ -45,6 +45,35 @@ test('floating-window setting owns one independent window without creating a PTY
     expect(floating).toBeDefined()
     await expect(floating!.getByTestId('floating-window')).toBeVisible()
     await expect(floating!.getByTestId('floating-empty')).toBeVisible()
+    const shadowGeometry = await floating!.evaluate(() => {
+      const panel = document.querySelector<HTMLElement>(
+        '[data-testid="floating-window"]'
+      )!
+      const rect = panel.getBoundingClientRect()
+      const backgrounds = [
+        document.documentElement,
+        document.body,
+        document.getElementById('root')!
+      ].map((element) => getComputedStyle(element).backgroundColor)
+      return {
+        left: rect.left,
+        top: rect.top,
+        right: window.innerWidth - rect.right,
+        bottom: window.innerHeight - rect.bottom,
+        boxShadow: getComputedStyle(panel).boxShadow,
+        backgrounds
+      }
+    })
+    expect(shadowGeometry.boxShadow).not.toBe('none')
+    expect(shadowGeometry.backgrounds).toEqual([
+      'rgba(0, 0, 0, 0)',
+      'rgba(0, 0, 0, 0)',
+      'rgba(0, 0, 0, 0)'
+    ])
+    expect(shadowGeometry.left).toBeGreaterThanOrEqual(8)
+    expect(shadowGeometry.top).toBeGreaterThanOrEqual(8)
+    expect(shadowGeometry.right).toBeGreaterThanOrEqual(8)
+    expect(shadowGeometry.bottom).toBeGreaterThanOrEqual(8)
     await expect
       .poll(() => main.evaluate(() => window.ptyApi.listRecoverable()))
       .toEqual([])

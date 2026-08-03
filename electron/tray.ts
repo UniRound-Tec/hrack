@@ -1,4 +1,11 @@
-import { BrowserWindow, Menu, Tray, nativeImage, type NativeImage } from 'electron'
+import {
+  BrowserWindow,
+  Menu,
+  Tray,
+  nativeImage,
+  nativeTheme,
+  type NativeImage
+} from 'electron'
 import { join } from 'node:path'
 
 export type { Tray } from 'electron'
@@ -25,16 +32,37 @@ const TRAY_LABELS: Record<string, { toggle: string; newSession: string; quit: st
 
 function trayIcon(): NativeImage {
   const isMac = process.platform === 'darwin'
-  const filename = isMac ? 'vibingTemplate-16.png' : 'vibing-16.png'
+  const basename = isMac
+    ? 'vibingTemplate'
+    : nativeTheme.shouldUseDarkColors
+      ? 'vibing-white'
+      : 'vibing'
   const image = nativeImage.createFromPath(
-    join(process.cwd(), 'resources', 'tray', filename)
+    join(process.cwd(), 'resources', 'tray', `${basename}-16.png`)
   )
+  const highDpiImage = nativeImage.createFromPath(
+    join(process.cwd(), 'resources', 'tray', `${basename}-32.png`)
+  )
+  if (!highDpiImage.isEmpty()) {
+    image.addRepresentation({
+      scaleFactor: 2,
+      width: 32,
+      height: 32,
+      buffer: highDpiImage.toPNG()
+    })
+  }
   if (isMac) image.setTemplateImage(true)
   return image
 }
 
 let activeTray: Tray | null = null
 let activeMenu: Menu | null = null
+
+nativeTheme.on('updated', () => {
+  if (process.platform !== 'darwin' && activeTray && !activeTray.isDestroyed()) {
+    activeTray.setImage(trayIcon())
+  }
+})
 
 export function rebuildTrayMenu(
   tray: Tray,

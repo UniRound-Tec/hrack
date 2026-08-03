@@ -108,8 +108,8 @@
 - `electron/tray.ts`：`createTray(win, callbacks)`。菜单三项（决策 11），文案由主进程
   内嵌五语言小字典（托盘菜单是原生 UI，取不到 renderer strings；key 仅 4 个，
   语言随主进程偏好文件同步，见 §4.2）。
-- 图标资产：`resources/tray/` 提交静态 PNG（16/32px 单色 v 字形；macOS
-  `vibingTemplate.png` 走 template image）。electron-builder `extraResources` 归 M7，
+- 图标资产：`resources/tray/` 提交由 Ammonite 字体生成的黑/白 16/32px v 字形；
+  Windows/Linux 随系统深浅色选色，macOS `vibingTemplate.png` 走 template image。electron-builder `extraResources` 归 M7，
   当前 dev/打包均从 `resources/` 读。
 - 关闭语义改造（`electron/window.ts` + `main.ts`）：
   - 模块级 `isQuitting` 标志；`win.on('close')` 中若未 quitting → `preventDefault()`
