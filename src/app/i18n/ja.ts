@@ -37,25 +37,35 @@ export const ja = {
     sessionNameRequired: 'セッション名を入力してください'
   },
   sessionStatus: {
-    working: '実行中',
-    needsYou: '要対応',
-    done: '完了',
-    error: 'エラー',
-    idle: '待機中',
-    exited: '終了',
+    working: 'タスクを処理中',
+    needsYou: '確認が必要です',
+    done: '今回のタスクが完了しました',
+    error: '実行中に問題が発生しました',
+    idle: '次の指示を待っています',
+    exited: 'セッションは終了しました',
     exitedDetail: (exitCode: number | undefined) =>
       exitCode === undefined
-        ? '終了'
-        : `終了：exit code ${exitCode}`
+        ? 'セッションは終了しました'
+        : `セッションは終了しました · exit code ${exitCode}`
   },
   agentDetail: {
-    thinking: '思考中',
-    waitingApproval: '承認待ち',
-    waitingInput: '入力待ち',
+    thinking: 'タスクを分析して次の手順を計画しています',
+    liveThinking: (seconds: number | undefined, tokens: number | undefined) =>
+      ['思考中', seconds === undefined ? undefined : `${seconds}秒`, tokens === undefined ? undefined : `${tokens.toLocaleString('ja-JP')} tokens`].filter(Boolean).join(' · '),
+    waitingApproval: (summary: string | undefined) =>
+      ['確認が必要です', summary].filter(Boolean).join(' · '),
+    waitingInput: (prompt: string | undefined) =>
+      ['入力を待っています', prompt].filter(Boolean).join(' · '),
+    runningTool: (name: string | undefined) =>
+      name ? `${name} を実行中` : 'ツールを実行中',
+    completed: (tokens: number | undefined) =>
+      ['今回のタスクが完了しました', tokens === undefined ? undefined : `${tokens.toLocaleString('ja-JP')} tokens`].filter(Boolean).join(' · '),
+    error: (message: string | undefined) =>
+      ['実行中に問題が発生しました', message].filter(Boolean).join(' · '),
     exited: (exitCode: number | undefined) =>
       exitCode === undefined
-        ? '終了'
-        : `終了：exit code ${exitCode}`
+        ? 'セッションは終了しました'
+        : `セッションは終了しました · exit code ${exitCode}`
   },
   terminal: {
     copied: 'コピーしました',

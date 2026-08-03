@@ -47,6 +47,7 @@ import {
   type AgentApi,
   type AgentEvent,
   type AgentSessionProjection,
+  type PublishAgentCaption,
   type StartAgentSession
 } from '../shared/agent-events'
 
@@ -188,6 +189,8 @@ const agentApi: AgentApi = {
     ipcRenderer.invoke(AgentInvokeChannel.Start, input),
   stop: (sessionId: string) =>
     ipcRenderer.invoke(AgentInvokeChannel.Stop, { sessionId }),
+  publishCaption: (input: PublishAgentCaption) =>
+    ipcRenderer.invoke(AgentInvokeChannel.PublishCaption, input),
   listActive: () => ipcRenderer.invoke(AgentInvokeChannel.ListActive),
   onEvents: (cb) => {
     const handler = (_event: IpcRendererEvent, events: unknown): void => {

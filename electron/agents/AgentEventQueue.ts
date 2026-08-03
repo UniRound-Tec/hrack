@@ -33,7 +33,8 @@ const COALESCABLE_KINDS: ReadonlySet<string> = new Set([
   'message.completed',
   'thinking.started',
   'thinking.completed',
-  'session.idle'
+  'session.idle',
+  'activity.caption'
 ])
 
 /** 永不因洪峰静默丢弃的终态/注意力事件。 */
@@ -74,6 +75,8 @@ function coalesceKey(event: AgentEvent): string | null {
       return 'thinking.completed'
     case 'session.idle':
       return 'session.idle'
+    case 'activity.caption':
+      return 'activity.caption'
     default:
       return null
   }

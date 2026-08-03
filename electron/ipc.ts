@@ -203,6 +203,9 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     if (!sessionId || sessionId.length > 128) return Promise.resolve()
     return ctx.agentRuntime.stop(sessionId)
   })
+  ipcMain.handle(AgentInvokeChannel.PublishCaption, (_event, input: unknown) =>
+    ctx.agentRuntime.publishCaption(input)
+  )
   ipcMain.handle(AgentInvokeChannel.ListActive, () =>
     ctx.agentRuntime.listActive()
   )

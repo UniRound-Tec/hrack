@@ -21,6 +21,7 @@ import {
   type AgentEventSource,
   type AgentSessionProjection,
   type ObserverCapabilities,
+  type PublishAgentCaption,
   type StartAgentSession,
   type StartedAgentSession
 } from '../../shared/agent-events'
@@ -48,6 +49,7 @@ import type {
 
 const DEFAULT_SILENCE_AFTER_MS = 300_000
 const DEFAULT_IDLE_CHECK_MS = 60_000
+const HOOK_HANDSHAKE_TIMEOUT_MS = 10_000
 
 const MAX_TERMINAL_ID_LENGTH = 128
 const MAX_SESSION_NAME_LENGTH = 256
@@ -56,6 +58,8 @@ const MAX_ENV_VALUE_LENGTH = 4_096
 const MAX_ARG_LENGTH = 1_024
 const MAX_AUGMENTED_ARGS = 32
 const MAX_PRESTART_OBSERVER_EVENTS = 2_000
+const MAX_CAPTION_LENGTH = 128
+const MAX_TOKEN_COUNT = 10_000_000_000
 
 // ───── 依赖 seam（保持 Runtime 与 Electron / node-pty 解耦，interface 可测） ─────
 
@@ -67,6 +71,8 @@ export interface AgentPtyHost {
   /** 不读取内容，只提供沉默 watchdog 所需的时间/存活事实。 */
   lastOutputAt?(ptyId: string): number | null
   isRunning?(ptyId: string): boolean
+  /** 只报告 CR/LF 提交边界，不暴露输入正文。 */
+  onInputSubmitted?(ptyId: string, cb: () => void): () => void
 }
 
 /** CLI 安装解析与启动选项合成（AiCliDiscoveryService 实现）。 */
@@ -78,6 +84,7 @@ export interface AgentLaunchProvider {
     augmentation?: {
       prependArgs?: readonly string[]
       appendArgs?: readonly string[]
+      unsetEnv?: readonly string[]
     }
   ): Promise<SpawnOptions>
 }
@@ -120,9 +127,12 @@ interface ActiveAgentSession {
   rejectedEventCount: number
   unsubscribeExit: (() => void) | null
   unsubscribeDisconnect: (() => void) | null
+  unsubscribeInput: (() => void) | null
   reconnectAttempted: boolean
   reconnecting: boolean
   observerEventsOpen: boolean
+  observerDelivered: boolean
+  handshakeTimer: ReturnType<typeof setTimeout> | null
   pendingObserverEvents: AdapterEvent[]
   pendingObserverOverflow: boolean
   idleTimer: ReturnType<typeof setInterval> | null
@@ -232,6 +242,17 @@ function sanitizeAugmentation(
   }
   return {
     env: Object.keys(env).length > 0 ? env : undefined,
+    unsetEnv: Array.isArray(augmentation.unsetEnv)
+      ? augmentation.unsetEnv
+          .filter(
+            (key) =>
+              typeof key === 'string' &&
+              key.length > 0 &&
+              key.length <= MAX_ENV_KEY_LENGTH &&
+              /^[A-Za-z_][A-Za-z0-9_]*$/.test(key)
+          )
+          .slice(0, 32)
+      : undefined,
     prependArgs: cleanArgs(augmentation.prependArgs),
     appendArgs: cleanArgs(augmentation.appendArgs)
   }
@@ -242,11 +263,12 @@ function mergeEnvironmentAugmentation(
   augmentation: LaunchAugmentation
 ): SpawnOptions {
   const merged: SpawnOptions = { ...base }
-  if (augmentation.env) {
+  if (augmentation.env || augmentation.unsetEnv) {
     merged.env = {
       ...(base.env ?? (process.env as Record<string, string>)),
-      ...augmentation.env
+      ...(augmentation.env ?? {})
     }
+    for (const key of augmentation.unsetEnv ?? []) delete merged.env[key]
   }
   return merged
 }
@@ -273,6 +295,25 @@ async function disposeResources(
       )
     }
   }
+}
+
+function validatePublishCaption(value: unknown): PublishAgentCaption | null {
+  const raw = recordOf(value)
+  if (!raw) return null
+  const terminalId = bounded(raw.terminalId, MAX_TERMINAL_ID_LENGTH)
+  const text = bounded(raw.text, MAX_CAPTION_LENGTH)
+  if (!terminalId || !text) return null
+  const outputTokens = raw.outputTokens
+  if (
+    outputTokens !== undefined &&
+    (typeof outputTokens !== 'number' ||
+      !Number.isFinite(outputTokens) ||
+      outputTokens < 0 ||
+      outputTokens > MAX_TOKEN_COUNT)
+  ) {
+    return null
+  }
+  return { terminalId, text, outputTokens }
 }
 
 export class AgentSessionRuntime {
@@ -339,9 +380,12 @@ export class AgentSessionRuntime {
 
     // 1. Adapter 选择与 prepare（失败默认降级 lifecycle，不中止 CLI）。
     const context = {
+      sessionId,
       installation,
       adapterId,
       platform: process.platform,
+      workspace: input.selection.workspace,
+      args: input.selection.args,
       runDir
     }
     const adapter = this.deps.registry.resolve(context)
@@ -364,7 +408,8 @@ export class AgentSessionRuntime {
     try {
       baseOptions = await this.deps.discovery.prepareLaunch(input.selection, {
         prependArgs: augmentation.prependArgs,
-        appendArgs: augmentation.appendArgs
+        appendArgs: augmentation.appendArgs,
+        unsetEnv: augmentation.unsetEnv
       })
     } catch (error) {
       await disposeResources([
@@ -443,9 +488,12 @@ export class AgentSessionRuntime {
       rejectedEventCount: 0,
       unsubscribeExit: null,
       unsubscribeDisconnect: null,
+      unsubscribeInput: null,
       reconnectAttempted: false,
       reconnecting: false,
       observerEventsOpen: false,
+      observerDelivered: false,
+      handshakeTimer: null,
       pendingObserverEvents: [],
       pendingObserverOverflow: false,
       idleTimer: null,
@@ -506,6 +554,27 @@ export class AgentSessionRuntime {
 
     // 先注册到权威表再开放事件，确保同步 flush/退出也能被 listActive 与 stop 看见。
     this.sessions.set(sessionId, session)
+
+    if (
+      capabilitiesHaveSemantics(session.capabilities) &&
+      this.deps.pty.onInputSubmitted
+    ) {
+      session.unsubscribeInput = this.deps.pty.onInputSubmitted(ptyId, () => {
+        if (session.finalized || session.observerDelivered || session.handshakeTimer) return
+        session.handshakeTimer = setTimeout(() => {
+          session.handshakeTimer = null
+          if (session.finalized || session.observerDelivered) return
+          this.acceptAdapterEvent(session, {
+            kind: 'observer.degraded',
+            payload: {
+              reason: 'hook-handshake-timeout',
+              remaining: session.capabilities
+            },
+            nativeId: `hook-handshake-timeout:${session.sessionId}`
+          })
+        }, HOOK_HANDSHAKE_TIMEOUT_MS)
+      })
+    }
 
     // 6. 会话开放事实 + 降级事实（顺序固定，先 started 后 degraded）。
     this.acceptAdapterEvent(session, {
@@ -572,6 +641,28 @@ export class AgentSessionRuntime {
     await this.finalize(session, true)
   }
 
+  /**
+   * Renderer 只上报已经由 xterm 解析完成的低敏状态标记；不接受屏幕正文。
+   * terminalId 在主进程重新关联到权威 Session，伪造/过期 id 会被忽略。
+   */
+  publishCaption(inputValue: unknown): void {
+    const input = validatePublishCaption(inputValue)
+    if (!input) return
+    const session = [...this.sessions.values()].find(
+      (candidate) => candidate.terminalId === input.terminalId
+    )
+    if (!session || session.finalized || session.projection.correlation.exited) return
+    this.acceptAdapterEvent(session, {
+      kind: 'activity.caption',
+      payload: {
+        text: input.text,
+        confidence: 'low',
+        outputTokens: input.outputTokens
+      },
+      nativeType: 'TerminalBufferCaption'
+    })
+  }
+
   listActive(): AgentSessionProjection[] {
     return [...this.sessions.values()].map((session) => session.projection)
   }
@@ -590,6 +681,11 @@ export class AgentSessionRuntime {
     session: ActiveAgentSession,
     event: AdapterEvent
   ): void {
+    if (event.kind !== 'observer.degraded') {
+      session.observerDelivered = true
+      if (session.handshakeTimer) clearTimeout(session.handshakeTimer)
+      session.handshakeTimer = null
+    }
     if (session.observerEventsOpen) {
       this.acceptAdapterEvent(session, event)
       return
@@ -833,6 +929,10 @@ export class AgentSessionRuntime {
     session.unsubscribeExit = null
     session.unsubscribeDisconnect?.()
     session.unsubscribeDisconnect = null
+    session.unsubscribeInput?.()
+    session.unsubscribeInput = null
+    if (session.handshakeTimer) clearTimeout(session.handshakeTimer)
+    session.handshakeTimer = null
 
     // 排空剩余队列（exited 后的迟到事件被归约器忽略，不丢也不重复投影）。
     const rest = session.queue.flush()

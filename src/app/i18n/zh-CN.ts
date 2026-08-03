@@ -40,25 +40,35 @@ export const zhCN = {
     sessionNameRequired: '会话名称不能为空'
   },
   sessionStatus: {
-    working: '运行中',
-    needsYou: '待处理',
-    done: '已完成',
-    error: '出错',
-    idle: '空闲',
-    exited: '已退出',
+    working: '正在处理任务',
+    needsYou: '需要你的确认',
+    done: '本轮任务已完成',
+    error: '执行遇到问题',
+    idle: '等待你的下一条指令',
+    exited: '会话已结束',
     exitedDetail: (exitCode: number | undefined) =>
       exitCode === undefined
-        ? '已退出'
-        : `已退出：exit code ${exitCode}`
+        ? '会话已结束'
+        : `会话已结束 · exit code ${exitCode}`
   },
   agentDetail: {
-    thinking: '思考中',
-    waitingApproval: '等待批准',
-    waitingInput: '等待输入',
+    thinking: '正在分析并规划下一步',
+    liveThinking: (seconds: number | undefined, tokens: number | undefined) =>
+      ['正在思考', seconds === undefined ? undefined : `${seconds}秒`, tokens === undefined ? undefined : `${tokens.toLocaleString('zh-CN')} tokens`].filter(Boolean).join(' · '),
+    waitingApproval: (summary: string | undefined) =>
+      ['需要你的确认', summary].filter(Boolean).join(' · '),
+    waitingInput: (prompt: string | undefined) =>
+      ['等待你的输入', prompt].filter(Boolean).join(' · '),
+    runningTool: (name: string | undefined) =>
+      name ? `正在执行 ${name}` : '正在执行工具',
+    completed: (tokens: number | undefined) =>
+      ['本轮任务已完成', tokens === undefined ? undefined : `${tokens.toLocaleString('zh-CN')} tokens`].filter(Boolean).join(' · '),
+    error: (message: string | undefined) =>
+      ['执行遇到问题', message].filter(Boolean).join(' · '),
     exited: (exitCode: number | undefined) =>
       exitCode === undefined
-        ? '已退出'
-        : `已退出：exit code ${exitCode}`
+        ? '会话已结束'
+        : `会话已结束 · exit code ${exitCode}`
   },
   terminal: {
     copied: '已复制',

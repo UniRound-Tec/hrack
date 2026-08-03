@@ -50,6 +50,7 @@ const AGENT_EVENT_KINDS: ReadonlySet<string> = new Set([
   'input.requested',
   'input.resolved',
   'usage.updated',
+  'activity.caption',
   'observer.degraded'
 ])
 
@@ -347,6 +348,15 @@ export function normalizeAdapterEvent(value: unknown): AdapterEvent | null {
       const usage = sanitizeUsage(payload)
       if (!usage) return null
       normalizedPayload = usage as AgentEventPayload
+      break
+    }
+    case 'activity.caption': {
+      const text = boundedText(payload.text, 128)
+      if (!text || payload.confidence !== 'low') return null
+      const outputTokens = finiteNumber(payload.outputTokens, MAX_TOKEN_COUNT)
+      normalizedPayload = outputTokens === undefined
+        ? { text, confidence: 'low' }
+        : { text, confidence: 'low', outputTokens }
       break
     }
     case 'observer.degraded': {

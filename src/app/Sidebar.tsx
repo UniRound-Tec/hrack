@@ -12,7 +12,7 @@ import { createPortal } from 'react-dom'
 import ShinyText from './effects/ShinyText'
 import { getAdapterIcon } from './adapterIcons'
 import { terminalIdFromPage, terminalPage, type PageId } from './pages'
-import { statusDot, statusTone } from './sessionStatus'
+import { statusDot, statusLabel, statusTone } from './sessionStatus'
 import { useStrings, type AppStrings } from './i18n'
 import type { SessionEntry } from '../state/sessionsStore'
 import type { TerminalEntry } from '../state/terminalsStore'
@@ -190,7 +190,7 @@ export default function Sidebar({
                   data-session-id={session.sessionId}
                   aria-current={active ? 'page' : undefined}
                   onClick={() => onNavigate(terminalPage(session.terminalId))}
-                  className="cursor-target w-full px-2.5 py-1.5 text-left font-pingfang"
+                  className="cursor-target min-h-12 w-full px-2.5 py-1.5 text-left font-pingfang"
                 >
                   <div className="flex items-center gap-1.5">
                     <span className="inline-flex size-3.5 shrink-0 items-center justify-center">
@@ -206,13 +206,11 @@ export default function Sidebar({
                       {relativeTime(strings, session.lastActivityAt)}
                     </span>
                   </div>
-                  {session.detail && (
-                    <p
-                      className={`mt-0.5 truncate text-[11px] leading-snug font-medium ${statusTone[session.status]}`}
-                    >
-                      {session.detail}
-                    </p>
-                  )}
+                  <p
+                    className={`mt-0.5 truncate text-[11px] leading-snug font-medium ${statusTone[session.status]}`}
+                  >
+                    {session.detail ?? statusLabel(session.status)}
+                  </p>
                 </button>
                 {!renaming && (
                   <button

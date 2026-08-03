@@ -7,6 +7,7 @@ import {
 } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { CliScanReport, ShellOption } from '../../shared/ipc-contract'
+import type { AgentEvent } from '../../shared/agent-events'
 import TitleBar from './TitleBar'
 import Sidebar from './Sidebar'
 import IconRail from './IconRail'
@@ -46,6 +47,8 @@ export interface VibingDebugShellApi {
   navigate(pageId: PageId): void
   openNewSession(): void
   setNavMode(mode: NavMode): void
+  agentEvents(): AgentEvent[]
+  agentSessions(): SessionEntry[]
 }
 
 interface PendingCliLaunch {
@@ -335,7 +338,9 @@ export default function AppShell() {
         if (isPageId(nextPage)) navigate(nextPage)
       },
       openNewSession,
-      setNavMode
+      setNavMode,
+      agentEvents: () => [...useAgentEventsStore.getState().events],
+      agentSessions: () => [...useSessionsStore.getState().sessions]
     }
     window.__vibingDebugShell = api
     return () => {

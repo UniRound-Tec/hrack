@@ -37,25 +37,35 @@ export const ko = {
     sessionNameRequired: '세션 이름을 입력하세요'
   },
   sessionStatus: {
-    working: '실행 중',
-    needsYou: '확인 필요',
-    done: '완료',
-    error: '오류',
-    idle: '대기',
-    exited: '종료됨',
+    working: '작업 처리 중',
+    needsYou: '확인이 필요합니다',
+    done: '이번 작업을 완료했습니다',
+    error: '실행 중 문제가 발생했습니다',
+    idle: '다음 지시를 기다리고 있습니다',
+    exited: '세션이 종료되었습니다',
     exitedDetail: (exitCode: number | undefined) =>
       exitCode === undefined
-        ? '종료됨'
-        : `종료됨: exit code ${exitCode}`
+        ? '세션이 종료되었습니다'
+        : `세션이 종료되었습니다 · exit code ${exitCode}`
   },
   agentDetail: {
-    thinking: '생각 중',
-    waitingApproval: '승인 대기',
-    waitingInput: '입력 대기',
+    thinking: '작업을 분석하고 다음 단계를 계획하고 있습니다',
+    liveThinking: (seconds: number | undefined, tokens: number | undefined) =>
+      ['생각 중', seconds === undefined ? undefined : `${seconds}초`, tokens === undefined ? undefined : `${tokens.toLocaleString('ko-KR')} tokens`].filter(Boolean).join(' · '),
+    waitingApproval: (summary: string | undefined) =>
+      ['확인이 필요합니다', summary].filter(Boolean).join(' · '),
+    waitingInput: (prompt: string | undefined) =>
+      ['입력을 기다리고 있습니다', prompt].filter(Boolean).join(' · '),
+    runningTool: (name: string | undefined) =>
+      name ? `${name} 실행 중` : '도구 실행 중',
+    completed: (tokens: number | undefined) =>
+      ['이번 작업을 완료했습니다', tokens === undefined ? undefined : `${tokens.toLocaleString('ko-KR')} tokens`].filter(Boolean).join(' · '),
+    error: (message: string | undefined) =>
+      ['실행 중 문제가 발생했습니다', message].filter(Boolean).join(' · '),
     exited: (exitCode: number | undefined) =>
       exitCode === undefined
-        ? '종료됨'
-        : `종료됨: exit code ${exitCode}`
+        ? '세션이 종료되었습니다'
+        : `세션이 종료되었습니다 · exit code ${exitCode}`
   },
   terminal: {
     copied: '복사됨',

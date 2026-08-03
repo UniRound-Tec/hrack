@@ -17,6 +17,7 @@ import { useSettingsStore } from '../state/settingsStore'
 import { getTerminalTheme } from './themes'
 import { createLigatureController } from './ligatures'
 import { getTerminalLaunch } from '../state/terminalLaunchRegistry'
+import { parseRenderedActivityCaption } from './renderedActivityCaption'
 
 const DISABLE_MOUSE_TRACKING =
   '\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l'
@@ -169,6 +170,7 @@ export function useXterm(
     // S1：AI CLI 启动走主进程 AgentSessionRuntime；普通终端保持原链路。
     const launch = getTerminalLaunch(tabId)
     const isAgentLaunch = launch?.kind === 'agent'
+    let agentSessionReady = false
     const settleInitialSpawn = (error: string | null): void => {
       if (!initialSpawnPending) return
       initialSpawnPending = false
@@ -305,6 +307,31 @@ export function useXterm(
       }
     )
 
+    let lastPublishedCaption = ''
+    const captionTimer = isAgentLaunch
+      ? setInterval(() => {
+          if (disposed || !agentSessionReady) return
+          const buffer = term.buffer.active
+          const bottom = Math.min(
+            buffer.length - 1,
+            buffer.viewportY + term.rows - 1
+          )
+          const lines: string[] = []
+          for (let index = Math.max(0, bottom - 11); index <= bottom; index++) {
+            const line = buffer.getLine(index)
+            if (line) lines.push(line.translateToString(true))
+          }
+          const caption = parseRenderedActivityCaption(lines)
+          if (!caption || caption.text === lastPublishedCaption) return
+          lastPublishedCaption = caption.text
+          void window.agentApi.publishCaption({
+            terminalId: tabId,
+            text: caption.text,
+            outputTokens: caption.outputTokens
+          })
+        }, 600)
+      : null
+
     // 调试桥：E2E/dev 下暴露 window.__vibingDebug，可读 buffer、可主动 forceResize。
     const unregisterDebug = registerTerminalForDebug(
       tabId,
@@ -402,6 +429,7 @@ export function useXterm(
               )
               return
             }
+            agentSessionReady = true
             wireProxy(new PtyProxy(started.ptyId))
             settleInitialSpawn(null)
           })
@@ -449,6 +477,7 @@ export function useXterm(
 
     return () => {
       disposed = true
+      if (captionTimer) clearInterval(captionTimer)
       for (const timer of pendingAckTimers) clearTimeout(timer)
       pendingAckTimers.clear()
       if (fitFrame !== null) cancelAnimationFrame(fitFrame)

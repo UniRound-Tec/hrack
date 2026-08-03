@@ -14,10 +14,14 @@ import type {
 import type { CliInstallation } from '../../../shared/ipc-contract'
 
 export interface ObserverPreparationContext {
+  sessionId: string
   installation: CliInstallation
   /** 该安装所属 CLI Definition 的 adapterId（例如 'claude-code'）。 */
   adapterId: string
   platform: NodeJS.Platform
+  /** 原始用户选择；Adapter 只可用于冲突检测与只读 policy probe。 */
+  workspace: string
+  args: readonly string[]
   /** 本次会话专属临时目录 `<userData>/observer-runs/<sessionId>/`。 */
   runDir: string
 }
@@ -54,6 +58,7 @@ export type AdapterEvent = AdapterEventOf
  */
 export interface LaunchAugmentation {
   env?: Record<string, string>
+  unsetEnv?: string[]
   prependArgs?: string[]
   appendArgs?: string[]
 }

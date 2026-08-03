@@ -1,6 +1,6 @@
 # S2 实施计划 —— Claude Code Observer Adapter
 
-> 状态：**待评审**。
+> 状态：**实施中**。2026-08-03 已落地 P1–P4 主链路，真实会话验收与 P5 设置页展示待完成。
 >
 > 目标：在 [PLAN-S1.md](./PLAN-S1.md) 的 `AgentSessionRuntime` 与 `AgentObserverAdapter`
 > seam 上，实现第一个真实 Adapter。通过 Claude Code 官方 Hooks，把 turn、thinking phase、tool、
@@ -638,16 +638,16 @@ unconfirmed → healthy → stale
 默认 5 分钟是首版保守值，作为常量记录诊断；真实会话验收后才能调整。这个兜底解决 stuck working，
 但不会把“可能完成”伪装成“确定完成”。
 
-### 9.3 低置信度屏幕字幕
+### 9.3 低置信度终端字幕
 
-Hooks 能驱动权威状态，但不保证提供当前 spinner 文案。若保留旧实现的 xterm 画面抓取，只能走独立
-interface：
+Hooks 能驱动权威状态，但不保证提供当前 token 进度。PTY 原始字节是 ANSI 差分重绘流，不能当作
+可见屏幕做正则；P6 只读取 renderer 已经由 xterm 解析完成的 buffer，并走独立 interface：
 
 ```ts
 interface LiveCaptionUpdate {
   sessionId: string
   text: string
-  source: 'screen'
+  source: 'rendered-terminal'
   confidence: 'low'
   observedAt: number
   expiresAt: number
@@ -656,13 +656,15 @@ interface LiveCaptionUpdate {
 
 规则：
 
-- 从 PTYManager 的 headless/render snapshot 内部 seam 读取，不让 Adapter访问 renderer xterm；
-- 最多 500–600ms 一次，每次只匹配当前可见状态行；
-- caption 不写 `AgentEvent`、不进 reducer、不进 EventLog、不触发通知或 attention；
-- spinner 消失不能推断 `turn.completed`；权威结束只来自 Hook/PTY；
-- spinner 存在/消失可以刷新 watchdog 的 PTY 活动时钟，但不能单独生成 completed；
-- Hook 有高置信度 tool/approval/detail 时覆盖 caption；caption 到期自动消失；
-- S2 主链路完成后再做此 P6，可单独删除且不影响六态。
+- renderer 最多 600ms 读取一次 xterm 当前 viewport 底部 12 行，只匹配结构化 `↓ … tokens`；
+- 只把 token 数和规范化后的 `↓ … tokens` caption 送过 IPC；activity word、thinking 正文和屏幕行
+  都不离开 renderer；主进程再次按 terminalId 关联权威 Session，并执行长度/数值上限校验；
+- 2026-08-03 根据侧边栏“显示最新内容”的产品决策，caption 以可合并的瞬态
+  `activity.caption` 进入实时投影；它只更新 `detail/latestDetail`，不参与六态推导、不进 EventLog、
+  不触发通知或 attention；
+- token marker 消失不能推断 `turn.completed`；权威结束只来自 Hook/PTY；
+- Hook 有高置信度 tool/approval/detail 时覆盖 caption；空闲时保留最后一条内容；
+- P6 可单独删除且不影响六态。
 
 ---
 
@@ -759,6 +761,8 @@ S1 交接给 S2 的起点（按 [PLAN-S1.md](./PLAN-S1.md) §12.2 核对）：
 
 ### P1 — Claude fixtures、Parser 与 Projector
 
+实现状态：核心代码已完成；脱敏 fixture 与真实版本重放记录待补。
+
 1. 从本机 Claude 版本抓取脱敏 Hook fixture；
 2. 复核 `PreToolUse/PostToolUse.tool_use_id`、可选 `SessionEnd.reason` 与本机 payload；
 3. 实现 native union、parser 限制和安全 summary；
@@ -770,6 +774,9 @@ S1 交接给 S2 的起点（按 [PLAN-S1.md](./PLAN-S1.md) §12.2 核对）：
 
 ### P2 — App 级 HookIngress
 
+实现状态：已完成单例 loopback server、随机 route、1 MiB body cap、快速 204、
+会话级有界队列与 App quit 清理。
+
 1. 单例 loopback server、随机 route、body cap、快速 204；
 2. Session route register/unregister；
 3. 独立有界队列、dispose 与 App quit；
@@ -778,6 +785,9 @@ S1 交接给 S2 的起点（按 [PLAN-S1.md](./PLAN-S1.md) §12.2 核对）：
 验收：Ingress 不等待 EventLog/renderer，坏请求不能影响其它 Session。
 
 ### P3 — Host Claude Adapter
+
+实现状态：已完成 Windows/macOS/Linux 共用 Adapter、HTTP policy best-effort 预检、
+per-session settings、`--settings` 注入、10 秒首次投递 watchdog 与 5 分钟双时钟沉默兜底。
 
 1. capability/version probe；
 2. HTTP allowlist 三态 policy probe；
@@ -791,6 +801,9 @@ S1 交接给 S2 的起点（按 [PLAN-S1.md](./PLAN-S1.md) §12.2 核对）：
 
 ### P4 — WSL transport
 
+实现状态：已完成运行时 `wslpath`、file 原子往返 probe、`curl.exe --version` 实测、
+file-first 选择、300ms drop poller 与 lifecycle-only 降级；真实 distro 验收待补。
+
 1. 扩展按 distro 的 `windowsMountRoot` 扫描缓存，但只把缓存当提示；
 2. 武装时并行执行 file 可写往返、`curl.exe --version` 与 settings path 翻译；
 3. 实现 file-first 的 drop bridge + 300ms poller；
@@ -801,6 +814,9 @@ S1 交接给 S2 的起点（按 [PLAN-S1.md](./PLAN-S1.md) §12.2 核对）：
 验收：Windows host Claude 与每个 WSL Claude 是独立 Session/route，不能串事件。
 
 ### P5 — Runtime/UI 收尾
+
+实现状态：Runtime/PTY 的 input-submit seam、统一清理与 Claude 注册已完成；设置页能力/transport
+展示和真实会话验收记录待完成。
 
 1. 删除 renderer Agent lifecycle 双写；
 2. SessionStore 只 upsert main projection；
@@ -813,10 +829,30 @@ S1 交接给 S2 的起点（按 [PLAN-S1.md](./PLAN-S1.md) §12.2 核对）：
 
 ### P6 — 可选 LiveCaption
 
+实现状态：已完成 xterm 已渲染 viewport 尾部状态行白名单解析、600ms 小窗口读取、token caption
+合并与侧边栏最新内容保留。PTY 原始差分流不参与解析；展开的 thinking 正文和完整屏幕行不离开
+renderer；token 数仅是低置信度 TUI 展示值，不升级 `usage` capability。真实 Claude E2E 通过
+渲染 buffer → IPC → Runtime → reducer → Sidebar 全链路验证。
+
 1. 独立低置信度 caption interface；
-2. headless screen 状态行抽取；
-3. TTL/覆盖规则；
+2. renderer xterm buffer 状态行抽取；
+3. latest-detail/覆盖规则；
 4. 验证删除 P6 不影响任何权威状态。
+
+2026-08-03 真实 Windows Claude 2.1.220 E2E（Kimi provider）完成两轮对话，采集 86 个 xterm
+可见帧和 18 个统一事件：`UserPromptSubmit → thinking → Stop`，以及
+`UserPromptSubmit → thinking → PreToolUse(Bash) → PermissionRequest → PostToolUse →
+PostToolBatch → thinking → Stop`。观察到的状态行至少包括：
+
+- `Honking…`（无计时、无 token）；
+- `Flambéing… (4s · thinking)`；
+- `Photosynthesizing… (15s · still thinking)`；
+- `Elucidating… (10s · ↓ 844 tokens)`；
+- `Baked for 18s`（完成后的 TUI 文案，不作为完成事实）。
+
+侧栏展示优先级必须与状态事实分离：needs-you/error/exited/done 的权威文案优先于 caption；working
+时依次显示待审批摘要、活动 tool、白名单状态行、`思考中`；done 必须显示 `已完成`，可附带本轮最后
+一次低置信度 token 数，不能只靠绿色圆点，也不能继续显示 working 阶段的 caption。
 
 P6 不阻塞 S2 完成。
 

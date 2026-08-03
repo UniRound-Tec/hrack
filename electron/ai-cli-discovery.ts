@@ -1133,6 +1133,7 @@ export class AiCliDiscoveryService {
     augmentation: {
       prependArgs?: readonly string[]
       appendArgs?: readonly string[]
+      unsetEnv?: readonly string[]
     } = {}
   ): Promise<SpawnOptions> {
     validateSelection(selection)
@@ -1165,8 +1166,13 @@ export class AiCliDiscoveryService {
           '--distribution', installation.runtime.distro,
           ...(cwd ? ['--cd', cwd] : []),
           '--exec',
-          ...(environmentPath
-            ? ['env', `PATH=${environmentPath}`, installation.resolvedExecutable]
+          ...(environmentPath || (augmentation.unsetEnv?.length ?? 0) > 0
+            ? [
+                'env',
+                ...(augmentation.unsetEnv ?? []).flatMap((key) => ['-u', key]),
+                ...(environmentPath ? [`PATH=${environmentPath}`] : []),
+                installation.resolvedExecutable
+              ]
             : [installation.resolvedExecutable]),
           ...args
         ]

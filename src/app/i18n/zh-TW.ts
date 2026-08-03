@@ -37,25 +37,35 @@ export const zhTW = {
     sessionNameRequired: '工作階段名稱不能為空'
   },
   sessionStatus: {
-    working: '執行中',
-    needsYou: '待處理',
-    done: '已完成',
-    error: '發生錯誤',
-    idle: '閒置',
-    exited: '已結束',
+    working: '正在處理任務',
+    needsYou: '需要你的確認',
+    done: '本輪任務已完成',
+    error: '執行遇到問題',
+    idle: '等待你的下一個指令',
+    exited: '工作階段已結束',
     exitedDetail: (exitCode: number | undefined) =>
       exitCode === undefined
-        ? '已結束'
-        : `已結束：exit code ${exitCode}`
+        ? '工作階段已結束'
+        : `工作階段已結束 · exit code ${exitCode}`
   },
   agentDetail: {
-    thinking: '思考中',
-    waitingApproval: '等待批准',
-    waitingInput: '等待輸入',
+    thinking: '正在分析並規劃下一步',
+    liveThinking: (seconds: number | undefined, tokens: number | undefined) =>
+      ['正在思考', seconds === undefined ? undefined : `${seconds}秒`, tokens === undefined ? undefined : `${tokens.toLocaleString('zh-TW')} tokens`].filter(Boolean).join(' · '),
+    waitingApproval: (summary: string | undefined) =>
+      ['需要你的確認', summary].filter(Boolean).join(' · '),
+    waitingInput: (prompt: string | undefined) =>
+      ['等待你的輸入', prompt].filter(Boolean).join(' · '),
+    runningTool: (name: string | undefined) =>
+      name ? `正在執行 ${name}` : '正在執行工具',
+    completed: (tokens: number | undefined) =>
+      ['本輪任務已完成', tokens === undefined ? undefined : `${tokens.toLocaleString('zh-TW')} tokens`].filter(Boolean).join(' · '),
+    error: (message: string | undefined) =>
+      ['執行遇到問題', message].filter(Boolean).join(' · '),
     exited: (exitCode: number | undefined) =>
       exitCode === undefined
-        ? '已結束'
-        : `已結束：exit code ${exitCode}`
+        ? '工作階段已結束'
+        : `工作階段已結束 · exit code ${exitCode}`
   },
   terminal: {
     copied: '已複製',

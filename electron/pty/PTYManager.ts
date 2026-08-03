@@ -101,6 +101,7 @@ export class PTYManager {
   private nextId = 1
   private exitListeners = new Map<string, Set<(payload: ExitPayload) => void>>()
   private exitedPayloads = new Map<string, ExitPayload>()
+  private inputSubmitListeners = new Map<string, Set<() => void>>()
 
   /**
    * 订阅某 pty 的退出（幂等：已退出则立刻用缓存的 payload 回调）。
@@ -130,6 +131,18 @@ export class PTYManager {
 
   isRunning(ptyId: string): boolean {
     return Boolean(this.ptys.get(ptyId)?.pty)
+  }
+
+  /** 只暴露提交边界，不暴露用户输入内容。 */
+  onInputSubmitted(ptyId: string, cb: () => void): () => void {
+    const listeners = this.inputSubmitListeners.get(ptyId) ?? new Set()
+    listeners.add(cb)
+    this.inputSubmitListeners.set(ptyId, listeners)
+    return () => {
+      const current = this.inputSubmitListeners.get(ptyId)
+      current?.delete(cb)
+      if (current?.size === 0) this.inputSubmitListeners.delete(ptyId)
+    }
   }
 
   async spawn(opts: SpawnOptions) {
@@ -250,7 +263,12 @@ export class PTYManager {
   }
 
   write(ptyId: string, data: string) {
-    this.ptys.get(ptyId)?.pty?.write(data)
+    const target = this.ptys.get(ptyId)?.pty
+    if (!target) return
+    target.write(data)
+    if (/[\r\n]/.test(data)) {
+      for (const listener of this.inputSubmitListeners.get(ptyId) ?? []) listener()
+    }
   }
 
   resize(ptyId: string, cols: number, rows: number) {
@@ -328,6 +346,7 @@ export class PTYManager {
     this.ptys.delete(ptyId)
     this.exitListeners.delete(ptyId)
     this.exitedPayloads.delete(ptyId)
+    this.inputSubmitListeners.delete(ptyId)
   }
 
   killAll() {
@@ -343,5 +362,6 @@ export class PTYManager {
     this.ptys.clear()
     this.exitListeners.clear()
     this.exitedPayloads.clear()
+    this.inputSubmitListeners.clear()
   }
 }

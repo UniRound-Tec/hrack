@@ -37,25 +37,35 @@ export const en = {
     sessionNameRequired: 'Session name is required'
   },
   sessionStatus: {
-    working: 'Working',
-    needsYou: 'Needs you',
-    done: 'Done',
-    error: 'Error',
-    idle: 'Idle',
-    exited: 'Exited',
+    working: 'Working on the task',
+    needsYou: 'Needs your confirmation',
+    done: 'This turn is complete',
+    error: 'Something went wrong',
+    idle: 'Waiting for your next instruction',
+    exited: 'Session ended',
     exitedDetail: (exitCode: number | undefined) =>
       exitCode === undefined
-        ? 'Exited'
-        : `Exited: exit code ${exitCode}`
+        ? 'Session ended'
+        : `Session ended · exit code ${exitCode}`
   },
   agentDetail: {
-    thinking: 'Thinking',
-    waitingApproval: 'Waiting for approval',
-    waitingInput: 'Waiting for input',
+    thinking: 'Analyzing the task and planning the next step',
+    liveThinking: (seconds: number | undefined, tokens: number | undefined) =>
+      ['Thinking', seconds === undefined ? undefined : `${seconds}s`, tokens === undefined ? undefined : `${tokens.toLocaleString('en-US')} tokens`].filter(Boolean).join(' · '),
+    waitingApproval: (summary: string | undefined) =>
+      ['Needs your confirmation', summary].filter(Boolean).join(' · '),
+    waitingInput: (prompt: string | undefined) =>
+      ['Waiting for your input', prompt].filter(Boolean).join(' · '),
+    runningTool: (name: string | undefined) =>
+      name ? `Running ${name}` : 'Running a tool',
+    completed: (tokens: number | undefined) =>
+      ['This turn is complete', tokens === undefined ? undefined : `${tokens.toLocaleString('en-US')} tokens`].filter(Boolean).join(' · '),
+    error: (message: string | undefined) =>
+      ['Something went wrong', message].filter(Boolean).join(' · '),
     exited: (exitCode: number | undefined) =>
       exitCode === undefined
-        ? 'Exited'
-        : `Exited: exit code ${exitCode}`
+        ? 'Session ended'
+        : `Session ended · exit code ${exitCode}`
   },
   terminal: {
     copied: 'Copied',

@@ -127,6 +127,10 @@ export type AgentEvent =
   | EventOf<'input.requested', InputRequestedPayload>
   | EventOf<'input.resolved', InputResolvedPayload>
   | EventOf<'usage.updated', UsagePayload>
+  | EventOf<
+      'activity.caption',
+      { text: string; confidence: 'low'; outputTokens?: number }
+    >
   | EventOf<'observer.degraded', {
       reason: string
       remaining: ObserverCapabilities
@@ -211,6 +215,10 @@ export interface AgentCorrelationState {
   lastTurnOutcome?: 'completed' | 'cancelled' | 'failed'
   turnFailedMessage?: string
   thinkingActive: boolean
+  /** 低置信度实时字幕与最后一次可展示内容；不参与六态推导。 */
+  liveCaption?: string
+  latestDetail?: string
+  latestOutputTokens?: number
   usageTurn?: UsagePayload
   usageSession?: UsagePayload
 }
@@ -257,9 +265,16 @@ export interface StartedAgentSession {
   projection: AgentSessionProjection
 }
 
+export interface PublishAgentCaption {
+  terminalId: string
+  text: string
+  outputTokens?: number
+}
+
 export interface AgentApi {
   start(input: StartAgentSession): Promise<StartedAgentSession>
   stop(sessionId: string): Promise<void>
+  publishCaption(input: PublishAgentCaption): Promise<void>
   listActive(): Promise<AgentSessionProjection[]>
   onEvents(cb: (events: AgentEvent[]) => void): () => void
   onProjection(cb: (projection: AgentSessionProjection) => void): () => void
@@ -268,6 +283,7 @@ export interface AgentApi {
 export const AgentInvokeChannel = {
   Start: 'agent:start',
   Stop: 'agent:stop',
+  PublishCaption: 'agent:publish-caption',
   ListActive: 'agent:list-active'
 } as const
 

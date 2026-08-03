@@ -24,7 +24,14 @@ import { capabilitiesHaveSemantics } from '../../shared/agent-events'
 export const AGENT_DETAIL_THINKING = '@agent:thinking'
 export const AGENT_DETAIL_WAITING_APPROVAL = '@agent:waiting-approval'
 export const AGENT_DETAIL_WAITING_INPUT = '@agent:waiting-input'
+export const AGENT_DETAIL_RUNNING_TOOL = '@agent:running-tool'
+export const AGENT_DETAIL_COMPLETED = '@agent:completed'
+export const AGENT_DETAIL_ERROR = '@agent:error'
 export const AGENT_DETAIL_EXITED = '@agent:exited'
+
+function detailWithValue(marker: string, value?: string | number): string {
+  return value === undefined || value === '' ? marker : `${marker}:${value}`
+}
 
 export function agentDetailExited(exitCode?: number): string {
   return exitCode === undefined
@@ -57,13 +64,16 @@ export interface InitialAgentProjectionInput {
 export function createInitialAgentProjection(
   input: InitialAgentProjectionInput
 ): AgentSessionProjection {
+  const correlation = emptyCorrelation()
+  // CLI 已经成功启动但尚未收到 prompt，语义上是在等待用户输入。
+  correlation.highConfidenceIdle = true
   return {
     sessionId: input.sessionId,
     terminalId: input.terminalId,
     installationId: input.installationId,
     adapterId: input.adapterId,
     name: input.name,
-    status: 'working',
+    status: 'idle',
     statusConfidence: 'high',
     observerHealth: 'unconfirmed',
     activeTurnId: undefined,
@@ -73,7 +83,7 @@ export function createInitialAgentProjection(
     lastActivityAt: input.lastActivityAt,
     capabilities: input.capabilities,
     lastSeq: 0,
-    correlation: emptyCorrelation()
+    correlation
   }
 }
 
@@ -124,31 +134,42 @@ function deriveStatus(
 function deriveDetail(
   correlation: AgentCorrelationState
 ): string | undefined {
-  if (correlation.thinkingActive) return AGENT_DETAIL_THINKING
-
-  const lastToolCallId = correlation.lastToolCallId
-  if (lastToolCallId && correlation.activeTools[lastToolCallId]) {
-    return correlation.activeTools[lastToolCallId].name
-  }
-
   const approvalIds = Object.keys(correlation.pendingApprovals)
   if (approvalIds.length > 0) {
     const latest = correlation.pendingApprovals[approvalIds[approvalIds.length - 1]]
-    return latest.summary ?? AGENT_DETAIL_WAITING_APPROVAL
+    return detailWithValue(AGENT_DETAIL_WAITING_APPROVAL, latest.summary)
   }
 
   const inputIds = Object.keys(correlation.pendingInputs)
   if (inputIds.length > 0) {
     const latest = correlation.pendingInputs[inputIds[inputIds.length - 1]]
-    return latest.prompt ?? AGENT_DETAIL_WAITING_INPUT
+    return detailWithValue(AGENT_DETAIL_WAITING_INPUT, latest.prompt)
+  }
+
+  const lastToolCallId = correlation.lastToolCallId
+  if (lastToolCallId && correlation.activeTools[lastToolCallId]) {
+    return detailWithValue(
+      AGENT_DETAIL_RUNNING_TOOL,
+      correlation.activeTools[lastToolCallId].name
+    )
+  }
+
+  if (correlation.thinkingActive) {
+    return correlation.liveCaption ?? AGENT_DETAIL_THINKING
   }
 
   if (correlation.lastTurnOutcome === 'failed') {
-    return correlation.turnFailedMessage
+    return detailWithValue(AGENT_DETAIL_ERROR, correlation.turnFailedMessage)
   }
 
   if (correlation.exited) return agentDetailExited(correlation.exitCode)
-  return undefined
+  if (correlation.lastTurnOutcome === 'completed') {
+    return detailWithValue(
+      AGENT_DETAIL_COMPLETED,
+      correlation.latestOutputTokens
+    )
+  }
+  return correlation.liveCaption ?? correlation.latestDetail
 }
 
 function observerHealthFor(
@@ -220,6 +241,8 @@ export function reduceAgentSession(
       correlation.lastTurnOutcome = undefined
       correlation.turnFailedMessage = undefined
       correlation.thinkingActive = false
+      correlation.liveCaption = undefined
+      correlation.latestOutputTokens = undefined
       observerHealth = observerHealthFor(observerHealth, capabilities, false)
       break
     }
@@ -229,6 +252,7 @@ export function reduceAgentSession(
       correlation.highConfidenceIdle = false
       correlation.lastTurnOutcome = event.payload.outcome ?? 'completed'
       correlation.thinkingActive = false
+      correlation.liveCaption = undefined
       observerHealth = observerHealthFor(observerHealth, capabilities, false)
       break
     }
@@ -239,6 +263,8 @@ export function reduceAgentSession(
       correlation.lastTurnOutcome = 'failed'
       correlation.turnFailedMessage = event.payload.message
       correlation.thinkingActive = false
+      correlation.liveCaption = undefined
+      correlation.latestDetail = event.payload.message
       observerHealth = observerHealthFor(observerHealth, capabilities, false)
       break
     }
@@ -247,6 +273,7 @@ export function reduceAgentSession(
       correlation.lowConfidenceIdle = false
       correlation.highConfidenceIdle = false
       correlation.thinkingActive = true
+      correlation.liveCaption = undefined
       observerHealth = observerHealthFor(observerHealth, capabilities, false)
       break
     }
@@ -269,6 +296,8 @@ export function reduceAgentSession(
         turnId: event.payload.turnId
       }
       correlation.lastToolCallId = event.payload.callId
+      correlation.liveCaption = undefined
+      correlation.latestDetail = event.payload.name
       observerHealth = observerHealthFor(observerHealth, capabilities, false)
       break
     }
@@ -301,6 +330,9 @@ export function reduceAgentSession(
         category: event.payload.category,
         summary: event.payload.summary
       }
+      correlation.liveCaption = undefined
+      correlation.latestDetail =
+        event.payload.summary ?? AGENT_DETAIL_WAITING_APPROVAL
       observerHealth = observerHealthFor(observerHealth, capabilities, false)
       break
     }
@@ -318,6 +350,9 @@ export function reduceAgentSession(
       correlation.pendingInputs[event.payload.requestId] = {
         prompt: event.payload.prompt
       }
+      correlation.liveCaption = undefined
+      correlation.latestDetail =
+        event.payload.prompt ?? AGENT_DETAIL_WAITING_INPUT
       observerHealth = observerHealthFor(observerHealth, capabilities, false)
       break
     }
@@ -340,6 +375,14 @@ export function reduceAgentSession(
         correlation.usageTurn = mergeUsage(correlation.usageTurn, event.payload)
       }
       observerHealth = observerHealthFor(observerHealth, capabilities, false)
+      break
+    }
+    case 'activity.caption': {
+      correlation.liveCaption = event.payload.text
+      correlation.latestDetail = event.payload.text
+      if (event.payload.outputTokens !== undefined) {
+        correlation.latestOutputTokens = event.payload.outputTokens
+      }
       break
     }
     case 'observer.degraded': {

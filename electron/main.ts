@@ -27,6 +27,8 @@ import { AiCliDiscoveryService } from './ai-cli-discovery'
 import { AgentSessionRuntime } from './agents/AgentSessionRuntime'
 import { ObserverRegistry } from './agents/ObserverRegistry'
 import { FixtureObserverAdapter } from './agents/adapters/fixture'
+import { ClaudeObserverAdapter } from './agents/adapters/claude/ClaudeObserverAdapter'
+import { HookIngress } from './hooks/HookIngress'
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
 // 必须在 app ready 之前调用。
@@ -42,6 +44,8 @@ const cliDiscovery = new AiCliDiscoveryService(
 const eventLog = new EventLog()
 // S1：Agent Observer 基础设施。fixture adapter 仅在 E2E 环境变量下启用。
 const observerRegistry = new ObserverRegistry()
+const hookIngress = new HookIngress()
+observerRegistry.register(new ClaudeObserverAdapter(hookIngress))
 observerRegistry.register(new FixtureObserverAdapter())
 const agentRuntime = new AgentSessionRuntime({
   pty: manager,
@@ -161,6 +165,7 @@ app.on('before-quit', (event) => {
   void (async () => {
     // Agent Runtime 先写入退出事实并回收 observer；随后兜底关闭普通终端。
     await agentRuntime.disposeAll()
+    await hookIngress.dispose()
     manager.killAll()
     unregisterGlobalShortcut()
     stopThemeWatcher()

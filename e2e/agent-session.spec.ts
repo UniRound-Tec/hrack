@@ -122,9 +122,9 @@ test.describe('AgentEventReducer', () => {
       projection = reduceAgentSession(projection, event)
       statuses.push(projection.status)
     }
-    // session.started(working) → working → … → needs-you → working → done → exited
+    // session.started(idle) → working → … → needs-you → working → done → exited
     expect(statuses).toEqual([
-      'working', // session.started
+      'idle', // session.started
       'working', // turn.started
       'working', // thinking.started
       'working', // thinking.completed
@@ -345,7 +345,7 @@ test.describe('AgentEventReducer', () => {
       makeEvent(2, 'turn.failed', { turnId: 'turn-1', message: 'context overflow' })
     )
     expect(projection.status).toBe('error')
-    expect(projection.detail).toBe('context overflow')
+    expect(projection.detail).toBe('@agent:error:context overflow')
     projection = reduceAgentSession(
       projection,
       makeEvent(3, 'turn.started', { turnId: 'turn-2' })
@@ -398,6 +398,32 @@ test.describe('AgentEventReducer', () => {
     expect(projection.status).toBe('working')
     expect(projection.capabilities.tools).toBe('lifecycle')
     expect(projection.observerHealth).toBe('stale')
+  })
+
+  test('completed detail overrides the live thinking caption and keeps token context', () => {
+    let projection = initialProjection()
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(1, 'turn.started', { turnId: 'turn-1' })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(2, 'activity.caption', {
+        text: '@agent:live-thinking:15:844',
+        confidence: 'low',
+        outputTokens: 844
+      })
+    )
+    expect(projection.detail).toBe('@agent:live-thinking:15:844')
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(3, 'turn.completed', {
+        turnId: 'turn-1',
+        outcome: 'completed'
+      })
+    )
+    expect(projection.status).toBe('done')
+    expect(projection.detail).toBe('@agent:completed:844')
   })
 })
 
@@ -728,7 +754,7 @@ test.describe('AgentSessionRuntime (interface gates)', () => {
     })
 
     expect(started.ptyId).toBe('pty-1')
-    expect(started.projection.status).toBe('working')
+    expect(started.projection.status).toBe('idle')
     expect(harness.spawned[0].opts).toMatchObject({
       shell: 'codex.exe',
       cols: 100,
