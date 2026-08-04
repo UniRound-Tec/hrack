@@ -138,12 +138,17 @@ export class OpenCodeEventProjector {
         return this.completeMessage(fact)
       case 'reasoning':
         return this.updateReasoning(fact, now)
+      case 'step-started':
+        return this.startStep(fact, now)
       case 'text-completed':
         return this.completeText(fact)
       case 'tool':
         return this.updateTool(fact, now)
       case 'step-finished':
-        return this.updateUsage(fact)
+        return [
+          ...this.closeReasoningForSession(fact.sessionId, fact.nativeType),
+          ...this.updateUsage(fact)
+        ]
       case 'permission-asked':
         return this.askPermission(fact, now)
       case 'permission-replied':
@@ -287,6 +292,27 @@ export class OpenCodeEventProjector {
         : []
     }
     const events = this.beginPaneTurn(fact.nativeType, now)
+    if (this.reasoning.has(key)) return events
+    this.reasoning.add(key)
+    if (!this.thinkingActive && this.paneTurnId) {
+      this.thinkingActive = true
+      events.push(
+        event(
+          { kind: 'thinking.started', payload: { turnId: this.paneTurnId } },
+          `${key}:thinking-started`,
+          fact.nativeType
+        )
+      )
+    }
+    return events
+  }
+
+  private startStep(
+    fact: Extract<OpenCodeNativeFact, { type: 'step-started' }>,
+    now: number
+  ): AdapterEvent[] {
+    const events = this.beginPaneTurn(fact.nativeType, now)
+    const key = `${fact.sessionId}:step:${fact.partId}`
     if (this.reasoning.has(key)) return events
     this.reasoning.add(key)
     if (!this.thinkingActive && this.paneTurnId) {

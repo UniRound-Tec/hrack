@@ -139,6 +139,49 @@ test.describe('OpenCode observer adapter', () => {
     })
   })
 
+  test('projects a model step as thinking when the provider emits no reasoning part', () => {
+    const step = parseOpenCodeEvent({
+      type: 'message.part.updated',
+      properties: {
+        part: {
+          id: 'step-1',
+          sessionID: 's1',
+          messageID: 'm1',
+          type: 'step-start'
+        }
+      }
+    })
+    expect(step).toMatchObject({
+      type: 'step-started',
+      sessionId: 's1',
+      messageId: 'm1',
+      partId: 'step-1'
+    })
+    if (!step) throw new Error('step-start should parse')
+    const projector = new OpenCodeEventProjector()
+    expect(projector.project(step).map((event) => event.kind)).toEqual([
+      'turn.started',
+      'thinking.started'
+    ])
+
+    const textCompleted = parseOpenCodeEvent({
+      type: 'message.part.updated',
+      properties: {
+        part: {
+          id: 'text-1',
+          sessionID: 's1',
+          messageID: 'm1',
+          type: 'text',
+          time: { start: 10, end: 20 }
+        }
+      }
+    })
+    if (!textCompleted) throw new Error('completed text should parse')
+    expect(
+      projector.project(textCompleted).map((event) => event.kind)
+    ).toEqual(['thinking.completed'])
+  })
+
   test('snapshot parser narrows sessions and statuses', () => {
     const snapshot = parseOpenCodeSnapshot(
       [

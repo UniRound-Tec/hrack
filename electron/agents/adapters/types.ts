@@ -1,7 +1,7 @@
 /**
  * Observer Adapter seam（PLAN-S1 §3.3）——内部接口，不跨 IPC。
  *
- * Claude 与 Codex 至少需要两种真实协议形态，因此这个 seam 不是为单一实现
+ * Claude 与 OpenCode 已验证两种真实协议形态，因此这个 seam 不是为单一实现
  * 制造的假抽象：`prepare` 负责 spawn 前启用结构化信号的资源（临时 settings、
  * 环境变量、安全参数），`attach` 负责进程创建后连接 socket/server/hooks。
  */

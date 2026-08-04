@@ -367,7 +367,7 @@ Parser 输出窄类型 `OpenCodeFact`，不得把整个原始 payload 塞进 `Ag
 | `server.connected` | 无业务事件 | 只完成 transport handshake |
 | 任一成员 `session.status = busy` | `turn.started` | 按 native Session 的 busy generation 去重 |
 | 初始快照全部 `idle` | `session.idle(high)` | 启动后显示“等待你的下一条指令” |
-| reasoning part 首次出现 | `thinking.started` | 忽略 text/delta |
+| `step-start` 或 reasoning part 首次出现 | `thinking.started` + 本地计时 `activity.caption` | 部分 provider 不发送 reasoning part；显示“正在思考 · N 秒”，忽略 text/delta 正文 |
 | reasoning `time.end` | `thinking.completed` | 不带 summary；后续 tool/text 也可兜底关闭 phase |
 | tool pending/running | `tool.started` | `callID` 去重；展示安全 tool 名/title |
 | tool running 的安全 title 变化 | `tool.progress` | 不读取 input/output |

@@ -141,6 +141,35 @@ test.describe('real OpenCode observer', () => {
             )
           )
         )
+        const sessionId = await sessionItem.getAttribute('data-session-id')
+        expect(sessionId).toBeTruthy()
+        await window.evaluate((id) => {
+          const target = window as unknown as {
+            __opencodeSidebarTrace?: string[]
+            __opencodeSidebarObserver?: MutationObserver
+          }
+          target.__opencodeSidebarTrace = []
+          const sample = (): void => {
+            const item = document.querySelector(
+              `[data-testid="sidebar-session-item"][data-session-id="${id}"]`
+            )
+            const text = item?.textContent?.replace(/\s+/g, ' ').trim()
+            if (
+              text &&
+              target.__opencodeSidebarTrace?.at(-1) !== text
+            ) {
+              target.__opencodeSidebarTrace?.push(text)
+            }
+          }
+          target.__opencodeSidebarObserver?.disconnect()
+          target.__opencodeSidebarObserver = new MutationObserver(sample)
+          target.__opencodeSidebarObserver.observe(document.body, {
+            childList: true,
+            characterData: true,
+            subtree: true
+          })
+          sample()
+        }, sessionId)
         await window.evaluate(() =>
           window.__vibingDebug?.sendInput(
             'Reply with exactly OPENCODE_TRACE_OK.\r'
@@ -163,6 +192,39 @@ test.describe('real OpenCode observer', () => {
             }
           )
           .toContain('turn.started')
+        await expect
+          .poll(
+            () =>
+              window.evaluate(
+                (seq) =>
+                  (window.__vibingDebugShell?.agentEvents() ?? [])
+                    .filter((event) => event.seq > seq)
+                    .map((event) => event.kind),
+                afterSeq
+              ),
+            {
+              timeout: 30_000,
+              message: '真实 SSE reasoning 应触发 OpenCode thinking.started'
+            }
+          )
+          .toContain('thinking.started')
+        await expect
+          .poll(
+            () =>
+              window.evaluate(
+                () =>
+                  (
+                    window as unknown as {
+                      __opencodeSidebarTrace?: string[]
+                    }
+                  ).__opencodeSidebarTrace ?? []
+              ),
+            {
+              timeout: 30_000,
+              message: '侧栏卡片必须真实渲染过“正在思考”'
+            }
+          )
+          .toContainEqual(expect.stringMatching(/正在思考 · \d+秒/))
         await expect
           .poll(
             () =>
@@ -247,6 +309,27 @@ test.describe('real OpenCode observer', () => {
         await expect(sessionItem).toContainText(
           /本轮任务已完成(?: · [\d,]+ tokens)?/
         )
+        const settledSeq = await window.evaluate(() =>
+          Math.max(
+            0,
+            ...(window.__vibingDebugShell?.agentEvents() ?? []).map(
+              (event) => event.seq
+            )
+          )
+        )
+        await window.waitForTimeout(1_500)
+        expect(
+          await window.evaluate(
+            (seq) =>
+              (window.__vibingDebugShell?.agentEvents() ?? []).filter(
+                (event) =>
+                  event.seq > seq &&
+                  event.kind === 'activity.caption' &&
+                  event.nativeType === 'OpenCodeThinkingTimer'
+              ),
+            settledSeq
+          )
+        ).toEqual([])
       } finally {
         await app.close()
       }

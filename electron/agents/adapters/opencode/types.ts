@@ -57,6 +57,12 @@ export type OpenCodeNativeFact =
       completed: boolean
     })
   | (OpenCodeFactBase & {
+      type: 'step-started'
+      sessionId: string
+      messageId: string
+      partId: string
+    })
+  | (OpenCodeFactBase & {
       type: 'text-completed'
       sessionId: string
       messageId: string

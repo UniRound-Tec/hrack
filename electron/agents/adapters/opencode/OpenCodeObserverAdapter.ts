@@ -384,6 +384,63 @@ export class OpenCodeObserverAdapter implements AgentObserverAdapter {
       let resolveConnected: (() => void) | null = null
       const buffered: unknown[] = []
       const disconnectListeners = new Set<(reason: string) => void>()
+      let thinkingTimer: ReturnType<typeof setInterval> | null = null
+      let thinkingStartedAt = 0
+      let thinkingEpoch = 0
+      let publishedThinkingSecond = -1
+
+      const stopThinkingCaption = (): void => {
+        if (thinkingTimer) clearInterval(thinkingTimer)
+        thinkingTimer = null
+        thinkingStartedAt = 0
+        publishedThinkingSecond = -1
+      }
+      const publishThinkingCaption = (): void => {
+        if (thinkingStartedAt <= 0) return
+        const seconds = Math.max(
+          0,
+          Math.floor((Date.now() - thinkingStartedAt) / 1_000)
+        )
+        if (seconds === publishedThinkingSecond) return
+        publishedThinkingSecond = seconds
+        emit({
+          kind: 'activity.caption',
+          payload: {
+            text: `@agent:live-thinking:${seconds}:`,
+            confidence: 'low'
+          },
+          nativeId: `opencode:${context.sessionId}:thinking:${thinkingEpoch}:${seconds}`,
+          nativeType: 'OpenCodeThinkingTimer'
+        })
+      }
+      const startThinkingCaption = (): void => {
+        stopThinkingCaption()
+        thinkingEpoch++
+        thinkingStartedAt = Date.now()
+        publishThinkingCaption()
+        thinkingTimer = setInterval(publishThinkingCaption, 250)
+      }
+      const emitProjected = (projected: AdapterEvent): void => {
+        if (projected.kind === 'thinking.started') {
+          emit(projected)
+          startThinkingCaption()
+          return
+        }
+        if (
+          projected.kind === 'thinking.completed' ||
+          projected.kind === 'tool.started' ||
+          projected.kind === 'approval.requested' ||
+          projected.kind === 'input.requested' ||
+          projected.kind === 'message.completed' ||
+          projected.kind === 'turn.completed' ||
+          projected.kind === 'turn.failed' ||
+          projected.kind === 'session.idle' ||
+          projected.kind === 'session.exited'
+        ) {
+          stopThinkingCaption()
+        }
+        emit(projected)
+      }
       const projectRaw = (raw: unknown): void => {
         const fact = parseOpenCodeEvent(raw)
         // Bus 还包含 file/lsp/todo/installation 等与 pane 状态无关的事件；
@@ -396,7 +453,8 @@ export class OpenCodeObserverAdapter implements AgentObserverAdapter {
           }
           return
         }
-        for (const projected of projector.project(fact)) emit(projected)
+        for (const projected of projector.project(fact))
+          emitProjected(projected)
       }
 
       const onRaw = (raw: unknown): void => {
@@ -475,7 +533,8 @@ export class OpenCodeObserverAdapter implements AgentObserverAdapter {
           RECONCILE_BUDGET_MS,
           'OpenCode status reconciliation timed out'
         )
-        for (const projected of projector.reconcile(snapshot)) emit(projected)
+        for (const projected of projector.reconcile(snapshot))
+          emitProjected(projected)
       } catch {
         emit({
           kind: 'observer.degraded',
@@ -509,6 +568,7 @@ export class OpenCodeObserverAdapter implements AgentObserverAdapter {
           return () => disconnectListeners.delete(listener)
         },
         reconnect: async () => {
+          stopThinkingCaption()
           await connection.dispose()
           if (activeConnection === connection) activeConnection = null
           return openHandle(emit)
@@ -516,6 +576,7 @@ export class OpenCodeObserverAdapter implements AgentObserverAdapter {
         dispose: async () => {
           if (handleDisposed) return
           handleDisposed = true
+          stopThinkingCaption()
           disconnectListeners.clear()
           await connection.dispose()
           if (activeConnection === connection) activeConnection = null

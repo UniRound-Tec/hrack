@@ -1131,6 +1131,7 @@ export class AiCliDiscoveryService {
   async prepareLaunch(
     selection: CliLaunchSelection,
     augmentation: {
+      env?: Readonly<Record<string, string>>
       prependArgs?: readonly string[]
       appendArgs?: readonly string[]
       unsetEnv?: readonly string[]
@@ -1160,16 +1161,28 @@ export class AiCliDiscoveryService {
       const environmentPath = this.wslEnvironmentPaths.get(
         installation.runtime.distro
       )
+      const environmentEntries = Object.entries(augmentation.env ?? {}).filter(
+        ([key, value]) =>
+          /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) &&
+          key.length <= 128 &&
+          value.length <= 4_096 &&
+          !value.includes('\0')
+      )
+      const needsEnvironmentWrapper =
+        Boolean(environmentPath) ||
+        environmentEntries.length > 0 ||
+        (augmentation.unsetEnv?.length ?? 0) > 0
       return {
         shell: 'wsl.exe',
         args: [
           '--distribution', installation.runtime.distro,
           ...(cwd ? ['--cd', cwd] : []),
           '--exec',
-          ...(environmentPath || (augmentation.unsetEnv?.length ?? 0) > 0
+          ...(needsEnvironmentWrapper
             ? [
                 'env',
                 ...(augmentation.unsetEnv ?? []).flatMap((key) => ['-u', key]),
+                ...environmentEntries.map(([key, value]) => `${key}=${value}`),
                 ...(environmentPath ? [`PATH=${environmentPath}`] : []),
                 installation.resolvedExecutable
               ]

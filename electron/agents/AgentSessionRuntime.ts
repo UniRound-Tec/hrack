@@ -82,6 +82,7 @@ export interface AgentLaunchProvider {
   prepareLaunch(
     selection: CliLaunchSelection,
     augmentation?: {
+      env?: Readonly<Record<string, string>>
       prependArgs?: readonly string[]
       appendArgs?: readonly string[]
       unsetEnv?: readonly string[]
@@ -402,6 +403,7 @@ export class AgentSessionRuntime {
     let baseOptions: SpawnOptions
     try {
       baseOptions = await this.deps.discovery.prepareLaunch(input.selection, {
+        env: augmentation.env,
         prependArgs: augmentation.prependArgs,
         appendArgs: augmentation.appendArgs,
         unsetEnv: augmentation.unsetEnv

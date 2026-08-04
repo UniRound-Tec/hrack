@@ -205,6 +205,9 @@ export function parseOpenCodeEvent(value: unknown): OpenCodeNativeFact | null {
           undefined
       }
     }
+    if (partType === 'step-start') {
+      return { ...common, type: 'step-started' }
+    }
     if (partType === 'text') {
       if (
         finite(recordOf(part.time)?.end, Number.MAX_SAFE_INTEGER) === undefined
