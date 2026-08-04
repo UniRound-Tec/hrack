@@ -24,6 +24,19 @@ test('suppresses one resize redraw but preserves trailing real output', () => {
   })
 })
 
+test('preserves persistent terminal modes inside a suppressed resize redraw', () => {
+  const filter = new ConptyResizeFilter()
+  filter.expectResize()
+  const modes =
+    '\x1b[?1049h\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h\x1b[?2004h'
+
+  expect(filter.push(redraw(`${modes}screen`))).toEqual({
+    forward: modes,
+    suppressedRedraws: 1,
+    cursorSyncs: []
+  })
+})
+
 test('accepts ConPTY window-size header', () => {
   const filter = new ConptyResizeFilter()
   filter.expectResize()

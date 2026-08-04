@@ -2,6 +2,7 @@ const HIDE_CURSOR = '\x1b[?25l'
 const SHOW_CURSOR = '\x1b[?25h'
 const CURSOR_HOME = '\x1b[H'
 const FINAL_CURSOR_POSITION = /\x1b\[(\d+);(\d+)H\x1b\[\?25h$/
+const DEC_PRIVATE_MODE = /\x1b\[\?([0-9;]+)[hl]/g
 
 const DEFAULT_MAX_CANDIDATE_CHARS = 4 * 1024 * 1024
 const MAX_HEADER_CHARS = 64
@@ -17,6 +18,25 @@ export interface ConptyResizeFilterResult {
   suppressedRedraws: number
   /** 被抑制帧末尾可确定的 ConPTY 1-based 光标坐标。 */
   cursorSyncs: Array<{ row: number; column: number }>
+}
+
+/**
+ * Resize 重画可以安全丢弃像素/文字，但不能丢弃应用在同一帧里只发送一次的
+ * DECSET/DECRST。OpenTUI 会在首帧内开启 alternate screen、鼠标、焦点与粘贴
+ * 模式；若这些序列随 ConPTY 重画一起被吞，画面仍可能靠后续帧出现，但 TUI
+ * 永远收不到鼠标与相关输入。
+ *
+ * 光标显隐（?25h/l）属于重画事务本身，最终状态由帧尾与 cursorSync 单独维护，
+ * 不需要转发。其余 private mode 按原顺序保留。
+ */
+function persistentModes(frame: string): string {
+  let result = ''
+  for (const match of frame.matchAll(DEC_PRIVATE_MODE)) {
+    const modes = match[1].split(';')
+    if (modes.every((mode) => mode === '25')) continue
+    result += match[0]
+  }
+  return result
 }
 
 /**
@@ -96,6 +116,7 @@ export class ConptyResizeFilter {
 
       const frameEnd = end + SHOW_CURSOR.length
       const frame = this.candidate.slice(0, frameEnd)
+      forward += persistentModes(frame)
       const cursor = frame.match(FINAL_CURSOR_POSITION)
       if (cursor) {
         cursorSyncs.push({

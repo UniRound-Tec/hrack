@@ -394,10 +394,13 @@ export function useXterm(
       await flushOutput()
     }
 
-    const wireProxy = (next: PtyProxy, restored = false): void => {
+    const wireProxy = (next: PtyProxy): void => {
       proxy?.dispose()
       proxy = next
-      let replaying = restored
+      // PTY spawn 返回 ptyId 前，子进程已经可能发出首帧。TUI 往往只在该
+      // 首帧发送一次 alternate-screen / mouse DECSET；先订阅 live data，
+      // 再原子 attach + 重放历史，才能闭合这段启动竞态。
+      let replaying = true
       const replayQueue: Uint8Array[] = []
 
       // pty → 屏幕；xterm 解析完成后 ack，驱动主进程高低水位背压。
@@ -454,13 +457,9 @@ export function useXterm(
         if (activeRef.current) scheduleResize()
       }
 
-      if (!restored) {
-        finishBinding()
-        return
-      }
-
       // listener 先就位，attach 再在主进程原子清掉旧 ack 账本并取
-      // history 快照。快照之后到达的 live chunk 先缓冲，避免与重放交错。
+      // history 快照。该路径同时用于首次 spawn 与恢复；快照之后到达的
+      // live chunk 先缓冲，避免与重放交错或漏掉启动首帧。
       void next
         .attach()
         .then(async (snapshot) => {
@@ -497,7 +496,7 @@ export function useXterm(
     const spawnShell = (): void => {
       if (disposed) return
       if (launch?.kind === 'attach') {
-        wireProxy(new PtyProxy(launch.ptyId), true)
+        wireProxy(new PtyProxy(launch.ptyId))
         return
       }
       if (isAgentLaunch && launch?.kind === 'agent') {
@@ -524,7 +523,6 @@ export function useXterm(
               agent: true
             })
             wireProxy(new PtyProxy(started.ptyId))
-            settleInitialSpawn(null)
           })
           .catch((err: unknown) => {
             const message = err instanceof Error ? err.message : String(err)
@@ -567,7 +565,6 @@ export function useXterm(
             agent: false
           })
           wireProxy(new PtyProxy(ptyId))
-          settleInitialSpawn(null)
         })
         .catch((err: unknown) => {
           const message = err instanceof Error ? err.message : String(err)
