@@ -20,6 +20,7 @@ import type {
   LaunchableCli,
   SpawnOptions
 } from '../shared/ipc-contract'
+import { parseWslUncPath } from './directory-picker'
 
 const COMMAND_TIMEOUT_MS = 2_500
 const COMMAND_MAX_BUFFER = 64 * 1024
@@ -1029,12 +1030,12 @@ async function wslWorkspace(distro: string, workspace: string): Promise<string> 
     if (valid.code !== 0) throw new Error(`Workspace is unavailable in ${distro}: ${workspace}`)
     return workspace
   }
-  const unc = workspace.match(/^\\\\wsl(?:\.localhost)?\\([^\\]+)(\\.*)?$/i)
+  const unc = parseWslUncPath(workspace)
   if (unc) {
-    if (unc[1].toLowerCase() !== distro.toLowerCase()) {
-      throw new Error(`Workspace belongs to WSL ${unc[1]}, not ${distro}`)
+    if (unc.distro.toLowerCase() !== distro.toLowerCase()) {
+      throw new Error(`Workspace belongs to WSL ${unc.distro}, not ${distro}`)
     }
-    const path = (unc[2] ?? '\\').replace(/\\/g, '/')
+    const path = unc.linuxPath
     const valid = await runWsl(distro, 'test', ['-d', path])
     if (valid.code !== 0) throw new Error(`Workspace is unavailable in ${distro}: ${path}`)
     return path

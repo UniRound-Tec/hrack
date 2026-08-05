@@ -19,6 +19,7 @@ import {
 } from '../state/terminalLaunchRegistry'
 import { useTerminalsStore } from '../state/terminalsStore'
 import { parseRenderedActivityCaption } from './renderedActivityCaption'
+import { terminalImagePasteSequence } from './clipboardPaste'
 
 const DISABLE_MOUSE_TRACKING =
   '\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l'
@@ -155,7 +156,6 @@ export function useXterm(
     const renderer = createRendererController(term)
     rendererRef.current = renderer
     fit.fit()
-    term.attachCustomKeyEventHandler((event) => !handleShellShortcut(event))
     const titleDisposable = term.onTitleChange((title) => {
       onTitleRef.current?.(title)
     })
@@ -173,6 +173,45 @@ export function useXterm(
       onInitialSpawnRef.current?.(error)
     }
     let disposed = false
+    const pasteFromNativeClipboard = (): void => {
+      void window.clipboardApi
+        .readForTerminalPaste()
+        .then((payload) => {
+          if (disposed || !activeRef.current) return
+          if (payload.kind === 'image') {
+            const adapterId = useTerminalsStore
+              .getState()
+              .terminals.find((terminal) => terminal.id === tabId)?.shellId
+            void proxy?.write(
+              terminalImagePasteSequence(
+                window.windowApi.platform,
+                adapterId
+              )
+            )
+          } else if (payload.kind === 'text') {
+            term.paste(payload.text)
+          }
+        })
+        .catch(() => {
+          // Clipboard contention should leave the TUI untouched; the user can retry.
+        })
+    }
+    term.attachCustomKeyEventHandler((event) => {
+      if (
+        window.windowApi.platform === 'win32' &&
+        event.type === 'keydown' &&
+        event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        event.key.toLowerCase() === 'v'
+      ) {
+        event.preventDefault()
+        event.stopPropagation()
+        pasteFromNativeClipboard()
+        return false
+      }
+      return !handleShellShortcut(event)
+    })
     let initialSpawnFrame: number | null = null
     let ptyAckDelayMs = 0
     let ptyRenderingSuspended = false

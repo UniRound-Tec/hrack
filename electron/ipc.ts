@@ -22,6 +22,8 @@ import {
   StatsInvokeChannel,
   ThemeInvokeChannel,
   WindowInvokeChannel,
+  type CliRuntime,
+  type DirectoryPickerRequest,
   type HistoryEvent,
   type CliLaunchSelection,
   type HistoryEventKind,
@@ -46,6 +48,10 @@ import type { Tray } from './tray'
 import type { FloatingWindowController } from './floating/FloatingWindowController'
 import { WorkspaceReaderInvokeChannel } from '../shared/workspace-reader'
 import type { WorkspaceReader } from './workspace/WorkspaceReader'
+import {
+  directoryPickerDefaultPath,
+  normalizePickedDirectory
+} from './directory-picker'
 
 const MAX_CLIPBOARD_TEXT_LENGTH = 8 * 1024 * 1024
 const MAX_USER_THEME_FILES = 128
@@ -78,6 +84,52 @@ export interface IpcContext {
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   const win = BrowserWindow.fromWebContents(event.sender)
   return win && !win.isDestroyed() ? win : null
+}
+
+function parseDirectoryPickerRuntime(value: unknown): CliRuntime {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Invalid directory picker runtime')
+  }
+  const runtime = value as Record<string, unknown>
+  if (runtime.kind === 'wsl') {
+    if (
+      typeof runtime.distro !== 'string' ||
+      !runtime.distro.trim() ||
+      runtime.distro.length > 128 ||
+      /[\\/\0]/.test(runtime.distro)
+    ) {
+      throw new Error('Invalid WSL distribution')
+    }
+    return { kind: 'wsl', distro: runtime.distro }
+  }
+  if (
+    runtime.kind === 'host' &&
+    (runtime.platform === 'windows' ||
+      runtime.platform === 'macos' ||
+      runtime.platform === 'linux')
+  ) {
+    return { kind: 'host', platform: runtime.platform }
+  }
+  throw new Error('Invalid directory picker runtime')
+}
+
+function parseDirectoryPickerRequest(value: unknown): DirectoryPickerRequest {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Invalid directory picker request')
+  }
+  const request = value as Record<string, unknown>
+  if (
+    request.defaultPath !== undefined &&
+    (typeof request.defaultPath !== 'string' ||
+      request.defaultPath.length > 32_768 ||
+      request.defaultPath.includes('\0'))
+  ) {
+    throw new Error('Invalid directory picker path')
+  }
+  return {
+    defaultPath: request.defaultPath as string | undefined,
+    runtime: parseDirectoryPickerRuntime(request.runtime)
+  }
 }
 
 function isFloatingWindowSender(event: IpcMainInvokeEvent): boolean {
@@ -178,6 +230,13 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     }
     clipboard.writeText(text)
   })
+  ipcMain.handle(ClipboardInvokeChannel.ReadForTerminalPaste, () => {
+    if (!clipboard.readImage().isEmpty()) return { kind: 'image' as const }
+    const text = clipboard.readText()
+    return text
+      ? { kind: 'text' as const, text: text.slice(0, MAX_CLIPBOARD_TEXT_LENGTH) }
+      : { kind: 'empty' as const }
+  })
   ipcMain.handle(WindowInvokeChannel.Minimize, (event) => {
     senderWindow(event)?.minimize()
   })
@@ -237,20 +296,20 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(ThemeInvokeChannel.ListUser, listUserThemes)
   ipcMain.handle(
     DialogInvokeChannel.PickDirectory,
-    async (event, payload: { defaultPath?: unknown } | undefined) => {
+    async (event, payload: unknown) => {
       const win = senderWindow(event)
-      const defaultPath =
-        typeof payload?.defaultPath === 'string'
-          ? payload.defaultPath
-          : undefined
+      const request = parseDirectoryPickerRequest(payload)
       const options = {
-        defaultPath,
+        defaultPath: directoryPickerDefaultPath(request),
         properties: ['openDirectory' as const]
       }
       const result = win
         ? await dialog.showOpenDialog(win, options)
         : await dialog.showOpenDialog(options)
-      return result.canceled ? null : (result.filePaths[0] ?? null)
+      const selected = result.filePaths[0]
+      return result.canceled || !selected
+        ? null
+        : normalizePickedDirectory(selected, request.runtime)
     }
   )
   ipcMain.handle(ShellInvokeChannel.ListAvailable, listAvailableShells)

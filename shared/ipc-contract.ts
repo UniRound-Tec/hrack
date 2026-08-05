@@ -202,8 +202,14 @@ export const PtyInvokeChannel = {
 } as const
 
 export const ClipboardInvokeChannel = {
-  WriteText: 'clipboard:write-text'
+  WriteText: 'clipboard:write-text',
+  ReadForTerminalPaste: 'clipboard:read-for-terminal-paste'
 } as const
+
+export type TerminalClipboardPaste =
+  | { kind: 'empty' }
+  | { kind: 'image' }
+  | { kind: 'text'; text: string }
 
 export const WindowInvokeChannel = {
   Minimize: 'window:minimize',
@@ -247,6 +253,11 @@ export const ThemeInvokeChannel = {
 export const DialogInvokeChannel = {
   PickDirectory: 'dialog:pick-directory'
 } as const
+
+export interface DirectoryPickerRequest {
+  defaultPath?: string
+  runtime: CliRuntime
+}
 
 export const ShellInvokeChannel = {
   ListAvailable: 'shell:list-available'
@@ -346,6 +357,8 @@ export interface PtyApi {
 export interface ClipboardApi {
   /** 把纯文本写入系统剪贴板。 */
   writeText: (text: string) => Promise<void>
+  /** 图片只暴露类型事实；文本由 xterm 以 bracketed paste 语义写入 PTY。 */
+  readForTerminalPaste: () => Promise<TerminalClipboardPaste>
 }
 
 export interface WindowApi {
@@ -378,7 +391,7 @@ export interface ThemeApi {
 }
 
 export interface DialogApi {
-  pickDirectory: (defaultPath?: string) => Promise<string | null>
+  pickDirectory: (request: DirectoryPickerRequest) => Promise<string | null>
 }
 
 export interface ShellApi {

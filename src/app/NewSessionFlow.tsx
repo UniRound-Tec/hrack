@@ -106,9 +106,14 @@ export default function NewSessionFlow({
   }
 
   const pickWorkspace = async (): Promise<void> => {
-    const workspace = await window.dialogApi.pickDirectory(
-      draft?.workspace || undefined
+    const installation = draft?.option.installations.find(
+      (candidate) => candidate.id === draft.installationId
     )
+    if (!draft || !installation) return
+    const workspace = await window.dialogApi.pickDirectory({
+      defaultPath: draft.workspace || undefined,
+      runtime: installation.runtime
+    })
     if (!workspace) return
     saveLastWorkspace(workspace)
     setDraft((current) => current ? { ...current, workspace } : current)

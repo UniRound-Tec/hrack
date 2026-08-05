@@ -79,4 +79,34 @@ test.describe('new session flow', () => {
     await expect(page.getByTestId('cli-config')).toHaveCount(0)
     await expect(page.getByTestId('new-session-overlay')).toHaveCount(0)
   })
+
+  test('uses the selected WSL installation when picking a CLI workspace', async () => {
+    await page.getByTestId('home-quick-codex').click()
+    await page.getByTestId('cli-workspace').fill('C:\\previous-windows-repo')
+    await page.getByTestId('cli-installation-wsl-Ubuntu-Test').click()
+
+    await app.evaluate(({ dialog }) => {
+      dialog.showOpenDialog = async (...args) => {
+        const options = args.at(-1)
+        ;(globalThis as Record<string, unknown>).__pickedDirectoryOptions = options
+        return {
+          canceled: false,
+          filePaths: ['\\\\wsl.localhost\\Ubuntu-Test\\home\\jesse\\project'],
+          bookmarks: []
+        }
+      }
+    })
+
+    await page.getByTestId('cli-pick-workspace').click()
+
+    await expect(page.getByTestId('cli-workspace')).toHaveValue('/home/jesse/project')
+    expect(
+      await app.evaluate(() =>
+        (globalThis as Record<string, unknown>).__pickedDirectoryOptions
+      )
+    ).toMatchObject({
+      defaultPath: '\\\\wsl.localhost\\Ubuntu-Test\\',
+      properties: ['openDirectory']
+    })
+  })
 })

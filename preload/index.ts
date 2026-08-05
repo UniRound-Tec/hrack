@@ -136,7 +136,9 @@ const ptyApi: PtyApi = {
 
 const clipboardApi: ClipboardApi = {
   writeText: (text) =>
-    ipcRenderer.invoke(ClipboardInvokeChannel.WriteText, text)
+    ipcRenderer.invoke(ClipboardInvokeChannel.WriteText, text),
+  readForTerminalPaste: () =>
+    ipcRenderer.invoke(ClipboardInvokeChannel.ReadForTerminalPaste)
 }
 
 const windowApi: WindowApi = {
@@ -201,8 +203,8 @@ const themeApi: ThemeApi = {
 }
 
 const dialogApi: DialogApi = {
-  pickDirectory: (defaultPath) =>
-    ipcRenderer.invoke(DialogInvokeChannel.PickDirectory, { defaultPath })
+  pickDirectory: (request) =>
+    ipcRenderer.invoke(DialogInvokeChannel.PickDirectory, request)
 }
 
 const shellApi: ShellApi = {
