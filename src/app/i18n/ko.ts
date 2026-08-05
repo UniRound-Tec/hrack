@@ -56,6 +56,7 @@ export const ko = {
   },
   agentDetail: {
     thinking: '작업을 분석하고 다음 단계를 계획하고 있습니다',
+    responding: '답변을 정리하고 있어요',
     liveThinking: (seconds: number | undefined, tokens: number | undefined) =>
       ['생각 중', seconds === undefined ? undefined : `${seconds}초`, tokens === undefined ? undefined : `${tokens.toLocaleString('ko-KR')} tokens`].filter(Boolean).join(' · '),
     waitingApproval: (summary: string | undefined) =>
@@ -208,6 +209,22 @@ export const ko = {
     installation: '설치 위치',
     launching: '실행 중…',
     p2Placeholder: 'CLI 및 실행 환경 옵션은 P3에서 추가'
+  },
+  workspaceReader: {
+    show: '코드 리더 표시',
+    hide: '코드 리더 닫기',
+    back: '터미널로 돌아가기',
+    refresh: '작업 공간 새로 고침',
+    resizeReader: '코드 리더 너비 조절',
+    resizeTree: '파일 트리 너비 조절',
+    loading: '불러오는 중…',
+    empty: '작업 공간이 비어 있습니다',
+    selectFile: '파일 트리에서 텍스트 파일을 선택하세요',
+    selectFileShort: '읽을 파일을 선택하세요',
+    unreadable: '이 파일을 표시할 수 없습니다',
+    directoryError: '작업 공간을 읽을 수 없습니다',
+    openError: '디렉터리를 열 수 없습니다',
+    code: '코드'
   },
   shell: {
     homeLabel: 'home · app shell',

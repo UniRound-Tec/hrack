@@ -33,6 +33,7 @@ import { useSettingsStore, type NavMode } from '../state/settingsStore'
 import { useSessionsStore, type SessionEntry } from '../state/sessionsStore'
 import { useAgentEventsStore } from '../state/agentEventsStore'
 import { useTerminalsStore } from '../state/terminalsStore'
+import { useWorkspaceReaderStore } from '../workspace-reader/workspaceReaderStore'
 
 export interface VibingDebugShellApi {
   navigate(pageId: PageId): void
@@ -112,6 +113,16 @@ export default function AppShell() {
     return terminals.filter((terminal) => !sessionTerminalIds.has(terminal.id))
   }, [sessions, terminals])
   const activeTerminalId = terminalIdFromPage(pageId)
+  const activeReaderTerminal = activeTerminalId
+    ? (terminals.find((terminal) => terminal.id === activeTerminalId) ?? null)
+    : null
+  const activeHasWorkspace =
+    Boolean(activeReaderTerminal?.cwd) &&
+    sessions.some((session) => session.terminalId === activeTerminalId)
+  const activeReaderOpen = useWorkspaceReaderStore((state) =>
+    activeTerminalId ? (state.sessions[activeTerminalId]?.open ?? false) : false
+  )
+  const setReaderOpen = useWorkspaceReaderStore((state) => state.setOpen)
 
   const navigate = useCallback(
     (nextPage: PageId): void => {
@@ -271,9 +282,9 @@ export default function AppShell() {
         .sessions.filter((session) => session.terminalId === terminalId)
         .map((session) => session.sessionId)
       if (linkedSessionIds.length > 0) {
-        for (const sessionId of linkedSessionIds) {
-          void window.agentApi.stop(sessionId)
-        }
+        void Promise.all(
+          linkedSessionIds.map((sessionId) => window.agentApi.stop(sessionId))
+        ).finally(() => window.ptyApi.killTerminal(terminalId))
       } else {
         void window.ptyApi.killTerminal(terminalId)
       }
@@ -436,6 +447,12 @@ export default function AppShell() {
         onNew={openNewSession}
         onSettings={() => navigate('settings')}
         settingsActive={pageId === 'settings'}
+        onToggleCode={
+          activeHasWorkspace && activeTerminalId
+            ? () => setReaderOpen(activeTerminalId, !activeReaderOpen)
+            : undefined
+        }
+        codeOpen={activeReaderOpen}
       />
 
       <div className="relative flex min-h-0 flex-1">

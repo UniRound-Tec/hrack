@@ -52,6 +52,10 @@ import {
   type PublishAgentCaption,
   type StartAgentSession
 } from '../shared/agent-events'
+import {
+  WorkspaceReaderInvokeChannel,
+  type WorkspaceReaderApi
+} from '../shared/workspace-reader'
 
 /** 推算 Windows build 号（os.release() 形如 "10.0.26200"）。 */
 function windowsBuildNumber(): number {
@@ -257,6 +261,13 @@ const agentApi: AgentApi = {
   }
 }
 
+const workspaceReader: WorkspaceReaderApi = {
+  describe: (terminalId) =>
+    ipcRenderer.invoke(WorkspaceReaderInvokeChannel.Describe, terminalId),
+  list: (input) => ipcRenderer.invoke(WorkspaceReaderInvokeChannel.List, input),
+  read: (input) => ipcRenderer.invoke(WorkspaceReaderInvokeChannel.Read, input)
+}
+
 const appApi: AppApi = {
   setMainPrefs: (update: MainPrefsUpdate) =>
     ipcRenderer.invoke(AppInvokeChannel.SetMainPrefs, update),
@@ -322,6 +333,7 @@ try {
   contextBridge.exposeInMainWorld('cliApi', cliApi)
   contextBridge.exposeInMainWorld('statsApi', statsApi)
   contextBridge.exposeInMainWorld('agentApi', agentApi)
+  contextBridge.exposeInMainWorld('workspaceReader', workspaceReader)
   contextBridge.exposeInMainWorld('appApi', appApi)
   contextBridge.exposeInMainWorld('appThemeApi', appThemeApi)
   // E2E：主进程设置 VIBING_E2E 时，向渲染进程注入标记，激活 debugBridge（即便是生产构建）

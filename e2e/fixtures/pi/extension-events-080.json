@@ -1,0 +1,12 @@
+[
+  { "type": "session-start", "payload": { "reason": "startup" } },
+  { "type": "run-start", "payload": {} },
+  { "type": "thinking-start", "payload": {} },
+  { "type": "thinking-end", "payload": {} },
+  { "type": "tool-start", "payload": { "callId": "call-1", "toolName": "bash" } },
+  { "type": "tool-end", "payload": { "callId": "call-1", "toolName": "bash", "isError": true, "durationMs": 9 } },
+  { "type": "usage", "payload": { "inputTokens": 80, "outputTokens": 20, "scope": "turn" } },
+  { "type": "responding", "payload": {} },
+  { "type": "run-end", "payload": { "outcome": "completed" } },
+  { "type": "run-settled", "payload": {} }
+]

@@ -12,6 +12,7 @@ export function renderAgentDetail(
   if (!detail || !detail.startsWith('@agent:')) return detail
 
   if (detail === '@agent:thinking') return strings.agentDetail.thinking
+  if (detail === '@agent:responding') return strings.agentDetail.responding
   if (detail.startsWith('@agent:live-thinking')) {
     const [, duration, tokens] = detail.slice('@agent:live-thinking'.length).split(':')
     return strings.agentDetail.liveThinking(

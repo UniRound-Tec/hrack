@@ -403,7 +403,7 @@ S0 新会话应保存 `installationId`，使历史/诊断知道它来自 Windows
 | **S3** | ✅ OpenCode Server/SSE Adapter（Windows + WSL）验证第二种协议形态；实施见 [PLAN-S3-OPENCODE.md](./PLAN-S3-OPENCODE.md) |
 | **S4** | 注意力通知，仍只看不操作 |
 | **F1** | ✅ 独立置顶悬浮窗核心实现与 Windows 真窗口 E2E 已完成；macOS/Linux 真机 smoke 待补；实施见 [PLAN-F1-FLOATING-WINDOW.md](./PLAN-F1-FLOATING-WINDOW.md) |
-| **M6** | 🚧 Codex Stable Hooks Adapter 核心链路与 Windows/WSL no-tool/tool/approval 真机验证已完成；扩展矩阵收尾见 [PLAN-M6-CODEX.md](./PLAN-M6-CODEX.md)，随后为 Pi、Kimi、Grok、Gemini |
+| **M6** | 🚧 Codex Stable Hooks Adapter 核心链路与 Windows/WSL no-tool/tool/approval 真机验证已完成；Pi Extension Adapter 已完成计划与双版本契约核验，实施见 [PLAN-M6-PI.md](./PLAN-M6-PI.md)；矩阵收尾见 [PLAN-M6-CODEX.md](./PLAN-M6-CODEX.md)，随后为 Kimi、Grok、Gemini |
 
 ---
 

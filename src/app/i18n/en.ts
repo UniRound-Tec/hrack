@@ -56,6 +56,7 @@ export const en = {
   },
   agentDetail: {
     thinking: 'Analyzing the task and planning the next step',
+    responding: 'Preparing the response',
     liveThinking: (seconds: number | undefined, tokens: number | undefined) =>
       ['Thinking', seconds === undefined ? undefined : `${seconds}s`, tokens === undefined ? undefined : `${tokens.toLocaleString('en-US')} tokens`].filter(Boolean).join(' · '),
     waitingApproval: (summary: string | undefined) =>
@@ -210,6 +211,22 @@ export const en = {
     installation: 'Installation',
     launching: 'Launching…',
     p2Placeholder: 'CLI and runtime options land in P3'
+  },
+  workspaceReader: {
+    show: 'Show code reader',
+    hide: 'Hide code reader',
+    back: 'Back to terminal',
+    refresh: 'Refresh workspace',
+    resizeReader: 'Resize code reader',
+    resizeTree: 'Resize file tree',
+    loading: 'Loading…',
+    empty: 'Empty workspace',
+    selectFile: 'Choose a text file from the tree',
+    selectFileShort: 'Select a file to read',
+    unreadable: 'This file cannot be displayed',
+    directoryError: 'Unable to read workspace',
+    openError: 'Unable to open directory',
+    code: 'Code'
   },
   shell: {
     homeLabel: 'home · app shell',

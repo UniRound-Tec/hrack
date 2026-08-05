@@ -139,6 +139,12 @@ html {
   font-family: var(--font-pingfang);
 }
 
+html.workspace-splitting,
+html.workspace-splitting * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
 body {
   background-color: var(--vib-bg-app);
   color: var(--vib-text-primary);
@@ -313,6 +319,30 @@ textarea,
 .sidebar-scroll::-webkit-scrollbar-thumb:active {
   background: var(--vib-scrollbar-thumb-active);
   background-clip: content-box;
+}
+
+.workspace-reader-scrollbars,
+.workspace-reader-scrollbars * {
+  scrollbar-color: var(--vib-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+.workspace-reader-scrollbars ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.workspace-reader-scrollbars ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.workspace-reader-scrollbars ::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--vib-scrollbar-thumb);
+}
+
+.workspace-reader-scrollbars ::-webkit-scrollbar-thumb:hover {
+  background: var(--vib-scrollbar-thumb-hover);
 }
 
 .top-tab-viewport {

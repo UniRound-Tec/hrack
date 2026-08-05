@@ -155,6 +155,32 @@ test('idle repeated resize is not delayed by ConPTY redraw traffic', async () =>
   await waitForCompletePrompt()
 })
 
+test('running terminal applies the latest resize without waiting for output to stop', async () => {
+  test.skip(process.platform !== 'win32', 'ConPTY resize scheduling is Windows-specific')
+
+  const before = await resizeEventCount()
+  await typeInTerminal(
+    page,
+    `1..80 | % { [Console]::WriteLine("LIVE_RESIZE_$($_)"); Start-Sleep -Milliseconds 50 }; ` +
+      `[Console]::WriteLine("LIVE_RESIZE_DONE")`
+  )
+  await page.keyboard.press('Enter')
+  await waitForBufferText('LIVE_RESIZE_2')
+
+  await setWindowSize(original.width - 260, original.height)
+  await expect
+    .poll(resizeEventCount, {
+      timeout: 1_200,
+      intervals: [50, 100, 150],
+      message:
+        '持续输出期间最新 resize 也必须送达 PTY，不能无限等待 500ms 静默窗口'
+    })
+    .toBeGreaterThan(before)
+
+  await waitForBufferText('LIVE_RESIZE_DONE')
+  await waitForCompletePrompt()
+})
+
 test('sustained output is backpressured without exceeding the delivery memory limit', async () => {
   const lineCount = 1024
   const payloadBytes = 2048

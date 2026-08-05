@@ -59,6 +59,7 @@ export const zhCN = {
   },
   agentDetail: {
     thinking: '正在分析并规划下一步',
+    responding: '正在整理回复',
     liveThinking: (seconds: number | undefined, tokens: number | undefined) =>
       ['正在思考', seconds === undefined ? undefined : `${seconds}秒`, tokens === undefined ? undefined : `${tokens.toLocaleString('zh-CN')} tokens`].filter(Boolean).join(' · '),
     waitingApproval: (summary: string | undefined) =>
@@ -211,6 +212,22 @@ export const zhCN = {
     installation: '安装位置',
     launching: '启动中…',
     p2Placeholder: 'CLI 与运行环境选项将在 P3 接入'
+  },
+  workspaceReader: {
+    show: '显示代码阅读器',
+    hide: '收起代码阅读器',
+    back: '返回终端',
+    refresh: '刷新工作区',
+    resizeReader: '调整代码阅读器宽度',
+    resizeTree: '调整文件树宽度',
+    loading: '正在读取…',
+    empty: '工作区为空',
+    selectFile: '从文件树选择一个文本文件',
+    selectFileShort: '选择文件以阅读',
+    unreadable: '无法显示这个文件',
+    directoryError: '无法读取工作区',
+    openError: '无法展开目录',
+    code: '代码'
   },
   shell: {
     homeLabel: 'home · app shell',

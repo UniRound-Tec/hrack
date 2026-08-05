@@ -770,7 +770,8 @@ test.describe('AgentSessionRuntime (interface gates)', () => {
     const statuses = projectionsOf(harness).map((projection) => projection.status)
     expect(statuses).toContain('needs-you')
     expect(statuses.at(-1)).toBe('exited')
-    expect(harness.killed).toContain('pty-1')
+    // 自然退出只清理 Observer；PTY 历史由 Terminal Page 保留到用户显式关闭。
+    expect(harness.killed).not.toContain('pty-1')
     // finalize 内含真实 I/O（rm），需要轮询等待。
     await expect.poll(() => harness.runtime.listActive().length).toBe(0)
 
@@ -858,6 +859,7 @@ test.describe('AgentSessionRuntime (interface gates)', () => {
           event.kind === 'session_exit' && event.detail === 'exit code 5'
       )
     ).toBe(true)
+    expect(harness.killed).not.toContain(started.ptyId)
     // finalize 内含真实 I/O（rm），需要轮询等待。
     await expect.poll(() => harness.runtime.listActive().length).toBe(0)
   })

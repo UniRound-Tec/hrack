@@ -2,6 +2,9 @@ import TerminalView from '../terminal/TerminalView'
 import { getTerminalTheme } from '../terminal/themes'
 import { useSettingsStore } from '../state/settingsStore'
 import type { TerminalEntry } from '../state/terminalsStore'
+import WorkspaceReaderLayout from '../workspace-reader/WorkspaceReaderLayout'
+import { getTerminalLaunch } from '../state/terminalLaunchRegistry'
+import { useWorkspaceReaderStore } from '../workspace-reader/workspaceReaderStore'
 
 interface TerminalPageProps {
   terminal: TerminalEntry
@@ -18,7 +21,28 @@ export default function TerminalPage({
   const rounded = useSettingsStore((state) => state.terminalRounded)
   const terminalThemeId = useSettingsStore((state) => state.terminalThemeId)
   const background = getTerminalTheme(terminalThemeId).terminal.background
-
+  const launch = getTerminalLaunch(terminal.id)
+  const hasWorkspace =
+    Boolean(terminal.cwd) &&
+    (launch?.kind === 'agent' || (launch?.kind === 'attach' && launch.agent))
+  const readerOpen = useWorkspaceReaderStore(
+    (state) => state.sessions[terminal.id]?.open ?? false
+  )
+  const terminalSurface = (
+    <div
+      className={
+        rounded
+          ? `h-full w-full pt-2 pl-3.5 ${hasWorkspace && readerOpen ? '' : 'pr-3.5'}`
+          : 'h-full w-full'
+      }
+    >
+      <TerminalView
+        tabId={terminal.id}
+        active={active}
+        onInitialSpawn={onInitialSpawn}
+      />
+    </div>
+  )
   return (
     <div
       data-testid="terminal-page"
@@ -26,14 +50,13 @@ export default function TerminalPage({
       className="absolute inset-0 h-full w-full select-text"
       style={{ display: active ? 'block' : 'none', background }}
     >
-      {/* 圆角开：留白让字符躲开内容区 20px 圆角的裁切；留白区域由外层的终端底色填充 */}
-      <div className={rounded ? 'h-full w-full pt-2 pr-3.5 pl-3.5' : 'h-full w-full'}>
-        <TerminalView
-          tabId={terminal.id}
-          active={active}
-          onInitialSpawn={onInitialSpawn}
-        />
-      </div>
+      {hasWorkspace ? (
+        <WorkspaceReaderLayout terminalId={terminal.id} active={active}>
+          {terminalSurface}
+        </WorkspaceReaderLayout>
+      ) : (
+        terminalSurface
+      )}
     </div>
   )
 }

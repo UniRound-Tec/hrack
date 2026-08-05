@@ -1,6 +1,6 @@
 {
   "name": "vibing",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "AI CLI 专用终端",
   "private": true,
   "main": "out/main/index.js",
@@ -15,7 +15,8 @@
     "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "postinstall": "electron-rebuild -f -w node-pty",
-    "build:win": "npm run build && electron-builder --win",
+    "build:win": "npm run release:win",
+    "release:win": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/release-win.ps1",
     "e2e": "npm run build && playwright test",
     "e2e:only": "playwright test",
     "e2e:stress": "npm run build && playwright test e2e/terminal-stress.spec.ts",
@@ -23,12 +24,57 @@
   },
   "author": "",
   "license": "UNLICENSED",
+  "build": {
+    "appId": "com.vibing.app",
+    "productName": "Vibing",
+    "artifactName": "Vibing-Setup-${version}.${ext}",
+    "afterPack": "scripts/assert-packaged-tray-assets.cjs",
+    "files": [
+      "**/*",
+      "!resources/tray{,/**/*}",
+      "!artifacts{,/**/*}",
+      "!release{,/**/*}",
+      "!test-results{,/**/*}",
+      "!playwright-report{,/**/*}"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/tray",
+        "to": "tray",
+        "filter": [
+          "*.png"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/tray/vibing-master.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Vibing"
+    }
+  },
   "dependencies": {
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/language-data": "^6.5.2",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.7",
+    "@lezer/highlight": "^1.2.3",
     "@lobehub/icons": "^5.15.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-webgl": "0.20.0-beta.291",
     "@xterm/xterm": "6.1.0-beta.292",
-    "electron": "^43.2.0",
     "gsap": "^3.15.0",
     "lucide-react": "^1.28.0",
     "motion": "^12.43.0",
@@ -46,6 +92,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "pngjs": "^7.0.0",

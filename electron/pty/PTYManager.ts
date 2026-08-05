@@ -31,6 +31,8 @@ interface ManagedPty {
   resizeFilter?: ConptyResizeFilter
   /** renderer 已 fit、但尚未安全送给 ConPTY 的最新尺寸。 */
   pendingResize?: { cols: number; rows: number }
+  /** 同一批 pending resize 首次到达的时间；连续输出不能无限延后它。 */
+  pendingResizeRequestedAt?: number
   resizeTimer?: ReturnType<typeof setTimeout>
   /** 最近一次真正转发给 renderer 的输出；不包含被抑制的 ConPTY resize 重画。 */
   lastForwardedOutputAt: number
@@ -46,6 +48,10 @@ interface ManagedPty {
 // Electron 主线程，因此 100ms 量级仍会把同一波输出误判成静默。500ms 足以跨过
 // 实测的批处理间隙，同时 renderer 已先行 fit，用户不会等待半秒才看到窗口适配。
 const RESIZE_OUTPUT_QUIET_MS = 500
+// Claude / OpenTUI 的 spinner 会持续输出，可能永远没有 500ms 静默窗口。
+// renderer 虽然已经完成 reflow，但子进程仍按旧列宽绘制，就会只占窗口左侧。
+// 保留短暂静默优先策略，同时给 PTY resize 一个硬截止时间。
+const RESIZE_MAX_DEFERRAL_MS = 750
 
 /** 按 SPEC §7 选默认 shell。Windows 优先 pwsh，回退 powershell / cmd。 */
 function defaultShellCandidates(req?: string): string[] {
@@ -97,6 +103,7 @@ async function resolveWindowsExecutable(shell: string): Promise<string | null> {
  * 本模块不引入 AgentEvent 或品牌判断。
  */
 export class PTYManager {
+  private readonly terminalRemovedListeners = new Set<(terminalId: string) => void>()
   private ptys = new Map<string, ManagedPty>()
   private nextId = 1
   private exitListeners = new Map<string, Set<(payload: ExitPayload) => void>>()
@@ -259,6 +266,7 @@ export class PTYManager {
         if (current.resizeTimer) clearTimeout(current.resizeTimer)
         current.resizeTimer = undefined
         current.pendingResize = undefined
+        current.pendingResizeRequestedAt = undefined
         current.pty = undefined
       }
     })
@@ -280,7 +288,8 @@ export class PTYManager {
     const managed = this.ptys.get(ptyId)
     if (!managed?.pty) return
     // 输出活跃时只保留最新尺寸。renderer 的 xterm 已经立即 fit/reflow；
-    // ConPTY 尺寸会在 500ms 无输出后跟上。
+    // ConPTY 尺寸优先在 500ms 无输出后跟上；持续输出时也会在硬截止时间送达。
+    if (!managed.pendingResize) managed.pendingResizeRequestedAt = Date.now()
     managed.pendingResize = { cols, rows }
     this.schedulePendingResize(managed)
   }
@@ -298,7 +307,11 @@ export class PTYManager {
     }
 
     const quietFor = Date.now() - managed.lastForwardedOutputAt
-    const delay = Math.max(0, RESIZE_OUTPUT_QUIET_MS - quietFor)
+    const requestedAt = managed.pendingResizeRequestedAt ?? Date.now()
+    const pendingFor = Date.now() - requestedAt
+    const quietDelay = Math.max(0, RESIZE_OUTPUT_QUIET_MS - quietFor)
+    const deadlineDelay = Math.max(0, RESIZE_MAX_DEFERRAL_MS - pendingFor)
+    const delay = Math.min(quietDelay, deadlineDelay)
     if (delay > 0) {
       managed.resizeTimer = setTimeout(() => {
         managed.resizeTimer = undefined
@@ -311,6 +324,7 @@ export class PTYManager {
     if (!targetPty) return
     const { cols, rows } = managed.pendingResize
     managed.pendingResize = undefined
+    managed.pendingResizeRequestedAt = undefined
     const resizeGeneration = managed.resizeFilter?.expectResize()
     try {
       targetPty.resize(cols, rows)
@@ -352,9 +366,18 @@ export class PTYManager {
     this.exitListeners.delete(ptyId)
     this.exitedPayloads.delete(ptyId)
     this.inputSubmitListeners.delete(ptyId)
+    const terminalId = managed.terminal?.terminalId
+    if (terminalId) {
+      for (const listener of this.terminalRemovedListeners) listener(terminalId)
+    }
   }
 
   killAll() {
+    const terminalIds = new Set(
+      [...this.ptys.values()]
+        .map((managed) => managed.terminal?.terminalId)
+        .filter((terminalId): terminalId is string => Boolean(terminalId))
+    )
     for (const { pty, resizeTimer } of this.ptys.values()) {
       if (resizeTimer) clearTimeout(resizeTimer)
       if (!pty) continue
@@ -368,6 +391,14 @@ export class PTYManager {
     this.exitListeners.clear()
     this.exitedPayloads.clear()
     this.inputSubmitListeners.clear()
+    for (const terminalId of terminalIds) {
+      for (const listener of this.terminalRemovedListeners) listener(terminalId)
+    }
+  }
+
+  onTerminalRemoved(listener: (terminalId: string) => void): () => void {
+    this.terminalRemovedListeners.add(listener)
+    return () => this.terminalRemovedListeners.delete(listener)
   }
 
   /**

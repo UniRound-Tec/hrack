@@ -24,7 +24,7 @@ import type {
 const COMMAND_TIMEOUT_MS = 2_500
 const COMMAND_MAX_BUFFER = 64 * 1024
 const SCAN_CONCURRENCY = 4
-const CLI_SCAN_CACHE_VERSION = 2
+const CLI_SCAN_CACHE_VERSION = 4
 const SYSTEM_WSL_DISTROS = new Set([
   'docker-desktop',
   'docker-desktop-data',
@@ -35,6 +35,7 @@ interface CliProbe {
   args: string[]
   outputPattern: RegExp
   acceptedExitCodes?: number[]
+  timeoutMs?: number
 }
 
 export interface CliDefinition {
@@ -43,8 +44,12 @@ export interface CliDefinition {
   displayName: string
   hint: string
   iconId: string
+  /** 完整 Observer Adapter 已落地；启动列表优先展示。 */
+  observerImplemented?: boolean
   executables: { windows?: string[]; unix?: string[] }
   identityProbe?: CliProbe
+  /** Windows npm shim may not support the same identity command as Unix. */
+  skipWindowsIdentityProbe?: boolean
   probes: CliProbe[]
   knownPaths?: { windows?: string[]; unixHomeRelative?: string[] }
   launchArgs?: string[]
@@ -64,6 +69,7 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'claude', adapterId: 'claude-code', displayName: 'Claude Code',
     hint: 'Anthropic coding agent', iconId: 'claude-code',
+    observerImplemented: true,
     executables: { windows: ['claude'], unix: ['claude'] },
     probes: [versionProbe(/claude(?: code)?/i)],
     knownPaths: {
@@ -74,6 +80,7 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'codex', adapterId: 'codex', displayName: 'Codex',
     hint: 'OpenAI coding agent', iconId: 'codex',
+    observerImplemented: true,
     executables: { windows: ['codex'], unix: ['codex'] },
     probes: [versionProbe(/codex(?:-cli)?/i)],
     knownPaths: {
@@ -85,14 +92,19 @@ export const cliDefinitions: readonly CliDefinition[] = [
     }
   },
   {
-    id: 'gemini', adapterId: 'gemini', displayName: 'Gemini CLI',
-    hint: 'Google AI CLI', iconId: 'gemini',
-    executables: { windows: ['gemini'], unix: ['gemini'] },
-    probes: [versionProbe(/gemini/i)]
+    id: 'antigravity', adapterId: 'antigravity', displayName: 'Antigravity CLI',
+    hint: 'Google agentic CLI', iconId: 'antigravity',
+    executables: { windows: ['agy'], unix: ['agy'] },
+    probes: [versionProbe(/(?:antigravity|agy)/i)],
+    knownPaths: {
+      windows: ['%LOCALAPPDATA%\\agy\\bin\\agy.exe'],
+      unixHomeRelative: ['.local/bin/agy']
+    }
   },
   {
     id: 'opencode', adapterId: 'opencode', displayName: 'OpenCode',
     hint: 'Open-source coding agent', iconId: 'opencode',
+    observerImplemented: true,
     executables: { windows: ['opencode'], unix: ['opencode'] },
     probes: [versionProbe(/opencode/i)],
     knownPaths: {
@@ -147,10 +159,24 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'pi', adapterId: 'pi', displayName: 'Pi',
     hint: 'Minimal coding agent', iconId: 'pi',
+    observerImplemented: true,
     executables: { windows: ['pi'], unix: ['pi'] },
-    identityProbe: { args: ['--help'], outputPattern: /pi\s+-\s+AI coding assistant/i },
-    probes: [versionProbe(/pi(?: coding)?/i)],
-    knownPaths: { unixHomeRelative: ['.local/bin/pi'] }
+    identityProbe: {
+      args: ['--help'],
+      outputPattern: /pi\s+-\s+AI coding assistant/i,
+      timeoutMs: 5_000
+    },
+    skipWindowsIdentityProbe: true,
+    probes: [
+      {
+        ...versionProbe(/pi(?: coding)?/i),
+        timeoutMs: 5_000
+      }
+    ],
+    knownPaths: {
+      windows: ['%APPDATA%\\npm\\pi.cmd'],
+      unixHomeRelative: ['.local/bin/pi']
+    }
   },
   {
     id: 'copilot', adapterId: 'copilot', displayName: 'GitHub Copilot CLI',
@@ -371,8 +397,15 @@ async function verifyHost(
   definition: CliDefinition,
   path: string
 ): Promise<{ version?: string; timedOut: boolean } | null> {
-  if (definition.identityProbe) {
-    const identity = await runCommand(path, definition.identityProbe.args)
+  if (
+    definition.identityProbe &&
+    !(process.platform === 'win32' && definition.skipWindowsIdentityProbe)
+  ) {
+    const identity = await runCommand(
+      path,
+      definition.identityProbe.args,
+      definition.identityProbe.timeoutMs
+    )
     const accepted = definition.identityProbe.acceptedExitCodes ?? [0]
     const output = `${identity.stdout}\n${identity.stderr}`
     if (identity.timedOut) return { timedOut: true }
@@ -383,7 +416,7 @@ async function verifyHost(
     ) return null
   }
   for (const probe of definition.probes) {
-    const result = await runCommand(path, probe.args)
+    const result = await runCommand(path, probe.args, probe.timeoutMs)
     const output = `${result.stdout}\n${result.stderr}`
     const accepted = probe.acceptedExitCodes ?? [0]
     if (result.code !== null && accepted.includes(result.code) && probe.outputPattern.test(output)) {
@@ -787,7 +820,11 @@ async function scanWslDistro(
 }
 
 function groupLaunchable(installations: readonly CliInstallation[]): LaunchableCli[] {
-  return cliDefinitions.flatMap((definition) => {
+  const prioritizedDefinitions = [
+    ...cliDefinitions.filter((definition) => definition.observerImplemented),
+    ...cliDefinitions.filter((definition) => !definition.observerImplemented)
+  ]
+  return prioritizedDefinitions.flatMap((definition) => {
     const matches = installations.filter((item) => item.definitionId === definition.id)
     if (matches.length === 0) return []
     return [{

@@ -1,3 +1,4 @@
+import Antigravity from '@lobehub/icons/es/Antigravity/components/Mono'
 import ClaudeCode from '@lobehub/icons/es/ClaudeCode/components/Mono'
 import CodeBuddy from '@lobehub/icons/es/CodeBuddy/components/Mono'
 import Codex from '@lobehub/icons/es/Codex/components/Mono'
@@ -20,6 +21,7 @@ export type BrandIcon = ComponentType<
 >
 
 const adapterIcons: Record<string, BrandIcon> = {
+  antigravity: Antigravity,
   codex: Codex,
   'claude-code': ClaudeCode,
   'cursor-agent': Cursor,
@@ -45,6 +47,7 @@ export function getAdapterIcon(adapterId: string): BrandIcon {
 
 /** 历史事件等场景显示的 CLI 名称（原型中与图标成对出现）。 */
 const adapterNames: Record<string, string> = {
+  antigravity: 'Antigravity CLI',
   codex: 'Codex',
   'claude-code': 'Claude Code',
   'cursor-agent': 'Cursor Agent',

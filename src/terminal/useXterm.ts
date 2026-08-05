@@ -173,6 +173,7 @@ export function useXterm(
       onInitialSpawnRef.current?.(error)
     }
     let disposed = false
+    let initialSpawnFrame: number | null = null
     let ptyAckDelayMs = 0
     let ptyRenderingSuspended = false
     const pendingAckTimers = new Set<ReturnType<typeof setTimeout>>()
@@ -577,13 +578,43 @@ export function useXterm(
     term.onData((d) => {
       void proxy?.write(d)
     })
-    spawnShell()
-
     const ro = new ResizeObserver(scheduleResize)
     ro.observe(container)
 
+    // term.open() 同一调用栈里的同步 fit 仍可能使用 xterm 尚未稳定的
+    // cell metrics。等一帧再测量并 spawn，避免 CLI 先按错误列数绘制，
+    // 随后被首次 ResizeObserver 触发的 ConPTY 全屏重画纠正。
+    // term.open() 会触发 WebGL 使用的 regular/bold/italic 字体加载。
+    // 必须在这些字体真正 ready 后再 fit；只在 open 前预加载 regular 字体，
+    // 仍会让 FitAddon 用 fallback cell metrics 得到错误列数。
+    void document.fonts.ready.then(() => {
+      if (disposed) return
+      initialSpawnFrame = requestAnimationFrame(() => {
+        initialSpawnFrame = null
+        if (disposed) return
+        if (fitFrame !== null) {
+          cancelAnimationFrame(fitFrame)
+          fitFrame = null
+        }
+        try {
+          fit.fit()
+        } catch {
+          // 保留同步 fit 的结果；即便第二次测量失败也必须允许终端启动。
+        }
+        if (ptyResizeTimer) {
+          clearTimeout(ptyResizeTimer)
+          ptyResizeTimer = null
+        }
+        pendingPtyResize = null
+        lastSentCols = term.cols
+        lastSentRows = term.rows
+        spawnShell()
+      })
+    })
+
     return () => {
       disposed = true
+      if (initialSpawnFrame !== null) cancelAnimationFrame(initialSpawnFrame)
       if (captionTimer) clearInterval(captionTimer)
       for (const timer of pendingAckTimers) clearTimeout(timer)
       pendingAckTimers.clear()

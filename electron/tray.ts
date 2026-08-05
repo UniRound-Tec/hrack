@@ -1,4 +1,5 @@
 import {
+  app,
   BrowserWindow,
   Menu,
   Tray,
@@ -37,11 +38,14 @@ function trayIcon(): NativeImage {
     : nativeTheme.shouldUseDarkColors
       ? 'vibing-white'
       : 'vibing'
+  const trayAssetsDir = app.isPackaged
+    ? join(process.resourcesPath, 'tray')
+    : join(process.cwd(), 'resources', 'tray')
   const image = nativeImage.createFromPath(
-    join(process.cwd(), 'resources', 'tray', `${basename}-16.png`)
+    join(trayAssetsDir, `${basename}-16.png`)
   )
   const highDpiImage = nativeImage.createFromPath(
-    join(process.cwd(), 'resources', 'tray', `${basename}-32.png`)
+    join(trayAssetsDir, `${basename}-32.png`)
   )
   if (!highDpiImage.isEmpty()) {
     image.addRepresentation({

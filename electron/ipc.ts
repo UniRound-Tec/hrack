@@ -44,6 +44,8 @@ import {
 } from './shortcuts'
 import type { Tray } from './tray'
 import type { FloatingWindowController } from './floating/FloatingWindowController'
+import { WorkspaceReaderInvokeChannel } from '../shared/workspace-reader'
+import type { WorkspaceReader } from './workspace/WorkspaceReader'
 
 const MAX_CLIPBOARD_TEXT_LENGTH = 8 * 1024 * 1024
 const MAX_USER_THEME_FILES = 128
@@ -67,6 +69,7 @@ export interface IpcContext {
   eventLog: EventLog
   cliDiscovery: AiCliDiscoveryService
   agentRuntime: AgentSessionRuntime
+  workspaceReader: WorkspaceReader
   getWindow(): BrowserWindow | null
   getTray(): Tray | null
   getFloatingWindowController(): FloatingWindowController | null
@@ -115,6 +118,15 @@ async function listUserThemes() {
 
 /** 注册所有 pty 相关的 invoke handler，委托 PTYManager。 */
 export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
+  ipcMain.handle(WorkspaceReaderInvokeChannel.Describe, (_event, terminalId: unknown) =>
+    ctx.workspaceReader.describe(terminalId)
+  )
+  ipcMain.handle(WorkspaceReaderInvokeChannel.List, (_event, request: unknown) =>
+    ctx.workspaceReader.list(request)
+  )
+  ipcMain.handle(WorkspaceReaderInvokeChannel.Read, (_event, request: unknown) =>
+    ctx.workspaceReader.read(request)
+  )
   ipcMain.handle(PtyInvokeChannel.Spawn, (_e, opts: SpawnOptions) =>
     manager.spawn(opts)
   )

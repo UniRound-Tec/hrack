@@ -56,6 +56,7 @@ export const ja = {
   },
   agentDetail: {
     thinking: 'タスクを分析して次の手順を計画しています',
+    responding: '回答をまとめています',
     liveThinking: (seconds: number | undefined, tokens: number | undefined) =>
       ['思考中', seconds === undefined ? undefined : `${seconds}秒`, tokens === undefined ? undefined : `${tokens.toLocaleString('ja-JP')} tokens`].filter(Boolean).join(' · '),
     waitingApproval: (summary: string | undefined) =>
@@ -208,6 +209,22 @@ export const ja = {
     installation: 'インストール先',
     launching: '起動中…',
     p2Placeholder: 'CLI と実行環境のオプションは P3 で追加'
+  },
+  workspaceReader: {
+    show: 'コードリーダーを表示',
+    hide: 'コードリーダーを閉じる',
+    back: 'ターミナルに戻る',
+    refresh: 'ワークスペースを更新',
+    resizeReader: 'コードリーダーの幅を調整',
+    resizeTree: 'ファイルツリーの幅を調整',
+    loading: '読み込み中…',
+    empty: 'ワークスペースは空です',
+    selectFile: 'ファイルツリーからテキストファイルを選択',
+    selectFileShort: 'ファイルを選択してください',
+    unreadable: 'このファイルは表示できません',
+    directoryError: 'ワークスペースを読み込めません',
+    openError: 'ディレクトリを開けません',
+    code: 'コード'
   },
   shell: {
     homeLabel: 'home · app shell',

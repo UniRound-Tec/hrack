@@ -56,6 +56,7 @@ export const zhTW = {
   },
   agentDetail: {
     thinking: '正在分析並規劃下一步',
+    responding: '正在整理回覆',
     liveThinking: (seconds: number | undefined, tokens: number | undefined) =>
       ['正在思考', seconds === undefined ? undefined : `${seconds}秒`, tokens === undefined ? undefined : `${tokens.toLocaleString('zh-TW')} tokens`].filter(Boolean).join(' · '),
     waitingApproval: (summary: string | undefined) =>
@@ -208,6 +209,22 @@ export const zhTW = {
     installation: '安裝位置',
     launching: '啟動中…',
     p2Placeholder: 'CLI 與執行環境選項將在 P3 接入'
+  },
+  workspaceReader: {
+    show: '顯示程式碼閱讀器',
+    hide: '收起程式碼閱讀器',
+    back: '返回終端',
+    refresh: '重新整理工作區',
+    resizeReader: '調整程式碼閱讀器寬度',
+    resizeTree: '調整檔案樹寬度',
+    loading: '正在讀取…',
+    empty: '工作區為空',
+    selectFile: '從檔案樹選擇一個文字檔案',
+    selectFileShort: '選擇檔案以閱讀',
+    unreadable: '無法顯示這個檔案',
+    directoryError: '無法讀取工作區',
+    openError: '無法展開目錄',
+    code: '程式碼'
   },
   shell: {
     homeLabel: 'home · app shell',

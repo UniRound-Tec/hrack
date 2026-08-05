@@ -81,7 +81,9 @@ test.describe('settingsStore v3', () => {
       floatEnabled: false,
       defaultTerminal: 'pwsh',
       language: 'ja',
-      globalShortcutEnabled: true
+      globalShortcutEnabled: true,
+      readerWidthRatio: 0.52,
+      workspaceTreeWidth: 220
     })
     expect(migrated).not.toHaveProperty('themeId')
   })
@@ -123,6 +125,8 @@ test.describe('settingsStore v3', () => {
     store.getState().setNavMode('rail')
     store.getState().setDefaultTerminal(' pwsh ')
     store.getState().setLanguage('zh-TW')
+    store.getState().setReaderWidthRatio(0.6)
+    store.getState().setWorkspaceTreeWidth(280)
 
     expect(store.getState()).toMatchObject({
       uiThemeId: 'user-light',
@@ -132,7 +136,9 @@ test.describe('settingsStore v3', () => {
       ligatures: false,
       navMode: 'rail',
       defaultTerminal: 'pwsh',
-      language: 'zh-TW'
+      language: 'zh-TW',
+      readerWidthRatio: 0.6,
+      workspaceTreeWidth: 280
     })
 
     store.getState().reset()

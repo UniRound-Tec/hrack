@@ -28,6 +28,7 @@ import {
 import type {
   CliInstallation,
   CliLaunchSelection,
+  CliRuntime,
   ExitPayload,
   HistoryEvent,
   SpawnOptions
@@ -93,6 +94,10 @@ export interface AgentLaunchProvider {
 /** 低敏历史投影落盘（EventLog 实现）。 */
 export interface AgentHistorySink {
   record(event: HistoryEvent): Promise<void>
+}
+
+export interface AgentWorkspaceHost {
+  mount(terminalId: string, runtime: CliRuntime, workspace: string): Promise<void>
 }
 
 export interface AgentRuntimeOptions {
@@ -325,6 +330,7 @@ export class AgentSessionRuntime {
       discovery: AgentLaunchProvider
       history: AgentHistorySink
       registry: ObserverRegistry
+      workspace?: AgentWorkspaceHost
       options: AgentRuntimeOptions
     }
   ) {
@@ -445,6 +451,15 @@ export class AgentSessionRuntime {
       ])
       await rm(runDir, { recursive: true, force: true }).catch(() => {})
       throw new Error(`Failed to start CLI: ${String(error).slice(0, 512)}`)
+    }
+
+    // 工作区阅读器是附属能力：挂载失败不得杀死已经成功启动的 CLI。
+    if (input.selection.workspace.trim() && this.deps.workspace) {
+      await this.deps.workspace
+        .mount(input.terminalId, installation.runtime, input.selection.workspace)
+        .catch((error) => {
+          console.warn('[workspace-reader] mount degraded:', error)
+        })
     }
 
     const capabilities: ObserverCapabilities = degraded
@@ -649,6 +664,11 @@ export class AgentSessionRuntime {
         nativeId: `manual-stop:${session.sessionId}`
       })
       this.flush(session)
+      try {
+        this.deps.pty.kill(session.ptyId)
+      } catch {
+        /* 进程可能已退出；kill 同时负责移除保留的终端历史。 */
+      }
     }
     await this.finalize(session, true)
   }
@@ -802,11 +822,6 @@ export class AgentSessionRuntime {
       }
       if (event.kind === 'session.exited') {
         exited = true
-        try {
-          this.deps.pty.kill(session.ptyId)
-        } catch {
-          /* 进程可能已退出 */
-        }
         break
       }
     }

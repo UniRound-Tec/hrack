@@ -25,6 +25,10 @@ export interface SettingsSnapshot {
   language: AppLocale
   /** M5.c v5：全局快捷键 Ctrl+Alt+V 开关（默认开）。 */
   globalShortcutEnabled: boolean
+  /** M5.d：工作区阅读器占内容区的比例。 */
+  readerWidthRatio: number
+  /** M5.d：工作区文件树宽度。 */
+  workspaceTreeWidth: number
 }
 
 /** v3 及更早版本的默认字号；v4 起默认 14，迁移时把旧默认值一并带过去。 */
@@ -43,7 +47,9 @@ export const defaultSettings: SettingsSnapshot = {
   defaultTerminal: 'powershell',
   // M5.c 决策 7：首装语言跟随系统；已有用户保留持久化偏好。
   language: detectLocale(),
-  globalShortcutEnabled: true
+  globalShortcutEnabled: true,
+  readerWidthRatio: 0.52,
+  workspaceTreeWidth: 220
 }
 
 /** Terminal consumers only need this stable subset. */
@@ -71,6 +77,8 @@ export interface SettingsState extends SettingsSnapshot {
   setDefaultTerminal(defaultTerminal: string): void
   setLanguage(language: AppLocale): void
   setGlobalShortcutEnabled(enabled: boolean): void
+  setReaderWidthRatio(ratio: number): void
+  setWorkspaceTreeWidth(width: number): void
   reset(): void
 }
 
@@ -179,7 +187,17 @@ export function migrateSettings(
     globalShortcutEnabled:
       typeof legacy.globalShortcutEnabled === 'boolean'
         ? legacy.globalShortcutEnabled
-        : defaultSettings.globalShortcutEnabled
+        : defaultSettings.globalShortcutEnabled,
+    readerWidthRatio:
+      typeof legacy.readerWidthRatio === 'number' &&
+      Number.isFinite(legacy.readerWidthRatio)
+        ? Math.max(0.3, Math.min(0.75, legacy.readerWidthRatio))
+        : defaultSettings.readerWidthRatio,
+    workspaceTreeWidth:
+      typeof legacy.workspaceTreeWidth === 'number' &&
+      Number.isFinite(legacy.workspaceTreeWidth)
+        ? Math.max(160, Math.min(360, Math.round(legacy.workspaceTreeWidth)))
+        : defaultSettings.workspaceTreeWidth
   }
 }
 
@@ -208,13 +226,24 @@ export const createSettingsState: StateCreator<SettingsState> = (set) => ({
   setLanguage: (language) => set({ language }),
   setGlobalShortcutEnabled: (globalShortcutEnabled) =>
     set({ globalShortcutEnabled }),
+  setReaderWidthRatio: (readerWidthRatio) =>
+    set({
+      readerWidthRatio: Math.max(0.3, Math.min(0.75, readerWidthRatio))
+    }),
+  setWorkspaceTreeWidth: (workspaceTreeWidth) =>
+    set({
+      workspaceTreeWidth: Math.max(
+        160,
+        Math.min(360, Math.round(workspaceTreeWidth))
+      )
+    }),
   reset: () => set(defaultSettings)
 })
 
 export const useSettingsStore = create<SettingsState>()(
   persist(createSettingsState, {
     name: 'vibing-terminal-settings',
-    version: 6,
+    version: 7,
     migrate: migrateSettings,
     partialize: ({
       uiThemeId,
@@ -226,7 +255,9 @@ export const useSettingsStore = create<SettingsState>()(
       navMode,
       defaultTerminal,
       language,
-      globalShortcutEnabled
+      globalShortcutEnabled,
+      readerWidthRatio,
+      workspaceTreeWidth
     }) => ({
       uiThemeId,
       terminalThemeId,
@@ -237,7 +268,9 @@ export const useSettingsStore = create<SettingsState>()(
       navMode,
       defaultTerminal,
       language,
-      globalShortcutEnabled
+      globalShortcutEnabled,
+      readerWidthRatio,
+      workspaceTreeWidth
     })
   })
 )

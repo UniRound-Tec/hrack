@@ -1,17 +1,26 @@
 import { useEffect, useState } from 'react'
-import { Settings2, SquarePen } from 'lucide-react'
+import {
+  PanelRightClose,
+  PanelRightOpen,
+  Settings2,
+  SquarePen
+} from 'lucide-react'
 import { useStrings } from './i18n'
 
 interface TitleBarProps {
   onNew: () => void
   onSettings?: () => void
   settingsActive?: boolean
+  onToggleCode?: () => void
+  codeOpen?: boolean
 }
 
 export default function TitleBar({
   onNew,
   onSettings,
-  settingsActive = false
+  settingsActive = false,
+  onToggleCode,
+  codeOpen = false
 }: TitleBarProps) {
   const strings = useStrings()
   const [maximized, setMaximized] = useState(false)
@@ -70,8 +79,37 @@ export default function TitleBar({
         data-testid="titlebar-drag-region"
       />
 
+      {onToggleCode && (
+        <div className="app-no-drag flex items-center px-1">
+          <button
+            type="button"
+            data-testid="titlebar-code"
+            aria-pressed={codeOpen}
+            title={
+              codeOpen
+                ? strings.workspaceReader.hide
+                : strings.workspaceReader.show
+            }
+            onClick={onToggleCode}
+            className={`titlebar-action cursor-target flex items-center gap-1.5 rounded-md px-2 py-1 font-pingfang text-[11px] transition-colors ${
+              codeOpen ? 'titlebar-action-active' : ''
+            }`}
+          >
+            {codeOpen ? (
+              <PanelRightClose className="size-3.5" strokeWidth={1.7} />
+            ) : (
+              <PanelRightOpen className="size-3.5" strokeWidth={1.7} />
+            )}
+            {strings.workspaceReader.code}
+          </button>
+        </div>
+      )}
+
       {!isMac && (
-        <div className="app-no-drag flex items-stretch" data-testid="window-controls">
+        <div
+          className="app-no-drag flex items-stretch"
+          data-testid="window-controls"
+        >
           <button
             type="button"
             data-testid="window-minimize"
@@ -96,9 +134,7 @@ export default function TitleBar({
           >
             <span
               className={
-                maximized
-                  ? 'window-control-restore'
-                  : 'window-control-maximize'
+                maximized ? 'window-control-restore' : 'window-control-maximize'
               }
             />
           </button>
