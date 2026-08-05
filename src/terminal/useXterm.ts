@@ -20,6 +20,12 @@ import {
 import { useTerminalsStore } from '../state/terminalsStore'
 import { parseRenderedActivityCaption } from './renderedActivityCaption'
 import { terminalImagePasteSequence } from './clipboardPaste'
+import { installOutputCursorRendering } from './outputCursorRendering'
+import {
+  PtyOutputBatcher,
+  PTY_OUTPUT_MAX_PERIOD_MS,
+  PTY_OUTPUT_QUIET_PERIOD_MS
+} from './PtyOutputBatcher'
 
 const DISABLE_MOUSE_TRACKING =
   '\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l'
@@ -143,6 +149,7 @@ export function useXterm(
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(container)
+    const outputCursorRendering = installOutputCursorRendering(term)
     terminalRef.current = term
     const ligatures = createLigatureController(term, initialSettings.ligatures)
     const bufferChangeDisposable = term.buffer.onBufferChange((buffer) => {
@@ -215,6 +222,7 @@ export function useXterm(
     let initialSpawnFrame: number | null = null
     let ptyAckDelayMs = 0
     let ptyRenderingSuspended = false
+    let outputBatcher: PtyOutputBatcher | null = null
     const pendingAckTimers = new Set<ReturnType<typeof setTimeout>>()
     // ConPTY 下 TUI（如 opencode/OpenTUI）在 Windows 上 Ctrl+C 会连带杀死整个
     // pty，node-pty 报出 undefined exit code。异常退出时在当前 tab 自动重启 shell，
@@ -223,9 +231,12 @@ export function useXterm(
     let respawnTimer: ReturnType<typeof setTimeout> | null = null
     const MAX_ABNORMAL_EXITS = 3
 
-    const acknowledgeParsedData = (bytes: number): void => {
+    const acknowledgeParsedData = (
+      bytes: number,
+      target: PtyProxy | null = proxy
+    ): void => {
       const acknowledge = (): void => {
-        if (!disposed) void proxy?.ack(bytes)
+        if (!disposed) void target?.ack(bytes)
       }
       if (ptyAckDelayMs <= 0) {
         acknowledge()
@@ -398,6 +409,7 @@ export function useXterm(
       },
       renderer,
       (suspended) => {
+        if (suspended) outputBatcher?.flush()
         ptyRenderingSuspended = suspended
       },
       (data) => proxy?.write(data) ?? Promise.resolve()
@@ -435,6 +447,9 @@ export function useXterm(
     }
 
     const wireProxy = (next: PtyProxy): void => {
+      outputBatcher?.flush()
+      outputBatcher?.dispose()
+      outputBatcher = null
       proxy?.dispose()
       proxy = next
       // PTY spawn 返回 ptyId 前，子进程已经可能发出首帧。TUI 往往只在该
@@ -442,15 +457,22 @@ export function useXterm(
       // 再原子 attach + 重放历史，才能闭合这段启动竞态。
       let replaying = true
       const replayQueue: Uint8Array[] = []
+      const batcher = new PtyOutputBatcher({
+        quietPeriodMs: PTY_OUTPUT_QUIET_PERIOD_MS,
+        maxPeriodMs: PTY_OUTPUT_MAX_PERIOD_MS,
+        write: (data, onParsed) => term.write(data, onParsed),
+        acknowledge: (bytes) => acknowledgeParsedData(bytes, next)
+      })
+      outputBatcher = batcher
 
       // pty → 屏幕；xterm 解析完成后 ack，驱动主进程高低水位背压。
       const renderData = (d: Uint8Array): void => {
         recordPtyData(tabId, d)
         if (ptyRenderingSuspended) {
-          acknowledgeParsedData(d.byteLength)
+          acknowledgeParsedData(d.byteLength, next)
           return
         }
-        term.write(d, () => acknowledgeParsedData(d.byteLength))
+        batcher.push(d)
       }
       next.onData((d) => {
         if (replaying) {
@@ -652,6 +674,8 @@ export function useXterm(
     })
 
     return () => {
+      outputBatcher?.dispose()
+      outputBatcher = null
       disposed = true
       if (initialSpawnFrame !== null) cancelAnimationFrame(initialSpawnFrame)
       if (captionTimer) clearInterval(captionTimer)
@@ -674,6 +698,7 @@ export function useXterm(
       ro.disconnect()
       container.removeEventListener('contextmenu', copySelectionOnContextMenu)
       proxy?.dispose()
+      outputCursorRendering.dispose()
       renderer.dispose()
       ligatures.dispose()
       if (rendererRef.current === renderer) rendererRef.current = null
