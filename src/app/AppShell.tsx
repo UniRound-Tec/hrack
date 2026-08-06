@@ -10,6 +10,7 @@ import TerminalPage from './TerminalPage'
 import HomePage from './HomePage'
 import SettingsPage from './SettingsPage'
 import NewSessionFlow from './NewSessionFlow'
+import CloseSessionDialog from './CloseSessionDialog'
 import TargetCursor from './effects/TargetCursor'
 import SidebarTint from './SidebarTint'
 import {
@@ -52,16 +53,11 @@ interface PendingCliLaunch {
   resolve: (error: string | null) => void
 }
 
-type PendingGroupingIntent =
-  | { kind: 'create-with'; sourceTerminalId: string }
-  | { kind: 'join'; groupId: string }
-
 export default function AppShell() {
   const [pageId, setPageId] = useState<PageId>('home')
   const [newSessionOpen, setNewSessionOpen] = useState(false)
-  const [newSessionWorkspace, setNewSessionWorkspace] = useState('')
-  const [newSessionGroupingIntent, setNewSessionGroupingIntent] =
-    useState<PendingGroupingIntent | null>(null)
+  const [pendingCloseSession, setPendingCloseSession] =
+    useState<SessionEntry | null>(null)
   const [newSessionIntent, setNewSessionIntent] = useState<
     'sheet' | 'terminal' | CliOption
   >('sheet')
@@ -70,9 +66,6 @@ export default function AppShell() {
   const [cliScanning, setCliScanning] = useState(true)
   const [cliScanError, setCliScanError] = useState<string | null>(null)
   const pendingCliLaunches = useRef(new Map<string, PendingCliLaunch>())
-  const pendingGroupingLaunches = useRef(
-    new Map<string, PendingGroupingIntent>()
-  )
   const navMode = useSettingsStore((state) => state.navMode)
   const setNavMode = useSettingsStore((state) => state.setNavMode)
   const terminalRounded = useSettingsStore((state) => state.terminalRounded)
@@ -87,11 +80,10 @@ export default function AppShell() {
   const sessionNavigationRecoveryComplete = useSessionNavigationStore(
     (state) => state.recoveryComplete
   )
-  const navigationProjection = useMemo(
+  const navigationSessions = useMemo(
     () => projectSessionNavigation(sessionNavigation, sessions),
     [sessionNavigation, sessions]
   )
-  const navigationSessions = navigationProjection.flat
   const removeSession = useSessionsStore((state) => state.removeSession)
   const updateSession = useSessionsStore((state) => state.updateSession)
   const terminals = useTerminalsStore((state) => state.terminals)
@@ -168,8 +160,6 @@ export default function AppShell() {
   )
 
   const openNewSession = useCallback((): void => {
-    setNewSessionWorkspace('')
-    setNewSessionGroupingIntent(null)
     setNewSessionIntent('sheet')
     setNewSessionOpen(true)
   }, [])
@@ -229,24 +219,6 @@ export default function AppShell() {
     [updateSession]
   )
 
-  const renameSessionGroup = useCallback((groupId: string, name: string) => {
-    useSessionNavigationStore
-      .getState()
-      .dispatch(
-        { kind: 'rename-group', groupId, name },
-        useSettingsStore.getState().attentionPriorityEnabled
-      )
-  }, [])
-
-  const dissolveSessionGroup = useCallback((groupId: string) => {
-    useSessionNavigationStore
-      .getState()
-      .dispatch(
-        { kind: 'dissolve-group', groupId },
-        useSettingsStore.getState().attentionPriorityEnabled
-      )
-  }, [])
-
   const cloneSession = useCallback(
     (session: SessionEntry): void => {
       const source = useTerminalsStore
@@ -271,38 +243,6 @@ export default function AppShell() {
     },
     [addTerminal]
   )
-
-  const launchCliForSessionGroup = useCallback(
-    (session: SessionEntry): void => {
-      const snapshot = useSessionNavigationStore.getState().snapshot
-      const group = Object.values(snapshot.groups).find((candidate) =>
-        candidate.members.includes(session.terminalId)
-      )
-      const terminal = useTerminalsStore
-        .getState()
-        .terminals.find((candidate) => candidate.id === session.terminalId)
-      setNewSessionWorkspace(terminal?.cwd ?? '')
-      setNewSessionGroupingIntent(
-        group
-          ? { kind: 'join', groupId: group.id }
-          : { kind: 'create-with', sourceTerminalId: session.terminalId }
-      )
-      setNewSessionIntent('sheet')
-      setNewSessionOpen(true)
-    },
-    []
-  )
-
-  const removeSessionFromGroup = useCallback((session: SessionEntry): void => {
-    useSessionNavigationStore.getState().dispatch(
-      {
-        kind: 'move-out-of-group',
-        terminalId: session.terminalId,
-        beforeId: null
-      },
-      useSettingsStore.getState().attentionPriorityEnabled
-    )
-  }, [])
 
   const createChildTerminal = useCallback(
     async (session: SessionEntry): Promise<void> => {
@@ -371,12 +311,6 @@ export default function AppShell() {
         }
       })
       setPageId(terminalPage(terminal.id))
-      if (newSessionGroupingIntent) {
-        pendingGroupingLaunches.current.set(
-          terminal.id,
-          newSessionGroupingIntent
-        )
-      }
       return new Promise<string | null>((resolve) => {
         pendingCliLaunches.current.set(terminal.id, {
           draft: effectiveDraft,
@@ -385,7 +319,7 @@ export default function AppShell() {
         })
       })
     },
-    [addTerminal, newSessionGroupingIntent, pageId]
+    [addTerminal, pageId]
   )
 
   // 主进程同时持有 PTY 与 Agent projection。renderer reload 时先订阅
@@ -393,58 +327,6 @@ export default function AppShell() {
   // 真正的零实例空态；只有用户明确点击入口才创建进程。
   useEffect(() => {
     let cancelled = false
-    const finalizePendingGrouping = (terminalId: string): void => {
-      const pendingGrouping = pendingGroupingLaunches.current.get(terminalId)
-      if (!pendingGrouping) return
-      const currentSessions = useSessionsStore.getState().sessions
-      const created = currentSessions.find(
-        (session) => session.terminalId === terminalId
-      )
-      if (!created) return
-
-      pendingGroupingLaunches.current.delete(terminalId)
-      const navigation = useSessionNavigationStore.getState()
-      const attention = useSettingsStore.getState().attentionPriorityEnabled
-      if (pendingGrouping.kind === 'join') {
-        if (navigation.snapshot.groups[pendingGrouping.groupId]) {
-          navigation.dispatch(
-            {
-              kind: 'move-into-group',
-              terminalId,
-              groupId: pendingGrouping.groupId,
-              beforeTerminalId: null
-            },
-            attention
-          )
-        }
-        return
-      }
-
-      const source = currentSessions.find(
-        (session) => session.terminalId === pendingGrouping.sourceTerminalId
-      )
-      if (!source) return
-      const sourceGroup = Object.values(navigation.snapshot.groups).find(
-        (group) => group.members.includes(pendingGrouping.sourceTerminalId)
-      )
-      navigation.dispatch(
-        sourceGroup
-          ? {
-              kind: 'move-into-group',
-              terminalId,
-              groupId: sourceGroup.id,
-              beforeTerminalId: null
-            }
-          : {
-              kind: 'group-pair',
-              groupId: crypto.randomUUID(),
-              sourceTerminalId: terminalId,
-              targetTerminalId: source.terminalId,
-              defaultName: `${source.name} + ${created.name}`
-            },
-        attention
-      )
-    }
     const unsubscribeProjection = window.agentApi.onProjection((projection) => {
       const sessionsStore = useSessionsStore.getState()
       const previous = sessionsStore.sessions.find(
@@ -459,7 +341,6 @@ export default function AppShell() {
         currentSessions.map((session) => session.terminalId),
         true
       )
-      finalizePendingGrouping(projection.terminalId)
       if (
         !previous ||
         projection.lastSeq > (previous.projectionSeq ?? -1) ||
@@ -490,9 +371,6 @@ export default function AppShell() {
             .sessions.map((session) => session.terminalId),
           true
         )
-        for (const terminalId of pendingGroupingLaunches.current.keys()) {
-          finalizePendingGrouping(terminalId)
-        }
       })
       .catch(() => {
         // 恢复失败也不能擅自创建进程；用户仍可从 Home / New Session 启动。
@@ -502,9 +380,6 @@ export default function AppShell() {
             .sessions.map((session) => session.terminalId),
           true
         )
-        for (const terminalId of pendingGroupingLaunches.current.keys()) {
-          finalizePendingGrouping(terminalId)
-        }
       })
     return () => {
       cancelled = true
@@ -530,7 +405,6 @@ export default function AppShell() {
       pendingCliLaunches.current.delete(terminalId)
 
       if (error) {
-        pendingGroupingLaunches.current.delete(terminalId)
         closeTerminal(terminalId)
         const previousTerminalId = terminalIdFromPage(pending.previousPage)
         const previousPageStillExists =
@@ -545,8 +419,6 @@ export default function AppShell() {
 
       // 成功路径：会话条目由主进程 session.started 投影创建，无需本地 addSession。
       setNewSessionOpen(false)
-      setNewSessionWorkspace('')
-      setNewSessionGroupingIntent(null)
       setPageId(terminalPage(terminalId))
       pending.resolve(null)
     },
@@ -560,7 +432,6 @@ export default function AppShell() {
 
   const closeTerminalAndRoute = useCallback(
     (terminalId: string): void => {
-      pendingGroupingLaunches.current.delete(terminalId)
       const wasActive = terminalIdFromPage(pageId) === terminalId
       const linkedSessionIds = useSessionsStore
         .getState()
@@ -586,7 +457,6 @@ export default function AppShell() {
 
   const closeSessionAndTerminal = useCallback(
     (session: SessionEntry): void => {
-      pendingGroupingLaunches.current.delete(session.terminalId)
       const children = useTerminalsStore
         .getState()
         .terminals.filter(
@@ -623,6 +493,59 @@ export default function AppShell() {
     },
     [activeTerminalId, closeTerminal, removeSession, terminalIds]
   )
+
+  const handleTerminalExit = useCallback(
+    (terminalId: string): void => {
+      const terminalsState = useTerminalsStore.getState()
+      const terminal = terminalsState.terminals.find(
+        (item) => item.id === terminalId
+      )
+      const linkedSessions = useSessionsStore
+        .getState()
+        .sessions.filter((session) => session.terminalId === terminalId)
+      if (!terminal?.agentSelection && linkedSessions.length === 0) return
+
+      pendingCliLaunches.current.delete(terminalId)
+      const children = terminalsState.terminals.filter((item) =>
+        linkedSessions.some(
+          (session) => item.parentSessionId === session.sessionId
+        )
+      )
+      const activePageTerminalId = terminalIdFromPage(pageId)
+      const wasActive =
+        activePageTerminalId === terminalId ||
+        children.some((child) => child.id === activePageTerminalId)
+      for (const child of children) {
+        void window.ptyApi.killTerminal(child.id)
+        closeTerminal(child.id)
+      }
+
+      // 进程已经自行退出，不再调用 agent:stop。这里只释放 PTYManager
+      // 为回看输出保留的描述符，并用墓碑阻止迟到投影复活卡片。
+      void window.ptyApi.killTerminal(terminalId)
+      closeTerminal(terminalId)
+      useSessionsStore
+        .getState()
+        .removeSessions(linkedSessions.map((session) => session.sessionId))
+      setPendingCloseSession((pending) =>
+        linkedSessions.some(
+          (session) => session.sessionId === pending?.sessionId
+        )
+          ? null
+          : pending
+      )
+
+      if (wasActive) {
+        const nextTerminalId = useTerminalsStore.getState().activeTerminalId
+        setPageId(nextTerminalId ? terminalPage(nextTerminalId) : 'home')
+      }
+    },
+    [closeTerminal, pageId]
+  )
+
+  const requestCloseSession = useCallback((session: SessionEntry): void => {
+    setPendingCloseSession(session)
+  }, [])
 
   useEffect(() => {
     const unregister = registerShellShortcutActions({
@@ -705,7 +628,6 @@ export default function AppShell() {
               <Sidebar
                 pageId={pageId}
                 sessions={navigationSessions}
-                sessionNodes={navigationProjection.sidebar}
                 terminals={standaloneTerminals}
                 childTerminals={childTerminals}
                 onNavigate={navigate}
@@ -716,12 +638,8 @@ export default function AppShell() {
                 onCreateChildTerminal={(session) => {
                   void createChildTerminal(session)
                 }}
-                onCloseSession={closeSessionAndTerminal}
+                onCloseSession={requestCloseSession}
                 onCloseTerminal={closeTerminalAndRoute}
-                onRenameGroup={renameSessionGroup}
-                onDissolveGroup={dissolveSessionGroup}
-                onLaunchIntoGroup={launchCliForSessionGroup}
-                onRemoveFromGroup={removeSessionFromGroup}
               />
             </motion.div>
           ) : (
@@ -786,7 +704,7 @@ export default function AppShell() {
               onCreateChildTerminal={(session) => {
                 void createChildTerminal(session)
               }}
-              onCloseSession={closeSessionAndTerminal}
+              onCloseSession={requestCloseSession}
               onCloseTerminal={closeTerminalAndRoute}
             />
           )}
@@ -830,6 +748,7 @@ export default function AppShell() {
                 terminal={terminal}
                 active={activeTerminalId === terminal.id}
                 onInitialSpawn={handleInitialTerminalSpawn}
+                onExit={handleTerminalExit}
               />
             ))}
           </div>
@@ -857,16 +776,28 @@ export default function AppShell() {
           typeof newSessionIntent === 'object' ? newSessionIntent : undefined
         }
         initialTerminalPicker={newSessionIntent === 'terminal'}
-        initialWorkspace={newSessionWorkspace}
         onClose={() => {
           setNewSessionOpen(false)
           setNewSessionIntent('sheet')
-          setNewSessionWorkspace('')
-          setNewSessionGroupingIntent(null)
         }}
         onLaunchTerminal={launchTerminal}
         onLaunchCli={launchCli}
       />
+
+      <AnimatePresence>
+        {pendingCloseSession && (
+          <CloseSessionDialog
+            key={pendingCloseSession.sessionId}
+            session={pendingCloseSession}
+            onCancel={() => setPendingCloseSession(null)}
+            onConfirm={() => {
+              const session = pendingCloseSession
+              setPendingCloseSession(null)
+              closeSessionAndTerminal(session)
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -9,9 +9,15 @@ interface TerminalViewProps {
   tabId: string
   active: boolean
   onInitialSpawn?: (terminalId: string, error: string | null) => void
+  onExit?: (terminalId: string) => void
 }
 
-export default function TerminalView({ tabId, active, onInitialSpawn }: TerminalViewProps) {
+export default function TerminalView({
+  tabId,
+  active,
+  onInitialSpawn,
+  onExit
+}: TerminalViewProps) {
   const ref = useRef<HTMLDivElement>(null)
   const hideCopiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const language = useSettingsStore((state) => state.language)
@@ -43,7 +49,10 @@ export default function TerminalView({ tabId, active, onInitialSpawn }: Terminal
     showCopied,
     (title) => setTitle(tabId, title),
     (code, respawned) => {
-      if (!respawned) markExited(tabId)
+      if (!respawned) {
+        markExited(tabId)
+        onExit?.(tabId)
+      }
       // S1：AI 会话的退出事实由主进程 AgentSessionRuntime 归约并推送投影，
       // renderer 不再是语义事实来源，不再重复写 markExited / session_exit。
     },

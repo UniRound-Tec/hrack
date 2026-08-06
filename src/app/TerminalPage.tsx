@@ -10,13 +10,15 @@ interface TerminalPageProps {
   terminal: TerminalEntry
   active: boolean
   onInitialSpawn?: (terminalId: string, error: string | null) => void
+  onExit?: (terminalId: string) => void
 }
 
 /** Keep every xterm/PTY mounted; page routing only changes CSS visibility. */
 export default function TerminalPage({
   terminal,
   active,
-  onInitialSpawn
+  onInitialSpawn,
+  onExit
 }: TerminalPageProps) {
   const rounded = useSettingsStore((state) => state.terminalRounded)
   const terminalThemeId = useSettingsStore((state) => state.terminalThemeId)
@@ -40,6 +42,7 @@ export default function TerminalPage({
         tabId={terminal.id}
         active={active}
         onInitialSpawn={onInitialSpawn}
+        onExit={onExit}
       />
     </div>
   )

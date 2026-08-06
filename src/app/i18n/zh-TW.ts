@@ -32,19 +32,14 @@ export const zhTW = {
     collapseSidebar: '收合側欄',
     closeTerminal: '關閉終端機',
     closeSession: '關閉工作階段',
+    closeSessionPrompt: (name: string) =>
+      `確定要關閉「${name}」嗎？CLI 程序及其子終端將一併結束。`,
     sessionActions: '工作階段操作',
     createChildTerminal: '新增子終端',
     cloneSession: '複製工作階段',
     childTerminals: '展開或收合子終端',
     renameSession: '重新命名',
-    sessionNameRequired: '工作階段名稱不能為空',
-    groupActions: '群組操作',
-    renameGroup: '重新命名群組',
-    dissolveGroup: '解散群組',
-    groupNameRequired: '群組名稱不能為空',
-    removeFromGroup: '移出群組',
-    createGroupAndLaunch: '建立群組並啟動新的 CLI',
-    launchIntoGroup: '啟動新的 CLI 加入此群組'
+    sessionNameRequired: '工作階段名稱不能為空'
   },
   sessionStatus: {
     working: '正在處理任務',

@@ -52,6 +52,15 @@ test.describe('renderer reload instance lifecycle', () => {
     await page.getByTestId('sidebar-session-item').hover()
     await page.getByTestId('sidebar-session-close').click()
 
+    await expect(page.getByTestId('close-session-confirm-dialog')).toBeVisible()
+    await page.getByTestId('close-session-confirm-cancel').click()
+    await expect(page.getByTestId('sidebar-session-item')).toHaveCount(1)
+    await expect.poll(() => page.evaluate(() => window.agentApi.listActive())).toHaveLength(1)
+
+    await page.getByTestId('sidebar-session-item').hover()
+    await page.getByTestId('sidebar-session-close').click()
+    await page.getByTestId('close-session-confirm-submit').click()
+
     await expect
       .poll(() => page.evaluate(() => window.agentApi.listActive()))
       .toEqual([])
@@ -64,6 +73,21 @@ test.describe('renderer reload instance lifecycle', () => {
     expect(ordinaryAfter).toEqual(ordinaryBefore)
     await expect(page.getByTestId('sidebar-terminal-item')).toHaveCount(1)
     await expect(page.getByTestId('sidebar-session-item')).toHaveCount(0)
+  })
+
+  test('an agent process exiting by itself removes its session and terminal tab', async () => {
+    await launchFixtureAgent(page)
+    const recoverableBefore = await recoverable(page)
+    const agentTerminal = recoverableBefore.find((item) => item.kind === 'agent')
+    expect(agentTerminal).toBeTruthy()
+
+    await page.evaluate((terminalId) => window.ptyApi.killTerminal(terminalId), agentTerminal!.terminalId)
+
+    await expect(page.getByTestId('sidebar-session-item')).toHaveCount(0)
+    await expect
+      .poll(() => recoverable(page))
+      .toEqual([expect.objectContaining({ kind: 'terminal', exited: false })])
+    await expect(page.getByTestId('unavailable-terminal-page')).toHaveCount(0)
   })
 
   test('reloading a running agent reattaches its original PTY and terminal', async () => {

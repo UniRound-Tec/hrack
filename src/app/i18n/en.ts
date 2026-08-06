@@ -32,19 +32,14 @@ export const en = {
     collapseSidebar: 'Collapse sidebar',
     closeTerminal: 'Close terminal',
     closeSession: 'Close session',
+    closeSessionPrompt: (name: string) =>
+      `Close “${name}”? Its CLI process and child terminals will also stop.`,
     sessionActions: 'Session actions',
     createChildTerminal: 'New child terminal',
     cloneSession: 'Clone session',
     childTerminals: 'Expand or collapse child terminals',
     renameSession: 'Rename',
-    sessionNameRequired: 'Session name is required',
-    groupActions: 'Group actions',
-    renameGroup: 'Rename group',
-    dissolveGroup: 'Dissolve group',
-    groupNameRequired: 'Group name is required',
-    removeFromGroup: 'Remove from group',
-    createGroupAndLaunch: 'Create group and launch new CLI',
-    launchIntoGroup: 'Launch new CLI into this group'
+    sessionNameRequired: 'Session name is required'
   },
   sessionStatus: {
     working: 'Working on the task',

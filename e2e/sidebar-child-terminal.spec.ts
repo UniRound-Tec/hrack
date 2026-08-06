@@ -65,6 +65,7 @@ test('creates an ordinary terminal from the AI session context menu', async () =
 
     await window.getByTestId('sidebar-session-item').hover()
     await window.getByTestId('sidebar-session-close').click()
+    await window.getByTestId('close-session-confirm-submit').click()
     await expect(window.getByTestId('sidebar-session-item')).toHaveCount(0)
     await expect(window.getByTestId('sidebar-child-terminal-item')).toHaveCount(0)
     await expect

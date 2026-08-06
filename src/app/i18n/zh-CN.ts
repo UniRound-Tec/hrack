@@ -35,19 +35,14 @@ export const zhCN = {
     collapseSidebar: '收起侧栏',
     closeTerminal: '关闭终端',
     closeSession: '关闭会话',
+    closeSessionPrompt: (name: string) =>
+      `确定要关闭“${name}”吗？CLI 进程及其子终端会一并结束。`,
     sessionActions: '会话操作',
     createChildTerminal: '新建子终端',
     cloneSession: '克隆会话',
     childTerminals: '展开或收起子终端',
     renameSession: '重命名',
-    sessionNameRequired: '会话名称不能为空',
-    groupActions: '分组操作',
-    renameGroup: '重命名分组',
-    dissolveGroup: '解散分组',
-    groupNameRequired: '分组名称不能为空',
-    removeFromGroup: '移出分组',
-    createGroupAndLaunch: '创建分组并启动新的 CLI',
-    launchIntoGroup: '启动新的 CLI 加入此分组'
+    sessionNameRequired: '会话名称不能为空'
   },
   sessionStatus: {
     working: '正在处理任务',

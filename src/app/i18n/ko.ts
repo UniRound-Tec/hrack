@@ -32,19 +32,14 @@ export const ko = {
     collapseSidebar: '사이드바 접기',
     closeTerminal: '터미널 닫기',
     closeSession: '세션 닫기',
+    closeSessionPrompt: (name: string) =>
+      `“${name}” 세션을 닫을까요? CLI 프로세스와 하위 터미널도 함께 종료됩니다.`,
     sessionActions: '세션 작업',
     createChildTerminal: '하위 터미널 만들기',
     cloneSession: '세션 복제',
     childTerminals: '하위 터미널 펼치기 또는 접기',
     renameSession: '이름 바꾸기',
-    sessionNameRequired: '세션 이름을 입력하세요',
-    groupActions: '그룹 작업',
-    renameGroup: '그룹 이름 바꾸기',
-    dissolveGroup: '그룹 해제',
-    groupNameRequired: '그룹 이름을 입력하세요',
-    removeFromGroup: '그룹에서 제거',
-    createGroupAndLaunch: '그룹을 만들고 새 CLI 시작',
-    launchIntoGroup: '새 CLI를 이 그룹에서 시작'
+    sessionNameRequired: '세션 이름을 입력하세요'
   },
   sessionStatus: {
     working: '작업 처리 중',

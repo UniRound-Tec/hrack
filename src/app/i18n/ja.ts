@@ -32,19 +32,14 @@ export const ja = {
     collapseSidebar: 'サイドバーを折りたたむ',
     closeTerminal: 'ターミナルを閉じる',
     closeSession: 'セッションを閉じる',
+    closeSessionPrompt: (name: string) =>
+      `「${name}」を閉じますか？CLI プロセスと子ターミナルも終了します。`,
     sessionActions: 'セッション操作',
     createChildTerminal: '子ターミナルを作成',
     cloneSession: 'セッションを複製',
     childTerminals: '子ターミナルを展開または折りたたむ',
     renameSession: '名前を変更',
-    sessionNameRequired: 'セッション名を入力してください',
-    groupActions: 'グループ操作',
-    renameGroup: 'グループ名を変更',
-    dissolveGroup: 'グループを解除',
-    groupNameRequired: 'グループ名を入力してください',
-    removeFromGroup: 'グループから外す',
-    createGroupAndLaunch: 'グループを作成して新しい CLI を起動',
-    launchIntoGroup: '新しい CLI をこのグループで起動'
+    sessionNameRequired: 'セッション名を入力してください'
   },
   sessionStatus: {
     working: 'タスクを処理中',

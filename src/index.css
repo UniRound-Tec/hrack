@@ -8,25 +8,42 @@
   font-display: block;
 }
 
-[data-session-group-armed='true'] {
-  outline: 1px solid var(--vib-accent-target);
-  outline-offset: 2px;
-  background: var(--vib-bg-surface-hover);
+[data-session-dragging='true'] {
+  opacity: 0.28;
 }
 
-[data-session-dragging='true'] {
-  opacity: 0.42;
+[data-session-drop-before='true']::before,
+[data-session-drop-end='true']::after {
+  content: '';
+  position: absolute;
+  z-index: 5;
+  right: 4px;
+  left: 4px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--vib-accent-target);
+  box-shadow:
+    0 0 0 1px var(--vib-bg-surface),
+    0 0 9px color-mix(in srgb, var(--vib-accent-target) 70%, transparent);
 }
 
 [data-session-drop-before='true']::before {
-  content: '';
-  position: absolute;
-  z-index: 2;
-  top: -4px;
-  right: 6px;
-  left: 6px;
-  height: 1px;
-  background: var(--vib-accent-target);
+  top: -5px;
+}
+
+[data-session-drop-end='true'] {
+  position: relative;
+}
+
+[data-session-drop-end='true']::after {
+  bottom: -5px;
+}
+
+.session-card-replica > * {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  transform: none !important;
 }
 
 @font-face {

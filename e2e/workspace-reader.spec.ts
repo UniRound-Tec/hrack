@@ -320,6 +320,7 @@ test.describe('read-only workspace reader', () => {
     const session = page.getByTestId('sidebar-session-item')
     await session.hover()
     await page.getByTestId('sidebar-session-close').click()
+    await page.getByTestId('close-session-confirm-submit').click()
 
     await expect
       .poll(() =>
