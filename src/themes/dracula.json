@@ -1,0 +1,20 @@
+{
+  "id": "dracula",
+  "name": "Dracula",
+  "type": "dark",
+  "colors": {
+    "bg.app": "#21222c", "bg.content": "#282a36", "bg.surface": "#282a36", "bg.surface.hover": "#44475a", "bg.surface.strong": "#44475a",
+    "bg.control": "rgb(68 71 90 / 42%)", "bg.control.active": "#44475a", "bg.overlay": "rgb(40 42 54 / 94%)", "bg.backdrop": "rgb(33 34 44 / 56%)", "bg.backdrop.strong": "rgb(33 34 44 / 70%)",
+    "text.primary": "#f8f8f2", "text.secondary": "rgb(248 248 242 / 88%)", "text.strong": "rgb(248 248 242 / 78%)", "text.muted": "rgb(248 248 242 / 62%)", "text.faint": "#6272a4", "text.disabled": "rgb(98 114 164 / 72%)", "text.inverse": "#21222c",
+    "border.default": "rgb(248 248 242 / 12%)", "border.subtle": "rgb(248 248 242 / 9%)", "border.faint": "rgb(248 248 242 / 6%)", "border.strong": "rgb(248 248 242 / 20%)", "border.control": "#6272a4",
+    "accent.flame": "#ffb86c", "accent.cursor": "#bd93f9", "accent.spark": "#8be9fd", "accent.target": "#ff79c6",
+    "brand.logo": "#6272a4", "brand.logoShine": "#f8f8f2", "brand.logoMuted": "#bd93f9",
+    "status.working": "#8be9fd", "status.working.dot": "#bd93f9", "status.needsYou": "#f1fa8c", "status.needsYou.dot": "#ffb86c", "status.done": "#50fa7b", "status.done.dot": "#50fa7b", "status.error": "#ff5555", "status.error.dot": "#ff5555", "status.idle": "#a6adc8", "status.idle.dot": "#6272a4", "status.exited": "#6272a4", "status.exited.dot": "#44475a",
+    "titlebar.fg": "#6272a4", "titlebar.fg.hover": "#f8f8f2", "titlebar.bg.hover": "#44475a", "titlebar.close.bg.hover": "#c42b1c", "titlebar.close.fg.hover": "#ffffff",
+    "scrollbar.thumb": "rgb(248 248 242 / 14%)", "scrollbar.thumb.hover": "rgb(248 248 242 / 24%)", "scrollbar.thumb.active": "rgb(248 248 242 / 34%)",
+    "sidebar.tint.a": "rgb(139 233 253 / 10%)", "sidebar.tint.b": "rgb(189 147 249 / 13%)", "shadow.window": "rgb(33 34 44 / 56%)", "shadow.popover": "rgb(33 34 44 / 70%)",
+    "button.primary.bg": "#bd93f9", "button.primary.bg.hover": "#d6acff", "button.primary.fg": "#21222c", "button.secondary.bg": "#282a36", "button.secondary.bg.hover": "#44475a", "button.secondary.fg": "#f8f8f2",
+    "input.bg": "#21222c", "input.bg.hover": "#282a36", "input.border.focus": "#bd93f9", "focus.ring": "#ff79c6"
+  },
+  "terminal": null
+}

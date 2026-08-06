@@ -1,0 +1,19 @@
+{
+  "id": "gruvbox-light",
+  "name": "Gruvbox Light",
+  "type": "light",
+  "colors": {
+    "bg.app": "#ebdbb2", "bg.content": "#fbf1c7", "bg.surface": "#fbf1c7", "bg.surface.hover": "#f2e5bc", "bg.surface.strong": "#ebdbb2",
+    "bg.control": "rgb(235 219 178 / 68%)", "bg.control.active": "#fbf1c7", "bg.overlay": "rgb(251 241 199 / 94%)", "bg.backdrop": "rgb(40 40 40 / 24%)", "bg.backdrop.strong": "rgb(40 40 40 / 32%)",
+    "text.primary": "#282828", "text.secondary": "#3c3836", "text.strong": "#504945", "text.muted": "#665c54", "text.faint": "#7c6f64", "text.disabled": "rgb(124 111 100 / 72%)", "text.inverse": "#fbf1c7",
+    "border.default": "rgb(40 40 40 / 13%)", "border.subtle": "rgb(40 40 40 / 9%)", "border.faint": "rgb(40 40 40 / 6%)", "border.strong": "rgb(40 40 40 / 22%)", "border.control": "#bdae93",
+    "accent.flame": "#af3a03", "accent.cursor": "#8f3f71", "accent.spark": "#282828", "accent.target": "#076678",
+    "brand.logo": "#665c54", "brand.logoShine": "#282828", "brand.logoMuted": "#504945",
+    "status.working": "#076678", "status.working.dot": "#458588", "status.needsYou": "#8b5900", "status.needsYou.dot": "#b57614", "status.done": "#5f5c0b", "status.done.dot": "#79740e", "status.error": "#9d0006", "status.error.dot": "#cc241d", "status.idle": "#665c54", "status.idle.dot": "#bdae93", "status.exited": "#7c6f64", "status.exited.dot": "#a89984",
+    "titlebar.fg": "#7c6f64", "titlebar.fg.hover": "#282828", "titlebar.bg.hover": "#ebdbb2", "titlebar.close.bg.hover": "#9d0006", "titlebar.close.fg.hover": "#fbf1c7",
+    "sidebar.tint.a": "rgb(7 102 120 / 8%)", "sidebar.tint.b": "rgb(143 63 113 / 8%)", "scrollbar.thumb": "rgb(40 40 40 / 14%)", "scrollbar.thumb.hover": "rgb(40 40 40 / 24%)", "scrollbar.thumb.active": "rgb(40 40 40 / 34%)", "shadow.window": "rgb(40 40 40 / 15%)", "shadow.popover": "rgb(40 40 40 / 25%)",
+    "button.primary.bg": "#282828", "button.primary.bg.hover": "#3c3836", "button.primary.fg": "#fbf1c7", "button.secondary.bg": "#ebdbb2", "button.secondary.bg.hover": "#d5c4a1", "button.secondary.fg": "#282828",
+    "input.bg": "#ebdbb2", "input.bg.hover": "#fbf1c7", "input.border.focus": "#076678", "focus.ring": "#076678"
+  },
+  "terminal": null
+}

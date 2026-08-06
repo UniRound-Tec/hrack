@@ -1,0 +1,19 @@
+{
+  "id": "catppuccin-latte",
+  "name": "Catppuccin Latte",
+  "type": "light",
+  "colors": {
+    "bg.app": "#dce0e8", "bg.content": "#eff1f5", "bg.surface": "#eff1f5", "bg.surface.hover": "#e6e9ef", "bg.surface.strong": "#dce0e8",
+    "bg.control": "rgb(204 208 218 / 55%)", "bg.control.active": "#eff1f5", "bg.overlay": "rgb(239 241 245 / 94%)", "bg.backdrop": "rgb(76 79 105 / 24%)", "bg.backdrop.strong": "rgb(76 79 105 / 32%)",
+    "text.primary": "#4c4f69", "text.secondary": "#5c5f77", "text.strong": "#6c6f85", "text.muted": "#7c7f93", "text.faint": "#8c8fa1", "text.disabled": "rgb(140 143 161 / 72%)", "text.inverse": "#eff1f5",
+    "border.default": "rgb(76 79 105 / 13%)", "border.subtle": "rgb(76 79 105 / 9%)", "border.faint": "rgb(76 79 105 / 6%)", "border.strong": "rgb(76 79 105 / 22%)", "border.control": "#acb0be",
+    "accent.flame": "#fe640b", "accent.cursor": "#8839ef", "accent.spark": "#4c4f69", "accent.target": "#8839ef",
+    "brand.logo": "#7c7f93", "brand.logoShine": "#4c4f69", "brand.logoMuted": "#6c6f85",
+    "status.working": "#1e66f5", "status.working.dot": "#04a5e5", "status.needsYou": "#9a5d00", "status.needsYou.dot": "#df8e1d", "status.done": "#287819", "status.done.dot": "#40a02b", "status.error": "#d20f39", "status.error.dot": "#e64553", "status.idle": "#6c6f85", "status.idle.dot": "#acb0be", "status.exited": "#7c7f93", "status.exited.dot": "#9ca0b0",
+    "titlebar.fg": "#8c8fa1", "titlebar.fg.hover": "#4c4f69", "titlebar.bg.hover": "#e6e9ef", "titlebar.close.bg.hover": "#d20f39", "titlebar.close.fg.hover": "#eff1f5",
+    "sidebar.tint.a": "rgb(30 102 245 / 8%)", "sidebar.tint.b": "rgb(136 57 239 / 8%)", "scrollbar.thumb": "rgb(76 79 105 / 14%)", "scrollbar.thumb.hover": "rgb(76 79 105 / 24%)", "scrollbar.thumb.active": "rgb(76 79 105 / 34%)", "shadow.window": "rgb(76 79 105 / 15%)", "shadow.popover": "rgb(76 79 105 / 25%)",
+    "button.primary.bg": "#8839ef", "button.primary.bg.hover": "#7024cf", "button.primary.fg": "#ffffff", "button.secondary.bg": "#e6e9ef", "button.secondary.bg.hover": "#dce0e8", "button.secondary.fg": "#4c4f69",
+    "input.bg": "#e6e9ef", "input.bg.hover": "#eff1f5", "input.border.focus": "#8839ef", "focus.ring": "#8839ef"
+  },
+  "terminal": null
+}

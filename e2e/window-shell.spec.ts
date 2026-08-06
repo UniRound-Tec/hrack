@@ -216,9 +216,17 @@ test('hot-reloads the theme registry and CSS variables when themes change on dis
 
   // 主进程 watch 推送 → 注册表出现新主题，设置页可选中。
   await page.getByTestId('titlebar-settings').click()
-  const segment = page.getByTestId('settings-ui-theme-m5c-test')
-  await expect(segment).toBeVisible({ timeout: 15_000 })
-  await segment.click()
+  const themePicker = page.getByTestId('settings-ui-theme')
+  await expect
+    .poll(async () => {
+      await themePicker.click()
+      const option = page.getByTestId('settings-ui-theme-option-m5c-test')
+      const visible = await option.isVisible()
+      if (!visible) await page.keyboard.press('Escape')
+      return visible
+    }, { timeout: 15_000 })
+    .toBe(true)
+  await page.getByTestId('settings-ui-theme-option-m5c-test').click()
 
   // 应用后 bg.app 生效为磁盘上的色值。
   await expect

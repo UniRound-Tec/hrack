@@ -1,0 +1,20 @@
+{
+  "id": "catppuccin-mocha",
+  "name": "Catppuccin Mocha",
+  "type": "dark",
+  "colors": {
+    "bg.app": "#11111b", "bg.content": "#181825", "bg.surface": "#1e1e2e", "bg.surface.hover": "#313244", "bg.surface.strong": "#45475a",
+    "bg.control": "rgb(88 91 112 / 35%)", "bg.control.active": "#45475a", "bg.overlay": "rgb(30 30 46 / 94%)", "bg.backdrop": "rgb(17 17 27 / 55%)", "bg.backdrop.strong": "rgb(17 17 27 / 68%)",
+    "text.primary": "#cdd6f4", "text.secondary": "#bac2de", "text.strong": "#a6adc8", "text.muted": "#9399b2", "text.faint": "#6c7086", "text.disabled": "rgb(108 112 134 / 72%)", "text.inverse": "#11111b",
+    "border.default": "rgb(205 214 244 / 12%)", "border.subtle": "rgb(205 214 244 / 9%)", "border.faint": "rgb(205 214 244 / 6%)", "border.strong": "rgb(205 214 244 / 20%)", "border.control": "#585b70",
+    "accent.flame": "#fab387", "accent.cursor": "#cba6f7", "accent.spark": "#f5e0dc", "accent.target": "#cba6f7",
+    "brand.logo": "#9399b2", "brand.logoShine": "#cdd6f4", "brand.logoMuted": "#a6adc8",
+    "status.working": "#89b4fa", "status.working.dot": "#74c7ec", "status.needsYou": "#f9e2af", "status.needsYou.dot": "#fab387", "status.done": "#a6e3a1", "status.done.dot": "#94e2d5", "status.error": "#f38ba8", "status.error.dot": "#eba0ac", "status.idle": "#9399b2", "status.idle.dot": "#585b70", "status.exited": "#7f849c", "status.exited.dot": "#6c7086",
+    "titlebar.fg": "#7f849c", "titlebar.fg.hover": "#cdd6f4", "titlebar.bg.hover": "#313244", "titlebar.close.bg.hover": "#c42b1c", "titlebar.close.fg.hover": "#ffffff",
+    "scrollbar.thumb": "rgb(205 214 244 / 14%)", "scrollbar.thumb.hover": "rgb(205 214 244 / 24%)", "scrollbar.thumb.active": "rgb(205 214 244 / 34%)",
+    "sidebar.tint.a": "rgb(137 180 250 / 11%)", "sidebar.tint.b": "rgb(203 166 247 / 12%)", "shadow.window": "rgb(17 17 27 / 55%)", "shadow.popover": "rgb(17 17 27 / 68%)",
+    "button.primary.bg": "#cba6f7", "button.primary.bg.hover": "#b4befe", "button.primary.fg": "#11111b", "button.secondary.bg": "#313244", "button.secondary.bg.hover": "#45475a", "button.secondary.fg": "#bac2de",
+    "input.bg": "#181825", "input.bg.hover": "#1e1e2e", "input.border.focus": "#cba6f7", "focus.ring": "#cba6f7"
+  },
+  "terminal": null
+}

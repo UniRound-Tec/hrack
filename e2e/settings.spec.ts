@@ -18,9 +18,35 @@ test('settings controls write through to the live application state', async () =
     await ligatures.click()
     await expect(ligatures).toHaveAttribute('aria-checked', wasEnabled === 'true' ? 'false' : 'true')
 
-    await page.getByTestId('settings-terminal-theme-light').click()
-    await expect(page.getByTestId('settings-terminal-theme-light')).toHaveAttribute('aria-pressed', 'true')
+    await page.getByTestId('settings-terminal-theme').click()
+    await expect(page.locator('[data-testid^="settings-terminal-theme-group-"]')).toHaveCount(2)
+    expect(await page.locator('[data-testid^="settings-terminal-theme-group-"]').evaluateAll((groups) =>
+      groups.map((group) => group.getAttribute('data-testid'))
+    )).toEqual([
+      'settings-terminal-theme-group-light',
+      'settings-terminal-theme-group-dark'
+    ])
+    await page.getByTestId('settings-terminal-theme-option-light').click()
+    await expect(page.getByTestId('settings-terminal-theme')).toHaveAttribute('data-value', 'light')
     await expect(page.getByTestId('terminal-theme-preview').locator('span')).toHaveCount(16)
+
+    await page.getByTestId('settings-ui-theme').click()
+    await expect(page.locator('[data-testid^="settings-ui-theme-group-"]')).toHaveCount(2)
+    expect(await page.locator('[data-testid^="settings-ui-theme-group-"]').evaluateAll((groups) =>
+      groups.map((group) => group.getAttribute('data-testid'))
+    )).toEqual([
+      'settings-ui-theme-group-light',
+      'settings-ui-theme-group-dark'
+    ])
+    await page.getByTestId('settings-ui-theme-option-catppuccin-latte').click()
+    await expect(page.locator('html')).toHaveAttribute('data-ui-theme', 'catppuccin-latte')
+    await page.getByTestId('settings-terminal-theme').click()
+    await page.getByTestId('settings-terminal-theme-option-catppuccin-latte').click()
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__vibingDebug.terminalAppearance().theme.background)
+      )
+      .toBe('#eff1f5')
 
     await page.getByTestId('settings-nav-rail').click()
     await expect(page.getByTestId('icon-rail')).toBeVisible()

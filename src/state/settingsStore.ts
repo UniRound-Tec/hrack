@@ -2,7 +2,7 @@ import { create, type StateCreator } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { AppLocale } from '../app/i18n'
 import { detectLocale } from '../app/i18n/locale'
-import type { ThemeId } from '../terminal/themes'
+import { isTerminalThemeId, type ThemeId } from '../terminal/themes'
 
 const LEGACY_DEFAULT_FONT_FAMILY =
   'Consolas, "Cascadia Code", "Courier New", monospace'
@@ -86,10 +86,6 @@ type LegacySettings = Partial<SettingsSnapshot> & {
   themeId?: unknown
 }
 
-function isThemeId(value: unknown): value is ThemeId {
-  return value === 'dark' || value === 'light'
-}
-
 function isNavMode(value: unknown): value is NavMode {
   return value === 'sidebar' || value === 'rail' || value === 'tabs'
 }
@@ -140,14 +136,14 @@ export function migrateSettings(
     legacy.fontSize = defaultSettings.fontSize
   }
 
-  const legacyThemeId = isThemeId(legacy.themeId)
+  const legacyThemeId = isTerminalThemeId(legacy.themeId)
     ? legacy.themeId
     : undefined
   const uiThemeId =
     typeof legacy.uiThemeId === 'string' && legacy.uiThemeId.trim()
       ? legacy.uiThemeId.trim()
       : legacyThemeId ?? defaultSettings.uiThemeId
-  const terminalThemeId = isThemeId(legacy.terminalThemeId)
+  const terminalThemeId = isTerminalThemeId(legacy.terminalThemeId)
     ? legacy.terminalThemeId
     : legacyThemeId ?? defaultSettings.terminalThemeId
 

@@ -1,0 +1,19 @@
+{
+  "id": "solarized-light",
+  "name": "Solarized Light",
+  "type": "light",
+  "colors": {
+    "bg.app": "#eee8d5", "bg.content": "#fdf6e3", "bg.surface": "#fdf6e3", "bg.surface.hover": "#f7efd9", "bg.surface.strong": "#eee8d5",
+    "bg.control": "rgb(238 232 213 / 68%)", "bg.control.active": "#fdf6e3", "bg.overlay": "rgb(253 246 227 / 94%)", "bg.backdrop": "rgb(0 43 54 / 24%)", "bg.backdrop.strong": "rgb(0 43 54 / 32%)",
+    "text.primary": "#002b36", "text.secondary": "#586e75", "text.strong": "#657b83", "text.muted": "#657b83", "text.faint": "#839496", "text.disabled": "rgb(131 148 150 / 72%)", "text.inverse": "#fdf6e3",
+    "border.default": "rgb(0 43 54 / 13%)", "border.subtle": "rgb(0 43 54 / 9%)", "border.faint": "rgb(0 43 54 / 6%)", "border.strong": "rgb(0 43 54 / 22%)", "border.control": "#93a1a1",
+    "accent.flame": "#cb4b16", "accent.cursor": "#6c71c4", "accent.spark": "#002b36", "accent.target": "#268bd2",
+    "brand.logo": "#657b83", "brand.logoShine": "#002b36", "brand.logoMuted": "#586e75",
+    "status.working": "#1675b6", "status.working.dot": "#268bd2", "status.needsYou": "#8c6d00", "status.needsYou.dot": "#b58900", "status.done": "#657600", "status.done.dot": "#859900", "status.error": "#c12b29", "status.error.dot": "#dc322f", "status.idle": "#657b83", "status.idle.dot": "#93a1a1", "status.exited": "#657b83", "status.exited.dot": "#839496",
+    "titlebar.fg": "#839496", "titlebar.fg.hover": "#002b36", "titlebar.bg.hover": "#eee8d5", "titlebar.close.bg.hover": "#dc322f", "titlebar.close.fg.hover": "#fdf6e3",
+    "sidebar.tint.a": "rgb(38 139 210 / 8%)", "sidebar.tint.b": "rgb(108 113 196 / 8%)", "scrollbar.thumb": "rgb(0 43 54 / 14%)", "scrollbar.thumb.hover": "rgb(0 43 54 / 24%)", "scrollbar.thumb.active": "rgb(0 43 54 / 34%)", "shadow.window": "rgb(0 43 54 / 15%)", "shadow.popover": "rgb(0 43 54 / 25%)",
+    "button.primary.bg": "#073642", "button.primary.bg.hover": "#002b36", "button.primary.fg": "#fdf6e3", "button.secondary.bg": "#eee8d5", "button.secondary.bg.hover": "#e5ddc5", "button.secondary.fg": "#002b36",
+    "input.bg": "#eee8d5", "input.bg.hover": "#fdf6e3", "input.border.focus": "#268bd2", "focus.ring": "#268bd2"
+  },
+  "terminal": null
+}

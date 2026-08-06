@@ -119,6 +119,16 @@ function bufferToLogicalLines(term: Terminal): string[] {
   return lines
 }
 
+function scrollImmediately(term: Terminal, action: () => void): void {
+  const smoothScrollDuration = term.options.smoothScrollDuration
+  term.options.smoothScrollDuration = 0
+  try {
+    action()
+  } finally {
+    term.options.smoothScrollDuration = smoothScrollDuration
+  }
+}
+
 function createApi(
   getRegistration: () => TerminalRegistration | undefined
 ): VibingDebugApi {
@@ -164,13 +174,16 @@ function createApi(
       return registration ? bufferToLines(registration.term, true) : []
     },
     scrollLines(amount: number) {
-      getRegistration()?.term.scrollLines(amount)
+      const term = getRegistration()?.term
+      if (term) scrollImmediately(term, () => term.scrollLines(amount))
     },
     scrollToTop() {
-      getRegistration()?.term.scrollToTop()
+      const term = getRegistration()?.term
+      if (term) scrollImmediately(term, () => term.scrollToTop())
     },
     scrollToBottom() {
-      getRegistration()?.term.scrollToBottom()
+      const term = getRegistration()?.term
+      if (term) scrollImmediately(term, () => term.scrollToBottom())
     },
     selectText(text: string) {
       const registration = getRegistration()

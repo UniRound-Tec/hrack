@@ -27,6 +27,9 @@ import {
   PTY_OUTPUT_QUIET_PERIOD_MS
 } from './PtyOutputBatcher'
 
+const TERMINAL_SMOOTH_SCROLL_DURATION_MS = 80
+const OUTPUT_SCROLL_SMOOTHING_RESTORE_MS = 100
+
 const DISABLE_MOUSE_TRACKING =
   '\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l'
 
@@ -140,6 +143,10 @@ export function useXterm(
       fontFamily: initialSettings.fontFamily,
       fontSize: initialSettings.fontSize,
       cursorBlink: true,
+      // Keep wheel navigation responsive while interpolating row-sized jumps.
+      // This only affects user scrolling; PTY output cadence is controlled by
+      // PtyOutputBatcher.
+      smoothScrollDuration: TERMINAL_SMOOTH_SCROLL_DURATION_MS,
       // 主进程会隔离 ConPTY resize 重画，因此当前光标行也必须由 xterm 自己 reflow。
       reflowCursorLine: true,
       windowsPty: meta.windowsPty,
@@ -223,6 +230,7 @@ export function useXterm(
     let ptyAckDelayMs = 0
     let ptyRenderingSuspended = false
     let outputBatcher: PtyOutputBatcher | null = null
+    let scrollSmoothingRestoreTimer: ReturnType<typeof setTimeout> | null = null
     const pendingAckTimers = new Set<ReturnType<typeof setTimeout>>()
     // ConPTY 下 TUI（如 opencode/OpenTUI）在 Windows 上 Ctrl+C 会连带杀死整个
     // pty，node-pty 报出 undefined exit code。异常退出时在当前 tab 自动重启 shell，
@@ -472,6 +480,22 @@ export function useXterm(
           acknowledgeParsedData(d.byteLength, next)
           return
         }
+        // xterm smooth scrolling defers the viewport position. A live TUI can
+        // publish another frame before that animation commits and keep a wheel
+        // gesture pinned at the bottom. Interpolate idle scrollback only; live
+        // output must commit wheel movement immediately.
+        if (term.options.smoothScrollDuration !== 0) {
+          term.options.smoothScrollDuration = 0
+        }
+        if (scrollSmoothingRestoreTimer) {
+          clearTimeout(scrollSmoothingRestoreTimer)
+        }
+        scrollSmoothingRestoreTimer = setTimeout(() => {
+          scrollSmoothingRestoreTimer = null
+          if (!disposed) {
+            term.options.smoothScrollDuration = TERMINAL_SMOOTH_SCROLL_DURATION_MS
+          }
+        }, OUTPUT_SCROLL_SMOOTHING_RESTORE_MS)
         batcher.push(d)
       }
       next.onData((d) => {
@@ -680,6 +704,7 @@ export function useXterm(
       disposed = true
       if (initialSpawnFrame !== null) cancelAnimationFrame(initialSpawnFrame)
       if (captionTimer) clearInterval(captionTimer)
+      if (scrollSmoothingRestoreTimer) clearTimeout(scrollSmoothingRestoreTimer)
       for (const timer of pendingAckTimers) clearTimeout(timer)
       pendingAckTimers.clear()
       if (fitFrame !== null) cancelAnimationFrame(fitFrame)

@@ -1,0 +1,20 @@
+{
+  "id": "gruvbox-dark",
+  "name": "Gruvbox Dark",
+  "type": "dark",
+  "colors": {
+    "bg.app": "#1d2021", "bg.content": "#282828", "bg.surface": "#3c3836", "bg.surface.hover": "#504945", "bg.surface.strong": "#665c54",
+    "bg.control": "rgb(124 111 100 / 35%)", "bg.control.active": "#504945", "bg.overlay": "rgb(40 40 40 / 94%)", "bg.backdrop": "rgb(29 32 33 / 55%)", "bg.backdrop.strong": "rgb(29 32 33 / 70%)",
+    "text.primary": "#fbf1c7", "text.secondary": "#ebdbb2", "text.strong": "#d5c4a1", "text.muted": "#a89984", "text.faint": "#928374", "text.disabled": "rgb(124 111 100 / 78%)", "text.inverse": "#1d2021",
+    "border.default": "rgb(251 241 199 / 12%)", "border.subtle": "rgb(251 241 199 / 9%)", "border.faint": "rgb(251 241 199 / 6%)", "border.strong": "rgb(251 241 199 / 20%)", "border.control": "#7c6f64",
+    "accent.flame": "#fe8019", "accent.cursor": "#fe8019", "accent.spark": "#fbf1c7", "accent.target": "#83a598",
+    "brand.logo": "#928374", "brand.logoShine": "#fbf1c7", "brand.logoMuted": "#d5c4a1",
+    "status.working": "#83a598", "status.working.dot": "#458588", "status.needsYou": "#fabd2f", "status.needsYou.dot": "#fe8019", "status.done": "#b8bb26", "status.done.dot": "#98971a", "status.error": "#fb4934", "status.error.dot": "#cc241d", "status.idle": "#a89984", "status.idle.dot": "#7c6f64", "status.exited": "#928374", "status.exited.dot": "#665c54",
+    "titlebar.fg": "#928374", "titlebar.fg.hover": "#fbf1c7", "titlebar.bg.hover": "#504945", "titlebar.close.bg.hover": "#c42b1c", "titlebar.close.fg.hover": "#ffffff",
+    "scrollbar.thumb": "rgb(251 241 199 / 14%)", "scrollbar.thumb.hover": "rgb(251 241 199 / 24%)", "scrollbar.thumb.active": "rgb(251 241 199 / 34%)",
+    "sidebar.tint.a": "rgb(131 165 152 / 11%)", "sidebar.tint.b": "rgb(211 134 155 / 11%)", "shadow.window": "rgb(29 32 33 / 55%)", "shadow.popover": "rgb(29 32 33 / 70%)",
+    "button.primary.bg": "#fe8019", "button.primary.bg.hover": "#fabd2f", "button.primary.fg": "#1d2021", "button.secondary.bg": "#3c3836", "button.secondary.bg.hover": "#504945", "button.secondary.fg": "#ebdbb2",
+    "input.bg": "#1d2021", "input.bg.hover": "#282828", "input.border.focus": "#83a598", "focus.ring": "#83a598"
+  },
+  "terminal": null
+}

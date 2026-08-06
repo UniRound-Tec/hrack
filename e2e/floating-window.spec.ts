@@ -236,7 +236,8 @@ test('floating preference survives restart and follows the main window theme', a
         '--vib-bg-overlay'
       )
     )
-    await first.window.getByTestId('settings-ui-theme-dark').click()
+    await first.window.getByTestId('settings-ui-theme').click()
+    await first.window.getByTestId('settings-ui-theme-option-dark').click()
     await expect
       .poll(() =>
         floating.evaluate(() =>

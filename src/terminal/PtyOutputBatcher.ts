@@ -5,8 +5,12 @@ export interface PtyOutputBatcherOptions {
   acknowledge(bytes: number): void
 }
 
-export const PTY_OUTPUT_QUIET_PERIOD_MS = 32
-export const PTY_OUTPUT_MAX_PERIOD_MS = 64
+// ConPTY normally splits one logical repaint across adjacent IPC deliveries only
+// a few milliseconds apart. Keep that repaint atomic without holding a
+// continuous stream below 30 FPS. Eight milliseconds catches the split burst;
+// sixteen milliseconds caps latency to one 60 Hz display frame.
+export const PTY_OUTPUT_QUIET_PERIOD_MS = 8
+export const PTY_OUTPUT_MAX_PERIOD_MS = 16
 
 /**
  * Coalesces the small IPC chunks that make up one terminal repaint burst.

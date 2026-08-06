@@ -1,5 +1,13 @@
 import lightThemeJson from '../themes/light.json'
 import darkThemeJson from '../themes/dark.json'
+import catppuccinMochaThemeJson from '../themes/catppuccin-mocha.json'
+import catppuccinLatteThemeJson from '../themes/catppuccin-latte.json'
+import gruvboxDarkThemeJson from '../themes/gruvbox-dark.json'
+import gruvboxLightThemeJson from '../themes/gruvbox-light.json'
+import draculaThemeJson from '../themes/dracula.json'
+import nordThemeJson from '../themes/nord.json'
+import rosePineDawnThemeJson from '../themes/rose-pine-dawn.json'
+import solarizedLightThemeJson from '../themes/solarized-light.json'
 import { create } from 'zustand'
 import {
   UI_COLOR_TOKENS,
@@ -122,7 +130,18 @@ export function loadBuiltInTheme(value: unknown): ResolvedUiTheme {
 
 export const builtInLightTheme = loadBuiltInTheme(lightThemeJson)
 export const builtInDarkTheme = loadBuiltInTheme(darkThemeJson)
-const builtInThemes = [builtInLightTheme, builtInDarkTheme] as const
+const builtInThemes = [
+  builtInLightTheme,
+  builtInDarkTheme,
+  loadBuiltInTheme(catppuccinMochaThemeJson),
+  loadBuiltInTheme(draculaThemeJson),
+  loadBuiltInTheme(gruvboxDarkThemeJson),
+  loadBuiltInTheme(nordThemeJson),
+  loadBuiltInTheme(catppuccinLatteThemeJson),
+  loadBuiltInTheme(solarizedLightThemeJson),
+  loadBuiltInTheme(rosePineDawnThemeJson),
+  loadBuiltInTheme(gruvboxLightThemeJson)
+] as const
 
 export function applyUiTheme(theme: ResolvedUiTheme): void {
   const root = document.documentElement
@@ -142,9 +161,10 @@ export function buildUiThemeRegistry(
   const themes = new Map<string, ResolvedUiTheme>(
     builtInThemes.map((theme) => [theme.id, theme])
   )
-  const fallbackByType = new Map<UiThemeType, ResolvedUiTheme>(
-    builtInThemes.map((theme) => [theme.type, theme])
-  )
+  const fallbackByType = new Map<UiThemeType, ResolvedUiTheme>([
+    ['light', builtInLightTheme],
+    ['dark', builtInDarkTheme]
+  ])
   const errors: UiThemeLoadError[] = []
 
   for (const file of userFiles) {

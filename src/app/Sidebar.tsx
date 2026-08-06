@@ -196,7 +196,7 @@ export default function Sidebar({
               {strings.navigation.emptySessions}
             </p>
           )}
-          <ul className="sidebar-scroll flex max-h-60 flex-col gap-1.5 overflow-y-auto pr-1">
+          <ul data-testid="sidebar-session-list" className="flex flex-col gap-1.5 pr-1">
           {sessions.map((session) => {
             const Icon = getAdapterIcon(session.adapterId)
             const children = childTerminals.filter(

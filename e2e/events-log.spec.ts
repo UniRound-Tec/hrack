@@ -167,11 +167,9 @@ test('overwrites main-prefs background color and uses it on the next launch', as
   try {
     await page.evaluate(() => window.__vibingDebugShell?.setNavMode('sidebar'))
     await page.getByTestId('titlebar-settings').click()
-    await page.getByTestId('settings-ui-theme-dark').click()
-    await expect(page.getByTestId('settings-ui-theme-dark')).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
+    await page.getByTestId('settings-ui-theme').click()
+    await page.getByTestId('settings-ui-theme-option-dark').click()
+    await expect(page.getByTestId('settings-ui-theme')).toHaveAttribute('data-value', 'dark')
     const prefsPath = join(userDataDir, 'main-prefs.json')
     await expect.poll(() => readFileSync(prefsPath, 'utf8')).toContain(
       '"backgroundColor"'

@@ -1,0 +1,19 @@
+{
+  "id": "rose-pine-dawn",
+  "name": "Rosé Pine Dawn",
+  "type": "light",
+  "colors": {
+    "bg.app": "#f2e9e1", "bg.content": "#faf4ed", "bg.surface": "#fffaf3", "bg.surface.hover": "#f4ede8", "bg.surface.strong": "#f2e9e1",
+    "bg.control": "rgb(242 233 225 / 68%)", "bg.control.active": "#fffaf3", "bg.overlay": "rgb(250 244 237 / 94%)", "bg.backdrop": "rgb(87 82 121 / 24%)", "bg.backdrop.strong": "rgb(87 82 121 / 32%)",
+    "text.primary": "#575279", "text.secondary": "#575279", "text.strong": "#797593", "text.muted": "#797593", "text.faint": "#9893a5", "text.disabled": "rgb(152 147 165 / 72%)", "text.inverse": "#fffaf3",
+    "border.default": "rgb(87 82 121 / 13%)", "border.subtle": "rgb(87 82 121 / 9%)", "border.faint": "rgb(87 82 121 / 6%)", "border.strong": "rgb(87 82 121 / 22%)", "border.control": "#cecacd",
+    "accent.flame": "#d7827e", "accent.cursor": "#907aa9", "accent.spark": "#575279", "accent.target": "#907aa9",
+    "brand.logo": "#797593", "brand.logoShine": "#575279", "brand.logoMuted": "#797593",
+    "status.working": "#286983", "status.working.dot": "#56949f", "status.needsYou": "#9a6200", "status.needsYou.dot": "#ea9d34", "status.done": "#286983", "status.done.dot": "#56949f", "status.error": "#a34e67", "status.error.dot": "#b4637a", "status.idle": "#797593", "status.idle.dot": "#cecacd", "status.exited": "#797593", "status.exited.dot": "#9893a5",
+    "titlebar.fg": "#9893a5", "titlebar.fg.hover": "#575279", "titlebar.bg.hover": "#f2e9e1", "titlebar.close.bg.hover": "#b4637a", "titlebar.close.fg.hover": "#fffaf3",
+    "sidebar.tint.a": "rgb(86 148 159 / 8%)", "sidebar.tint.b": "rgb(144 122 169 / 9%)", "scrollbar.thumb": "rgb(87 82 121 / 14%)", "scrollbar.thumb.hover": "rgb(87 82 121 / 24%)", "scrollbar.thumb.active": "rgb(87 82 121 / 34%)", "shadow.window": "rgb(87 82 121 / 15%)", "shadow.popover": "rgb(87 82 121 / 25%)",
+    "button.primary.bg": "#575279", "button.primary.bg.hover": "#403c62", "button.primary.fg": "#fffaf3", "button.secondary.bg": "#f2e9e1", "button.secondary.bg.hover": "#dfdad9", "button.secondary.fg": "#575279",
+    "input.bg": "#f2e9e1", "input.bg.hover": "#fffaf3", "input.border.focus": "#907aa9", "focus.ring": "#907aa9"
+  },
+  "terminal": null
+}

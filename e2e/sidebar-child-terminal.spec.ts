@@ -159,3 +159,41 @@ test('keeps AI session rows aligned when only one session has child terminals', 
     await app.close()
   }
 })
+
+test('expands the session section for child terminals while the sidebar has free height', async () => {
+  const { app, window } = await launchApp({
+    createDefaultTerminal: false,
+    env: {
+      VIBING_FIXTURE_OBSERVER: '1',
+      VIBING_FIXTURE_OBSERVER_HOLD: '1'
+    }
+  })
+  try {
+    for (let index = 0; index < 4; index++) {
+      if (index > 0) await window.getByTestId('nav-home').click()
+      await window.getByTestId('home-quick-codex').click()
+      await window.getByTestId('cli-installation-windows').click()
+      await window.getByTestId('cli-launch').click()
+      await expect(window.getByTestId('sidebar-session-item')).toHaveCount(index + 1, {
+        timeout: 15_000
+      })
+    }
+
+    const sessions = window.getByTestId('sidebar-session-item')
+    for (const index of [0, 1]) {
+      await sessions.nth(index).click({ button: 'right' })
+      await window.getByTestId('sidebar-session-child-terminal').click()
+      await expect(window.getByTestId('sidebar-child-terminal-item')).toHaveCount(index + 1)
+    }
+
+    const dimensions = await window.getByTestId('sidebar-session-list').evaluate((list) => ({
+      clientHeight: list.clientHeight,
+      scrollHeight: list.scrollHeight,
+      availableHeight: list.parentElement?.parentElement?.clientHeight ?? 0
+    }))
+    expect(dimensions.availableHeight).toBeGreaterThan(dimensions.scrollHeight)
+    expect(dimensions.clientHeight).toBe(dimensions.scrollHeight)
+  } finally {
+    await app.close()
+  }
+})

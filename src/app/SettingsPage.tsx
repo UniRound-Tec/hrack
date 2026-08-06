@@ -1,10 +1,10 @@
 import { Check, ChevronDown, Minus, Plus, RefreshCw } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { CliRuntimeError, ShellOption } from '../../shared/ipc-contract'
 import { appLocales, useStrings } from './i18n'
 import { getUiThemeRegistry, useThemeRegistryVersion } from './themeRuntime'
-import { terminalThemes, type ThemeId } from '../terminal/themes'
+import { terminalThemeIds, terminalThemes } from '../terminal/themes'
 import { useSettingsStore, defaultSettings, type NavMode } from '../state/settingsStore'
 import ClickSpark from './effects/ClickSpark'
 
@@ -39,6 +39,32 @@ export default function SettingsPage({
   useThemeRegistryVersion((state) => state.version)
   const registry = getUiThemeRegistry()
   const terminalTheme = terminalThemes[settings.terminalThemeId].terminal
+  const themeGroups = {
+    light: { id: 'light', label: strings.settings.light },
+    dark: { id: 'dark', label: strings.settings.dark }
+  } as const
+  const byThemeType = (left: DropdownOption, right: DropdownOption): number =>
+    (left.group?.id === 'light' ? 0 : 1) - (right.group?.id === 'light' ? 0 : 1)
+  const uiThemeOptions = registry.themes.map((theme) => ({
+    value: theme.id,
+    label:
+      theme.id === 'light'
+        ? strings.settings.light
+        : theme.id === 'dark'
+          ? strings.settings.dark
+          : theme.name,
+    group: themeGroups[theme.type]
+  })).sort(byThemeType)
+  const terminalThemeOptions = terminalThemeIds.map((themeId) => terminalThemes[themeId]).map((theme) => ({
+    value: theme.id,
+    label:
+      theme.id === 'light'
+        ? strings.settings.light
+        : theme.id === 'dark'
+          ? strings.settings.dark
+          : theme.name,
+    group: themeGroups[theme.type]
+  })).sort(byThemeType)
 
   useEffect(() => {
     let cancelled = false
@@ -83,9 +109,7 @@ export default function SettingsPage({
         <div className="flex max-w-[560px] flex-col gap-7 px-8 pb-10">
           <Section label="appearance" title={strings.settings.sections.appearance}>
             <Row label={strings.settings.uiTheme} hint={strings.settings.uiThemeHint}>
-              <div className="flex items-center gap-0.5 rounded-lg bg-control p-0.5">
-                {registry.themes.map((theme) => <SegmentButton key={theme.id} testId={`settings-ui-theme-${theme.id}`} selected={settings.uiThemeId === theme.id} onClick={() => settings.setUiTheme(theme.id)}>{theme.id === 'light' ? strings.settings.light : theme.id === 'dark' ? strings.settings.dark : theme.name}</SegmentButton>)}
-              </div>
+              <Dropdown testId="settings-ui-theme" value={settings.uiThemeId} options={uiThemeOptions} onChange={settings.setUiTheme} />
             </Row>
             {registry.errors.length > 0 && <div data-testid="theme-load-errors" className="border-b border-border-faint py-3 text-[11px] text-status-error"><p className="font-semibold">{strings.settings.themeErrors}</p>{registry.errors.map((error) => <p key={error.filename} className="mt-1 font-maple">{error.filename}: {error.message}</p>)}</div>}
             <Row label={strings.settings.language} hint={strings.settings.languageHint}>
@@ -109,7 +133,7 @@ export default function SettingsPage({
 
           <Section label="terminal" title={strings.settings.sections.terminal}>
             <div className="border-b border-border-faint py-3.5">
-              <div className="flex items-center justify-between gap-6"><div className="min-w-0"><p className="font-pingfang text-[12px] font-medium text-text-secondary">{strings.settings.terminalTheme}</p><p className="mt-0.5 font-pingfang text-[11px] text-text-faint">{strings.settings.terminalThemeHint}</p></div><div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-control p-0.5">{(['dark', 'light'] as ThemeId[]).map((themeId) => <SegmentButton key={themeId} testId={`settings-terminal-theme-${themeId}`} selected={settings.terminalThemeId === themeId} onClick={() => settings.setTerminalTheme(themeId)}>{strings.settings.terminalThemeNames[themeId]}</SegmentButton>)}</div></div>
+              <div className="flex items-center justify-between gap-6"><div className="min-w-0"><p className="font-pingfang text-[12px] font-medium text-text-secondary">{strings.settings.terminalTheme}</p><p className="mt-0.5 font-pingfang text-[11px] text-text-faint">{strings.settings.terminalThemeHint}</p></div><Dropdown testId="settings-terminal-theme" value={settings.terminalThemeId} options={terminalThemeOptions} onChange={(value) => settings.setTerminalTheme(value as typeof settings.terminalThemeId)} /></div>
               <div data-testid="terminal-theme-preview" className="mt-2.5 flex gap-[3px] overflow-hidden rounded-md">{colorKeys.map((key) => <span key={key} title={terminalTheme[key]} className="h-3.5 min-w-0 flex-1" style={{ background: terminalTheme[key] }} />)}</div>
             </div>
             <Row label={strings.settings.font} hint={strings.settings.fontHint}>
@@ -201,6 +225,10 @@ function Toggle({ checked, disabled, testId, onChange }: { checked: boolean; dis
 interface DropdownOption {
   value: string
   label: string
+  group?: {
+    id: string
+    label: string
+  }
 }
 
 /** 自绘下拉框：原生 <select> 的弹出层无法用主题 token 定制，这里统一替换。 */
@@ -233,6 +261,7 @@ function Dropdown({ testId, value, options, disabled, direction = 'down', onChan
       <button
         type="button"
         data-testid={testId}
+        data-value={value}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -253,23 +282,37 @@ function Dropdown({ testId, value, options, disabled, direction = 'down', onChan
             transition={{ duration: 0.14, ease: [0.32, 0.72, 0, 1] }}
             className={`shell-popover absolute right-0 z-30 min-w-full overflow-hidden rounded-lg border border-border-default bg-surface p-1 ${direction === 'down' ? 'top-full mt-1' : 'bottom-full mb-1'}`}
           >
-            {options.map((option) => (
-              <li key={option.value}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={option.value === value}
-                  onClick={() => {
-                    onChange(option.value)
-                    setOpen(false)
-                  }}
-                  className={`cursor-target flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left font-pingfang text-[12px] whitespace-nowrap transition-colors ${option.value === value ? 'bg-surface-strong text-text-primary' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}
-                >
-                  <span className="truncate">{option.label}</span>
-                  {option.value === value && <Check className="size-3.5 shrink-0" strokeWidth={1.75} />}
-                </button>
-              </li>
-            ))}
+            {options.map((option, index) => {
+              const startsGroup = option.group && option.group.id !== options[index - 1]?.group?.id
+              return (
+                <Fragment key={option.value}>
+                  {startsGroup && (
+                    <li
+                      data-testid={testId ? `${testId}-group-${option.group!.id}` : undefined}
+                      className={`${index === 0 ? 'pt-1' : 'mt-1 border-t border-border-faint pt-2'} px-2 pb-1 font-maple text-[9px] tracking-[0.18em] text-text-faint uppercase`}
+                    >
+                      {option.group!.label}
+                    </li>
+                  )}
+                  <li>
+                    <button
+                      type="button"
+                      role="option"
+                      data-testid={testId ? `${testId}-option-${option.value}` : undefined}
+                      aria-selected={option.value === value}
+                      onClick={() => {
+                        onChange(option.value)
+                        setOpen(false)
+                      }}
+                      className={`cursor-target flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left font-pingfang text-[12px] whitespace-nowrap transition-colors ${option.value === value ? 'bg-surface-strong text-text-primary' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}
+                    >
+                      <span className="truncate">{option.label}</span>
+                      {option.value === value && <Check className="size-3.5 shrink-0" strokeWidth={1.75} />}
+                    </button>
+                  </li>
+                </Fragment>
+              )
+            })}
           </motion.ul>
         )}
       </AnimatePresence>

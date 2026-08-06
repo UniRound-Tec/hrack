@@ -1,0 +1,20 @@
+{
+  "id": "nord",
+  "name": "Nord",
+  "type": "dark",
+  "colors": {
+    "bg.app": "#2e3440", "bg.content": "#3b4252", "bg.surface": "#434c5e", "bg.surface.hover": "#4c566a", "bg.surface.strong": "#4c566a",
+    "bg.control": "rgb(76 86 106 / 38%)", "bg.control.active": "#434c5e", "bg.overlay": "rgb(46 52 64 / 94%)", "bg.backdrop": "rgb(36 41 51 / 55%)", "bg.backdrop.strong": "rgb(36 41 51 / 70%)",
+    "text.primary": "#eceff4", "text.secondary": "#e5e9f0", "text.strong": "#d8dee9", "text.muted": "rgb(216 222 233 / 72%)", "text.faint": "rgb(216 222 233 / 48%)", "text.disabled": "rgb(76 86 106 / 78%)", "text.inverse": "#2e3440",
+    "border.default": "rgb(236 239 244 / 12%)", "border.subtle": "rgb(236 239 244 / 9%)", "border.faint": "rgb(236 239 244 / 6%)", "border.strong": "rgb(236 239 244 / 20%)", "border.control": "#4c566a",
+    "accent.flame": "#d08770", "accent.cursor": "#88c0d0", "accent.spark": "#eceff4", "accent.target": "#81a1c1",
+    "brand.logo": "#7b88a1", "brand.logoShine": "#eceff4", "brand.logoMuted": "#8fbcbb",
+    "status.working": "#88c0d0", "status.working.dot": "#81a1c1", "status.needsYou": "#ebcb8b", "status.needsYou.dot": "#d08770", "status.done": "#a3be8c", "status.done.dot": "#8fbcbb", "status.error": "#d08770", "status.error.dot": "#bf616a", "status.idle": "rgb(216 222 233 / 72%)", "status.idle.dot": "#4c566a", "status.exited": "rgb(216 222 233 / 48%)", "status.exited.dot": "#4c566a",
+    "titlebar.fg": "rgb(216 222 233 / 48%)", "titlebar.fg.hover": "#eceff4", "titlebar.bg.hover": "#4c566a", "titlebar.close.bg.hover": "#c42b1c", "titlebar.close.fg.hover": "#ffffff",
+    "scrollbar.thumb": "rgb(236 239 244 / 14%)", "scrollbar.thumb.hover": "rgb(236 239 244 / 24%)", "scrollbar.thumb.active": "rgb(236 239 244 / 34%)",
+    "sidebar.tint.a": "rgb(136 192 208 / 10%)", "sidebar.tint.b": "rgb(129 161 193 / 12%)", "shadow.window": "rgb(36 41 51 / 55%)", "shadow.popover": "rgb(36 41 51 / 70%)",
+    "button.primary.bg": "#88c0d0", "button.primary.bg.hover": "#8fbcbb", "button.primary.fg": "#2e3440", "button.secondary.bg": "#3b4252", "button.secondary.bg.hover": "#434c5e", "button.secondary.fg": "#e5e9f0",
+    "input.bg": "#2e3440", "input.bg.hover": "#3b4252", "input.border.focus": "#88c0d0", "focus.ring": "#81a1c1"
+  },
+  "terminal": null
+}
