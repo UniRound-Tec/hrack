@@ -224,6 +224,8 @@ export const ja = {
     unreadable: 'このファイルは表示できません',
     directoryError: 'ワークスペースを読み込めません',
     openError: 'ディレクトリを開けません',
+    markdownPreview: 'Markdown プレビュー',
+    markdownSource: 'Markdown ソースを表示',
     code: 'コード'
   },
   shell: {

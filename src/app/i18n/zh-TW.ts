@@ -224,6 +224,8 @@ export const zhTW = {
     unreadable: '無法顯示這個檔案',
     directoryError: '無法讀取工作區',
     openError: '無法展開目錄',
+    markdownPreview: 'Markdown 預覽',
+    markdownSource: '檢視 Markdown 原始碼',
     code: '程式碼'
   },
   shell: {

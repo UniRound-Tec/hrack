@@ -153,6 +153,7 @@ test.describe('read-only workspace reader', () => {
     await expect(
       page.getByTestId('workspace-reader-inner-separator')
     ).toBeVisible()
+    await expect(page.getByTestId('workspace-reader').locator('header')).toHaveCount(0)
 
     await page
       .getByTestId('workspace-tree-entry')
@@ -174,9 +175,14 @@ test.describe('read-only workspace reader', () => {
     await code.locator('.cm-content').click()
     await page.keyboard.type('MUTATION_SHOULD_NOT_APPEAR')
     await expect(code.locator('.cm-content')).toHaveText(before ?? '')
+
+    const codeBox = await code.boundingBox()
+    const treeBox = await page.getByTestId('workspace-reader-tree').boundingBox()
+    if (!codeBox || !treeBox) throw new Error('reader layout was not measurable')
+    expect(treeBox.x).toBeGreaterThan(codeBox.x)
   })
 
-  test('updates the current file only after manual refresh', async () => {
+  test('automatically follows changes to the current file', async () => {
     const root = mkdtempSync(resolve(tmpdir(), 'vibing-reader-refresh-'))
     temporaryRoots.push(root)
     cpSync(workspace, root, { recursive: true })
@@ -197,9 +203,31 @@ test.describe('read-only workspace reader', () => {
       resolve(root, 'src/example.ts'),
       "export const refreshed = 'latest-on-disk'\n"
     )
-    await expect(code).not.toContainText('latest-on-disk')
-    await page.getByTestId('workspace-reader-refresh').click()
-    await expect(code).toContainText('latest-on-disk')
+    await expect(code).toContainText('latest-on-disk', { timeout: 5_000 })
+  })
+
+  test('renders Markdown by default and can switch to its read-only source', async () => {
+    await launchWorkspaceAgent(page)
+    await showWorkspaceReader(page)
+    await page
+      .getByTestId('workspace-tree-entry')
+      .filter({ hasText: 'README.md' })
+      .click()
+
+    const preview = page.getByTestId('workspace-markdown-preview')
+    await expect(preview).toBeVisible()
+    await expect(preview.locator('h1')).toHaveText('Workspace reader fixture')
+    await expect(
+      page.getByTestId('workspace-markdown-preview-toggle')
+    ).toHaveAttribute('aria-pressed', 'true')
+
+    await page.getByTestId('workspace-markdown-source-toggle').click()
+    const source = page.getByTestId('workspace-code-view')
+    await expect(source).toContainText('# Workspace reader fixture')
+    await expect(source.locator('.cm-content')).toHaveAttribute(
+      'contenteditable',
+      'false'
+    )
   })
 
   test('supports keyboard resizing and collapsing without unmounting the terminal', async () => {
@@ -217,9 +245,7 @@ test.describe('read-only workspace reader', () => {
     expect(Number(await outer.getAttribute('aria-valuenow'))).toBeLessThan(
       outerBefore
     )
-    expect(Number(await inner.getAttribute('aria-valuenow'))).toBeGreaterThan(
-      innerBefore
-    )
+    expect(Number(await inner.getAttribute('aria-valuenow'))).toBeGreaterThan(innerBefore)
 
     const readerBeforeDrag = await page
       .getByTestId('workspace-reader')

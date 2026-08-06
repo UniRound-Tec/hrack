@@ -226,6 +226,8 @@ export const en = {
     unreadable: 'This file cannot be displayed',
     directoryError: 'Unable to read workspace',
     openError: 'Unable to open directory',
+    markdownPreview: 'Markdown preview',
+    markdownSource: 'View Markdown source',
     code: 'Code'
   },
   shell: {

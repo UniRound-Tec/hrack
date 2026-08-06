@@ -4,6 +4,10 @@ export const WorkspaceReaderInvokeChannel = {
   Read: 'workspace-reader:read'
 } as const
 
+export const WorkspaceReaderEventChannel = {
+  Changed: 'workspace-reader:changed'
+} as const
+
 export type WorkspaceEntryKind = 'directory' | 'file' | 'symlink'
 
 export interface WorkspaceDescription {
@@ -34,8 +38,15 @@ export interface WorkspacePathRequest {
   path: string
 }
 
+export interface WorkspaceChange {
+  terminalId: string
+  /** Relative path when the platform watcher provides one; null means rescan. */
+  path: string | null
+}
+
 export interface WorkspaceReaderApi {
   describe(terminalId: string): Promise<WorkspaceDescription | null>
   list(input: WorkspacePathRequest): Promise<WorkspaceEntry[]>
   read(input: WorkspacePathRequest): Promise<WorkspaceTextFile>
+  onChanged(callback: (change: WorkspaceChange) => void): () => void
 }

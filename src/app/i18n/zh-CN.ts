@@ -227,6 +227,8 @@ export const zhCN = {
     unreadable: '无法显示这个文件',
     directoryError: '无法读取工作区',
     openError: '无法展开目录',
+    markdownPreview: 'Markdown 预览',
+    markdownSource: '查看 Markdown 源码',
     code: '代码'
   },
   shell: {

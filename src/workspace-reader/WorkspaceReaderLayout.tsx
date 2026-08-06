@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowLeft, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { ArrowLeft, Code2, Eye } from 'lucide-react'
 import type {
   WorkspaceDescription,
   WorkspaceTextFile
 } from '../../shared/workspace-reader'
 import { useSettingsStore } from '../state/settingsStore'
 import ReadOnlyCodeView from './ReadOnlyCodeView'
+import MarkdownPreview from './MarkdownPreview'
 import SplitHandle from './SplitHandle'
 import WorkspaceTree from './WorkspaceTree'
 import { useWorkspaceReaderStore } from './workspaceReaderStore'
@@ -39,6 +40,7 @@ export default function WorkspaceReaderLayout({
   const [file, setFile] = useState<WorkspaceTextFile | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [markdownPreview, setMarkdownPreview] = useState(true)
   const ensure = useWorkspaceReaderStore((state) => state.ensure)
   const session = useWorkspaceReaderStore((state) => state.sessions[terminalId])
   const setOpen = useWorkspaceReaderStore((state) => state.setOpen)
@@ -48,6 +50,42 @@ export default function WorkspaceReaderLayout({
   const treeWidth = useSettingsStore((state) => state.workspaceTreeWidth)
   const setReaderRatio = useSettingsStore((state) => state.setReaderWidthRatio)
   const setTreeWidth = useSettingsStore((state) => state.setWorkspaceTreeWidth)
+
+  const loadFile = useCallback(
+    async (path: string, resetView = false): Promise<void> => {
+      setFileError(null)
+      try {
+        const next = await window.workspaceReader.read({ terminalId, path })
+        setFile(next)
+        if (resetView) setMarkdownPreview(true)
+      } catch (error) {
+        setFile(null)
+        setFileError(String(error))
+      }
+    },
+    [terminalId]
+  )
+
+  const reconcileFile = useCallback(
+    async (path: string): Promise<void> => {
+      try {
+        const next = await window.workspaceReader.read({ terminalId, path })
+        setFile((current) =>
+          current &&
+          current.path === next.path &&
+          current.byteLength === next.byteLength &&
+          current.text === next.text
+            ? current
+            : next
+        )
+        setFileError(null)
+      } catch {
+        // Native watch handles durable removal errors. Polling is only a
+        // compatibility fallback for mounts whose watcher cannot recurse.
+      }
+    },
+    [terminalId]
+  )
 
   useEffect(() => ensure(terminalId), [ensure, terminalId])
 
@@ -82,6 +120,49 @@ export default function WorkspaceReaderLayout({
   }, [active, terminalId])
 
   const open = session?.open ?? false
+
+  useEffect(() => {
+    if (!active || !open || !description) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const unsubscribe = window.workspaceReader.onChanged((change) => {
+      if (change.terminalId !== terminalId) return
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        clearCache(terminalId)
+        setRefreshKey((value) => value + 1)
+        const selectedPath = session?.selectedPath
+        if (
+          selectedPath &&
+          (change.path === null || change.path === selectedPath)
+        ) {
+          void loadFile(selectedPath)
+        }
+      }, 140)
+    })
+    return () => {
+      if (timer) clearTimeout(timer)
+      unsubscribe()
+    }
+  }, [
+    active,
+    clearCache,
+    description,
+    loadFile,
+    open,
+    session?.selectedPath,
+    terminalId
+  ])
+
+  useEffect(() => {
+    const selectedPath = session?.selectedPath
+    if (!active || !open || !description || !selectedPath) return
+    const timer = setInterval(
+      () => void reconcileFile(selectedPath),
+      2_000
+    )
+    return () => clearInterval(timer)
+  }, [active, description, open, reconcileFile, session?.selectedPath])
+
   const narrow = containerWidth > 0 && containerWidth < NARROW_BREAKPOINT
   const maxReaderWidth = Math.max(
     READER_MIN,
@@ -99,20 +180,10 @@ export default function WorkspaceReaderLayout({
 
   const selectFile = async (path: string): Promise<void> => {
     select(terminalId, path)
-    setFileError(null)
-    try {
-      setFile(await window.workspaceReader.read({ terminalId, path }))
-    } catch (error) {
-      setFile(null)
-      setFileError(String(error))
-    }
+    await loadFile(path, true)
   }
 
-  const refresh = (): void => {
-    clearCache(terminalId)
-    setRefreshKey((value) => value + 1)
-    if (session?.selectedPath) void selectFile(session.selectedPath)
-  }
+  const isMarkdown = Boolean(file && /\.(?:md|markdown|mdown|mkd)$/i.test(file.path))
 
   const reader = description && (
     <section
@@ -120,32 +191,74 @@ export default function WorkspaceReaderLayout({
       className="workspace-reader-scrollbars flex h-full min-w-0 flex-col overflow-hidden bg-surface"
       style={narrow ? { width: '100%' } : { width: readerWidth }}
     >
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border-subtle px-2.5">
-        {narrow && (
-          <button
-            data-testid="workspace-reader-back"
-            type="button"
-            title={strings.workspaceReader.back}
-            onClick={() => setOpen(terminalId, false)}
-            className="flex size-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-text-primary"
-          >
-            <ArrowLeft className="size-3.5" />
-          </button>
-        )}
-        <span className="min-w-0 flex-1 truncate font-pingfang text-[11px] font-semibold text-text-secondary">
-          {description.name}
-        </span>
-        <button
-          data-testid="workspace-reader-refresh"
-          type="button"
-          title={strings.workspaceReader.refresh}
-          onClick={refresh}
-          className="flex size-7 items-center justify-center rounded-md text-text-faint hover:bg-surface-hover hover:text-text-primary"
-        >
-          <RefreshCw className="size-3.5" strokeWidth={1.7} />
-        </button>
-      </header>
       <div className="flex min-h-0 flex-1">
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border-subtle px-2 font-maple text-[10px] text-text-faint">
+            {narrow && (
+              <button
+                data-testid="workspace-reader-back"
+                type="button"
+                title={strings.workspaceReader.back}
+                onClick={() => setOpen(terminalId, false)}
+                className="flex size-6 shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-hover hover:text-text-primary"
+              >
+                <ArrowLeft className="size-3.5" />
+              </button>
+            )}
+            <span className="min-w-0 flex-1 truncate px-1">
+              {file ? file.path : strings.workspaceReader.selectFileShort}
+            </span>
+            {isMarkdown && (
+              <div className="flex shrink-0 items-center rounded-md bg-surface-hover p-0.5">
+                <button
+                  data-testid="workspace-markdown-preview-toggle"
+                  type="button"
+                  title={strings.workspaceReader.markdownPreview}
+                  aria-pressed={markdownPreview}
+                  onClick={() => setMarkdownPreview(true)}
+                  className={`flex size-6 items-center justify-center rounded ${markdownPreview ? 'bg-surface text-text-primary shadow-sm' : 'text-text-faint hover:text-text-primary'}`}
+                >
+                  <Eye className="size-3.5" strokeWidth={1.7} />
+                </button>
+                <button
+                  data-testid="workspace-markdown-source-toggle"
+                  type="button"
+                  title={strings.workspaceReader.markdownSource}
+                  aria-pressed={!markdownPreview}
+                  onClick={() => setMarkdownPreview(false)}
+                  className={`flex size-6 items-center justify-center rounded ${!markdownPreview ? 'bg-surface text-text-primary shadow-sm' : 'text-text-faint hover:text-text-primary'}`}
+                >
+                  <Code2 className="size-3.5" strokeWidth={1.7} />
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            {file ? (
+              isMarkdown && markdownPreview ? (
+                <MarkdownPreview text={file.text} />
+              ) : (
+                <ReadOnlyCodeView path={file.path} text={file.text} />
+              )
+            ) : (
+              <div className="flex h-full items-center justify-center px-6 text-center font-pingfang text-[11px] text-text-faint">
+                {fileError
+                  ? strings.workspaceReader.unreadable
+                  : strings.workspaceReader.selectFile}
+              </div>
+            )}
+          </div>
+        </main>
+        <SplitHandle
+          testId="workspace-reader-inner-separator"
+          label={strings.workspaceReader.resizeTree}
+          value={actualTreeWidth}
+          min={TREE_MIN}
+          max={maxTreeWidth}
+          defaultValue={220}
+          dragDirection={-1}
+          onChange={setTreeWidth}
+        />
         <aside
           data-testid="workspace-reader-tree"
           className="h-full shrink-0 overflow-hidden"
@@ -157,33 +270,6 @@ export default function WorkspaceReaderLayout({
             onSelect={(path) => void selectFile(path)}
           />
         </aside>
-        <SplitHandle
-          testId="workspace-reader-inner-separator"
-          label={strings.workspaceReader.resizeTree}
-          value={actualTreeWidth}
-          min={TREE_MIN}
-          max={maxTreeWidth}
-          defaultValue={220}
-          onChange={setTreeWidth}
-        />
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex h-8 shrink-0 items-center border-b border-border-subtle px-3 font-maple text-[10px] text-text-faint">
-            <span className="truncate">
-              {file ? file.path : strings.workspaceReader.selectFileShort}
-            </span>
-          </div>
-          <div className="min-h-0 flex-1 overflow-hidden">
-            {file ? (
-              <ReadOnlyCodeView path={file.path} text={file.text} />
-            ) : (
-              <div className="flex h-full items-center justify-center px-6 text-center font-pingfang text-[11px] text-text-faint">
-                {fileError
-                  ? strings.workspaceReader.unreadable
-                  : strings.workspaceReader.selectFile}
-              </div>
-            )}
-          </div>
-        </main>
       </div>
     </section>
   )

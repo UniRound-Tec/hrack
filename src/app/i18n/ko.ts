@@ -224,6 +224,8 @@ export const ko = {
     unreadable: '이 파일을 표시할 수 없습니다',
     directoryError: '작업 공간을 읽을 수 없습니다',
     openError: '디렉터리를 열 수 없습니다',
+    markdownPreview: 'Markdown 미리보기',
+    markdownSource: 'Markdown 소스 보기',
     code: '코드'
   },
   shell: {

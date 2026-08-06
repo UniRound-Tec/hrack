@@ -1,3 +1,4 @@
+import { watch, type FSWatcher } from 'node:fs'
 import { open, opendir, realpath, stat } from 'node:fs/promises'
 import { basename, extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { execFile } from 'node:child_process'
@@ -5,6 +6,7 @@ import { promisify } from 'node:util'
 import type { CliRuntime } from '../../shared/ipc-contract'
 import type {
   WorkspaceDescription,
+  WorkspaceChange,
   WorkspaceEntry,
   WorkspacePathRequest,
   WorkspaceTextFile
@@ -166,23 +168,84 @@ function eolOf(text: string): WorkspaceTextFile['eol'] {
 
 export class WorkspaceReader {
   private readonly mounts = new Map<string, WorkspaceMount>()
+  private readonly watchers = new Map<
+    string,
+    { watcher: FSWatcher; timer: ReturnType<typeof setTimeout> | null; path: string | null }
+  >()
+  private readonly changeListeners = new Set<(change: WorkspaceChange) => void>()
+
+  onChanged(listener: (change: WorkspaceChange) => void): () => void {
+    this.changeListeners.add(listener)
+    return () => this.changeListeners.delete(listener)
+  }
+
+  private emitChanged(terminalId: string, path: string | null): void {
+    for (const listener of this.changeListeners) listener({ terminalId, path })
+  }
+
+  private stopWatcher(terminalId: string): void {
+    const active = this.watchers.get(terminalId)
+    if (!active) return
+    if (active.timer) clearTimeout(active.timer)
+    active.watcher.close()
+    this.watchers.delete(terminalId)
+  }
+
+  private startWatcher(terminalId: string, root: string): void {
+    this.stopWatcher(terminalId)
+    try {
+      let active: {
+        watcher: FSWatcher
+        timer: ReturnType<typeof setTimeout> | null
+        path: string | null
+      } | null = null
+      const watcher = watch(root, { recursive: true }, (_event, filename) => {
+        const current = active
+        if (!current) return
+        const raw = filename?.toString()
+        const path = raw
+          ? raw.replaceAll('\\', '/').replace(/^\.\//, '')
+          : null
+        current.path = current.timer && current.path !== path ? null : path
+        if (current.timer) clearTimeout(current.timer)
+        current.timer = setTimeout(() => {
+          current.timer = null
+          this.emitChanged(terminalId, current.path)
+          current.path = null
+        }, 120)
+      })
+      active = { watcher, timer: null, path: null }
+      watcher.on('error', () => {
+        this.emitChanged(terminalId, null)
+        this.stopWatcher(terminalId)
+      })
+      this.watchers.set(terminalId, active)
+    } catch {
+      // Reading remains available when the host filesystem cannot be watched.
+      this.emitChanged(terminalId, null)
+    }
+  }
 
   async mount(terminalId: string, runtime: CliRuntime, workspace: string): Promise<void> {
     if (!validTerminalId(terminalId) || typeof workspace !== 'string' || !workspace.trim()) {
       throw new WorkspaceReaderError('invalid-request')
     }
     try {
-      this.mounts.set(terminalId, await checkedRoot(workspace.trim(), runtime))
+      const mount = await checkedRoot(workspace.trim(), runtime)
+      this.mounts.set(terminalId, mount)
+      this.startWatcher(terminalId, mount.root)
     } catch (error) {
       throw normalizedError(error)
     }
   }
 
   unmount(terminalId: string): void {
+    this.stopWatcher(terminalId)
     this.mounts.delete(terminalId)
   }
 
   clear(): void {
+    for (const terminalId of this.watchers.keys()) this.stopWatcher(terminalId)
     this.mounts.clear()
   }
 

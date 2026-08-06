@@ -37,6 +37,7 @@ import { CodexObserverAdapter } from './agents/adapters/codex'
 import { PiObserverAdapter } from './agents/adapters/pi'
 import { HookIngress } from './hooks/HookIngress'
 import { WorkspaceReader } from './workspace/WorkspaceReader'
+import { WorkspaceReaderEventChannel } from '../shared/workspace-reader'
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
 // 必须在 app ready 之前调用。
@@ -54,6 +55,13 @@ const eventLog = new EventLog()
 const observerRegistry = new ObserverRegistry()
 const hookIngress = new HookIngress()
 const workspaceReader = new WorkspaceReader()
+workspaceReader.onChanged((change) => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.send(WorkspaceReaderEventChannel.Changed, change)
+    }
+  }
+})
 manager.onTerminalRemoved((terminalId) => workspaceReader.unmount(terminalId))
 observerRegistry.register(new ClaudeObserverAdapter(hookIngress))
 observerRegistry.register(new OpenCodeObserverAdapter())

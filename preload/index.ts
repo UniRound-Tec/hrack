@@ -53,7 +53,9 @@ import {
   type StartAgentSession
 } from '../shared/agent-events'
 import {
+  WorkspaceReaderEventChannel,
   WorkspaceReaderInvokeChannel,
+  type WorkspaceChange,
   type WorkspaceReaderApi
 } from '../shared/workspace-reader'
 
@@ -267,7 +269,22 @@ const workspaceReader: WorkspaceReaderApi = {
   describe: (terminalId) =>
     ipcRenderer.invoke(WorkspaceReaderInvokeChannel.Describe, terminalId),
   list: (input) => ipcRenderer.invoke(WorkspaceReaderInvokeChannel.List, input),
-  read: (input) => ipcRenderer.invoke(WorkspaceReaderInvokeChannel.Read, input)
+  read: (input) => ipcRenderer.invoke(WorkspaceReaderInvokeChannel.Read, input),
+  onChanged: (callback) => {
+    const handler = (_event: IpcRendererEvent, change: WorkspaceChange): void => {
+      if (
+        change &&
+        typeof change === 'object' &&
+        typeof change.terminalId === 'string' &&
+        (typeof change.path === 'string' || change.path === null)
+      ) {
+        callback(change)
+      }
+    }
+    ipcRenderer.on(WorkspaceReaderEventChannel.Changed, handler)
+    return () =>
+      ipcRenderer.removeListener(WorkspaceReaderEventChannel.Changed, handler)
+  }
 }
 
 const appApi: AppApi = {
