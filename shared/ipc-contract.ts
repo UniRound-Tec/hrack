@@ -14,6 +14,10 @@ export interface PtyTerminalIdentity {
   name: string
   shellId: string
   cwd: string
+  /** Ordinary terminal grouped beneath an AI session in the sidebar. */
+  parentSessionId?: string
+  /** In-memory launch recipe used to clone an AI session after renderer reload. */
+  agentSelection?: CliLaunchSelection
 }
 
 export interface SpawnOptions {
@@ -265,7 +269,8 @@ export const ShellInvokeChannel = {
 
 export const CliInvokeChannel = {
   Scan: 'cli:scan',
-  PrepareLaunch: 'cli:prepare-launch'
+  PrepareLaunch: 'cli:prepare-launch',
+  ResolveWorkspace: 'cli:resolve-workspace'
 } as const
 
 /** M5.c: real persistence behind stats/history; renderer reports lifecycle events. */
@@ -400,6 +405,8 @@ export interface ShellApi {
 
 export interface CliApi {
   scan: (force?: boolean) => Promise<CliScanReport>
+  /** Returns a validated explicit workspace, or the selected runtime's Home. */
+  resolveWorkspace: (installationId: string, workspace: string) => Promise<string>
   prepareLaunch: (selection: CliLaunchSelection) => Promise<SpawnOptions>
 }
 

@@ -36,6 +36,9 @@ export const zhCN = {
     closeTerminal: '关闭终端',
     closeSession: '关闭会话',
     sessionActions: '会话操作',
+    createChildTerminal: '新建子终端',
+    cloneSession: '克隆会话',
+    childTerminals: '展开或收起子终端',
     renameSession: '重命名',
     sessionNameRequired: '会话名称不能为空'
   },

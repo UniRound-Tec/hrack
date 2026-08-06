@@ -33,6 +33,9 @@ export const en = {
     closeTerminal: 'Close terminal',
     closeSession: 'Close session',
     sessionActions: 'Session actions',
+    createChildTerminal: 'New child terminal',
+    cloneSession: 'Clone session',
+    childTerminals: 'Expand or collapse child terminals',
     renameSession: 'Rename',
     sessionNameRequired: 'Session name is required'
   },

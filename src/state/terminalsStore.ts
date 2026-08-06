@@ -1,6 +1,9 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import type { TerminalLaunchOptions } from './terminalLaunchRegistry'
-import type { RecoverablePty } from '../../shared/ipc-contract'
+import type {
+  CliLaunchSelection,
+  RecoverablePty
+} from '../../shared/ipc-contract'
 import {
   removeTerminalLaunch,
   setTerminalLaunch
@@ -12,12 +15,15 @@ export interface TerminalEntry {
   cwd: string
   shellId: string
   exited: boolean
+  parentSessionId?: string
+  agentSelection?: CliLaunchSelection
 }
 
 export interface AddTerminalOptions {
   shellId?: string
   cwd?: string
   launch?: TerminalLaunchOptions
+  parentSessionId?: string
 }
 
 export interface TerminalsState {
@@ -51,7 +57,18 @@ export function createTerminalsStore(
       name: fallbackName,
       cwd: options.cwd?.trim() ?? '',
       shellId: options.shellId?.trim() || 'system',
-      exited: false
+      exited: false,
+      ...(options.launch?.kind === 'agent'
+        ? {
+            agentSelection: {
+              ...options.launch.selection,
+              args: [...options.launch.selection.args]
+            }
+          }
+        : {}),
+      ...(options.parentSessionId
+        ? { parentSessionId: options.parentSessionId }
+        : {})
     }
     fallbackNames.set(terminal.id, fallbackName)
     setTerminalLaunch(terminal.id, options.launch)
@@ -95,7 +112,18 @@ export function createTerminalsStore(
             name: fallbackName,
             cwd: item.cwd.trim(),
             shellId: item.shellId.trim() || 'system',
-            exited: item.exited
+            exited: item.exited,
+            ...(item.agentSelection
+              ? {
+                  agentSelection: {
+                    ...item.agentSelection,
+                    args: [...item.agentSelection.args]
+                  }
+                }
+              : {}),
+            ...(item.parentSessionId
+              ? { parentSessionId: item.parentSessionId }
+              : {})
           })
         }
         if (restored.length === 0) return state

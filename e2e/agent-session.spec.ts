@@ -585,6 +585,9 @@ function createRuntimeHarness(options: {
     async resolveInstallation(installationId: string) {
       return installationId === installation.id ? installation : null
     },
+    async resolveWorkspace(_installationId: string, workspace: string) {
+      return workspace.trim() || 'C:\\Users\\fixture'
+    },
     definitionAdapterId() {
       return options.adapterId ?? 'scripted'
     },

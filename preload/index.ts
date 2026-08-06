@@ -215,6 +215,11 @@ const shellApi: ShellApi = {
 
 const cliApi: CliApi = {
   scan: (force = false) => ipcRenderer.invoke(CliInvokeChannel.Scan, force),
+  resolveWorkspace: (installationId: string, workspace: string) =>
+    ipcRenderer.invoke(CliInvokeChannel.ResolveWorkspace, {
+      installationId,
+      workspace
+    }),
   prepareLaunch: (selection: CliLaunchSelection) =>
     ipcRenderer.invoke(CliInvokeChannel.PrepareLaunch, selection)
 }

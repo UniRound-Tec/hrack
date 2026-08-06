@@ -1,10 +1,14 @@
 import {
   Check,
+  ChevronRight,
+  Copy,
   Ellipsis,
   Home,
   PanelLeftClose,
   Pencil,
+  SquareTerminal,
   SquarePen,
+  Terminal as TerminalIcon,
   X
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -21,10 +25,13 @@ interface SidebarProps {
   pageId: PageId
   sessions: readonly SessionEntry[]
   terminals: readonly TerminalEntry[]
+  childTerminals: readonly TerminalEntry[]
   onNavigate: (pageId: PageId) => void
   onOpenNewSession: () => void
   onCollapse: () => void
   onRenameSession: (sessionId: string, name: string) => void
+  onCloneSession: (session: SessionEntry) => void
+  onCreateChildTerminal: (session: SessionEntry) => void
   onCloseSession: (session: SessionEntry) => void
   onCloseTerminal: (terminalId: string) => void
 }
@@ -51,10 +58,13 @@ export default function Sidebar({
   pageId,
   sessions,
   terminals,
+  childTerminals,
   onNavigate,
   onOpenNewSession,
   onCollapse,
   onRenameSession,
+  onCloneSession,
+  onCreateChildTerminal,
   onCloseSession,
   onCloseTerminal
 }: SidebarProps) {
@@ -68,9 +78,22 @@ export default function Sidebar({
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [renameError, setRenameError] = useState(false)
+  const [expandedSessionIds, setExpandedSessionIds] = useState<string[]>([])
   const menuSession = sessions.find(
     (session) => session.sessionId === sessionMenu?.sessionId
   )
+
+  const openSessionMenu = (
+    sessionId: string,
+    top: number,
+    left: number
+  ): void => {
+    setSessionMenu({
+      sessionId,
+      top: Math.max(8, Math.min(top, window.innerHeight - 220)),
+      left: Math.max(8, Math.min(left, window.innerWidth - 184))
+    })
+  }
 
   useEffect(() => {
     if (!sessionMenu) return
@@ -176,21 +199,57 @@ export default function Sidebar({
           <ul className="sidebar-scroll flex max-h-60 flex-col gap-1.5 overflow-y-auto pr-1">
           {sessions.map((session) => {
             const Icon = getAdapterIcon(session.adapterId)
-            const active = activeTerminalId === session.terminalId
+            const children = childTerminals.filter(
+              (terminal) => terminal.parentSessionId === session.sessionId
+            )
+            const active =
+              activeTerminalId === session.terminalId ||
+              children.some((terminal) => terminal.id === activeTerminalId)
             const menuOpen = sessionMenu?.sessionId === session.sessionId
             const renaming = renamingSessionId === session.sessionId
+            const expanded = expandedSessionIds.includes(session.sessionId)
             return (
               <li
                 key={session.sessionId}
                 className="group relative rounded-lg border border-transparent bg-transparent transition-colors hover:border-border-subtle hover:bg-content focus-within:border-border-subtle focus-within:bg-content"
               >
+                {children.length > 0 && !renaming && (
+                  <button
+                    type="button"
+                    data-testid="sidebar-session-child-toggle"
+                    aria-label={strings.navigation.childTerminals}
+                    aria-expanded={expanded}
+                    onClick={() =>
+                      setExpandedSessionIds((current) =>
+                        current.includes(session.sessionId)
+                          ? current.filter((id) => id !== session.sessionId)
+                          : [...current, session.sessionId]
+                      )
+                    }
+                    className="cursor-target absolute top-1 left-0.5 z-10 flex size-6 items-center justify-center rounded-md text-text-faint hover:bg-control hover:text-text-secondary"
+                  >
+                    <ChevronRight
+                      className={`size-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
+                      strokeWidth={1.75}
+                    />
+                  </button>
+                )}
                 <button
                   type="button"
                   data-testid="sidebar-session-item"
                   data-session-id={session.sessionId}
                   aria-current={active ? 'page' : undefined}
                   onClick={() => onNavigate(terminalPage(session.terminalId))}
-                  className="cursor-target min-h-12 w-full px-2.5 py-1.5 text-left font-pingfang"
+                  onContextMenu={(event) => {
+                    if (renaming) return
+                    event.preventDefault()
+                    openSessionMenu(
+                      session.sessionId,
+                      event.clientY,
+                      event.clientX
+                    )
+                  }}
+                  className="cursor-target min-h-12 w-full py-1.5 pr-2.5 pl-7 text-left font-pingfang"
                 >
                   <div className="flex items-center gap-1.5">
                     <span className="inline-flex size-3.5 shrink-0 items-center justify-center">
@@ -221,13 +280,15 @@ export default function Sidebar({
                     aria-expanded={menuOpen}
                     onClick={(event) => {
                       const rect = event.currentTarget.getBoundingClientRect()
-                      setSessionMenu((current) => current?.sessionId === session.sessionId
-                        ? null
-                        : {
-                            sessionId: session.sessionId,
-                            top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 220)),
-                            left: Math.max(8, rect.right - 144)
-                          })
+                      if (sessionMenu?.sessionId === session.sessionId) {
+                        setSessionMenu(null)
+                      } else {
+                        openSessionMenu(
+                          session.sessionId,
+                          rect.bottom + 4,
+                          rect.right - 176
+                        )
+                      }
                     }}
                     className={`cursor-target absolute top-1 right-7 flex size-6 items-center justify-center rounded-md text-text-faint transition-all hover:bg-control hover:text-text-secondary focus:opacity-100 ${menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                   >
@@ -294,6 +355,52 @@ export default function Sidebar({
                       </p>
                     )}
                   </form>
+                )}
+                {children.length > 0 && expanded && !renaming && (
+                  <ul
+                    data-testid="sidebar-child-terminal-list"
+                    className="relative mb-1 ml-4 border-l border-border-subtle pl-2 pr-1"
+                  >
+                    {children.map((terminal) => (
+                      <li
+                        key={terminal.id}
+                        className="group/child relative flex min-w-0 items-center rounded-md hover:bg-surface-hover"
+                      >
+                        <button
+                          type="button"
+                          data-testid="sidebar-child-terminal-item"
+                          data-terminal-id={terminal.id}
+                          data-exited={terminal.exited}
+                          aria-current={activeTerminalId === terminal.id ? 'page' : undefined}
+                          onClick={() => onNavigate(terminalPage(terminal.id))}
+                          className="cursor-target flex h-7 min-w-0 flex-1 items-center gap-1.5 px-1.5 text-left font-pingfang"
+                        >
+                          <TerminalIcon
+                            className="size-3 shrink-0 text-text-faint"
+                            strokeWidth={1.75}
+                          />
+                          <span className="min-w-0 flex-1 truncate text-[11px] text-text-secondary">
+                            {terminal.name}
+                          </span>
+                          <span className="max-w-[38%] truncate text-[9px] text-text-faint transition-opacity group-hover/child:opacity-0">
+                            {terminal.exited
+                              ? strings.sessionStatus.exited
+                              : terminal.cwd}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="sidebar-child-terminal-close"
+                          aria-label={`${strings.navigation.closeTerminal}: ${terminal.name}`}
+                          title={`${strings.navigation.closeTerminal}: ${terminal.name}`}
+                          onClick={() => onCloseTerminal(terminal.id)}
+                          className="cursor-target absolute right-0.5 flex size-5 items-center justify-center rounded text-text-faint opacity-0 transition-opacity group-hover/child:opacity-100 hover:bg-control hover:text-text-secondary focus:opacity-100"
+                        >
+                          <X className="size-2.5" strokeWidth={1.75} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </li>
             )
@@ -371,8 +478,39 @@ export default function Sidebar({
           data-session-actions-popover
           data-testid="sidebar-session-actions-popover"
           style={{ top: sessionMenu.top, left: sessionMenu.left }}
-          className="shell-popover fixed z-[100] max-h-52 w-36 overflow-y-auto rounded-lg border border-border-default bg-surface p-1"
+          className="shell-popover fixed z-[100] max-h-52 w-44 overflow-y-auto rounded-lg border border-border-default bg-surface p-1"
         >
+          <button
+            type="button"
+            role="menuitem"
+            data-testid="sidebar-session-child-terminal"
+            onClick={() => {
+              setSessionMenu(null)
+              setExpandedSessionIds((current) =>
+                current.includes(menuSession.sessionId)
+                  ? current
+                  : [...current, menuSession.sessionId]
+              )
+              onCreateChildTerminal(menuSession)
+            }}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-pingfang text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+          >
+            <SquareTerminal className="size-3" strokeWidth={1.75} />
+            {strings.navigation.createChildTerminal}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            data-testid="sidebar-session-clone"
+            onClick={() => {
+              setSessionMenu(null)
+              onCloneSession(menuSession)
+            }}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-pingfang text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+          >
+            <Copy className="size-3" strokeWidth={1.75} />
+            {strings.navigation.cloneSession}
+          </button>
           <button
             type="button"
             role="menuitem"

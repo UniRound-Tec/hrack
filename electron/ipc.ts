@@ -316,6 +316,25 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(CliInvokeChannel.Scan, (_event, force: unknown) =>
     ctx.cliDiscovery.scan(force === true)
   )
+  ipcMain.handle(
+    CliInvokeChannel.ResolveWorkspace,
+    (_event, payload: unknown) => {
+      if (!payload || typeof payload !== 'object') {
+        return Promise.reject(new Error('Invalid workspace request'))
+      }
+      const { installationId, workspace } = payload as Record<string, unknown>
+      if (
+        typeof installationId !== 'string' ||
+        !installationId ||
+        installationId.length > 4_096 ||
+        typeof workspace !== 'string' ||
+        workspace.length > 32_768
+      ) {
+        return Promise.reject(new Error('Invalid workspace request'))
+      }
+      return ctx.cliDiscovery.resolveWorkspace(installationId, workspace)
+    }
+  )
   ipcMain.handle(CliInvokeChannel.PrepareLaunch, (_event, selection: unknown) =>
     ctx.cliDiscovery.prepareLaunch(selection as CliLaunchSelection)
   )

@@ -1048,6 +1048,32 @@ async function wslWorkspace(distro: string, workspace: string): Promise<string> 
   return path
 }
 
+async function runtimeWorkspace(
+  runtime: CliRuntime,
+  requestedWorkspace: string
+): Promise<string> {
+  const requested = requestedWorkspace.trim()
+  if (runtime.kind === 'wsl') {
+    if (requested) return wslWorkspace(runtime.distro, requested)
+    const result = await runWsl(runtime.distro, 'sh', [
+      '-lc', 'printf "%s" "$HOME"'
+    ])
+    const home = result.stdout.trim()
+    if (result.code !== 0 || !home.startsWith('/') || home.includes('\0')) {
+      throw new Error(`Cannot resolve Home in ${runtime.distro}`)
+    }
+    const valid = await runWsl(runtime.distro, 'test', ['-d', home])
+    if (valid.code !== 0) {
+      throw new Error(`Home is unavailable in ${runtime.distro}: ${home}`)
+    }
+    return home
+  }
+
+  const workspace = requested || homedir()
+  await assertDirectory(workspace)
+  return workspace
+}
+
 export class AiCliDiscoveryService {
   private cached: CliScanReport | null = null
   private activeScan: Promise<CliScanReport> | null = null
@@ -1157,6 +1183,24 @@ export class AiCliDiscoveryService {
     )
   }
 
+  /** 空工作区以所选安装的实际运行环境 Home 为准。 */
+  async resolveWorkspace(
+    installationId: string,
+    workspace: string
+  ): Promise<string> {
+    if (!installationId || installationId.length > 4_096) {
+      throw new Error('Missing CLI installation')
+    }
+    if (typeof workspace !== 'string' || workspace.length > 32_768) {
+      throw new Error('Invalid workspace')
+    }
+    const installation = await this.resolveInstallation(installationId)
+    if (!installation) {
+      throw new Error('CLI installation is no longer available; refresh the scan')
+    }
+    return runtimeWorkspace(installation.runtime, workspace)
+  }
+
   /** 安装所属 CLI Definition 的 Observer Adapter id；未知定义返回 null。 */
   definitionAdapterId(installation: CliInstallation): string | null {
     return (
@@ -1192,10 +1236,9 @@ export class AiCliDiscoveryService {
       ...(augmentation.appendArgs ?? [])
     ]
 
+    const cwd = await runtimeWorkspace(installation.runtime, selection.workspace)
+
     if (installation.runtime.kind === 'wsl') {
-      const cwd = selection.workspace.trim()
-        ? await wslWorkspace(installation.runtime.distro, selection.workspace.trim())
-        : undefined
       const environmentPath = this.wslEnvironmentPaths.get(
         installation.runtime.distro
       )
@@ -1214,7 +1257,7 @@ export class AiCliDiscoveryService {
         shell: 'wsl.exe',
         args: [
           '--distribution', installation.runtime.distro,
-          ...(cwd ? ['--cd', cwd] : []),
+          '--cd', cwd,
           '--exec',
           ...(needsEnvironmentWrapper
             ? [
@@ -1230,8 +1273,6 @@ export class AiCliDiscoveryService {
       }
     }
 
-    const cwd = selection.workspace.trim() || undefined
-    if (cwd) await assertDirectory(cwd)
     if (process.platform === 'win32' && isWindowsShim(installation.resolvedExecutable)) {
       return {
         shell: process.env.ComSpec ?? 'cmd.exe',

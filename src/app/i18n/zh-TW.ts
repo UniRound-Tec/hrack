@@ -33,6 +33,9 @@ export const zhTW = {
     closeTerminal: '關閉終端機',
     closeSession: '關閉工作階段',
     sessionActions: '工作階段操作',
+    createChildTerminal: '新增子終端',
+    cloneSession: '複製工作階段',
+    childTerminals: '展開或收合子終端',
     renameSession: '重新命名',
     sessionNameRequired: '工作階段名稱不能為空'
   },

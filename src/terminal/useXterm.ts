@@ -607,7 +607,8 @@ export function useXterm(
               kind: 'terminal' as const,
               name: terminal?.name ?? 'Terminal',
               shellId: terminal?.shellId ?? 'system',
-              cwd: terminal?.cwd ?? ''
+              cwd: terminal?.cwd ?? '',
+              parentSessionId: terminal?.parentSessionId
             }
           })(),
           cols: term.cols,

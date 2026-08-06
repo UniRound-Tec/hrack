@@ -33,6 +33,9 @@ export const ja = {
     closeTerminal: 'ターミナルを閉じる',
     closeSession: 'セッションを閉じる',
     sessionActions: 'セッション操作',
+    createChildTerminal: '子ターミナルを作成',
+    cloneSession: 'セッションを複製',
+    childTerminals: '子ターミナルを展開または折りたたむ',
     renameSession: '名前を変更',
     sessionNameRequired: 'セッション名を入力してください'
   },

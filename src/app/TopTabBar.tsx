@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { Home, Plus, Terminal as TerminalIcon, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import {
+  Check,
+  Copy,
+  Home,
+  Pencil,
+  Plus,
+  SquareTerminal,
+  Terminal as TerminalIcon,
+  X
+} from 'lucide-react'
 import { getAdapterIcon } from './adapterIcons'
 import { terminalIdFromPage, terminalPage, type PageId } from './pages'
 import { statusDot, statusLabel, statusTone } from './sessionStatus'
@@ -13,6 +23,9 @@ interface TopTabBarProps {
   terminals: readonly TerminalEntry[]
   onNavigate: (pageId: PageId) => void
   onOpenNewSession: () => void
+  onRenameSession: (sessionId: string, name: string) => void
+  onCloneSession: (session: SessionEntry) => void
+  onCreateChildTerminal: (session: SessionEntry) => void
   onCloseSession: (session: SessionEntry) => void
   onCloseTerminal: (terminalId: string) => void
 }
@@ -43,6 +56,9 @@ export default function TopTabBar({
   terminals,
   onNavigate,
   onOpenNewSession,
+  onRenameSession,
+  onCloneSession,
+  onCreateChildTerminal,
   onCloseSession,
   onCloseTerminal
 }: TopTabBarProps) {
@@ -50,7 +66,71 @@ export default function TopTabBar({
   const barRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [hovered, setHovered] = useState<HoveredTab | null>(null)
+  const [sessionMenu, setSessionMenu] = useState<{
+    sessionId: string
+    top: number
+    left: number
+    mode: 'actions' | 'rename'
+  } | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [renameError, setRenameError] = useState(false)
   const activeTerminalId = terminalIdFromPage(pageId)
+  const menuSession = sessions.find(
+    (session) => session.sessionId === sessionMenu?.sessionId
+  )
+
+  const closeOrSaveSessionMenu = (): void => {
+    if (sessionMenu?.mode !== 'rename' || !menuSession) {
+      setSessionMenu(null)
+      return
+    }
+    const name = renameValue.trim()
+    if (!name) {
+      setRenameError(true)
+      return
+    }
+    onRenameSession(menuSession.sessionId, name)
+    setRenameError(false)
+    setSessionMenu(null)
+  }
+
+  useEffect(() => {
+    if (!sessionMenu) return
+    const handlePointerDown = (event: PointerEvent): void => {
+      const target = event.target
+      if (
+        target instanceof Element &&
+        target.closest('[data-toptab-session-actions-popover]')
+      ) {
+        return
+      }
+      closeOrSaveSessionMenu()
+    }
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setSessionMenu(null)
+    }
+    window.addEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  })
+
+  const openSessionMenu = (
+    session: SessionEntry,
+    clientX: number,
+    clientY: number
+  ): void => {
+    setHovered(null)
+    setRenameError(false)
+    setSessionMenu({
+      sessionId: session.sessionId,
+      top: Math.max(8, Math.min(clientY, window.innerHeight - 180)),
+      left: Math.max(8, Math.min(clientX, window.innerWidth - 184)),
+      mode: 'actions'
+    })
+  }
 
   // 纵向滚轮转横向滚动。React 在根节点上以 passive 注册 wheel，
   // preventDefault 会失效，所以这里直接挂原生非 passive 监听。
@@ -105,6 +185,10 @@ export default function TopTabBar({
               <div
                 key={session.sessionId}
                 className="group flex shrink-0 items-center rounded-lg"
+                onContextMenu={(event) => {
+                  event.preventDefault()
+                  openSessionMenu(session, event.clientX, event.clientY)
+                }}
                 onMouseEnter={(event) =>
                   setHovered({
                     kind: 'session',
@@ -203,7 +287,7 @@ export default function TopTabBar({
         <Plus className="size-3.5" strokeWidth={1.75} />
       </button>
 
-      {hovered && (
+      {hovered && !sessionMenu && (
         <div
           data-testid="toptab-hover-card"
           className="shell-popover hover-card-delayed pointer-events-none absolute top-full z-40 mt-1.5 w-60 rounded-xl border border-border-default bg-surface p-3"
@@ -215,6 +299,103 @@ export default function TopTabBar({
             <TerminalHoverCard terminal={hovered.item} />
           )}
         </div>
+      )}
+      {sessionMenu && menuSession && createPortal(
+        <div
+          role={sessionMenu.mode === 'actions' ? 'menu' : undefined}
+          data-toptab-session-actions-popover
+          data-testid="toptab-session-actions-popover"
+          style={{ top: sessionMenu.top, left: sessionMenu.left }}
+          className="shell-popover fixed z-[100] max-h-52 w-44 overflow-y-auto rounded-lg border border-border-default bg-surface p-1"
+        >
+          {sessionMenu.mode === 'actions' ? (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="toptab-session-child-terminal"
+                onClick={() => {
+                  setSessionMenu(null)
+                  onCreateChildTerminal(menuSession)
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-pingfang text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+              >
+                <SquareTerminal className="size-3" strokeWidth={1.75} />
+                {strings.navigation.createChildTerminal}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="toptab-session-clone"
+                onClick={() => {
+                  setSessionMenu(null)
+                  onCloneSession(menuSession)
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-pingfang text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+              >
+                <Copy className="size-3" strokeWidth={1.75} />
+                {strings.navigation.cloneSession}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="toptab-session-rename"
+                onClick={() => {
+                  setRenameValue(menuSession.name)
+                  setRenameError(false)
+                  setSessionMenu((current) =>
+                    current ? { ...current, mode: 'rename' } : current
+                  )
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-pingfang text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+              >
+                <Pencil className="size-3" strokeWidth={1.75} />
+                {strings.navigation.renameSession}
+              </button>
+            </>
+          ) : (
+            <form
+              data-testid="toptab-session-rename-form"
+              onSubmit={(event) => {
+                event.preventDefault()
+                closeOrSaveSessionMenu()
+              }}
+              className="flex flex-col gap-1"
+            >
+              <div className="flex items-center gap-1">
+                <input
+                  autoFocus
+                  data-testid="toptab-session-rename-input"
+                  value={renameValue}
+                  aria-label={strings.navigation.renameSession}
+                  aria-invalid={renameError}
+                  onChange={(event) => {
+                    setRenameValue(event.target.value)
+                    if (event.target.value.trim()) setRenameError(false)
+                  }}
+                  className={`min-w-0 flex-1 rounded-md border bg-content px-2 py-1 font-pingfang text-[11px] text-text-primary outline-none ${renameError ? 'border-status-error' : 'border-border-default focus:border-border-strong'}`}
+                />
+                <button
+                  type="submit"
+                  aria-label={strings.common.confirm}
+                  title={strings.common.confirm}
+                  className="flex size-6 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-control hover:text-text-primary"
+                >
+                  <Check className="size-3" strokeWidth={1.75} />
+                </button>
+              </div>
+              {renameError && (
+                <p
+                  role="alert"
+                  className="px-1 font-pingfang text-[10px] text-status-error"
+                >
+                  {strings.navigation.sessionNameRequired}
+                </p>
+              )}
+            </form>
+          )}
+        </div>,
+        document.body
       )}
     </div>
   )

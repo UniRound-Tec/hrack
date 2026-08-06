@@ -34,6 +34,7 @@ import { useSessionsStore, type SessionEntry } from '../state/sessionsStore'
 import { useAgentEventsStore } from '../state/agentEventsStore'
 import { useTerminalsStore } from '../state/terminalsStore'
 import { useWorkspaceReaderStore } from '../workspace-reader/workspaceReaderStore'
+import { planChildTerminal } from './childTerminal'
 
 export interface VibingDebugShellApi {
   navigate(pageId: PageId): void
@@ -106,12 +107,20 @@ export default function AppShell() {
     () => new Set(terminals.map((terminal) => terminal.id)),
     [terminals]
   )
-  const standaloneTerminals = useMemo(() => {
+  const nonSessionTerminals = useMemo(() => {
     const sessionTerminalIds = new Set(
       sessions.map((session) => session.terminalId)
     )
     return terminals.filter((terminal) => !sessionTerminalIds.has(terminal.id))
   }, [sessions, terminals])
+  const standaloneTerminals = useMemo(
+    () => nonSessionTerminals.filter((terminal) => !terminal.parentSessionId),
+    [nonSessionTerminals]
+  )
+  const childTerminals = useMemo(
+    () => nonSessionTerminals.filter((terminal) => terminal.parentSessionId),
+    [nonSessionTerminals]
+  )
   const activeTerminalId = terminalIdFromPage(pageId)
   const activeReaderTerminal = activeTerminalId
     ? (terminals.find((terminal) => terminal.id === activeTerminalId) ?? null)
@@ -183,25 +192,113 @@ export default function AppShell() {
     if (shell) launchTerminal(shell)
   }, [defaultTerminal, launchTerminal, shells])
 
+  const renameSession = useCallback(
+    (sessionId: string, name: string): void => {
+      updateSession(sessionId, { name })
+      void window.agentApi.rename(sessionId, name).then((projection) => {
+        if (projection) {
+          useSessionsStore.getState().applyProjection(projection)
+        }
+      })
+    },
+    [updateSession]
+  )
+
+  const cloneSession = useCallback(
+    (session: SessionEntry): void => {
+      const source = useTerminalsStore
+        .getState()
+        .terminals.find((terminal) => terminal.id === session.terminalId)
+      if (!source?.agentSelection) return
+
+      const selection = {
+        ...source.agentSelection,
+        args: [...source.agentSelection.args]
+      }
+      const terminal = addTerminal({
+        shellId: source.shellId,
+        cwd: selection.workspace,
+        launch: {
+          kind: 'agent',
+          selection,
+          name: session.name
+        }
+      })
+      setPageId(terminalPage(terminal.id))
+    },
+    [addTerminal]
+  )
+
+  const createChildTerminal = useCallback(
+    async (session: SessionEntry): Promise<void> => {
+      if (!session.installationId) return
+      try {
+        const report = cliReport ?? (await window.cliApi.scan(false))
+        if (!cliReport) setCliReport(report)
+        const installation = report.launchable
+          .flatMap((cli) => cli.installations)
+          .find((candidate) => candidate.id === session.installationId)
+        if (!installation) return
+
+        const parent = useTerminalsStore
+          .getState()
+          .terminals.find((terminal) => terminal.id === session.terminalId)
+        const workspace = parent?.cwd.trim()
+        if (!workspace) return
+
+        const availableShells =
+          shells.length > 0 ? shells : await window.shellApi.listAvailable()
+        const plan = planChildTerminal({
+          runtime: installation.runtime,
+          workspace,
+          shells: availableShells,
+          defaultShellId: defaultTerminal
+        })
+        if (!plan) return
+
+        const terminal = addTerminal({
+          shellId: plan.shellId,
+          cwd: plan.cwd,
+          parentSessionId: session.sessionId,
+          launch: { kind: 'shell', shell: plan.shell }
+        })
+        setPageId(terminalPage(terminal.id))
+      } catch {
+        // Losing a runtime while creating the terminal leaves the session intact.
+      }
+    },
+    [addTerminal, cliReport, defaultTerminal, shells]
+  )
+
   // S1：AI CLI 启动编排在主进程 AgentSessionRuntime 完成；renderer 只建立
   // provisional terminal 并保存 CliLaunchSelection，TerminalView fit 后调用
   // agent:start。会话展示副本由主进程 projection 广播 upsert，不再本地推导。
   const launchCli = useCallback(
     async (draft: CliLaunchDraft): Promise<string | null> => {
+      let workspace: string
+      try {
+        workspace = await window.cliApi.resolveWorkspace(
+          draft.installationId,
+          draft.workspace
+        )
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error)
+      }
+      const effectiveDraft = { ...draft, workspace }
       const name = draft.name.trim() || draft.option.definition.displayName
       const terminal = addTerminal({
         shellId: draft.option.definition.adapterId,
-        cwd: draft.workspace.trim(),
+        cwd: workspace,
         launch: {
           kind: 'agent',
-          selection: buildCliLaunchSelection(draft),
+          selection: buildCliLaunchSelection(effectiveDraft),
           name
         }
       })
       setPageId(terminalPage(terminal.id))
       return new Promise<string | null>((resolve) => {
         pendingCliLaunches.current.set(terminal.id, {
-          draft,
+          draft: effectiveDraft,
           previousPage: pageId,
           resolve
         })
@@ -301,8 +398,29 @@ export default function AppShell() {
 
   const closeSessionAndTerminal = useCallback(
     (session: SessionEntry): void => {
+      const children = useTerminalsStore
+        .getState()
+        .terminals.filter(
+          (terminal) => terminal.parentSessionId === session.sessionId
+        )
+      const wasActive =
+        activeTerminalId === session.terminalId ||
+        children.some((terminal) => terminal.id === activeTerminalId)
+      for (const child of children) {
+        void window.ptyApi.killTerminal(child.id)
+        closeTerminal(child.id)
+      }
+
       if (terminalIds.has(session.terminalId)) {
-        closeTerminalAndRoute(session.terminalId)
+        void window.agentApi
+          .stop(session.sessionId)
+          .finally(() => window.ptyApi.killTerminal(session.terminalId))
+        closeTerminal(session.terminalId)
+        removeSession(session.sessionId)
+        if (wasActive) {
+          const nextTerminalId = useTerminalsStore.getState().activeTerminalId
+          setPageId(nextTerminalId ? terminalPage(nextTerminalId) : 'home')
+        }
         return
       }
 
@@ -310,11 +428,11 @@ export default function AppShell() {
       // 没有 TerminalEntry 时仍必须显式 stop，不能只删 UI。
       void window.agentApi.stop(session.sessionId)
       removeSession(session.sessionId)
-      if (activeTerminalId === session.terminalId) {
+      if (wasActive) {
         setPageId('home')
       }
     },
-    [activeTerminalId, closeTerminalAndRoute, removeSession, terminalIds]
+    [activeTerminalId, closeTerminal, removeSession, terminalIds]
   )
 
   useEffect(() => {
@@ -399,18 +517,14 @@ export default function AppShell() {
                 pageId={pageId}
                 sessions={sessions}
                 terminals={standaloneTerminals}
+                childTerminals={childTerminals}
                 onNavigate={navigate}
                 onOpenNewSession={openNewSession}
                 onCollapse={() => setNavMode('rail')}
-                onRenameSession={(sessionId, name) => {
-                  updateSession(sessionId, { name })
-                  void window.agentApi
-                    .rename(sessionId, name)
-                    .then((projection) => {
-                      if (projection) {
-                        useSessionsStore.getState().applyProjection(projection)
-                      }
-                    })
+                onRenameSession={renameSession}
+                onCloneSession={cloneSession}
+                onCreateChildTerminal={(session) => {
+                  void createChildTerminal(session)
                 }}
                 onCloseSession={closeSessionAndTerminal}
                 onCloseTerminal={closeTerminalAndRoute}
@@ -428,7 +542,7 @@ export default function AppShell() {
               <IconRail
                 pageId={pageId}
                 sessions={sessions}
-                terminals={standaloneTerminals}
+                terminals={nonSessionTerminals}
                 onNavigate={navigate}
                 onOpenNewSession={openNewSession}
                 onExpand={() => setNavMode('sidebar')}
@@ -470,9 +584,14 @@ export default function AppShell() {
             <TopTabBar
               pageId={pageId}
               sessions={sessions}
-              terminals={standaloneTerminals}
+              terminals={nonSessionTerminals}
               onNavigate={navigate}
               onOpenNewSession={openNewSession}
+              onRenameSession={renameSession}
+              onCloneSession={cloneSession}
+              onCreateChildTerminal={(session) => {
+                void createChildTerminal(session)
+              }}
               onCloseSession={closeSessionAndTerminal}
               onCloseTerminal={closeTerminalAndRoute}
             />

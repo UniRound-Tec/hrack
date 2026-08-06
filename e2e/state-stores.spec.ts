@@ -186,7 +186,8 @@ test.describe('terminalsStore', () => {
       name: 'PowerShell',
       shellId: 'pwsh',
       cwd: 'C:\\repo',
-      exited: false
+      exited: false,
+      parentSessionId: 'session-parent'
     }
     store.getState().restoreTerminals([recovered])
     store.getState().restoreTerminals([recovered])
@@ -197,7 +198,8 @@ test.describe('terminalsStore', () => {
         name: 'PowerShell',
         shellId: 'pwsh',
         cwd: 'C:\\repo',
-        exited: false
+        exited: false,
+        parentSessionId: 'session-parent'
       }
     ])
     expect(store.getState().activeTerminalId).toBe('terminal-stable')

@@ -79,6 +79,7 @@ export interface AgentPtyHost {
 /** CLI 安装解析与启动选项合成（AiCliDiscoveryService 实现）。 */
 export interface AgentLaunchProvider {
   resolveInstallation(installationId: string): Promise<CliInstallation | null>
+  resolveWorkspace(installationId: string, workspace: string): Promise<string>
   definitionAdapterId(installation: CliInstallation): string | null
   prepareLaunch(
     selection: CliLaunchSelection,
@@ -373,6 +374,14 @@ export class AgentSessionRuntime {
     }
     const adapterId =
       this.deps.discovery.definitionAdapterId(installation) ?? 'unknown'
+    const workspace = await this.deps.discovery.resolveWorkspace(
+      installation.id,
+      input.selection.workspace
+    )
+    const selection: CliLaunchSelection = {
+      ...input.selection,
+      workspace
+    }
 
     await this.ensureRunRoot()
     const sessionId = randomUUID()
@@ -386,8 +395,8 @@ export class AgentSessionRuntime {
       installation,
       adapterId,
       platform: process.platform,
-      workspace: input.selection.workspace,
-      args: input.selection.args,
+      workspace,
+      args: selection.args,
       runDir
     }
     const adapter = this.deps.registry.resolve(context)
@@ -408,7 +417,7 @@ export class AgentSessionRuntime {
     const augmentation = sanitizeAugmentation(prepared?.launch)
     let baseOptions: SpawnOptions
     try {
-      baseOptions = await this.deps.discovery.prepareLaunch(input.selection, {
+      baseOptions = await this.deps.discovery.prepareLaunch(selection, {
         env: augmentation.env,
         prependArgs: augmentation.prependArgs,
         appendArgs: augmentation.appendArgs,
@@ -439,7 +448,8 @@ export class AgentSessionRuntime {
             kind: 'agent',
             name: name || installation.definitionId,
             shellId: adapterId,
-            cwd: input.selection.workspace.trim()
+            cwd: workspace,
+            agentSelection: selection
           }
         })
       ).ptyId
@@ -454,9 +464,9 @@ export class AgentSessionRuntime {
     }
 
     // 工作区阅读器是附属能力：挂载失败不得杀死已经成功启动的 CLI。
-    if (input.selection.workspace.trim() && this.deps.workspace) {
+    if (this.deps.workspace) {
       await this.deps.workspace
-        .mount(input.terminalId, installation.runtime, input.selection.workspace)
+        .mount(input.terminalId, installation.runtime, workspace)
         .catch((error) => {
           console.warn('[workspace-reader] mount degraded:', error)
         })
@@ -493,7 +503,7 @@ export class AgentSessionRuntime {
       projector: new AgentEventProjector({
         sessionId,
         name,
-        workspace: input.selection.workspace,
+        workspace,
         adapterId
       }),
       projection,
@@ -606,7 +616,7 @@ export class AgentSessionRuntime {
     // 6. 会话开放事实 + 降级事实（顺序固定，先 started 后 degraded）。
     this.acceptAdapterEvent(session, {
       kind: 'session.started',
-      payload: { cwd: input.selection.workspace.trim() || undefined },
+      payload: { cwd: workspace },
       nativeId: `start:${sessionId}`
     })
     if (degraded) {
