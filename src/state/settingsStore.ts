@@ -29,6 +29,8 @@ export interface SettingsSnapshot {
   readerWidthRatio: number
   /** M5.d：工作区文件树宽度。 */
   workspaceTreeWidth: number
+  /** 导航会话是否随最新活动重排；默认关闭以保持稳定位置。 */
+  attentionPriorityEnabled: boolean
 }
 
 /** v3 及更早版本的默认字号；v4 起默认 14，迁移时把旧默认值一并带过去。 */
@@ -49,7 +51,8 @@ export const defaultSettings: SettingsSnapshot = {
   language: detectLocale(),
   globalShortcutEnabled: true,
   readerWidthRatio: 0.52,
-  workspaceTreeWidth: 220
+  workspaceTreeWidth: 220,
+  attentionPriorityEnabled: false
 }
 
 /** Terminal consumers only need this stable subset. */
@@ -79,6 +82,7 @@ export interface SettingsState extends SettingsSnapshot {
   setGlobalShortcutEnabled(enabled: boolean): void
   setReaderWidthRatio(ratio: number): void
   setWorkspaceTreeWidth(width: number): void
+  setAttentionPriorityEnabled(enabled: boolean): void
   reset(): void
 }
 
@@ -193,7 +197,11 @@ export function migrateSettings(
       typeof legacy.workspaceTreeWidth === 'number' &&
       Number.isFinite(legacy.workspaceTreeWidth)
         ? Math.max(160, Math.min(360, Math.round(legacy.workspaceTreeWidth)))
-        : defaultSettings.workspaceTreeWidth
+        : defaultSettings.workspaceTreeWidth,
+    attentionPriorityEnabled:
+      typeof legacy.attentionPriorityEnabled === 'boolean'
+        ? legacy.attentionPriorityEnabled
+        : defaultSettings.attentionPriorityEnabled
   }
 }
 
@@ -233,13 +241,15 @@ export const createSettingsState: StateCreator<SettingsState> = (set) => ({
         Math.min(360, Math.round(workspaceTreeWidth))
       )
     }),
+  setAttentionPriorityEnabled: (attentionPriorityEnabled) =>
+    set({ attentionPriorityEnabled }),
   reset: () => set(defaultSettings)
 })
 
 export const useSettingsStore = create<SettingsState>()(
   persist(createSettingsState, {
     name: 'vibing-terminal-settings',
-    version: 7,
+    version: 8,
     migrate: migrateSettings,
     partialize: ({
       uiThemeId,
@@ -253,7 +263,8 @@ export const useSettingsStore = create<SettingsState>()(
       language,
       globalShortcutEnabled,
       readerWidthRatio,
-      workspaceTreeWidth
+      workspaceTreeWidth,
+      attentionPriorityEnabled
     }) => ({
       uiThemeId,
       terminalThemeId,
@@ -266,7 +277,8 @@ export const useSettingsStore = create<SettingsState>()(
       language,
       globalShortcutEnabled,
       readerWidthRatio,
-      workspaceTreeWidth
+      workspaceTreeWidth,
+      attentionPriorityEnabled
     })
   })
 )

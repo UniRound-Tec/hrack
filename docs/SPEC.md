@@ -362,6 +362,7 @@ Shell 三态导航取代，`tabsStore` 拆为 `terminalsStore`（终端条目）
 | **M5.b** | **App Shell — 实现**          | 无边框窗口 + 自定义标题栏（原型标题栏设计的前置条件）；侧栏、首页、设置真组件落地；设置面板直读写 `settingsStore`；侧栏 session 区读取真实 `sessionsStore`（[SPEC-S](./SPEC-S.md) §5 schema）；交互 E2E 全绿且既有门禁不回归 |
 | **M5.c** | **App Shell — 数据与打磨**       | 真实数据接入（stats / history 持久化管道，M5.c 只记生命周期事件，语义事件归 S 线沿同一管道补）、i18n 五语言、托盘 + 全局快捷键 `Ctrl+Alt+V`、关闭到托盘、深色首帧底色、主题热重载；质感由环境渐变 + 双主题承担，**不做 vibrancy/acrylic**；全量回归；AI session 真数据不在此（归 S 线）                             |
 | **M5.d ✅** | **工作区只读代码阅读器**          | 有工作区的 AI CLI Terminal 右侧提供 A 并排布局：可折叠、Reader/File tree 双层可调宽、lazy 文件树与 CodeMirror 只读高亮；主进程收窄 Workspace Interface 覆盖 Native/WSL，禁止任何编辑与根目录逃逸。Windows/真实 WSL 自动化已通过，macOS/Linux 发版 smoke 待办。实施见 [PLAN-M5D-WORKSPACE-READER.md](./PLAN-M5D-WORKSPACE-READER.md) |
+| **F2 ✅** | **AI CLI 会话分组与手动排序** | 侧边栏 AI Session 以稳定 `terminalId` 持久化手动顺序；Pointer 拖动支持根排序、组内排序、移入移出及 800ms 悬停建组。分组始终展开，顶部 Tab 只平铺成员。注意力优先默认关闭；开启后按整个分组提升且不改变组内顺序。右键启动新 CLI 仅在首个真实 projection 到达后原子建组，失败/取消不留幽灵状态。实施与门禁见 [PLAN-F2-AI-CLI-GROUPS.md](./PLAN-F2-AI-CLI-GROUPS.md) |
 | M6       | CLI 适配器矩阵                   | 依赖 [SPEC-S](./SPEC-S.md) S3 定稿的 adapter 抽象；铺开接入剩余主流 CLI（gemini-cli / opencode / aider / cursor-agent 等），每个适配器带独立状态识别策略与回归夹具    |
 | M7       | 打包                          | 三端安装包产出                                                                                             |
 
@@ -375,7 +376,7 @@ S1 主进程 `AgentSessionProjection`，默认展示最近 3 个未退出 Sessio
 设置同步与重命名同步均已落地；Windows 真窗口 7 条 E2E 与全量 151 条门禁通过。三端策略及
 待补真机 smoke 见 [PLAN-F1-FLOATING-WINDOW.md](./PLAN-F1-FLOATING-WINDOW.md)。
 
-**当前进度（2026-08-04）：M0–M5.d、S0、S1、S2 Claude Code Adapter 与 S3 OpenCode
+**当前进度（2026-08-06）：M0–M5.d、F2、S0、S1、S2 Claude Code Adapter 与 S3 OpenCode
 Adapter 已完成；跨平台自动化矩阵仍待补。M5.d 已完成生产 A 布局、主进程只读 Interface、
 Native/WSL runtime、双层拖拽、lazy/虚拟化文件树与 CodeMirror，并通过 Windows 和真实
 Ubuntu-22.04 `/mnt/c`、`/home` 门禁；macOS/Linux 发版真机 smoke 待补。F1 悬浮窗核心实现

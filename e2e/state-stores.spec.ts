@@ -83,7 +83,8 @@ test.describe('settingsStore v3', () => {
       language: 'ja',
       globalShortcutEnabled: true,
       readerWidthRatio: 0.52,
-      workspaceTreeWidth: 220
+      workspaceTreeWidth: 220,
+      attentionPriorityEnabled: false
     })
     expect(migrated).not.toHaveProperty('themeId')
   })
@@ -127,6 +128,7 @@ test.describe('settingsStore v3', () => {
     store.getState().setLanguage('zh-TW')
     store.getState().setReaderWidthRatio(0.6)
     store.getState().setWorkspaceTreeWidth(280)
+    store.getState().setAttentionPriorityEnabled(true)
 
     expect(store.getState()).toMatchObject({
       uiThemeId: 'user-light',
@@ -138,7 +140,8 @@ test.describe('settingsStore v3', () => {
       defaultTerminal: 'pwsh',
       language: 'zh-TW',
       readerWidthRatio: 0.6,
-      workspaceTreeWidth: 280
+      workspaceTreeWidth: 280,
+      attentionPriorityEnabled: true
     })
 
     store.getState().reset()
@@ -207,7 +210,7 @@ test.describe('terminalsStore', () => {
 })
 
 test.describe('sessionsStore', () => {
-  test('sorts by activity, updates exit state, and removes sessions', () => {
+  test('keeps authoritative projection insertion order without presentation sorting', () => {
     const store = createSessionsStore()
     store.getState().addSession({
       sessionId: 'real:1',
@@ -227,8 +230,10 @@ test.describe('sessionsStore', () => {
     })
 
     expect(store.getState().sessions).toHaveLength(2)
-    expect(store.getState().sessions[0].sessionId).toBe('real:2')
-
+    expect(store.getState().sessions.map((session) => session.sessionId)).toEqual([
+      'real:1',
+      'real:2'
+    ])
     store.getState().markExited('real:1', 7, 20_000)
     expect(store.getState().sessions[0]).toMatchObject({
       sessionId: 'real:1',
@@ -237,6 +242,10 @@ test.describe('sessionsStore', () => {
       detail: getStrings(detectLocale()).sessionStatus.exitedDetail(7),
       lastActivityAt: 20_000
     })
+    expect(store.getState().sessions.map((session) => session.sessionId)).toEqual([
+      'real:1',
+      'real:2'
+    ])
 
     store.getState().removeSession('real:2')
     expect(

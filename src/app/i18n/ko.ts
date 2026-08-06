@@ -37,7 +37,14 @@ export const ko = {
     cloneSession: '세션 복제',
     childTerminals: '하위 터미널 펼치기 또는 접기',
     renameSession: '이름 바꾸기',
-    sessionNameRequired: '세션 이름을 입력하세요'
+    sessionNameRequired: '세션 이름을 입력하세요',
+    groupActions: '그룹 작업',
+    renameGroup: '그룹 이름 바꾸기',
+    dissolveGroup: '그룹 해제',
+    groupNameRequired: '그룹 이름을 입력하세요',
+    removeFromGroup: '그룹에서 제거',
+    createGroupAndLaunch: '그룹을 만들고 새 CLI 시작',
+    launchIntoGroup: '새 CLI를 이 그룹에서 시작'
   },
   sessionStatus: {
     working: '작업 처리 중',
@@ -155,6 +162,8 @@ export const ko = {
     floatingWindowHint: '현재 AI CLI 세션 상태를 항상 위에 표시',
     globalShortcut: '전역 단축키',
     globalShortcutHint: 'Ctrl+Alt+V로 창 표시/숨기기 전환',
+    attentionPriority: '주의 우선 정렬',
+    attentionPriorityHint: '새 활동이 있는 세션을 탐색 목록 맨 위로 이동합니다',
     terminalTheme: '터미널 색상',
     terminalThemeHint: '16색 구성. UI 테마와 독립',
     terminalThemeNames: { dark: 'Dark', light: 'Light' },

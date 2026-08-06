@@ -19,6 +19,7 @@ interface NewSessionFlowProps {
   defaultTerminal: string
   initialCli?: CliOption
   initialTerminalPicker?: boolean
+  initialWorkspace?: string
   onClose: () => void
   onLaunchTerminal: (shell: ShellOption, remember: boolean) => void
   onLaunchCli: (draft: CliLaunchDraft) => Promise<string | null>
@@ -47,6 +48,7 @@ export default function NewSessionFlow({
   defaultTerminal,
   initialCli,
   initialTerminalPicker = false,
+  initialWorkspace = '',
   onClose,
   onLaunchTerminal,
   onLaunchCli
@@ -99,7 +101,7 @@ export default function NewSessionFlow({
       option,
       installationId: installation.id,
       name: option.definition.displayName,
-      workspace: readLastWorkspace(),
+      workspace: initialWorkspace.trim() || readLastWorkspace(),
       args: ''
     })
     setLaunchError(null)

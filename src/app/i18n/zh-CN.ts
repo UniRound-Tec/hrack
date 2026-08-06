@@ -40,7 +40,14 @@ export const zhCN = {
     cloneSession: '克隆会话',
     childTerminals: '展开或收起子终端',
     renameSession: '重命名',
-    sessionNameRequired: '会话名称不能为空'
+    sessionNameRequired: '会话名称不能为空',
+    groupActions: '分组操作',
+    renameGroup: '重命名分组',
+    dissolveGroup: '解散分组',
+    groupNameRequired: '分组名称不能为空',
+    removeFromGroup: '移出分组',
+    createGroupAndLaunch: '创建分组并启动新的 CLI',
+    launchIntoGroup: '启动新的 CLI 加入此分组'
   },
   sessionStatus: {
     working: '正在处理任务',
@@ -158,6 +165,8 @@ export const zhCN = {
     floatingWindowHint: '独立置顶显示当前 AI CLI 会话状态',
     globalShortcut: '全局快捷键',
     globalShortcutHint: 'Ctrl+Alt+V 切换窗口显示 / 隐藏',
+    attentionPriority: '注意力优先排序',
+    attentionPriorityHint: '开启后，有新活动的会话会移动到导航列表顶部',
     terminalTheme: '终端配色',
     terminalThemeHint: '16 色方案，独立于界面主题',
     terminalThemeNames: { dark: 'Dark', light: 'Light' },

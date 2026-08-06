@@ -37,7 +37,14 @@ export const en = {
     cloneSession: 'Clone session',
     childTerminals: 'Expand or collapse child terminals',
     renameSession: 'Rename',
-    sessionNameRequired: 'Session name is required'
+    sessionNameRequired: 'Session name is required',
+    groupActions: 'Group actions',
+    renameGroup: 'Rename group',
+    dissolveGroup: 'Dissolve group',
+    groupNameRequired: 'Group name is required',
+    removeFromGroup: 'Remove from group',
+    createGroupAndLaunch: 'Create group and launch new CLI',
+    launchIntoGroup: 'Launch new CLI into this group'
   },
   sessionStatus: {
     working: 'Working on the task',
@@ -156,6 +163,8 @@ export const en = {
     floatingWindowHint: 'Always-on-top status for current AI CLI sessions',
     globalShortcut: 'Global shortcut',
     globalShortcutHint: 'Ctrl+Alt+V toggles window visibility',
+    attentionPriority: 'Attention-first sorting',
+    attentionPriorityHint: 'Move sessions with new activity to the top of navigation',
     terminalTheme: 'Terminal palette',
     terminalThemeHint: '16-color scheme, independent of the UI theme',
     terminalThemeNames: { dark: 'Dark', light: 'Light' },

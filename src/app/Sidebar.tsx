@@ -6,9 +6,11 @@ import {
   Home,
   PanelLeftClose,
   Pencil,
+  Plus,
   SquareTerminal,
   SquarePen,
   Terminal as TerminalIcon,
+  Ungroup,
   X
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -20,10 +22,14 @@ import { statusDot, statusLabel, statusTone } from './sessionStatus'
 import { useStrings, type AppStrings } from './i18n'
 import type { SessionEntry } from '../state/sessionsStore'
 import type { TerminalEntry } from '../state/terminalsStore'
+import SessionGroup from '../session-navigation/SessionGroup'
+import type { SidebarSessionNode } from '../session-navigation/sessionNavigation'
+import { useSidebarSessionDrag } from '../session-navigation/useSidebarSessionDrag'
 
 interface SidebarProps {
   pageId: PageId
   sessions: readonly SessionEntry[]
+  sessionNodes: readonly SidebarSessionNode[]
   terminals: readonly TerminalEntry[]
   childTerminals: readonly TerminalEntry[]
   onNavigate: (pageId: PageId) => void
@@ -34,6 +40,10 @@ interface SidebarProps {
   onCreateChildTerminal: (session: SessionEntry) => void
   onCloseSession: (session: SessionEntry) => void
   onCloseTerminal: (terminalId: string) => void
+  onRenameGroup: (groupId: string, name: string) => void
+  onDissolveGroup: (groupId: string) => void
+  onLaunchIntoGroup: (session: SessionEntry) => void
+  onRemoveFromGroup: (session: SessionEntry) => void
 }
 
 function relativeTime(strings: AppStrings, timestamp: number): string {
@@ -57,6 +67,7 @@ const navButtonClass = (active: boolean): string =>
 export default function Sidebar({
   pageId,
   sessions,
+  sessionNodes,
   terminals,
   childTerminals,
   onNavigate,
@@ -66,7 +77,11 @@ export default function Sidebar({
   onCloneSession,
   onCreateChildTerminal,
   onCloseSession,
-  onCloseTerminal
+  onCloseTerminal,
+  onRenameGroup,
+  onDissolveGroup,
+  onLaunchIntoGroup,
+  onRemoveFromGroup
 }: SidebarProps) {
   const strings = useStrings()
   const activeTerminalId = terminalIdFromPage(pageId)
@@ -82,6 +97,19 @@ export default function Sidebar({
   const menuSession = sessions.find(
     (session) => session.sessionId === sessionMenu?.sessionId
   )
+  const sessionGroupByTerminalId = new Map(
+    sessionNodes.flatMap((node) =>
+      node.kind === 'group'
+        ? node.sessions.map(
+            (session) => [session.terminalId, node.group.id] as const
+          )
+        : []
+    )
+  )
+  const sessionDrag = useSidebarSessionDrag(sessions)
+  const menuSessionGroupId = menuSession
+    ? sessionGroupByTerminalId.get(menuSession.terminalId)
+    : undefined
 
   const openSessionMenu = (
     sessionId: string,
@@ -145,6 +173,7 @@ export default function Sidebar({
   return (
     <aside
       data-testid="sidebar"
+      onClickCapture={sessionDrag.suppressClick}
       className="flex w-[280px] shrink-0 flex-col px-3 pt-3"
     >
       <div className="flex justify-center">
@@ -197,7 +226,10 @@ export default function Sidebar({
             </p>
           )}
           <ul data-testid="sidebar-session-list" className="flex flex-col gap-1.5 pr-1">
-          {sessions.map((session) => {
+          {sessionNodes.map((node) => {
+            const nodeSessions =
+              node.kind === 'session' ? [node.session] : node.sessions
+            const cards = nodeSessions.map((session) => {
             const Icon = getAdapterIcon(session.adapterId)
             const children = childTerminals.filter(
               (terminal) => terminal.parentSessionId === session.sessionId
@@ -211,6 +243,13 @@ export default function Sidebar({
             return (
               <li
                 key={session.sessionId}
+                data-navigation-terminal-id={session.terminalId}
+                data-navigation-group-id={sessionGroupByTerminalId.get(session.terminalId)}
+                data-navigation-root-id={
+                  sessionGroupByTerminalId.has(session.terminalId)
+                    ? undefined
+                    : session.terminalId
+                }
                 className="group relative rounded-lg border border-transparent bg-transparent transition-colors hover:border-border-subtle hover:bg-content focus-within:border-border-subtle focus-within:bg-content"
               >
                 {children.length > 0 && !renaming && (
@@ -239,6 +278,19 @@ export default function Sidebar({
                   data-testid="sidebar-session-item"
                   data-session-id={session.sessionId}
                   aria-current={active ? 'page' : undefined}
+                  onPointerDown={(event) =>
+                    sessionDrag.begin(
+                      {
+                        kind: 'session',
+                        terminalId: session.terminalId,
+                        name: session.name,
+                        groupId:
+                          sessionGroupByTerminalId.get(session.terminalId) ??
+                          null
+                      },
+                      event
+                    )
+                  }
                   onClick={() => onNavigate(terminalPage(session.terminalId))}
                   onContextMenu={(event) => {
                     if (renaming) return
@@ -404,6 +456,28 @@ export default function Sidebar({
                 )}
               </li>
             )
+            })
+            if (node.kind === 'session') return cards[0]
+            return (
+              <SessionGroup
+                key={node.group.id}
+                group={node.group}
+                onRename={onRenameGroup}
+                onDissolve={onDissolveGroup}
+                onPointerDown={(event) =>
+                  sessionDrag.begin(
+                    {
+                      kind: 'group',
+                      groupId: node.group.id,
+                      name: node.group.name
+                    },
+                    event
+                  )
+                }
+              >
+                {cards}
+              </SessionGroup>
+            )
           })}
           </ul>
         </section>
@@ -483,6 +557,36 @@ export default function Sidebar({
           <button
             type="button"
             role="menuitem"
+            data-testid="sidebar-session-launch-into-group"
+            onClick={() => {
+              setSessionMenu(null)
+              onLaunchIntoGroup(menuSession)
+            }}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-pingfang text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+          >
+            <Plus className="size-3" strokeWidth={1.75} />
+            {menuSessionGroupId
+              ? strings.navigation.launchIntoGroup
+              : strings.navigation.createGroupAndLaunch}
+          </button>
+          {menuSessionGroupId && (
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="sidebar-session-remove-from-group"
+              onClick={() => {
+                setSessionMenu(null)
+                onRemoveFromGroup(menuSession)
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-pingfang text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+            >
+              <Ungroup className="size-3" strokeWidth={1.75} />
+              {strings.navigation.removeFromGroup}
+            </button>
+          )}
+          <button
+            type="button"
+            role="menuitem"
             data-testid="sidebar-session-child-terminal"
             onClick={() => {
               setSessionMenu(null)
@@ -521,6 +625,16 @@ export default function Sidebar({
             <Pencil className="size-3" strokeWidth={1.75} />
             {strings.navigation.renameSession}
           </button>
+        </div>,
+        document.body
+      )}
+      {sessionDrag.visual && createPortal(
+        <div
+          data-testid="sidebar-session-drag-overlay"
+          className={`pointer-events-none fixed z-[120] min-w-40 -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-surface px-3 py-2 font-pingfang text-[11px] text-text-primary shadow-lg ${sessionDrag.visual.armed ? 'border-status-working-dot' : 'border-border-strong'}`}
+          style={{ left: sessionDrag.visual.x, top: sessionDrag.visual.y }}
+        >
+          {sessionDrag.visual.source.name}
         </div>,
         document.body
       )}

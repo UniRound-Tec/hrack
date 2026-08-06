@@ -37,16 +37,6 @@ export interface SessionsState {
   removeSessions(sessionIds: readonly string[]): void
 }
 
-function sortByRecentActivity(
-  sessions: readonly SessionEntry[]
-): SessionEntry[] {
-  return [...sessions].sort(
-    (left, right) =>
-      right.lastActivityAt - left.lastActivityAt ||
-      left.sessionId.localeCompare(right.sessionId)
-  )
-}
-
 function mergeSessions(
   current: readonly SessionEntry[],
   incoming: readonly SessionEntry[]
@@ -57,7 +47,7 @@ function mergeSessions(
   for (const session of incoming) {
     merged.set(session.sessionId, { ...session })
   }
-  return sortByRecentActivity([...merged.values()])
+  return [...merged.values()]
 }
 
 export function createSessionsStore(): UseBoundStore<
@@ -108,29 +98,25 @@ export function createSessionsStore(): UseBoundStore<
       }),
     updateSession: (sessionId, patch) =>
       set((state) => ({
-        sessions: sortByRecentActivity(
-          state.sessions.map((session) =>
-            session.sessionId === sessionId
-              ? { ...session, ...patch }
-              : session
-          )
+        sessions: state.sessions.map((session) =>
+          session.sessionId === sessionId
+            ? { ...session, ...patch }
+            : session
         )
       })),
     markExited: (sessionId, exitCode, at = Date.now()) =>
       set((state) => ({
-        sessions: sortByRecentActivity(
-          state.sessions.map((session) =>
-            session.sessionId === sessionId
-              ? {
-                  ...session,
-                  status: 'exited',
-                  detail: getStrings(
-                    useSettingsStore.getState().language
-                  ).sessionStatus.exitedDetail(exitCode),
-                  lastActivityAt: at
-                }
-              : session
-          )
+        sessions: state.sessions.map((session) =>
+          session.sessionId === sessionId
+            ? {
+                ...session,
+                status: 'exited',
+                detail: getStrings(
+                  useSettingsStore.getState().language
+                ).sessionStatus.exitedDetail(exitCode),
+                lastActivityAt: at
+              }
+            : session
         )
       })),
     removeSession: (sessionId) =>

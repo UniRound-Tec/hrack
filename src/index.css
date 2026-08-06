@@ -8,6 +8,27 @@
   font-display: block;
 }
 
+[data-session-group-armed='true'] {
+  outline: 1px solid var(--vib-accent-target);
+  outline-offset: 2px;
+  background: var(--vib-bg-surface-hover);
+}
+
+[data-session-dragging='true'] {
+  opacity: 0.42;
+}
+
+[data-session-drop-before='true']::before {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  top: -4px;
+  right: 6px;
+  left: 6px;
+  height: 1px;
+  background: var(--vib-accent-target);
+}
+
 @font-face {
   font-family: "Maple Mono";
   src: url("./assets/fonts/maple-mono/MapleMono-Bold.woff2") format("woff2");

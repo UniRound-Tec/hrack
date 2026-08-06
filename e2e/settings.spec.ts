@@ -50,6 +50,10 @@ test('settings controls write through to the live application state', async () =
 
     await page.getByTestId('settings-nav-rail').click()
     await expect(page.getByTestId('icon-rail')).toBeVisible()
+    const attentionPriority = page.getByTestId('settings-attention-priority')
+    await expect(attentionPriority).toHaveAttribute('aria-checked', 'false')
+    await attentionPriority.click()
+    await expect(attentionPriority).toHaveAttribute('aria-checked', 'true')
     await expect(page.getByTestId('settings-default-terminal')).toBeEnabled()
   } finally {
     await app.close()

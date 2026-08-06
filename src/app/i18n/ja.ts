@@ -37,7 +37,14 @@ export const ja = {
     cloneSession: 'セッションを複製',
     childTerminals: '子ターミナルを展開または折りたたむ',
     renameSession: '名前を変更',
-    sessionNameRequired: 'セッション名を入力してください'
+    sessionNameRequired: 'セッション名を入力してください',
+    groupActions: 'グループ操作',
+    renameGroup: 'グループ名を変更',
+    dissolveGroup: 'グループを解除',
+    groupNameRequired: 'グループ名を入力してください',
+    removeFromGroup: 'グループから外す',
+    createGroupAndLaunch: 'グループを作成して新しい CLI を起動',
+    launchIntoGroup: '新しい CLI をこのグループで起動'
   },
   sessionStatus: {
     working: 'タスクを処理中',
@@ -155,6 +162,8 @@ export const ja = {
     floatingWindowHint: 'AI CLI セッションの状態を常に手前に表示',
     globalShortcut: 'グローバルショートカット',
     globalShortcutHint: 'Ctrl+Alt+V でウィンドウの表示 / 非表示を切替',
+    attentionPriority: '注意優先で並べ替え',
+    attentionPriorityHint: 'オンにすると、新しい動きがあるセッションをナビゲーションの先頭へ移動します',
     terminalTheme: 'ターミナル配色',
     terminalThemeHint: '16 色スキーム。UI テーマとは独立',
     terminalThemeNames: { dark: 'Dark', light: 'Light' },
