@@ -182,6 +182,50 @@ test.describe('read-only workspace reader', () => {
     expect(treeBox.x).toBeGreaterThan(codeBox.x)
   })
 
+  test('updates syntax highlight colors when the UI theme changes', async () => {
+    const terminalId = await launchWorkspaceAgent(page)
+    await showWorkspaceReader(page)
+    await page
+      .getByTestId('workspace-tree-entry')
+      .filter({ hasText: 'src' })
+      .click()
+    await page
+      .getByTestId('workspace-tree-entry')
+      .filter({ hasText: 'example.ts' })
+      .click()
+    await expect(page.getByTestId('workspace-code-view')).toContainText(
+      'workspaceReaderFixture'
+    )
+
+    const syntaxPalette = async (): Promise<string[]> =>
+      page
+        .getByTestId('workspace-code-view')
+        .locator('.cm-content span')
+        .evaluateAll((tokens) =>
+          [
+            ...new Set(tokens.map((token) => getComputedStyle(token).color))
+          ].sort()
+        )
+    await expect
+      .poll(async () => (await syntaxPalette()).length)
+      .toBeGreaterThan(1)
+    const lightPalette = await syntaxPalette()
+
+    await page.getByTestId('titlebar-settings').click()
+    await page.getByTestId('settings-ui-theme').click()
+    await page.getByTestId('settings-ui-theme-option-catppuccin-mocha').click()
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-ui-theme',
+      'catppuccin-mocha'
+    )
+    await page.evaluate((id) => {
+      window.__vibingDebugShell?.navigate(`terminal:${id}`)
+    }, terminalId)
+    await expect(page.getByTestId('workspace-code-view')).toBeVisible()
+
+    await expect.poll(syntaxPalette).not.toEqual(lightPalette)
+  })
+
   test('automatically follows changes to the current file', async () => {
     const root = mkdtempSync(resolve(tmpdir(), 'vibing-reader-refresh-'))
     temporaryRoots.push(root)
