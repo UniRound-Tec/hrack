@@ -17,6 +17,7 @@
     "postinstall": "electron-rebuild -f -w node-pty",
     "build:win": "npm run release:win",
     "release:win": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/release-win.ps1",
+    "release:github:win": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/release-github-win.ps1",
     "e2e": "npm run build && playwright test",
     "e2e:only": "playwright test",
     "e2e:stress": "npm run build && playwright test e2e/terminal-stress.spec.ts",

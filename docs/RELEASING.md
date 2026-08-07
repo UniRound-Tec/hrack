@@ -42,3 +42,33 @@ The Windows release fails before delivery when any of these conditions is not me
 5. Never deliver an installer created before the latest source change.
 
 macOS and Linux packaging must gain equivalent signed/notarized package commands and runtime asset checks before those artifacts are distributed.
+
+## GitHub Release workflow
+
+Windows releases are published from an annotated `vX.Y.Z` tag by
+`.github/workflows/release.yml`. The workflow checks that the tag exactly matches
+the version in `package.json`, installs from `package-lock.json`, runs typechecks,
+and delegates packaging to the guarded `release:win` command above. It uploads:
+
+- `Vibing-Setup-<version>.exe`
+- `Vibing-Setup-<version>.exe.blockmap`
+- `Vibing-Setup-<version>.exe.sha256`
+
+Create a release commit before tagging:
+
+```powershell
+npm version 0.2.3 --no-git-tag-version
+# Update CHANGELOG.md, commit, and push the release commit first.
+git tag -a v0.2.3 -m "Vibing v0.2.3"
+git push origin v0.2.3
+```
+
+For a local rehearsal of the same tag/version gate and Windows artifact build:
+
+```powershell
+npm run release:github:win -- -TagName v0.2.3
+```
+
+The manual workflow dispatch is only for retrying an existing tag. It does not
+create tags or publish code that is not already committed. GitHub Release creation
+fails rather than replacing an existing release with the same tag.

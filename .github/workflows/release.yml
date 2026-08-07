@@ -1,0 +1,92 @@
+name: Release Windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing v-prefixed tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-windows:
+    name: Build and publish Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Resolve release tag
+        id: release
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_TAG: ${{ github.ref_name }}
+          MANUAL_TAG: ${{ inputs.tag }}
+        run: |
+          $tag = if ($env:EVENT_NAME -eq 'workflow_dispatch') {
+            $env:MANUAL_TAG
+          } else {
+            $env:PUSH_TAG
+          }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+            throw "Invalid release tag: $tag"
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build verified release artifacts
+        shell: pwsh
+        run: ./scripts/release-github-win.ps1 -TagName '${{ steps.release.outputs.tag }}'
+
+      - name: Retain workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vibing-${{ steps.release.outputs.tag }}-windows-x64
+          path: |
+            artifacts/Vibing-Setup-*.exe
+            artifacts/Vibing-Setup-*.exe.blockmap
+            artifacts/Vibing-Setup-*.exe.sha256
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          $assets = Get-ChildItem -LiteralPath artifacts -File | Where-Object {
+            $_.Name -like 'Vibing-Setup-*.exe' -or
+            $_.Name -like 'Vibing-Setup-*.exe.blockmap' -or
+            $_.Name -like 'Vibing-Setup-*.exe.sha256'
+          } | Select-Object -ExpandProperty FullName
+          if ($assets.Count -ne 3) {
+            throw "Expected exactly 3 release assets, found $($assets.Count)."
+          }
+          gh release create $env:RELEASE_TAG @assets `
+            --verify-tag `
+            --title "Vibing $env:RELEASE_TAG" `
+            --generate-notes
