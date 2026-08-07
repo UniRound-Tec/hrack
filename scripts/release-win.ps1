@@ -72,7 +72,9 @@ try {
     & npm.cmd run build
     if ($LASTEXITCODE -ne 0) { throw 'Application build failed.' }
 
-    & npx.cmd electron-builder --win nsis --x64 "--config.directories.output=$releaseDir"
+    # A pushed tag makes electron-builder default to onTagOrDraft publishing.
+    # GitHub Releases are created by the workflow only after all gates pass.
+    & npx.cmd electron-builder --win nsis --x64 --publish never "--config.directories.output=$releaseDir"
     if ($LASTEXITCODE -ne 0) { throw 'Windows packaging failed.' }
   } finally {
     Pop-Location
