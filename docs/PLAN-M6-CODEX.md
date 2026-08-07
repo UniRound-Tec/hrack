@@ -157,7 +157,8 @@ codex [用户的 profile/config feature 选择] features list
 规则：
 
 - 严格匹配 `hooks stable true` 才继续；missing/false/timeout → `hooks-unavailable` lifecycle-only；
-- Windows/macOS/Linux 直接执行扫描到的绝对路径；WSL 在准确 distro 内执行扫描到的 Linux path；
+- Windows/macOS/Linux 直接执行扫描到的绝对路径；WSL 在准确 distro 内执行扫描到的 Linux path，
+  并复用扫描/正式启动所用的完整 `PATH`。绝对路径可能只是 `#!/usr/bin/env node` 包装器，不能裸执行；
 - probe 最长 3 秒，stderr 只保留有界诊断，不写认证或完整配置；
 - 用户显式 `--disable hooks`、`-c features.hooks=false` 或 managed
   `allow_managed_hooks_only=true` 时不覆盖，明确降级；
@@ -506,6 +507,19 @@ Codex v2 transport。不能把实验 transport 静默混入 v1 fallback。
   该参数未进入产品代码或最终测试入口；
 - 受影响回归共 47 项通过，包含 Runtime 回滚/幂等清理、renderer reload 不新建 PTY、扫描启动与
   observer-run 目录清理。
+
+### 2026-08-07 WSL NVM 现场修复
+
+- 用户机器 Vibing `0.2.2`、WSL Ubuntu-22.04、Codex `0.146.1` 的扫描结果指向
+  `/home/artego/.nvm/versions/node/v22.22.3/bin/codex`，但 Adapter 的 `features list`
+  probe 只裸执行绝对路径；shebang 的 `/usr/bin/env node` 因而选中了系统旧 Node，报
+  `SyntaxError: Unexpected reserved word`，被误判为 `hooks-unavailable`；
+- 同一 executable 注入扫描期 `PATH` 后，`features list` 返回 `hooks stable true`；WSL
+  `wslpath`、原子 file-drop round-trip 与 Codex Hooks 本身均正常，确认故障不在 curl、网络或挂载；
+- Runtime 现在把 Discovery 的正式 WSL 环境交给 Adapter，Codex/Pi 的 pre-launch probe 共用
+  `wslRuntimeCommand()`；缓存环境缺失时至少把 executable 所在目录前置，兼容 NVM/Volta/asdf 类包装器；
+- 新增门禁覆盖 Runtime 环境透传、Codex NVM PATH、无缓存 fallback 与 Pi WSL PATH；
+  `observer.degraded` 的原因同步进入公共 detail，现场不再表现为“正常空闲但永远没事件”。
 
 ### P6 — 后续，不阻挡首版
 

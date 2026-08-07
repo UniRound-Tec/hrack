@@ -28,6 +28,7 @@ export const AGENT_DETAIL_RUNNING_TOOL = '@agent:running-tool'
 export const AGENT_DETAIL_COMPLETED = '@agent:completed'
 export const AGENT_DETAIL_ERROR = '@agent:error'
 export const AGENT_DETAIL_EXITED = '@agent:exited'
+export const AGENT_DETAIL_OBSERVER_DEGRADED = '@agent:observer-degraded'
 
 function detailWithValue(marker: string, value?: string | number): string {
   return value === undefined || value === '' ? marker : `${marker}:${value}`
@@ -169,7 +170,16 @@ function deriveDetail(
       correlation.latestOutputTokens
     )
   }
-  return correlation.liveCaption ?? correlation.latestDetail
+  return (
+    correlation.liveCaption ??
+    (correlation.observerDegradedReason
+      ? detailWithValue(
+          AGENT_DETAIL_OBSERVER_DEGRADED,
+          correlation.observerDegradedReason
+        )
+      : undefined) ??
+    correlation.latestDetail
+  )
 }
 
 function observerHealthFor(
@@ -388,9 +398,16 @@ export function reduceAgentSession(
     case 'observer.degraded': {
       degraded = true
       capabilities = event.payload.remaining
+      correlation.observerDegradedReason = event.payload.reason
       observerHealth = observerHealthFor(observerHealth, capabilities, true)
       break
     }
+  }
+
+  // 一条新的、可信的 observer 语义事实即证明通道已恢复；旧降级原因
+  // 不应继续覆盖空闲字幕。lifecycle-only 不会被普通 PTY 生命周期伪装成恢复。
+  if (event.kind !== 'observer.degraded' && observerHealth === 'healthy') {
+    correlation.observerDegradedReason = undefined
   }
 
   const { status, confidence } = deriveStatus(correlation)

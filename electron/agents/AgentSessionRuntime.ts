@@ -81,6 +81,13 @@ export interface AgentLaunchProvider {
   resolveInstallation(installationId: string): Promise<CliInstallation | null>
   resolveWorkspace(installationId: string, workspace: string): Promise<string>
   definitionAdapterId(installation: CliInstallation): string | null
+  /**
+   * 与正式启动完全相同的运行环境片段。Adapter 的 capability probe
+   * 必须复用它，不能另起 login shell 或裸执行包装器。
+   */
+  runtimeEnvironment?(
+    installation: CliInstallation
+  ): Readonly<Record<string, string>>
   prepareLaunch(
     selection: CliLaunchSelection,
     augmentation?: {
@@ -397,6 +404,8 @@ export class AgentSessionRuntime {
       platform: process.platform,
       workspace,
       args: selection.args,
+      runtimeEnvironment:
+        this.deps.discovery.runtimeEnvironment?.(installation) ?? {},
       runDir
     }
     const adapter = this.deps.registry.resolve(context)

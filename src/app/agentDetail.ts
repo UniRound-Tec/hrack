@@ -52,6 +52,12 @@ export function renderAgentDetail(
       : undefined
     return strings.agentDetail.error(message)
   }
+  if (detail.startsWith('@agent:observer-degraded')) {
+    const reason = detail.startsWith('@agent:observer-degraded:')
+      ? detail.slice('@agent:observer-degraded:'.length)
+      : undefined
+    return strings.agentDetail.observerDegraded(reason)
+  }
   if (detail.startsWith('@agent:exited')) {
     const code = detail.slice('@agent:exited:'.length)
     const exitCode =

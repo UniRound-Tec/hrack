@@ -315,7 +315,8 @@ Pi 原生 `turn_start/end` 是“一次 LLM response”，工具循环时会重�
 
 prepare 阶段使用本次安装记录中的**精确 distro 与 resolvedExecutable**：
 
-1. 执行该 Pi 的 `--version`，不使用 Windows Pi 代替；
+1. 执行该 Pi 的 `--version`，不使用 Windows Pi 代替；probe 复用扫描/正式启动的完整
+   WSL `PATH`，避免 NVM/pi-node 的 `#!/usr/bin/env node` 包装器误用系统旧 Node；
 2. `wslpath -a -u <runDir>` 得到 runtime path，不硬编码 `/mnt/c`；
 3. 用 `/bin/sh` 在 runtime drop 目录写 partial + rename；
 4. Windows 主进程读取同一 nonce，验证内容后删除 probe；
@@ -326,6 +327,9 @@ prepare 阶段使用本次安装记录中的**精确 distro 与 resolvedExecutab
 
 WSL default NAT、mirrored networking 对 file drop 无影响。custom mount 由 `wslpath` 实测，
 不依赖扫描缓存。
+
+若旧缓存暂时没有 WSL 环境记录，probe 会把 `resolvedExecutable` 所在目录前置为保守
+fallback；这只用于恢复能力探测，正式启动仍以 Discovery 的统一环境契约为权威。
 
 ## 8. 生命周期与资源回收
 

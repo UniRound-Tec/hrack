@@ -74,6 +74,8 @@ export const ko = {
       ['이번 작업을 완료했습니다', tokens === undefined ? undefined : `${tokens.toLocaleString('ko-KR')} tokens`].filter(Boolean).join(' · '),
     error: (message: string | undefined) =>
       ['실행 중 문제가 발생했습니다', message].filter(Boolean).join(' · '),
+    observerDegraded: (reason: string | undefined) =>
+      ['모니터링이 제한됨', reason].filter(Boolean).join(' · '),
     exited: (exitCode: number | undefined) =>
       exitCode === undefined
         ? '세션이 종료되었습니다'

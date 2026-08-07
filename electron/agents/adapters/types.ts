@@ -22,6 +22,11 @@ export interface ObserverPreparationContext {
   /** 原始用户选择；Adapter 只可用于冲突检测与只读 policy probe。 */
   workspace: string
   args: readonly string[]
+  /**
+   * 扫描/正式启动共同使用的运行环境。WSL 下至少包含登录 shell
+   * 解析得到的 PATH，避免 Adapter 裸执行 NVM/Volta/asdf 包装器。
+   */
+  runtimeEnvironment?: Readonly<Record<string, string>>
   /** 本次会话专属临时目录 `<userData>/observer-runs/<sessionId>/`。 */
   runDir: string
 }

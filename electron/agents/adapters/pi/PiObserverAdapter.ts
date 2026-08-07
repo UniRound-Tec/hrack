@@ -11,6 +11,7 @@ import type {
   ObserverPreparationContext,
   PreparedObserver
 } from '../types'
+import { wslRuntimeCommand } from '../wslRuntimeCommand'
 import { PiEventProjector } from './PiEventProjector'
 import { buildPiExtensionSource } from './PiExtensionSource'
 import { parsePiHook } from './PiHookParser'
@@ -306,16 +307,12 @@ export class PiObserverAdapter implements AgentObserverAdapter {
     context: ObserverPreparationContext
   ): Promise<PiCommandResult> {
     if (context.installation.runtime.kind === 'wsl') {
-      return this.runCommand('wsl.exe', [
-        '--distribution',
-        context.installation.runtime.distro,
-        '--exec',
-        '/bin/sh',
-        '-lc',
-        'p="$1"; PATH="$(dirname "$p"):$PATH" exec "$p" --version',
-        'vibing-pi-version',
-        context.installation.resolvedExecutable
-      ])
+      const command = wslRuntimeCommand(
+        context,
+        ['--version'],
+        'vibing-pi-version'
+      )
+      return this.runCommand(command.file, command.args)
     }
     return this.runCommand(context.installation.resolvedExecutable, ['--version'])
   }

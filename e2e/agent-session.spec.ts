@@ -27,6 +27,7 @@ import type {
   AdapterEvent,
   AgentObserverAdapter,
   ObserverHandle,
+  ObserverPreparationContext,
   PreparedObserver
 } from '../electron/agents/adapters/types'
 
@@ -398,6 +399,28 @@ test.describe('AgentEventReducer', () => {
     expect(projection.status).toBe('working')
     expect(projection.capabilities.tools).toBe('lifecycle')
     expect(projection.observerHealth).toBe('stale')
+    expect(projection.detail).toBe('@agent:observer-degraded:queue overflow')
+  })
+
+  test('a healthy observer event clears the previous degradation detail', () => {
+    let projection = initialProjection()
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(1, 'observer.degraded', {
+        reason: 'capability probe failed',
+        remaining: FULL_CAPABILITIES
+      })
+    )
+    expect(projection.detail).toContain('@agent:observer-degraded')
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(2, 'session.idle', {
+        reason: 'protocol-idle',
+        confidence: 'high'
+      })
+    )
+    expect(projection.observerHealth).toBe('healthy')
+    expect(projection.detail).toBeUndefined()
   })
 
   test('completed detail overrides the live thinking caption and keeps token context', () => {
@@ -591,6 +614,9 @@ function createRuntimeHarness(options: {
     definitionAdapterId() {
       return options.adapterId ?? 'scripted'
     },
+    runtimeEnvironment() {
+      return { PATH: '/home/fixture/.nvm/versions/node/v22/bin:/usr/bin:/bin' }
+    },
     async prepareLaunch(
       selection: CliLaunchSelection,
       augmentation: {
@@ -661,6 +687,7 @@ class ScriptedAdapter implements AgentObserverAdapter {
   disposed = false
   attached = false
   reconnectCalls = 0
+  preparationContext: ObserverPreparationContext | null = null
   private emitFn: ((event: AdapterEvent) => void) | null = null
   private disconnectListener: ((reason: string) => void) | null = null
 
@@ -668,8 +695,11 @@ class ScriptedAdapter implements AgentObserverAdapter {
     return true
   }
 
-  async prepare(): Promise<PreparedObserver> {
+  async prepare(
+    context: ObserverPreparationContext
+  ): Promise<PreparedObserver> {
     if (this.failPrepare) throw new Error('prepare boom')
+    this.preparationContext = context
     this.prepared = true
     return {
       launch: {
@@ -758,6 +788,9 @@ test.describe('AgentSessionRuntime (interface gates)', () => {
 
     expect(started.ptyId).toBe('pty-1')
     expect(started.projection.status).toBe('idle')
+    expect(harness.scripted.preparationContext?.runtimeEnvironment).toEqual({
+      PATH: '/home/fixture/.nvm/versions/node/v22/bin:/usr/bin:/bin'
+    })
     expect(harness.spawned[0].opts).toMatchObject({
       shell: 'codex.exe',
       cols: 100,

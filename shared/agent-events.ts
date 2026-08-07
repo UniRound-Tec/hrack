@@ -218,6 +218,8 @@ export interface AgentCorrelationState {
   /** 低置信度实时字幕与最后一次可展示内容；不参与六态推导。 */
   liveCaption?: string
   latestDetail?: string
+  /** 最近一次 observer 降级原因；后续健康语义事件会清除。 */
+  observerDegradedReason?: string
   latestOutputTokens?: number
   usageTurn?: UsagePayload
   usageSession?: UsagePayload

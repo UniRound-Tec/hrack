@@ -59,7 +59,10 @@
 - [ ] readiness/health probe 有界；连接失败、EOF、重连与对账不会形成永久循环；
 - [ ] host 只监听 loopback；跨 WSL 通道在运行时实测并有明确优先级；
 - [ ] WSL 不硬编码 distro、IP 或 `/mnt/c`，不因 interop 假阳性宣称已连接；
+- [ ] WSL capability/version probe 与正式启动复用扫描得到的同一 `PATH`；NVM、Volta、asdf、mise 等 `#!/usr/bin/env` 包装器不得裸执行；
+- [ ] 缺少扫描环境时有保守 wrapper-directory fallback，并用旧系统 Node + 新用户 Node 的 fixture 覆盖；
 - [ ] transport 不可用时发 `observer.degraded`，CLI 仍正常启动并保留 lifecycle 能力；
+- [ ] 降级原因进入公共 projection/detail，可由 UI 直接看到；不能只留在日志或静默显示正常 idle；
 - [ ] 临时资源具备大小、权限、路径和 symlink/reparse point 防线。
 
 ## 6. P3 — 生命周期与幽灵 Session 门禁

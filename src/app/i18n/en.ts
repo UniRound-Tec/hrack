@@ -74,6 +74,8 @@ export const en = {
       ['This turn is complete', tokens === undefined ? undefined : `${tokens.toLocaleString('en-US')} tokens`].filter(Boolean).join(' · '),
     error: (message: string | undefined) =>
       ['Something went wrong', message].filter(Boolean).join(' · '),
+    observerDegraded: (reason: string | undefined) =>
+      ['Monitoring degraded', reason].filter(Boolean).join(' · '),
     exited: (exitCode: number | undefined) =>
       exitCode === undefined
         ? 'Session ended'

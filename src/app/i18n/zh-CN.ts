@@ -77,6 +77,8 @@ export const zhCN = {
       ['本轮任务已完成', tokens === undefined ? undefined : `${tokens.toLocaleString('zh-CN')} tokens`].filter(Boolean).join(' · '),
     error: (message: string | undefined) =>
       ['执行遇到问题', message].filter(Boolean).join(' · '),
+    observerDegraded: (reason: string | undefined) =>
+      ['监听已降级', reason].filter(Boolean).join(' · '),
     exited: (exitCode: number | undefined) =>
       exitCode === undefined
         ? '会话已结束'

@@ -74,6 +74,8 @@ export const ja = {
       ['今回のタスクが完了しました', tokens === undefined ? undefined : `${tokens.toLocaleString('ja-JP')} tokens`].filter(Boolean).join(' · '),
     error: (message: string | undefined) =>
       ['実行中に問題が発生しました', message].filter(Boolean).join(' · '),
+    observerDegraded: (reason: string | undefined) =>
+      ['監視が制限されています', reason].filter(Boolean).join(' · '),
     exited: (exitCode: number | undefined) =>
       exitCode === undefined
         ? 'セッションは終了しました'

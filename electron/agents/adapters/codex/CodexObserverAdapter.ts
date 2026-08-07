@@ -11,6 +11,7 @@ import type {
   ObserverPreparationContext,
   PreparedObserver
 } from '../types'
+import { wslRuntimeCommand } from '../wslRuntimeCommand'
 import {
   buildCodexInlineHookConfig,
   codexPosixBridgeScript,
@@ -266,14 +267,12 @@ export class CodexObserverAdapter implements AgentObserverAdapter {
     context: ObserverPreparationContext
   ): Promise<CodexCommandResult> {
     if (context.installation.runtime.kind === 'wsl') {
-      return this.runCommand('wsl.exe', [
-        '--distribution',
-        context.installation.runtime.distro,
-        '--exec',
-        context.installation.resolvedExecutable,
-        'features',
-        'list'
-      ])
+      const command = wslRuntimeCommand(
+        context,
+        ['features', 'list'],
+        'vibing-codex-features'
+      )
+      return this.runCommand(command.file, command.args)
     }
     return this.runCommand(context.installation.resolvedExecutable, [
       'features',

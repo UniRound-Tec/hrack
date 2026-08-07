@@ -1210,6 +1210,19 @@ export class AiCliDiscoveryService {
     )
   }
 
+  /**
+   * 返回扫描与正式启动共同使用的最小运行环境。
+   * WSL CLI 经常是 `#!/usr/bin/env node` 包装器；脱离登录 shell 裸执行
+   * 会误用系统 Node，因此 Adapter probe 也必须复用这里的 PATH。
+   */
+  runtimeEnvironment(
+    installation: CliInstallation
+  ): Readonly<Record<string, string>> {
+    if (installation.runtime.kind !== 'wsl') return {}
+    const path = this.wslEnvironmentPaths.get(installation.runtime.distro)
+    return path ? { PATH: path } : {}
+  }
+
   async prepareLaunch(
     selection: CliLaunchSelection,
     augmentation: {
@@ -1239,38 +1252,14 @@ export class AiCliDiscoveryService {
     const cwd = await runtimeWorkspace(installation.runtime, selection.workspace)
 
     if (installation.runtime.kind === 'wsl') {
-      const environmentPath = this.wslEnvironmentPaths.get(
-        installation.runtime.distro
+      const environmentPath = this.runtimeEnvironment(installation).PATH
+      return wslLaunchOptions(
+        installation,
+        cwd,
+        args,
+        augmentation,
+        environmentPath
       )
-      const environmentEntries = Object.entries(augmentation.env ?? {}).filter(
-        ([key, value]) =>
-          /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) &&
-          key.length <= 128 &&
-          value.length <= 4_096 &&
-          !value.includes('\0')
-      )
-      const needsEnvironmentWrapper =
-        Boolean(environmentPath) ||
-        environmentEntries.length > 0 ||
-        (augmentation.unsetEnv?.length ?? 0) > 0
-      return {
-        shell: 'wsl.exe',
-        args: [
-          '--distribution', installation.runtime.distro,
-          '--cd', cwd,
-          '--exec',
-          ...(needsEnvironmentWrapper
-            ? [
-                'env',
-                ...(augmentation.unsetEnv ?? []).flatMap((key) => ['-u', key]),
-                ...environmentEntries.map(([key, value]) => `${key}=${value}`),
-                ...(environmentPath ? [`PATH=${environmentPath}`] : []),
-                installation.resolvedExecutable
-              ]
-            : [installation.resolvedExecutable]),
-          ...args
-        ]
-      }
     }
 
     if (process.platform === 'win32' && isWindowsShim(installation.resolvedExecutable)) {
@@ -1281,5 +1270,50 @@ export class AiCliDiscoveryService {
       }
     }
     return { shell: installation.resolvedExecutable, args, cwd }
+  }
+}
+
+/** 纯 argv 组装 seam：便于验证 env 确实进入 WSL 子进程而非只给 wsl.exe。 */
+export function wslLaunchOptions(
+  installation: CliInstallation,
+  cwd: string,
+  args: readonly string[],
+  augmentation: {
+    env?: Readonly<Record<string, string>>
+    unsetEnv?: readonly string[]
+  },
+  environmentPath?: string
+): SpawnOptions {
+  if (installation.runtime.kind !== 'wsl') {
+    throw new Error('wslLaunchOptions requires a WSL installation')
+  }
+  const environmentEntries = Object.entries(augmentation.env ?? {}).filter(
+    ([key, value]) =>
+      /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) &&
+      key.length <= 128 &&
+      value.length <= 4_096 &&
+      !value.includes('\0')
+  )
+  const needsEnvironmentWrapper =
+    Boolean(environmentPath) ||
+    environmentEntries.length > 0 ||
+    (augmentation.unsetEnv?.length ?? 0) > 0
+  return {
+    shell: 'wsl.exe',
+    args: [
+      '--distribution', installation.runtime.distro,
+      '--cd', cwd,
+      '--exec',
+      ...(needsEnvironmentWrapper
+        ? [
+            'env',
+            ...(augmentation.unsetEnv ?? []).flatMap((key) => ['-u', key]),
+            ...environmentEntries.map(([key, value]) => `${key}=${value}`),
+            ...(environmentPath ? [`PATH=${environmentPath}`] : []),
+            installation.resolvedExecutable
+          ]
+        : [installation.resolvedExecutable]),
+      ...args
+    ]
   }
 }

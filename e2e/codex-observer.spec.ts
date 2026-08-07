@@ -4,12 +4,53 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CodexObserverAdapter } from '../electron/agents/adapters/codex/CodexObserverAdapter'
+import { wslRuntimeCommand } from '../electron/agents/adapters/wslRuntimeCommand'
 import { parseCodexHook } from '../electron/agents/adapters/codex/CodexHookParser'
 import { CodexHookProjector } from '../electron/agents/adapters/codex/CodexHookProjector'
 import type { AdapterEvent } from '../electron/agents/adapters/types'
-import { AiCliDiscoveryService } from '../electron/ai-cli-discovery'
+import { wslLaunchOptions } from '../electron/ai-cli-discovery'
 
 test.describe('Codex observer adapter', () => {
+  test('falls back to the wrapper directory when cached WSL PATH is unavailable', () => {
+    const command = wslRuntimeCommand(
+      {
+        sessionId: 'session-fallback',
+        adapterId: 'codex',
+        platform: 'win32',
+        workspace: '',
+        args: [],
+        runDir: 'C:/observer-runs/session-fallback',
+        installation: {
+          id: 'codex:wsl:fallback',
+          definitionId: 'codex',
+          runtime: { kind: 'wsl', distro: 'Ubuntu-22.04' },
+          resolvedExecutable:
+            '/home/user/.nvm/versions/node/v22.22.3/bin/codex',
+          detectedVia: 'path',
+          verification: 'verified'
+        }
+      },
+      ['features', 'list'],
+      'vibing-codex-features'
+    )
+
+    expect(command).toEqual({
+      file: 'wsl.exe',
+      args: [
+        '--distribution',
+        'Ubuntu-22.04',
+        '--exec',
+        '/bin/sh',
+        '-lc',
+        'p="$1"; shift; PATH="$(dirname "$p"):$PATH" exec "$p" "$@"',
+        'vibing-codex-features',
+        '/home/user/.nvm/versions/node/v22.22.3/bin/codex',
+        'features',
+        'list'
+      ]
+    })
+  })
+
   test('projects a prompt and Stop into one structured turn without retaining content', () => {
     const canary = 'SECRET_CODEX_PROMPT_CANARY'
     const prompt = parseCodexHook({
@@ -570,6 +611,9 @@ test.describe('Codex observer adapter', () => {
         platform: 'win32',
         workspace: 'C:/workspace',
         args: [],
+        runtimeEnvironment: {
+          PATH: '/home/jesse/.nvm/versions/node/v22.22.3/bin:/usr/bin:/bin'
+        },
         runDir,
         installation: {
           id: 'codex:wsl',
@@ -587,6 +631,19 @@ test.describe('Codex observer adapter', () => {
       expect(prepared.launch.env?.VIBING_CODEX_HOOK_BRIDGE).toBe(
         '/mnt/c/vibing-run/codex-hook-bridge.sh'
       )
+      expect(calls[0]).toEqual({
+        file: 'wsl.exe',
+        args: [
+          '--distribution',
+          'Ubuntu-22.04',
+          '--exec',
+          'env',
+          'PATH=/home/jesse/.nvm/versions/node/v22.22.3/bin:/usr/bin:/bin',
+          '/home/jesse/.local/bin/codex',
+          'features',
+          'list'
+        ]
+      })
       expect(
         calls.some(({ file, args }) =>
           [file, ...args].some((value) => value.toLowerCase().includes('curl.exe'))
@@ -598,45 +655,37 @@ test.describe('Codex observer adapter', () => {
     }
   })
 
-  test('passes hook bridge variables into the WSL process, not only wsl.exe', async () => {
-    const previousFixture = process.env['VIBING_E2E_CLI_FIXTURE']
-    process.env['VIBING_E2E_CLI_FIXTURE'] = '1'
-    try {
-      const discovery = new AiCliDiscoveryService()
-      const report = await discovery.scan(true)
-      const installation = report.launchable
-        .flatMap((cli) => cli.installations)
-        .find((candidate) => candidate.runtime.kind === 'wsl')!
-      const launch = await discovery.prepareLaunch(
-        {
-          installationId: installation.id,
-          workspace: '',
-          args: []
-        },
-        {
-          env: {
-            VIBING_CODEX_HOOK_DROP: '/mnt/c/vibing-run/codex-drop',
-            VIBING_CODEX_HOOK_BRIDGE: '/mnt/c/vibing-run/codex-hook-bridge.sh'
-          }
+  test('passes hook bridge variables into the WSL process, not only wsl.exe', () => {
+    const launch = wslLaunchOptions(
+      {
+        id: 'codex:wsl:test',
+        definitionId: 'codex',
+        runtime: { kind: 'wsl', distro: 'Ubuntu-Test' },
+        resolvedExecutable: '/home/test/bin/codex',
+        detectedVia: 'path',
+        verification: 'verified'
+      },
+      '/home/test',
+      [],
+      {
+        env: {
+          VIBING_CODEX_HOOK_DROP: '/mnt/c/vibing-run/codex-drop',
+          VIBING_CODEX_HOOK_BRIDGE: '/mnt/c/vibing-run/codex-hook-bridge.sh'
         }
-      )
-
-      expect(launch.shell).toBe('wsl.exe')
-      expect(launch.args).toEqual([
-        '--distribution',
-        'Ubuntu-Test',
-        '--exec',
-        'env',
-        'VIBING_CODEX_HOOK_DROP=/mnt/c/vibing-run/codex-drop',
-        'VIBING_CODEX_HOOK_BRIDGE=/mnt/c/vibing-run/codex-hook-bridge.sh',
-        '/bin/false'
-      ])
-    } finally {
-      if (previousFixture === undefined) {
-        delete process.env['VIBING_E2E_CLI_FIXTURE']
-      } else {
-        process.env['VIBING_E2E_CLI_FIXTURE'] = previousFixture
       }
-    }
+    )
+
+    expect(launch.shell).toBe('wsl.exe')
+    expect(launch.args).toEqual([
+      '--distribution',
+      'Ubuntu-Test',
+      '--cd',
+      '/home/test',
+      '--exec',
+      'env',
+      'VIBING_CODEX_HOOK_DROP=/mnt/c/vibing-run/codex-drop',
+      'VIBING_CODEX_HOOK_BRIDGE=/mnt/c/vibing-run/codex-hook-bridge.sh',
+      '/home/test/bin/codex'
+    ])
   })
 })

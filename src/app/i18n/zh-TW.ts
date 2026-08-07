@@ -74,6 +74,8 @@ export const zhTW = {
       ['本輪任務已完成', tokens === undefined ? undefined : `${tokens.toLocaleString('zh-TW')} tokens`].filter(Boolean).join(' · '),
     error: (message: string | undefined) =>
       ['執行遇到問題', message].filter(Boolean).join(' · '),
+    observerDegraded: (reason: string | undefined) =>
+      ['監聽已降級', reason].filter(Boolean).join(' · '),
     exited: (exitCode: number | undefined) =>
       exitCode === undefined
         ? '工作階段已結束'

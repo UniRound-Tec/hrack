@@ -661,6 +661,9 @@ test.describe('Pi observer adapter', () => {
         platform: 'win32',
         workspace: 'C:/workspace',
         args: [],
+        runtimeEnvironment: {
+          PATH: '/home/jesse/.local/share/pi-node/node-v22.22.3-linux-x64/bin:/usr/bin:/bin'
+        },
         runDir,
         installation: {
           id: 'pi:wsl:ubuntu',
@@ -679,11 +682,10 @@ test.describe('Pi observer adapter', () => {
           '--distribution',
           'Ubuntu-22.04',
           '--exec',
-          '/bin/sh',
-          '-lc',
-          'p="$1"; PATH="$(dirname "$p"):$PATH" exec "$p" --version',
-          'vibing-pi-version',
-          '/home/jesse/.local/share/pi-node/node-v22.22.3-linux-x64/bin/pi'
+          'env',
+          'PATH=/home/jesse/.local/share/pi-node/node-v22.22.3-linux-x64/bin:/usr/bin:/bin',
+          '/home/jesse/.local/share/pi-node/node-v22.22.3-linux-x64/bin/pi',
+          '--version'
         ]
       })
       expect(calls.some((call) => call.args.includes('vibing-pi-probe'))).toBe(
