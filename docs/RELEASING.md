@@ -72,3 +72,7 @@ npm run release:github:win -- -TagName v0.2.3
 The manual workflow dispatch is only for retrying an existing tag. It does not
 create tags or publish code that is not already committed. GitHub Release creation
 fails rather than replacing an existing release with the same tag.
+
+The guarded Windows packager always passes `--publish never` to electron-builder.
+This prevents tag-aware CI environments from publishing before validation; only
+the final workflow step may create or upload a GitHub Release.
