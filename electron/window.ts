@@ -70,6 +70,16 @@ export function createWindow(prefs: MainPrefs): BrowserWindow {
   }
   win.on('maximize', sendMaximizedState)
   win.on('unmaximize', sendMaximizedState)
+  const sendFullScreenState = (): void => {
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send(
+        WindowEventChannel.FullScreenChanged,
+        win.isFullScreen()
+      )
+    }
+  }
+  win.on('enter-full-screen', sendFullScreenState)
+  win.on('leave-full-screen', sendFullScreenState)
 
   // 拖动期间 move 事件高频触发；合并到 ~30ms 一次（尾沿），供侧栏环境渐变跟随。
   let moveTimer: NodeJS.Timeout | null = null

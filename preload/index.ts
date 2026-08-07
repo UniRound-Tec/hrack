@@ -157,6 +157,15 @@ const windowApi: WindowApi = {
     return () =>
       ipcRenderer.removeListener(WindowEventChannel.MaximizedChanged, handler)
   },
+  isFullScreen: () => ipcRenderer.invoke(WindowInvokeChannel.IsFullScreen),
+  onFullScreenChange: (cb) => {
+    const handler = (_event: IpcRendererEvent, fullScreen: unknown): void => {
+      if (typeof fullScreen === 'boolean') cb(fullScreen)
+    }
+    ipcRenderer.on(WindowEventChannel.FullScreenChanged, handler)
+    return () =>
+      ipcRenderer.removeListener(WindowEventChannel.FullScreenChanged, handler)
+  },
   getPosition: () => ipcRenderer.invoke(WindowInvokeChannel.GetPosition),
   onPositionChange: (cb) => {
     const handler = (

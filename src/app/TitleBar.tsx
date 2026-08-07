@@ -24,6 +24,7 @@ export default function TitleBar({
 }: TitleBarProps) {
   const strings = useStrings()
   const [maximized, setMaximized] = useState(false)
+  const [fullScreen, setFullScreen] = useState(false)
   const isMac = window.windowApi.platform === 'darwin'
 
   useEffect(() => {
@@ -34,10 +35,20 @@ export default function TitleBar({
         if (active) setMaximized(value)
       })
       .catch(() => {})
-    const unsubscribe = window.windowApi.onMaximizedChange(setMaximized)
+    void window.windowApi
+      .isFullScreen()
+      .then((value) => {
+        if (active) setFullScreen(value)
+      })
+      .catch(() => {})
+    const unsubscribeMaximized =
+      window.windowApi.onMaximizedChange(setMaximized)
+    const unsubscribeFullScreen =
+      window.windowApi.onFullScreenChange(setFullScreen)
     return () => {
       active = false
-      unsubscribe()
+      unsubscribeMaximized()
+      unsubscribeFullScreen()
     }
   }, [])
 
@@ -45,7 +56,9 @@ export default function TitleBar({
     <header
       data-testid="titlebar"
       className={`titlebar relative flex h-10 shrink-0 items-stretch select-none ${
-        isMac ? 'titlebar-macos' : ''
+        isMac
+          ? `titlebar-macos ${fullScreen ? 'titlebar-macos-fullscreen' : ''}`
+          : ''
       }`}
     >
       <nav className="app-no-drag titlebar-actions flex items-center gap-1 px-3 font-pingfang">

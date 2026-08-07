@@ -252,6 +252,9 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(WindowInvokeChannel.IsMaximized, (event) =>
     Boolean(senderWindow(event)?.isMaximized())
   )
+  ipcMain.handle(WindowInvokeChannel.IsFullScreen, (event) =>
+    Boolean(senderWindow(event)?.isFullScreen())
+  )
   ipcMain.handle(WindowInvokeChannel.GetPosition, (event) => {
     const win = senderWindow(event)
     if (!win) return { x: 0, y: 0, screenWidth: 1, screenHeight: 1 }

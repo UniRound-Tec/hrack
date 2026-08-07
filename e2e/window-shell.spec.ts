@@ -48,6 +48,31 @@ test('renders platform-appropriate title-bar controls and applies every GUI toke
   expect(uiTokenToCssVariable('bg.app')).toBe('--vib-bg-app')
 })
 
+test('removes the macOS traffic-light inset while native fullscreen', async () => {
+  const platform = await page.evaluate(() => window.windowApi.platform)
+  test.skip(platform !== 'darwin', 'only macOS uses the traffic-light inset')
+
+  const actions = page.locator('.titlebar-actions')
+  await expect(actions).toHaveCSS('padding-left', '78px')
+
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].setFullScreen(true)
+  )
+  await expect
+    .poll(() =>
+      app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].isFullScreen()
+      )
+    )
+    .toBe(true)
+  await expect(actions).toHaveCSS('padding-left', '12px')
+
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0].setFullScreen(false)
+  })
+  await expect(actions).toHaveCSS('padding-left', '78px')
+})
+
 test('toggles maximize from the custom control', async () => {
   const platform = await page.evaluate(() => window.windowApi.platform)
   test.skip(platform === 'darwin', 'macOS uses the native traffic lights')

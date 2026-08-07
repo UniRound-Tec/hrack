@@ -220,6 +220,7 @@ export const WindowInvokeChannel = {
   ToggleMaximize: 'window:toggle-maximize',
   Close: 'window:close',
   IsMaximized: 'window:is-maximized',
+  IsFullScreen: 'window:is-full-screen',
   GetPosition: 'window:get-position'
 } as const
 
@@ -323,6 +324,7 @@ export const ThemeEventChannel = {
 // ───── Main → Renderer（webContents.send，事件流）─────────
 export const WindowEventChannel = {
   MaximizedChanged: 'window:maximized-changed',
+  FullScreenChanged: 'window:full-screen-changed',
   PositionChanged: 'window:position-changed'
 } as const
 
@@ -374,6 +376,8 @@ export interface WindowApi {
   close: () => Promise<void>
   isMaximized: () => Promise<boolean>
   onMaximizedChange: (cb: (maximized: boolean) => void) => () => void
+  isFullScreen: () => Promise<boolean>
+  onFullScreenChange: (cb: (fullScreen: boolean) => void) => () => void
   getPosition: () => Promise<WindowPositionPayload>
   onPositionChange: (
     cb: (position: WindowPositionPayload) => void

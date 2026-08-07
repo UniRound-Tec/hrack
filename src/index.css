@@ -230,6 +230,11 @@ textarea,
   padding-left: 78px;
 }
 
+/* 原生全屏会隐藏 macOS 红绿灯，不再保留其左侧占位。 */
+.titlebar-macos-fullscreen .titlebar-actions {
+  padding-left: 12px;
+}
+
 /* 原型：标题栏功能按钮 text-neutral-500 → hover neutral-800 / 激活 neutral-900 */
 .titlebar-action {
   color: var(--vib-text-muted);
