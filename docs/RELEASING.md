@@ -76,3 +76,8 @@ fails rather than replacing an existing release with the same tag.
 The guarded Windows packager always passes `--publish never` to electron-builder.
 This prevents tag-aware CI environments from publishing before validation; only
 the final workflow step may create or upload a GitHub Release.
+
+Icon validation does not require Electron's development executable to exist on
+the runner. The release gate always checks the configured source icon and that
+the installer and packaged application use the same icon; it additionally
+compares against Electron's default icon when that local reference is available.

@@ -92,12 +92,17 @@ try {
   $installerIcon = Get-IconDigest $installerPath
   $appIcon = Get-IconDigest $unpackedExe
   $defaultElectron = Join-Path $workspace 'node_modules\electron\dist\electron.exe'
-  $defaultIcon = Get-IconDigest $defaultElectron
   if ($installerIcon -ne $appIcon) {
     throw 'Installer and packaged application icons do not match.'
   }
-  if ($installerIcon -eq $defaultIcon) {
-    throw 'Release still uses the default Electron icon.'
+  # npm ci can legitimately omit Electron's development binary on a GitHub
+  # runner. The source icon/config checks and packaged icon equality above are
+  # still authoritative; compare against Electron's default when it is present.
+  if (Test-Path -LiteralPath $defaultElectron -PathType Leaf) {
+    $defaultIcon = Get-IconDigest $defaultElectron
+    if ($installerIcon -eq $defaultIcon) {
+      throw 'Release still uses the default Electron icon.'
+    }
   }
 
   $installer = Get-Item -LiteralPath $installerPath
