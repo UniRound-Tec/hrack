@@ -21,6 +21,7 @@ import { useTerminalsStore } from '../state/terminalsStore'
 import { parseRenderedActivityCaption } from './renderedActivityCaption'
 import { terminalImagePasteSequence } from './clipboardPaste'
 import { installOutputCursorRendering } from './outputCursorRendering'
+import { installImeCompositionPositioning } from './imeCompositionPositioning'
 import {
   PtyOutputBatcher,
   PTY_OUTPUT_MAX_PERIOD_MS,
@@ -157,6 +158,10 @@ export function useXterm(
     term.loadAddon(fit)
     term.open(container)
     const outputCursorRendering = installOutputCursorRendering(term)
+    const imeCompositionPositioning = installImeCompositionPositioning(
+      term,
+      container
+    )
     terminalRef.current = term
     const ligatures = createLigatureController(term, initialSettings.ligatures)
     const bufferChangeDisposable = term.buffer.onBufferChange((buffer) => {
@@ -724,6 +729,7 @@ export function useXterm(
       ro.disconnect()
       container.removeEventListener('contextmenu', copySelectionOnContextMenu)
       proxy?.dispose()
+      imeCompositionPositioning.dispose()
       outputCursorRendering.dispose()
       renderer.dispose()
       ligatures.dispose()

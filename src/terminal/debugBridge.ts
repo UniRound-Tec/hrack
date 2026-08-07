@@ -21,6 +21,7 @@ export interface TerminalSnapshot {
   viewportY: number
   cursorX: number
   cursorY: number
+  showCursor: boolean
   lastNonEmptyLine: number
 }
 
@@ -155,6 +156,7 @@ function createApi(
         viewportY: buffer.viewportY,
         cursorX: buffer.cursorX,
         cursorY: buffer.cursorY,
+        showCursor: term.modes.showCursor,
         lastNonEmptyLine
       }
     },
