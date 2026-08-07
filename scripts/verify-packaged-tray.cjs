@@ -20,7 +20,10 @@ async function main() {
   try {
     await app.firstWindow({ timeout: 30_000 })
     const result = await app.evaluate(({ nativeImage }) => {
-      const iconPath = `${process.resourcesPath}\\tray\\vibing-16.png`
+      const separator = process.platform === 'win32' ? '\\' : '/'
+      const iconPath = [process.resourcesPath, 'tray', 'vibing-16.png'].join(
+        separator
+      )
       const image = nativeImage.createFromPath(iconPath)
       const debug = globalThis.__vibingMainDebug
       return {

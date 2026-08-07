@@ -1,4 +1,4 @@
-name: Release Windows
+name: Release desktop
 
 on:
   push:
@@ -15,38 +15,45 @@ permissions:
   contents: write
 
 concurrency:
-  group: windows-release-${{ github.ref }}
+  group: desktop-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  release-windows:
-    name: Build and publish Windows installer
-    runs-on: windows-latest
-    timeout-minutes: 45
-
+  prepare:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
     steps:
       - name: Resolve release tag
         id: release
-        shell: pwsh
+        shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
           PUSH_TAG: ${{ github.ref_name }}
           MANUAL_TAG: ${{ inputs.tag }}
         run: |
-          $tag = if ($env:EVENT_NAME -eq 'workflow_dispatch') {
-            $env:MANUAL_TAG
-          } else {
-            $env:PUSH_TAG
-          }
-          if ($tag -notmatch '^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
-            throw "Invalid release tag: $tag"
-          }
-          "tag=$tag" >> $env:GITHUB_OUTPUT
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            tag="$MANUAL_TAG"
+          else
+            tag="$PUSH_TAG"
+          fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: $tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
+  build-windows:
+    name: Build Windows installer
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
       - name: Check out tagged source
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.release.outputs.tag }}
+          ref: ${{ needs.prepare.outputs.tag }}
           fetch-depth: 0
 
       - name: Set up Node.js
@@ -60,33 +67,89 @@ jobs:
 
       - name: Build verified release artifacts
         shell: pwsh
-        run: ./scripts/release-github-win.ps1 -TagName '${{ steps.release.outputs.tag }}'
+        run: ./scripts/release-github-win.ps1 -TagName '${{ needs.prepare.outputs.tag }}'
 
-      - name: Retain workflow artifacts
+      - name: Retain Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Vibing-${{ steps.release.outputs.tag }}-windows-x64
+          name: Vibing-${{ needs.prepare.outputs.tag }}-windows-x64
           path: |
             artifacts/Vibing-Setup-*.exe
             artifacts/Vibing-Setup-*.exe.blockmap
             artifacts/Vibing-Setup-*.exe.sha256
           if-no-files-found: error
 
+  build-macos:
+    name: Build macOS ARM64 image
+    needs: prepare
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build verified unsigned release image
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: bash ./scripts/release-github-mac.sh '${{ needs.prepare.outputs.tag }}'
+
+      - name: Retain macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vibing-${{ needs.prepare.outputs.tag }}-macos-arm64-unsigned
+          path: |
+            artifacts/Vibing-*-macos-arm64.dmg
+            artifacts/Vibing-*-macos-arm64.dmg.blockmap
+            artifacts/Vibing-*-macos-arm64.dmg.sha256
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    needs:
+      - prepare
+      - build-windows
+      - build-macos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download verified artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
       - name: Create GitHub Release
-        shell: pwsh
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |
-          $assets = Get-ChildItem -LiteralPath artifacts -File | Where-Object {
-            $_.Name -like 'Vibing-Setup-*.exe' -or
-            $_.Name -like 'Vibing-Setup-*.exe.blockmap' -or
-            $_.Name -like 'Vibing-Setup-*.exe.sha256'
-          } | Select-Object -ExpandProperty FullName
-          if ($assets.Count -ne 3) {
-            throw "Expected exactly 3 release assets, found $($assets.Count)."
-          }
-          gh release create $env:RELEASE_TAG @assets `
-            --verify-tag `
-            --title "Vibing $env:RELEASE_TAG" `
+          shopt -s nullglob
+          assets=(
+            release-assets/Vibing-Setup-*.exe
+            release-assets/Vibing-Setup-*.exe.blockmap
+            release-assets/Vibing-Setup-*.exe.sha256
+            release-assets/Vibing-*-macos-arm64.dmg
+            release-assets/Vibing-*-macos-arm64.dmg.blockmap
+            release-assets/Vibing-*-macos-arm64.dmg.sha256
+          )
+          if [[ ${#assets[@]} -ne 6 ]]; then
+            echo "Expected exactly 6 release assets, found ${#assets[@]}." >&2
+            printf '  %s\n' "${assets[@]}"
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" "${assets[@]}" \
+            --verify-tag \
+            --title "Vibing $RELEASE_TAG" \
             --generate-notes

@@ -1,6 +1,6 @@
 {
   "name": "vibing",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "AI CLI 专用终端",
   "private": true,
   "main": "out/main/index.js",
@@ -16,8 +16,11 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "postinstall": "electron-rebuild -f -w node-pty",
     "build:win": "npm run release:win",
+    "build:mac": "npm run release:mac",
     "release:win": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/release-win.ps1",
     "release:github:win": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/release-github-win.ps1",
+    "release:mac": "bash scripts/release-mac.sh",
+    "release:github:mac": "bash scripts/release-github-mac.sh",
     "e2e": "npm run build && playwright test",
     "e2e:only": "playwright test",
     "e2e:stress": "npm run build && playwright test e2e/terminal-stress.spec.ts",
@@ -57,6 +60,22 @@
         }
       ],
       "icon": "resources/tray/vibing-master.png"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.developer-tools",
+      "artifactName": "Vibing-${version}-macos-${arch}.${ext}"
+    },
+    "dmg": {
+      "title": "Vibing ${version}"
     },
     "nsis": {
       "oneClick": false,
