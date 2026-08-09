@@ -1,50 +1,113 @@
+<p align="right">
+  <a href="./README.zh-CN.md">简体中文</a>
+</p>
+
 <div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./assets/readme/vibing-wordmark-dark.png">
     <img src="./assets/readme/vibing-wordmark-light.png" width="370" alt="Vibing">
   </picture>
 
-  <h3>一个专为 Coding CLI 优化的终端</h3>
-  <p><sub>解放心智，回到真正的氛围编程</sub></p>
+  <h3>A terminal built for coding CLIs</h3>
+  <p><sub>Free your mind. Get back to vibe coding.</sub></p>
+
+  <p>
+    <a href="https://github.com/UniRound-Tec/vibing/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/UniRound-Tec/vibing?style=flat-square"></a>
+    <a href="https://github.com/UniRound-Tec/vibing/releases"><img alt="Release downloads" src="https://img.shields.io/github/downloads/UniRound-Tec/vibing/total?style=flat-square"></a>
+    <img alt="Windows and macOS" src="https://img.shields.io/badge/Windows%20%7C%20macOS-ready-5b5b78?style=flat-square">
+    <img alt="Electron 43" src="https://img.shields.io/badge/Electron-43-47848F?style=flat-square&logo=electron&logoColor=white">
+  </p>
 </div>
 
-## 核心特性
+Vibing is a desktop terminal for people who keep several coding agents open at once. It leaves each CLI's native TUI alone, then adds the missing layer around it: session status, attention cues, a floating monitor, and a read-only workspace viewer.
 
-1. 监控各个 CLI 的实时运行事件，配合悬浮窗快速跳转，在需要你处理时及时提醒，不必在多个 CLI 之间频繁切换。
-2. 提供统一入口，一键快速启动普通终端或 Coding CLI。
-3. 内置侧边文件树和代码阅读器，方便随时查看代码。
-4. 提供丰富的主题系统。
-5. 还有更多专为 Coding CLI 优化的细节，等待你探索。
+<div align="center">
+  <img src="./assets/readme/vibing-demo.gif" width="1100" alt="Vibing demo">
+</div>
 
-## 界面预览
+## Why Vibing?
 
-![Vibing 会话状态监听与终端](./assets/readme/terminal-session.png)
+Coding agents are supposed to save you time. In practice, a few things keep getting in the way:
 
-![Vibing 功能演示](./assets/readme/vibing-demo.gif)
+- You switch to another window, come back later, and find the agent has been sitting on a permission prompt the whole time. Both [Codex](https://github.com/openai/codex/issues/10081) and [Gemini CLI](https://github.com/google-gemini/gemini-cli/issues/14696) users have asked for better alerts here.
+- Once several agents are running, you spend too much time jumping between terminal tabs just to find the one that needs you. This comes up often in [parallel-agent workflows](https://news.ycombinator.com/item?id=47268777), and is why tools such as [tmux-claude-session-manager](https://github.com/craftzdog/tmux-claude-session-manager) exist.
+- Notifications are not always enough. They can fail to fire ([Codex #8929](https://github.com/openai/codex/issues/8929)), miss an agent waiting for an answer ([Codex #13478](https://github.com/openai/codex/issues/13478)), or ignore an interactive shell waiting for input ([Gemini CLI #19527](https://github.com/google-gemini/gemini-cli/issues/19527)).
 
-![Vibing 工作区文件树与代码阅读器](./assets/readme/workspace-reader.png)
+Vibing is our attempt to fix that daily friction. It keeps the sessions together, shows which one needs you, and takes you back to the right place. The CLI still does the real work; Vibing just helps you keep up with it.
 
-## Getting Started
+## What it does
 
-### 安装
+- **Tracks agent sessions.** See when a CLI is working, waiting for you, done, or no longer fully observed.
+- **Gets your attention at the right time.** A small floating window keeps active sessions and approvals within reach.
+- **Starts everything from one place.** Launch a regular shell or a detected coding CLI on Windows, WSL, or macOS.
+- **Keeps code close.** Browse the workspace, read highlighted source, and preview Markdown in a read-only pane.
+- **Still behaves like a terminal.** Native TUI input, mouse handling, scrollback, copy and paste, themes, fonts, and GPU rendering stay intact.
 
-1. 前往 [Releases](https://github.com/UniRound-Tec/vibing/releases) 下载适合当前系统的安装包：
-   - Windows x64：`Vibing-Setup-*.exe`
-   - macOS Apple Silicon：`Vibing-*-macos-arm64.dmg`
-2. 安装并启动 Vibing。
-3. 等待应用完成本机及 WSL 中的 Coding CLI 扫描。
-4. 选择 CLI、运行环境与工作区，即可开始新的会话。
+## A closer look
 
-> 当前安装包尚未进行商业代码签名，系统可能显示安全提醒。
+<table>
+  <tr>
+    <td width="46%">
+      <strong>Session status around the native TUI</strong><br><br>
+      <img src="./assets/readme/terminal-session.png" alt="Session status next to a Claude Code terminal">
+    </td>
+    <td width="54%">
+      <strong>Read-only workspace viewer</strong><br><br>
+      <img src="./assets/readme/workspace-reader.png" alt="Workspace tree and source viewer">
+    </td>
+  </tr>
+</table>
 
-### 本地开发
+## Getting started
+
+### Install
+
+Download the latest build from [GitHub Releases](https://github.com/UniRound-Tec/vibing/releases):
+
+- Windows x64: `Vibing-Setup-*.exe`
+- macOS Apple Silicon: `Vibing-*-macos-arm64.dmg`
+
+The builds are not commercially code-signed yet, so the operating system may show a security prompt on first launch.
+
+### First run
+
+1. Start Vibing and let the CLI scan finish.
+2. Pick a terminal or coding CLI from the home screen.
+3. Choose its runtime and workspace.
+4. Start the session. Vibing will keep the native TUI in the main pane and publish its status around it.
+
+If Codex reports that hooks need review, open `/hooks` inside Codex, review the Vibing hook definition, and trust it. A listener failure never terminates the CLI session; Vibing falls back to lifecycle-only status instead.
+
+## CLI support
+
+| CLI | Observer | Status available to Vibing |
+| --- | --- | --- |
+| Claude Code | Official Hooks | Thinking phase, tools, approvals, completion |
+| Codex CLI | Stable Hooks | Turns, tools, approvals, compaction |
+| OpenCode | Server + SSE | Sessions, thinking, tools, questions, permissions |
+| Pi | Extension API | Thinking, responses, tools, turns |
+
+Vibing can also discover and launch Kimi Code, Grok Build, Devin CLI, Cline, Qwen Code, Amp, Aider, Goose, Kiro CLI, and other registered CLIs. These launch-only integrations do not expose the same level of status detail.
+
+## How status reaches the UI
+
+```text
+CLI ── PTY ──────────────────────────────> terminal
+ └── hooks / SSE / extension events ──> adapter ──> sessions and alerts
+
+workspace ── read-only access ──────────> file tree and viewer
+```
+
+Terminal bytes stay on the terminal path. Adapters only publish bounded, structured facts such as a turn starting, a tool finishing, or an approval being requested. If an observer stops working, the PTY keeps running.
+
+## Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-常用检查命令：
+Useful checks:
 
 ```bash
 npm run typecheck
@@ -52,31 +115,16 @@ npm run build
 npm run e2e:only
 ```
 
-## CLI 支持
+Windows packages must be built on Windows; macOS packages must be built on macOS.
 
-### 已接入状态监听
+## Contributing
 
-| CLI | 监听方式 | 当前能力 |
-| --- | --- | --- |
-| Claude Code | 官方 Hooks | 思考阶段、工具、审批与完成状态 |
-| Codex CLI | Stable Hooks | 工具、审批、上下文压缩与回合状态 |
-| OpenCode | Server + SSE | 思考、工具、问题、权限与多会话聚合 |
-| Pi | Extension API | 思考、响应、工具与回合状态 |
+Bug reports, reproducible edge cases, and focused pull requests are welcome. For observer changes, please include a fixture or runtime test that proves the event ordering and fallback behavior.
 
-不同 CLI 暴露的原生事件不同，因此可展示的状态细节会略有差异。监听不可用时，Vibing 会诚实显示降级状态，但不会中断 CLI 或终端会话。
-
-除上述深度适配的 CLI 外，Vibing 也能扫描并启动 Kimi Code、Grok Build、Devin CLI、Cline、Qwen Code、Amp、Aider、Goose、Kiro CLI 等常见入口。
-
-## 设计原则
-
-- **原生 CLI 优先**：保留 Coding CLI 原本的 TUI 与操作习惯。
-- **事件优先于文本猜测**：优先使用官方 Hook、SSE 或 Extension API 获取状态。
-- **监听失败不杀会话**：Observer 降级时，CLI 与 PTY 仍可正常使用。
-- **工作区只读**：文件树和代码阅读器只负责查看，不与 Agent 抢夺文件控制权。
-- **终端仍然是终端**：普通 Shell、复制粘贴、滚动和 TUI 鼠标操作都应保持可用。
+Vibing is still in preview, so small, well-scoped changes are easier to review than broad rewrites. Open an [issue](https://github.com/UniRound-Tec/vibing/issues) before starting a large feature.
 
 ---
 
 <div align="center">
-  <sub>Vibing is built for people who live in Coding CLIs.</sub>
+  <sub>Built for people who live in coding CLIs.</sub>
 </div>
