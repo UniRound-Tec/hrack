@@ -6,6 +6,7 @@ import type {
   AgentEvent,
   AgentEventKind,
   AgentEventPayload,
+  AgentEventSource,
   AgentSessionProjection,
   ObserverCapabilities
 } from '../shared/agent-events'
@@ -111,6 +112,10 @@ function fixtureSequence(): AgentEvent[] {
 
 async function settle(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0))
+}
+
+async function wait(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 // ───── P0：纯归约器 ─────
@@ -553,6 +558,7 @@ interface FakePtyHost {
   spawn: (opts: SpawnOptions) => Promise<{ ptyId: string }>
   kill: (ptyId: string) => void
   onExit: (ptyId: string, cb: (payload: ExitPayload) => void) => () => void
+  onInputSubmitted?: (ptyId: string, cb: () => void) => () => void
 }
 
 function createRuntimeHarness(options: {
@@ -561,17 +567,23 @@ function createRuntimeHarness(options: {
   failPrepareLaunch?: boolean
   adapterId?: string
   verbatimLaunch?: boolean
+  hookHandshakeTimeoutMs?: number
 }) {
   const spawned: Array<{ opts: SpawnOptions; ptyId: string }> = []
   const killed: string[] = []
   const exitCbs = new Map<string, Set<(payload: ExitPayload) => void>>()
   const exited = new Map<string, ExitPayload>()
+  const inputCbs = new Map<string, Set<() => void>>()
   let spawnCount = 0
 
   const triggerExit = (ptyId: string, payload: ExitPayload): void => {
     if (exited.has(ptyId)) return
     exited.set(ptyId, payload)
     for (const cb of exitCbs.get(ptyId) ?? []) cb(payload)
+  }
+
+  const triggerInput = (ptyId: string): void => {
+    for (const cb of inputCbs.get(ptyId) ?? []) cb()
   }
 
   const pty: FakePtyHost = {
@@ -591,6 +603,12 @@ function createRuntimeHarness(options: {
       exitCbs.set(ptyId, listeners)
       const cached = exited.get(ptyId)
       if (cached) queueMicrotask(() => cb(cached))
+      return () => listeners.delete(cb)
+    },
+    onInputSubmitted(ptyId, cb) {
+      const listeners = inputCbs.get(ptyId) ?? new Set()
+      listeners.add(cb)
+      inputCbs.set(ptyId, listeners)
       return () => listeners.delete(cb)
     }
   }
@@ -658,7 +676,8 @@ function createRuntimeHarness(options: {
       runDirRoot,
       broadcast: (channel, payload) => broadcasts.push([channel, payload]),
       silenceAfterMs: 0,
-      idleCheckMs: 0
+      idleCheckMs: 0,
+      hookHandshakeTimeoutMs: options.hookHandshakeTimeoutMs
     }
   })
 
@@ -667,6 +686,7 @@ function createRuntimeHarness(options: {
     scripted,
     pty,
     triggerExit,
+    triggerInput,
     spawned,
     killed,
     historyEvents,
@@ -678,7 +698,7 @@ function createRuntimeHarness(options: {
 
 class ScriptedAdapter implements AgentObserverAdapter {
   readonly id = 'scripted'
-  readonly source = 'fixture' as const
+  readonly source: AgentEventSource
   readonly capabilities: ObserverCapabilities = FULL_CAPABILITIES
   failPrepare = false
   failAttach = false
@@ -690,6 +710,10 @@ class ScriptedAdapter implements AgentObserverAdapter {
   preparationContext: ObserverPreparationContext | null = null
   private emitFn: ((event: AdapterEvent) => void) | null = null
   private disconnectListener: ((reason: string) => void) | null = null
+
+  constructor(source: AgentEventSource = 'fixture') {
+    this.source = source
+  }
 
   supports(): boolean {
     return true
@@ -898,6 +922,45 @@ test.describe('AgentSessionRuntime (interface gates)', () => {
     expect(harness.killed).not.toContain(started.ptyId)
     // finalize 内含真实 I/O（rm），需要轮询等待。
     await expect.poll(() => harness.runtime.listActive().length).toBe(0)
+  })
+
+  test('hook handshake requires two unanswered submit windows before degrading', async () => {
+    const scripted = new ScriptedAdapter('hook')
+    const harness = createRuntimeHarness({
+      scripted,
+      hookHandshakeTimeoutMs: 5
+    })
+    const started = await harness.runtime.start({
+      terminalId: 't1',
+      selection: { installationId: 'codex:test', workspace: '', args: [] },
+      cols: 80,
+      rows: 24
+    })
+
+    harness.triggerInput(started.ptyId)
+    await wait(15)
+    let projection = harness.runtime.listActive()[0]
+    expect(projection.observerHealth).toBe('unconfirmed')
+    expect(projection.correlation.observerDegradedReason).toBeUndefined()
+
+    harness.triggerInput(started.ptyId)
+    await wait(15)
+    projection = harness.runtime.listActive()[0]
+    expect(projection.observerHealth).toBe('stale')
+    expect(projection.correlation.observerDegradedReason).toBe(
+      'hook-handshake-timeout'
+    )
+
+    scripted.emit({
+      kind: 'turn.started',
+      payload: { turnId: 'turn-recovered' },
+      nativeId: 'native:turn-recovered'
+    })
+    await settle()
+    projection = harness.runtime.listActive()[0]
+    expect(projection.observerHealth).toBe('healthy')
+    expect(projection.correlation.observerDegradedReason).toBeUndefined()
+    await harness.runtime.stop(started.sessionId)
   })
 
   test('adapter prepare failure degrades to lifecycle without killing the CLI', async () => {
