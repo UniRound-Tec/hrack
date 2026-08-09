@@ -44,7 +44,15 @@ import { WorkspaceReaderEventChannel } from '../shared/workspace-reader'
 const userDataOverride = process.env['VIBING_USER_DATA_DIR']
 if (userDataOverride) {
   app.setPath('userData', userDataOverride)
+} else if (!app.isPackaged) {
+  // 开发版与已安装的 Stable 版必须使用不同的进程锁和持久化目录，
+  // 否则本地调试可能唤醒 Stable，或读写它的设置与缓存。
+  const devUserDataDir = join(app.getPath('appData'), 'Vibing Dev')
+  mkdirSync(devUserDataDir, { recursive: true })
+  app.setPath('userData', devUserDataDir)
 }
+
+const isPrimaryInstance = app.requestSingleInstanceLock()
 
 const manager = new PTYManager()
 const cliDiscovery = new AiCliDiscoveryService(
@@ -87,8 +95,22 @@ const agentRuntime = new AgentSessionRuntime({
 })
 let shutdownStarted = false
 let floatingController: FloatingWindowController | null = null
+let winRef: BrowserWindow | null = null
 
-app.whenReady().then(async () => {
+const showWindow = (): void => {
+  if (!winRef || winRef.isDestroyed()) return
+  if (winRef.isMinimized()) winRef.restore()
+  winRef.show()
+  winRef.focus()
+}
+
+if (!isPrimaryInstance) {
+  app.quit()
+} else {
+  app.on('second-instance', showWindow)
+}
+
+if (isPrimaryInstance) app.whenReady().then(async () => {
   // M0 验收：抵达此行即证明 node-pty 已按 Electron ABI 成功加载
   console.log('[vibing] app ready; node-pty loaded against Electron ABI OK')
   // 诊断日志目录
@@ -101,15 +123,7 @@ app.whenReady().then(async () => {
   const prefs = await loadMainPrefs()
   await eventLog.init()
 
-  let winRef: BrowserWindow | null = null
   let trayRef: Tray | null = null
-
-  const showWindow = (): void => {
-    if (!winRef || winRef.isDestroyed()) return
-    if (winRef.isMinimized()) winRef.restore()
-    winRef.show()
-    winRef.focus()
-  }
 
   const trayCallbacks: TrayCallbacks = {
     toggleWindow: () => {
@@ -187,11 +201,13 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       winRef = createWindow(prefs)
+    } else {
+      showWindow()
     }
   })
 })
 
-app.on('before-quit', (event) => {
+if (isPrimaryInstance) app.on('before-quit', (event) => {
   if (shutdownStarted) return
   event.preventDefault()
   shutdownStarted = true

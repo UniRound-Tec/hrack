@@ -16,6 +16,7 @@
     <a href="https://github.com/UniRound-Tec/vibing/releases"><img alt="下载量" src="https://img.shields.io/github/downloads/UniRound-Tec/vibing/total?style=flat-square"></a>
     <img alt="Windows 与 macOS" src="https://img.shields.io/badge/Windows%20%7C%20macOS-ready-5b5b78?style=flat-square">
     <img alt="Electron 43" src="https://img.shields.io/badge/Electron-43-47848F?style=flat-square&logo=electron&logoColor=white">
+    <a href="./LICENSE"><img alt="开源协议：Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square"></a>
   </p>
 </div>
 
@@ -122,6 +123,10 @@ Windows 安装包需要在 Windows 上构建，macOS 安装包需要在 macOS �
 欢迎提交 Bug、可复现的边界情况和范围明确的 Pull Request。修改 Observer 时，请补充 fixture 或 Runtime 测试，用来证明事件顺序和降级行为。
 
 Vibing 仍处于预览阶段。相比一次覆盖很多模块的大改动，小而清晰的提交更容易讨论和合并。大型功能建议先开一个 [Issue](https://github.com/UniRound-Tec/vibing/issues)。
+
+## 开源协议
+
+Vibing 使用 [Apache License 2.0](./LICENSE) 开源。
 
 ---
 

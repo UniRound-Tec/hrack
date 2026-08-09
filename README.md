@@ -16,6 +16,7 @@
     <a href="https://github.com/UniRound-Tec/vibing/releases"><img alt="Release downloads" src="https://img.shields.io/github/downloads/UniRound-Tec/vibing/total?style=flat-square"></a>
     <img alt="Windows and macOS" src="https://img.shields.io/badge/Windows%20%7C%20macOS-ready-5b5b78?style=flat-square">
     <img alt="Electron 43" src="https://img.shields.io/badge/Electron-43-47848F?style=flat-square&logo=electron&logoColor=white">
+    <a href="./LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square"></a>
   </p>
 </div>
 
@@ -122,6 +123,10 @@ Windows packages must be built on Windows; macOS packages must be built on macOS
 Bug reports, reproducible edge cases, and focused pull requests are welcome. For observer changes, please include a fixture or runtime test that proves the event ordering and fallback behavior.
 
 Vibing is still in preview, so small, well-scoped changes are easier to review than broad rewrites. Open an [issue](https://github.com/UniRound-Tec/vibing/issues) before starting a large feature.
+
+## License
+
+Vibing is licensed under the [Apache License 2.0](./LICENSE).
 
 ---
 
