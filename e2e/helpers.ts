@@ -47,6 +47,23 @@ export async function launchApp(options: {
   })
   try {
     const window = await app.firstWindow()
+    await window.waitForFunction(
+      () =>
+        Boolean(document.querySelector('[data-testid="first-run-onboarding"]')) ||
+        Boolean(
+          (window as unknown as Record<string, unknown>)[
+            '__vibingDebugShell'
+          ]
+        ),
+      null,
+      { polling: 100, timeout: 30_000 }
+    )
+    const onboarding = window.getByTestId('first-run-onboarding')
+    if (await onboarding.isVisible()) {
+      const complete = window.getByTestId('onboarding-complete')
+      await expect(complete).toBeEnabled({ timeout: 30_000 })
+      await complete.click()
+    }
     // Electron 窗口被遮挡时 requestAnimationFrame 可能被节流；使用固定间隔轮询，
     // 避免调试桥已经注册却因默认 rAF polling 误报启动超时。
     await window.waitForFunction(

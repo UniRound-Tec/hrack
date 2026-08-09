@@ -130,6 +130,15 @@ export const en = {
       approvals: 'Approvals handled'
     }
   },
+  onboarding: {
+    themeTitle: 'Choose a UI theme',
+    floatingTitle: 'Floating status window',
+    enabled: 'Keep it visible',
+    disabled: 'Leave it off',
+    scanFailed: 'The scan did not finish',
+    scanFound: (clis: number, installations: number) => `${clis} CLIs found across ${installations} installations`,
+    continue: 'Enter Vibing'
+  },
   settings: {
     title: 'Settings',
     sections: {

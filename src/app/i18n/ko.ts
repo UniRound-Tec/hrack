@@ -129,6 +129,15 @@ export const ko = {
       approvals: '처리한 승인'
     }
   },
+  onboarding: {
+    themeTitle: 'UI 테마 선택',
+    floatingTitle: '플로팅 상태 창',
+    enabled: '플로팅 창 켜기',
+    disabled: '지금은 끄기',
+    scanFailed: '검색을 완료하지 못했습니다',
+    scanFound: (clis: number, installations: number) => `CLI ${clis}개, 설치 ${installations}개 발견`,
+    continue: 'Vibing 시작'
+  },
   settings: {
     title: '설정',
     sections: {

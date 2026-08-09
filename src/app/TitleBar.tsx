@@ -9,6 +9,7 @@ import { useStrings } from './i18n'
 
 interface TitleBarProps {
   onNew: () => void
+  showPrimaryActions?: boolean
   onSettings?: () => void
   settingsActive?: boolean
   onToggleCode?: () => void
@@ -17,6 +18,7 @@ interface TitleBarProps {
 
 export default function TitleBar({
   onNew,
+  showPrimaryActions = true,
   onSettings,
   settingsActive = false,
   onToggleCode,
@@ -62,28 +64,32 @@ export default function TitleBar({
       }`}
     >
       <nav className="app-no-drag titlebar-actions flex items-center gap-1 px-3 font-pingfang">
-        <button
-          type="button"
-          data-testid="titlebar-new"
-          onClick={onNew}
-          className="titlebar-action cursor-target flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] transition-colors"
-        >
-          <SquarePen className="size-3.5" strokeWidth={1.75} />
-          {strings.titlebar.newSession}
-        </button>
-        <button
-          type="button"
-          data-testid="titlebar-settings"
-          disabled={!onSettings}
-          aria-pressed={settingsActive}
-          onClick={onSettings}
-          className={`titlebar-action cursor-target flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] transition-colors ${
-            settingsActive ? 'titlebar-action-active' : ''
-          }`}
-        >
-          <Settings2 className="size-3.5" strokeWidth={1.75} />
-          {strings.titlebar.settings}
-        </button>
+        {showPrimaryActions && (
+          <>
+            <button
+              type="button"
+              data-testid="titlebar-new"
+              onClick={onNew}
+              className="titlebar-action cursor-target flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] transition-colors"
+            >
+              <SquarePen className="size-3.5" strokeWidth={1.75} />
+              {strings.titlebar.newSession}
+            </button>
+            <button
+              type="button"
+              data-testid="titlebar-settings"
+              disabled={!onSettings}
+              aria-pressed={settingsActive}
+              onClick={onSettings}
+              className={`titlebar-action cursor-target flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] transition-colors ${
+                settingsActive ? 'titlebar-action-active' : ''
+              }`}
+            >
+              <Settings2 className="size-3.5" strokeWidth={1.75} />
+              {strings.titlebar.settings}
+            </button>
+          </>
+        )}
       </nav>
 
       {/* drag 区域不会向 renderer 派发 pointer event；双击语义由原生 WM 决定。 */}
