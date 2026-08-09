@@ -132,6 +132,15 @@ export const zhCN = {
       approvals: '已处理批准'
     }
   },
+  onboarding: {
+    themeTitle: '选择界面主题',
+    floatingTitle: '悬浮状态窗',
+    enabled: '开启悬浮窗',
+    disabled: '暂不开启',
+    scanFailed: '扫描没有完成',
+    scanFound: (clis: number, installations: number) => `发现 ${clis} 个 CLI，共 ${installations} 个安装`,
+    continue: '进入 Vibing'
+  },
   settings: {
     title: '设置',
     sections: {

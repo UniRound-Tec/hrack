@@ -129,6 +129,15 @@ export const ja = {
       approvals: '処理済みの承認'
     }
   },
+  onboarding: {
+    themeTitle: 'UI テーマを選択',
+    floatingTitle: 'フローティングステータス',
+    enabled: '表示する',
+    disabled: '表示しない',
+    scanFailed: 'スキャンを完了できませんでした',
+    scanFound: (clis: number, installations: number) => `${clis} 個の CLI、${installations} 件のインストールを検出`,
+    continue: 'Vibing を始める'
+  },
   settings: {
     title: '設定',
     sections: {

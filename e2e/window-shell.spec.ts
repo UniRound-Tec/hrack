@@ -4,8 +4,9 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
+import { spawn } from 'child_process'
 import { writeFileSync } from 'fs'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { UI_COLOR_TOKENS, uiTokenToCssVariable } from '../shared/theme-schema'
 import { launchApp } from './helpers'
 
@@ -156,6 +157,51 @@ test('minimizes and hides to tray through the narrowed window API', async () => 
       )
     )
     .not.toBeNull()
+})
+
+test('reopens the hidden primary window instead of starting another instance', async () => {
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].hide()
+  )
+  await expect
+    .poll(() =>
+      app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].isVisible()
+      )
+    )
+    .toBe(false)
+
+  const executablePath = await app.evaluate(({ app: electronApp }) =>
+    electronApp.getPath('exe')
+  )
+  const second = spawn(
+    executablePath,
+    [resolve(__dirname, '../out/main/index.js')],
+    {
+      env: {
+        ...process.env,
+        VIBING_E2E: '1',
+        VIBING_E2E_CLI_FIXTURE: '1',
+        VIBING_USER_DATA_DIR: userDataDir
+      },
+      stdio: 'ignore'
+    }
+  )
+
+  try {
+    await expect
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) => ({
+          count: BrowserWindow.getAllWindows().length,
+          visible: BrowserWindow.getAllWindows()[0].isVisible()
+        }))
+      )
+      .toEqual({ count: 1, visible: true })
+    await expect.poll(() => second.exitCode).not.toBeNull()
+    expect(second.exitCode).toBe(0)
+  } finally {
+    if (second.exitCode === null) second.kill()
+  }
 })
 
 test('registers and unregisters the global shortcut with the settings toggle', async () => {

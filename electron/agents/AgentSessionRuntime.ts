@@ -51,6 +51,7 @@ import type {
 const DEFAULT_SILENCE_AFTER_MS = 300_000
 const DEFAULT_IDLE_CHECK_MS = 60_000
 const HOOK_HANDSHAKE_TIMEOUT_MS = 10_000
+const HOOK_HANDSHAKE_MISSES_BEFORE_DEGRADED = 2
 
 const MAX_TERMINAL_ID_LENGTH = 128
 const MAX_SESSION_NAME_LENGTH = 256
@@ -115,6 +116,8 @@ export interface AgentRuntimeOptions {
   /** 0 表示禁用沉默兜底（测试用）。 */
   silenceAfterMs?: number
   idleCheckMs?: number
+  /** 首次 Hook 确认窗口；仅测试需要缩短。 */
+  hookHandshakeTimeoutMs?: number
   limits?: AgentQueueLimits
 }
 
@@ -146,6 +149,7 @@ interface ActiveAgentSession {
   reconnecting: boolean
   observerEventsOpen: boolean
   observerDelivered: boolean
+  handshakeMisses: number
   handshakeTimer: ReturnType<typeof setTimeout> | null
   pendingObserverEvents: AdapterEvent[]
   pendingObserverOverflow: boolean
@@ -328,7 +332,10 @@ export class AgentSessionRuntime {
   private readonly sessions = new Map<string, ActiveAgentSession>()
   private runRootReady: Promise<void> | null = null
   private readonly options: Required<
-    Pick<AgentRuntimeOptions, 'silenceAfterMs' | 'idleCheckMs'>
+    Pick<
+      AgentRuntimeOptions,
+      'silenceAfterMs' | 'idleCheckMs' | 'hookHandshakeTimeoutMs'
+    >
   > &
     AgentRuntimeOptions
 
@@ -343,9 +350,11 @@ export class AgentSessionRuntime {
     }
   ) {
     this.options = {
+      ...deps.options,
       silenceAfterMs: deps.options.silenceAfterMs ?? DEFAULT_SILENCE_AFTER_MS,
       idleCheckMs: deps.options.idleCheckMs ?? DEFAULT_IDLE_CHECK_MS,
-      ...deps.options
+      hookHandshakeTimeoutMs:
+        deps.options.hookHandshakeTimeoutMs ?? HOOK_HANDSHAKE_TIMEOUT_MS
     }
   }
 
@@ -531,6 +540,7 @@ export class AgentSessionRuntime {
       reconnecting: false,
       observerEventsOpen: false,
       observerDelivered: false,
+      handshakeMisses: 0,
       handshakeTimer: null,
       pendingObserverEvents: [],
       pendingObserverOverflow: false,
@@ -597,6 +607,7 @@ export class AgentSessionRuntime {
     this.sessions.set(sessionId, session)
 
     if (
+      session.source === 'hook' &&
       capabilitiesHaveSemantics(session.capabilities) &&
       this.deps.pty.onInputSubmitted
     ) {
@@ -610,6 +621,14 @@ export class AgentSessionRuntime {
         session.handshakeTimer = setTimeout(() => {
           session.handshakeTimer = null
           if (session.finalized || session.observerDelivered) return
+          session.handshakeMisses++
+          // 首次 CR/LF 可能只是 CLI 的欢迎页、信任确认或菜单操作。只有两个
+          // 独立提交窗口都没有任何合法 Hook，才把 observer 标记为 stale。
+          if (
+            session.handshakeMisses < HOOK_HANDSHAKE_MISSES_BEFORE_DEGRADED
+          ) {
+            return
+          }
           this.acceptAdapterEvent(session, {
             kind: 'observer.degraded',
             payload: {
@@ -618,7 +637,7 @@ export class AgentSessionRuntime {
             },
             nativeId: `hook-handshake-timeout:${session.sessionId}`
           })
-        }, HOOK_HANDSHAKE_TIMEOUT_MS)
+        }, this.options.hookHandshakeTimeoutMs)
       })
     }
 
@@ -758,6 +777,7 @@ export class AgentSessionRuntime {
   ): void {
     if (event.kind !== 'observer.degraded') {
       session.observerDelivered = true
+      session.handshakeMisses = 0
       if (session.handshakeTimer) clearTimeout(session.handshakeTimer)
       session.handshakeTimer = null
     }

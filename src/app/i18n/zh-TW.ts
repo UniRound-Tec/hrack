@@ -129,6 +129,15 @@ export const zhTW = {
       approvals: '已處理核准'
     }
   },
+  onboarding: {
+    themeTitle: '選擇介面主題',
+    floatingTitle: '浮動狀態視窗',
+    enabled: '開啟浮動視窗',
+    disabled: '暫不開啟',
+    scanFailed: '掃描未完成',
+    scanFound: (clis: number, installations: number) => `找到 ${clis} 個 CLI，共 ${installations} 個安裝`,
+    continue: '進入 Vibing'
+  },
   settings: {
     title: '設定',
     sections: {

@@ -17,7 +17,7 @@ import {
   statusTone
 } from '../src/app/sessionStatus'
 
-test.describe('settingsStore v3', () => {
+test.describe('settingsStore v9', () => {
   test('migrates v0/v1 terminal defaults before applying the v3 schema', () => {
     const fromV0 = migrateSettings(
       {
@@ -28,6 +28,7 @@ test.describe('settingsStore v3', () => {
       0
     )
     expect(fromV0).toMatchObject({
+      onboardingCompleted: true,
       uiThemeId: 'light',
       terminalThemeId: 'light',
       fontFamily: defaultSettings.fontFamily,
@@ -71,6 +72,7 @@ test.describe('settingsStore v3', () => {
     )
 
     expect(migrated).toEqual({
+      onboardingCompleted: true,
       uiThemeId: 'dark',
       terminalThemeId: 'dark',
       fontFamily: 'Custom Mono',
@@ -119,6 +121,8 @@ test.describe('settingsStore v3', () => {
 
   test('updates and resets the full settings slice', () => {
     const store = createStore<SettingsState>()(createSettingsState)
+    expect(store.getState().onboardingCompleted).toBe(false)
+    store.getState().completeOnboarding()
     store.getState().setUiTheme(' user-light ')
     store.getState().setTerminalTheme('light')
     store.getState().setFont('  ', 99)
@@ -131,6 +135,7 @@ test.describe('settingsStore v3', () => {
     store.getState().setAttentionPriorityEnabled(true)
 
     expect(store.getState()).toMatchObject({
+      onboardingCompleted: true,
       uiThemeId: 'user-light',
       terminalThemeId: 'light',
       fontFamily: defaultSettings.fontFamily,

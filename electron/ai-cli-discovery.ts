@@ -545,6 +545,11 @@ interface ResolvedCandidate {
   via: 'path' | 'known-path'
 }
 
+interface WslCandidateInventory {
+  byExecutable: Map<string, ResolvedCandidate[]>
+  knownPaths: Set<string>
+}
+
 function isWslWindowsMount(path: string): boolean {
   return /^\/mnt\/[a-z](?:\/|$)/i.test(path)
 }
@@ -558,50 +563,100 @@ function dedupeCandidates(candidates: readonly ResolvedCandidate[]): ResolvedCan
   })
 }
 
-async function resolveWslCandidates(
-  definition: CliDefinition,
+const WSL_KNOWN_PATHS_SEPARATOR = '--vibing-known-paths--'
+const WSL_CANDIDATE_SCAN_SCRIPT = [
+  'path_value=$1',
+  'shift',
+  'export PATH="$path_value"',
+  `while [ "$#" -gt 0 ] && [ "$1" != "${WSL_KNOWN_PATHS_SEPARATOR}" ]; do`,
+  '  executable=$1',
+  '  shift',
+  '  resolved=$(command -v -- "$executable" 2>/dev/null || true)',
+  '  case "$resolved" in',
+  "    /*) printf 'P\\t%s\\t%s\\n' \"$executable\" \"$resolved\" ;;",
+  '  esac',
+  'done',
+  'if [ "$#" -gt 0 ]; then shift; fi',
+  'for candidate in "$@"; do',
+  "  if [ -x \"$candidate\" ]; then printf 'K\\t%s\\n' \"$candidate\"; fi",
+  'done'
+].join('\n')
+
+function wslFallbackExecutablePaths(home: string, executable: string): string[] {
+  return [
+    `${home}/.local/bin/${executable}`,
+    `${home}/bin/${executable}`,
+    `/usr/local/bin/${executable}`,
+    `/usr/bin/${executable}`,
+    `/bin/${executable}`
+  ]
+}
+
+async function scanWslCandidateInventory(
   distro: string,
   home: string,
-  shell: string
-): Promise<ResolvedCandidate[]> {
+  environmentPath: string
+): Promise<WslCandidateInventory | null> {
+  const executables = [...new Set(
+    cliDefinitions.flatMap((definition) => definition.executables.unix ?? [])
+  )]
+  const knownPaths = [...new Set([
+    ...cliDefinitions.flatMap((definition) =>
+      (definition.knownPaths?.unixHomeRelative ?? []).map((relative) =>
+        join(home, ...relative.split('/')).replace(/\\/g, '/')
+      )
+    ),
+    ...executables.flatMap((executable) =>
+      wslFallbackExecutablePaths(home, executable)
+    )
+  ])]
+  const result = await runWsl(distro, 'sh', [
+    '-c',
+    WSL_CANDIDATE_SCAN_SCRIPT,
+    'vibing-candidate-scan',
+    environmentPath,
+    ...executables,
+    WSL_KNOWN_PATHS_SEPARATOR,
+    ...knownPaths
+  ])
+  if (result.code !== 0 || result.timedOut) return null
+
+  const inventory: WslCandidateInventory = {
+    byExecutable: new Map(),
+    knownPaths: new Set()
+  }
+  for (const line of result.stdout.split(/\r?\n/)) {
+    const [kind, key, path] = line.split('\t')
+    if (kind === 'P' && key && path?.startsWith('/')) {
+      const candidates = inventory.byExecutable.get(key) ?? []
+      candidates.push({ path, via: 'path' })
+      inventory.byExecutable.set(key, candidates)
+    } else if (kind === 'K' && key?.startsWith('/')) {
+      inventory.knownPaths.add(key)
+    }
+  }
+  return inventory
+}
+
+function resolveWslCandidates(
+  definition: CliDefinition,
+  home: string,
+  inventory: WslCandidateInventory
+): ResolvedCandidate[] {
   const nativePath: ResolvedCandidate[] = []
   const interopPath: ResolvedCandidate[] = []
   for (const executable of definition.executables.unix ?? []) {
-    const result = await runWsl(distro, shell, [
-      '-lic', 'command -v -- "$1"', 'vibing-resolve', executable
-    ])
-    const resolvedPath = result.stdout
-      .split(/\r?\n/)
-      .map((value) => value.trim())
-      .find((value) => value.startsWith('/'))
-    if (result.code === 0 && resolvedPath) {
-      const candidate = {
-        path: resolvedPath,
-        via: 'path' as const
-      }
+    for (const candidate of inventory.byExecutable.get(executable) ?? []) {
       ;(isWslWindowsMount(candidate.path) ? interopPath : nativePath).push(candidate)
     }
-  }
-  for (const executable of definition.executables.unix ?? []) {
-    const result = await runWsl(distro, shell, [
-      '-lic', 'whereis -b "$1"', 'vibing-whereis', executable
-    ])
-    if (result.code !== 0) continue
-    const paths = result.stdout
-      .trim()
-      .replace(/^[^:]+:\s*/, '')
-      .split(/\s+/)
-      .filter((path) => path.startsWith('/'))
-    for (const path of paths) {
-      const candidate = { path, via: 'path' as const }
-      ;(isWslWindowsMount(path) ? interopPath : nativePath).push(candidate)
+    for (const path of wslFallbackExecutablePaths(home, executable)) {
+      if (inventory.knownPaths.has(path)) nativePath.push({ path, via: 'path' })
     }
   }
   const knownPath: ResolvedCandidate[] = []
   for (const relative of definition.knownPaths?.unixHomeRelative ?? []) {
     const path = join(home, ...relative.split('/')).replace(/\\/g, '/')
-    const result = await runWsl(distro, 'test', ['-x', path])
-    if (result.code === 0) knownPath.push({ path, via: 'known-path' })
+    if (inventory.knownPaths.has(path)) knownPath.push({ path, via: 'known-path' })
   }
   return dedupeCandidates([...nativePath, ...knownPath, ...interopPath])
 }
@@ -777,12 +832,24 @@ async function scanWslDistro(
     return []
   }
   environmentPaths.set(distro, environment.path)
+  const inventory = await scanWslCandidateInventory(
+    distro,
+    environment.home,
+    environment.path
+  )
+  if (!inventory) {
+    errors.push({
+      runtime,
+      code: 'unavailable',
+      detail: `${distro}: unable to scan executable paths`
+    })
+    return []
+  }
   const found = await mapLimit(cliDefinitions, SCAN_CONCURRENCY, async (definition): Promise<CliInstallation | null> => {
-    const candidates = await resolveWslCandidates(
+    const candidates = resolveWslCandidates(
       definition,
-      distro,
       environment.home,
-      environment.shell
+      inventory
     )
     if (candidates.length === 0) return null
     let timedOut = false

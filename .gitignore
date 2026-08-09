@@ -15,3 +15,4 @@ src/assets/fonts/.subset/
 *.err
 .claude/
 .dev-shots/
+docs/

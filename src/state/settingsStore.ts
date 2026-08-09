@@ -12,6 +12,8 @@ const MAPLE_NL_DEFAULT_FONT_FAMILY =
 export type NavMode = 'sidebar' | 'rail' | 'tabs'
 
 export interface SettingsSnapshot {
+  /** 全新安装完成首次引导后置位；旧版本用户迁移时直接视为已完成。 */
+  onboardingCompleted: boolean
   uiThemeId: string
   terminalThemeId: ThemeId
   fontFamily: string
@@ -37,6 +39,7 @@ export interface SettingsSnapshot {
 const LEGACY_DEFAULT_FONT_SIZE = 16
 
 export const defaultSettings: SettingsSnapshot = {
+  onboardingCompleted: false,
   uiThemeId: 'light',
   terminalThemeId: 'dark',
   fontFamily:
@@ -70,6 +73,7 @@ export const defaultTerminalSettings: TerminalSettings = {
 }
 
 export interface SettingsState extends SettingsSnapshot {
+  completeOnboarding(): void
   setUiTheme(uiThemeId: string): void
   setTerminalTheme(terminalThemeId: ThemeId): void
   setFont(fontFamily: string, fontSize: number): void
@@ -152,6 +156,10 @@ export function migrateSettings(
     : legacyThemeId ?? defaultSettings.terminalThemeId
 
   return {
+    onboardingCompleted:
+      typeof legacy.onboardingCompleted === 'boolean'
+        ? legacy.onboardingCompleted
+        : version < 9,
     uiThemeId,
     terminalThemeId,
     fontFamily:
@@ -210,6 +218,7 @@ export const migrateTerminalSettings = migrateSettings
 
 export const createSettingsState: StateCreator<SettingsState> = (set) => ({
   ...defaultSettings,
+  completeOnboarding: () => set({ onboardingCompleted: true }),
   setUiTheme: (uiThemeId) =>
     set({ uiThemeId: uiThemeId.trim() || defaultSettings.uiThemeId }),
   setTerminalTheme: (terminalThemeId) => set({ terminalThemeId }),
@@ -249,9 +258,10 @@ export const createSettingsState: StateCreator<SettingsState> = (set) => ({
 export const useSettingsStore = create<SettingsState>()(
   persist(createSettingsState, {
     name: 'vibing-terminal-settings',
-    version: 8,
+    version: 9,
     migrate: migrateSettings,
     partialize: ({
+      onboardingCompleted,
       uiThemeId,
       terminalThemeId,
       fontFamily,
@@ -266,6 +276,7 @@ export const useSettingsStore = create<SettingsState>()(
       workspaceTreeWidth,
       attentionPriorityEnabled
     }) => ({
+      onboardingCompleted,
       uiThemeId,
       terminalThemeId,
       fontFamily,

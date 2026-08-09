@@ -22,12 +22,10 @@
     "release:mac": "bash scripts/release-mac.sh",
     "release:github:mac": "bash scripts/release-github-mac.sh",
     "e2e": "npm run build && playwright test",
-    "e2e:only": "playwright test",
-    "e2e:stress": "npm run build && playwright test e2e/terminal-stress.spec.ts",
-    "e2e:stress:repeat": "npm run build && playwright test e2e/terminal-stress.spec.ts --repeat-each=5"
+    "e2e:only": "playwright test"
   },
   "author": "",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "build": {
     "appId": "com.vibing.app",
     "productName": "Vibing",
