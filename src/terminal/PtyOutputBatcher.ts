@@ -3,14 +3,20 @@ export interface PtyOutputBatcherOptions {
   maxPeriodMs: number
   write(data: Uint8Array, onParsed: () => void): void
   acknowledge(bytes: number): void
+  scheduleFlush?(callback: () => void): () => void
 }
 
 // ConPTY normally splits one logical repaint across adjacent IPC deliveries only
-// a few milliseconds apart. Keep that repaint atomic without holding a
-// continuous stream below 30 FPS. Eight milliseconds catches the split burst;
-// sixteen milliseconds caps latency to one 60 Hz display frame.
+// a few milliseconds apart. Keep unframed output atomic without holding a
+// continuous stream below 30 FPS. Synchronized TUI frames bypass the quiet
+// period once their DECRST 2026 boundary arrives and are committed on the next
+// browser paint by useXterm.
 export const PTY_OUTPUT_QUIET_PERIOD_MS = 8
 export const PTY_OUTPUT_MAX_PERIOD_MS = 16
+
+const SYNCHRONIZED_OUTPUT_PREFIX = new Uint8Array([
+  0x1b, 0x5b, 0x3f, 0x32, 0x30, 0x32, 0x36
+])
 
 /**
  * Coalesces the small IPC chunks that make up one terminal repaint burst.
@@ -27,6 +33,9 @@ export class PtyOutputBatcher {
   private bytes = 0
   private quietTimer: ReturnType<typeof setTimeout> | null = null
   private maxTimer: ReturnType<typeof setTimeout> | null = null
+  private cancelScheduledFlush: (() => void) | null = null
+  private synchronizedOutput = false
+  private synchronizedPrefixLength = 0
   private disposed = false
 
   constructor(private readonly options: PtyOutputBatcherOptions) {
@@ -45,22 +54,37 @@ export class PtyOutputBatcher {
       return
     }
 
-    const startsBatch = this.chunks.length === 0
     this.chunks.push(data)
     this.bytes += data.byteLength
+    const boundary = this.scanSynchronizedOutput(data)
 
-    if (startsBatch) {
-      this.maxTimer = setTimeout(() => this.flush(), this.options.maxPeriodMs)
+    if (this.synchronizedOutput) {
+      // A newer Pi/ConPTY frame started before the queued paint. Keep it with
+      // the preceding frame so xterm parses both but only exposes the newest
+      // complete state. The max timer still releases malformed/missing DECRST.
+      this.cancelPaintFlush()
+      this.clearQuietTimer()
+      this.ensureMaxTimer()
+      return
     }
+
+    if (boundary.completed) {
+      this.requestPaintFlush()
+      return
+    }
+
+    if (this.cancelScheduledFlush) return
+    this.ensureMaxTimer()
     if (this.quietTimer) clearTimeout(this.quietTimer)
     this.quietTimer = setTimeout(
-      () => this.flush(),
+      () => this.requestPaintFlush(),
       this.options.quietPeriodMs
     )
   }
 
   flush(): void {
     if (this.chunks.length === 0) return
+    this.cancelPaintFlush()
     this.clearTimers()
 
     const byteLength = this.bytes
@@ -79,6 +103,7 @@ export class PtyOutputBatcher {
     this.chunks.length = 0
     this.bytes = 0
     this.disposed = true
+    this.cancelPaintFlush()
     this.clearTimers()
     if (discardedBytes > 0) this.options.acknowledge(discardedBytes)
   }
@@ -98,5 +123,68 @@ export class PtyOutputBatcher {
     if (this.maxTimer) clearTimeout(this.maxTimer)
     this.quietTimer = null
     this.maxTimer = null
+  }
+
+  private clearQuietTimer(): void {
+    if (!this.quietTimer) return
+    clearTimeout(this.quietTimer)
+    this.quietTimer = null
+  }
+
+  private ensureMaxTimer(): void {
+    if (this.maxTimer) return
+    this.maxTimer = setTimeout(
+      () => this.requestPaintFlush(),
+      this.options.maxPeriodMs
+    )
+  }
+
+  private requestPaintFlush(): void {
+    if (this.chunks.length === 0 || this.cancelScheduledFlush) return
+    this.clearTimers()
+    const schedule =
+      this.options.scheduleFlush ??
+      ((callback: () => void) => {
+        const timer = setTimeout(callback, 0)
+        return () => clearTimeout(timer)
+      })
+    this.cancelScheduledFlush = schedule(() => {
+      this.cancelScheduledFlush = null
+      this.flush()
+    })
+  }
+
+  private cancelPaintFlush(): void {
+    this.cancelScheduledFlush?.()
+    this.cancelScheduledFlush = null
+  }
+
+  private scanSynchronizedOutput(data: Uint8Array): {
+    completed: boolean
+  } {
+    let completed = false
+    for (const byte of data) {
+      if (this.synchronizedPrefixLength < SYNCHRONIZED_OUTPUT_PREFIX.length) {
+        const expected =
+          SYNCHRONIZED_OUTPUT_PREFIX[this.synchronizedPrefixLength]
+        if (byte === expected) {
+          this.synchronizedPrefixLength++
+          continue
+        }
+        this.synchronizedPrefixLength =
+          byte === SYNCHRONIZED_OUTPUT_PREFIX[0] ? 1 : 0
+        continue
+      }
+
+      if (byte === 0x68) {
+        this.synchronizedOutput = true
+      } else if (byte === 0x6c) {
+        this.synchronizedOutput = false
+        completed = true
+      }
+      this.synchronizedPrefixLength =
+        byte === SYNCHRONIZED_OUTPUT_PREFIX[0] ? 1 : 0
+    }
+    return { completed }
   }
 }

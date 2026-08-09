@@ -92,12 +92,15 @@ async function bootstrap(): Promise<void> {
     })
   }
 
-  // xterm 会在 open/fit 时测量字体；先等内嵌主字体可用，避免 fallback 字体尺寸被
-  // 缓存后再换字体，导致首屏行列数和 WebGL glyph atlas 不一致。
+  // xterm 会在 open/fit 时测量字体；四种终端字形必须在 WebGL 创建前全部可用。
+  // Pi 会在首屏大量使用 italic；若它第一次绘制时字体仍在加载，fallback 字形会
+  // 留在 texture atlas 中，直到选择文本等操作用另一组颜色键触发重新栅格化。
   try {
     await Promise.all([
       document.fonts.load('400 16px "Maple Mono"'),
-      document.fonts.load('700 16px "Maple Mono"')
+      document.fonts.load('700 16px "Maple Mono"'),
+      document.fonts.load('italic 400 16px "Maple Mono"'),
+      document.fonts.load('italic 700 16px "Maple Mono"')
     ])
   } catch {
     // 字体资源异常时仍允许 Consolas/monospace fallback 启动终端。
