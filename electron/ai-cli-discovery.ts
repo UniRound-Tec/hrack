@@ -140,6 +140,7 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'kimi', adapterId: 'kimi', displayName: 'Kimi Code',
     hint: 'Moonshot AI coding agent', iconId: 'kimi',
+    observerImplemented: true,
     executables: { windows: ['kimi'], unix: ['kimi'] },
     probes: [versionProbe(/kimi/i)],
     knownPaths: {

@@ -79,6 +79,8 @@ The builds are not commercially code-signed yet, so the operating system may sho
 
 If Codex reports that hooks need review, open `/hooks` inside Codex, review the Vibing hook definition, and trust it. A listener failure never terminates the CLI session; Vibing falls back to lifecycle-only status instead.
 
+For Kimi Code, Vibing maintains a versioned, clearly marked Hook block in the effective user `config.toml` (`KIMI_CODE_HOME` or `~/.kimi-code`). The candidate is validated by `kimi doctor config` before installation, content outside the managed block is preserved byte-for-byte, and the hooks are silent no-ops when Kimi is launched outside Vibing.
+
 ## CLI support
 
 | CLI | Observer | Status available to Vibing |
@@ -87,8 +89,9 @@ If Codex reports that hooks need review, open `/hooks` inside Codex, review the 
 | Codex CLI | Stable Hooks | Turns, tools, approvals, compaction |
 | OpenCode | Server + SSE | Sessions, thinking, tools, questions, permissions |
 | Pi | Extension API | Thinking, responses, tools, turns |
+| Kimi Code | Official Hooks | Turns, thinking phase, tools, approvals |
 
-Vibing can also discover and launch Kimi Code, Grok Build, Devin CLI, Cline, Qwen Code, Amp, Aider, Goose, Kiro CLI, and other registered CLIs. These launch-only integrations do not expose the same level of status detail.
+Vibing can also discover and launch Grok Build, Devin CLI, Cline, Qwen Code, Amp, Aider, Goose, Kiro CLI, and other registered CLIs. These launch-only integrations do not expose the same level of status detail.
 
 ## How status reaches the UI
 

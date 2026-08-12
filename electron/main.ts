@@ -35,6 +35,7 @@ import { ClaudeObserverAdapter } from './agents/adapters/claude/ClaudeObserverAd
 import { OpenCodeObserverAdapter } from './agents/adapters/opencode'
 import { CodexObserverAdapter } from './agents/adapters/codex'
 import { PiObserverAdapter } from './agents/adapters/pi'
+import { KimiObserverAdapter } from './agents/adapters/kimi'
 import { HookIngress } from './hooks/HookIngress'
 import { WorkspaceReader } from './workspace/WorkspaceReader'
 import { WorkspaceReaderEventChannel } from '../shared/workspace-reader'
@@ -75,6 +76,7 @@ observerRegistry.register(new ClaudeObserverAdapter(hookIngress))
 observerRegistry.register(new OpenCodeObserverAdapter())
 observerRegistry.register(new CodexObserverAdapter())
 observerRegistry.register(new PiObserverAdapter())
+observerRegistry.register(new KimiObserverAdapter())
 observerRegistry.register(new FixtureObserverAdapter())
 const agentRuntime = new AgentSessionRuntime({
   pty: manager,

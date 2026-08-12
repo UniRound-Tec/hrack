@@ -79,6 +79,8 @@ Vibing 想解决的就是这些每天都会碰到的小麻烦：把会话放在�
 
 如果 Codex 提示 Hook 尚未授权，请在 Codex 中打开 `/hooks`，检查并信任 Vibing 注入的 Hook。监听失败不会结束 CLI 会话，Vibing 只会退回基础生命周期状态。
 
+对于 Kimi Code，Vibing 会在当前生效的用户 `config.toml`（`KIMI_CODE_HOME` 或 `~/.kimi-code`）中维护一个有版本及清晰标记的 Hook 托管块。候选配置经 `kimi doctor config` 校验后才会安装；托管块之外的内容逐字节保留；从 Vibing 之外启动 Kimi 时，这些 Hook 会静默退出且不产生副作用。
+
 ## CLI 支持
 
 | CLI | 监听方式 | Vibing 可获得的状态 |
@@ -87,8 +89,9 @@ Vibing 想解决的就是这些每天都会碰到的小麻烦：把会话放在�
 | Codex CLI | Stable Hooks | 回合、工具、审批、上下文压缩 |
 | OpenCode | Server + SSE | 会话、思考、工具、问题、权限 |
 | Pi | Extension API | 思考、回复、工具、回合 |
+| Kimi Code | 官方 Hooks | 回合、思考阶段、工具、审批 |
 
-Vibing 也可以扫描并启动 Kimi Code、Grok Build、Devin CLI、Cline、Qwen Code、Amp、Aider、Goose、Kiro CLI 等入口。仅启动接入的 CLI 不会提供同等级别的状态细节。
+Vibing 也可以扫描并启动 Grok Build、Devin CLI、Cline、Qwen Code、Amp、Aider、Goose、Kiro CLI 等入口。仅启动接入的 CLI 不会提供同等级别的状态细节。
 
 ## 状态如何进入界面
 

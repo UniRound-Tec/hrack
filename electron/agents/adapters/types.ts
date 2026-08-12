@@ -58,8 +58,10 @@ type AdapterEventOf<E extends AgentEvent = AgentEvent> = E extends AgentEvent
 export type AdapterEvent = AdapterEventOf
 
 /**
- * LaunchAugmentation 只能表达受控变化。Adapter 不得自行 spawn 主 CLI，
- * 不得替换用户工作区，不得添加权限绕过参数，也不得修改用户全局配置。
+ * LaunchAugmentation 只能表达本次启动的受控变化。Adapter 不得自行 spawn
+ * 主 CLI、替换用户工作区或添加权限绕过参数。协议只提供用户级配置入口时，
+ * prepare 可以维护带所有权标记、幂等、写前验证且失败可降级的集成块；
+ * 必须逐字节保留块外用户配置，不能借此改变 Agent 权限或行为策略。
  */
 export interface LaunchAugmentation {
   env?: Record<string, string>
