@@ -35,12 +35,30 @@ export const ko = {
     closeSession: '세션 닫기',
     closeSessionPrompt: (name: string) =>
       `“${name}” 세션을 닫을까요? CLI 프로세스와 하위 터미널도 함께 종료됩니다.`,
+    closeDshSessionPrompt: (name: string) =>
+      `사이드바에서 “${name}”을(를) 숨길까요? 세션은 삭제되지 않고 보관됩니다.`,
     sessionActions: '세션 작업',
     createChildTerminal: '하위 터미널 만들기',
     cloneSession: '세션 복제',
     childTerminals: '하위 터미널 펼치기 또는 접기',
     renameSession: '이름 바꾸기',
     sessionNameRequired: '세션 이름을 입력하세요'
+  },
+  dsh: {
+    lobbyLabel: 'dsh · lobby',
+    lobbyTitle: 'DeepSeek Harness',
+    lobbyHint: '기록은 워크스페이스별로 묶입니다. 새 세션은 격리된 DSH_HOME 에 저장됩니다.',
+    refresh: '새로고침',
+    settings: '설정',
+    newSession: '새 세션',
+    newInWorkspace: '이 워크스페이스에서 만들기',
+    loading: '세션을 불러오는 중…',
+    emptyTitle: '아직 DSH 세션이 없습니다',
+    emptyHint: '워크스페이스 폴더를 선택해 첫 대화를 시작하세요.',
+    emptyWorkspace: '이 워크스페이스에 세션이 없습니다',
+    ungrouped: '미분류',
+    blank: '빈 세션',
+    homeHint: '내장 에이전트 런타임'
   },
   sessionStatus: {
     working: '작업 처리 중',

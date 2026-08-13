@@ -26,6 +26,8 @@ export interface DshHostManagerOptions {
   /** 默认 DSH_HOME（<userData>/dsh-home），由 main 注入。 */
   defaultDshHome: string
   broadcast: (channel: string, payload: DshHostStatus) => void
+  onBecameReady?: () => void
+  onLeftReady?: () => void
 }
 
 /** 预分配一个 127.0.0.1 空闲端口。listen(0) → 取端口 → close 存在竞态，
@@ -117,8 +119,14 @@ export class DshHostManager {
   }
 
   private setStatus(next: DshHostStatus): void {
+    const previous = this.status.state
     this.status = next
     this.options.broadcast(DshEventChannel.StatusChanged, next)
+    if (previous !== 'ready' && next.state === 'ready') {
+      this.options.onBecameReady?.()
+    } else if (previous === 'ready' && next.state !== 'ready') {
+      this.options.onLeftReady?.()
+    }
   }
 
   private appendOutput(chunk: string): void {

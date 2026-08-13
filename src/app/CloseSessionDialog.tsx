@@ -61,7 +61,9 @@ export default function CloseSessionDialog({
             {strings.navigation.closeSession}
           </h2>
           <p className="mt-2 font-pingfang text-[12px] leading-5 text-text-muted">
-            {strings.navigation.closeSessionPrompt(session.name)}
+            {session.kind === 'dsh'
+              ? strings.navigation.closeDshSessionPrompt(session.name)
+              : strings.navigation.closeSessionPrompt(session.name)}
           </p>
           <div className="mt-4 flex justify-end gap-2">
             <button

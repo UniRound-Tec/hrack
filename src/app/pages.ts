@@ -1,3 +1,5 @@
+import { dshTerminalId, isDshTerminalId } from '../../shared/dsh-ipc'
+
 export type PageId =
   | 'home'
   | 'settings'
@@ -30,6 +32,18 @@ export function isDshPage(pageId: PageId): boolean {
 export function dshSessionIdFromPage(pageId: PageId): string | null {
   if (pageId === 'dsh:home' || !pageId.startsWith('dsh:')) return null
   return pageId.slice(4)
+}
+
+export { dshTerminalId, isDshTerminalId }
+
+export function sessionPage(session: {
+  kind?: 'pty' | 'dsh'
+  sessionId: string
+  terminalId: string
+}): PageId {
+  return session.kind === 'dsh'
+    ? dshSessionPage(session.sessionId)
+    : terminalPage(session.terminalId)
 }
 
 export function isPageId(value: unknown): value is PageId {

@@ -35,12 +35,30 @@ export const zhTW = {
     closeSession: '關閉工作階段',
     closeSessionPrompt: (name: string) =>
       `確定要關閉「${name}」嗎？CLI 程序及其子終端將一併結束。`,
+    closeDshSessionPrompt: (name: string) =>
+      `確定要從側欄收起「${name}」嗎？工作階段會封存，不會刪除歷史。`,
     sessionActions: '工作階段操作',
     createChildTerminal: '新增子終端',
     cloneSession: '複製工作階段',
     childTerminals: '展開或收合子終端',
     renameSession: '重新命名',
     sessionNameRequired: '工作階段名稱不能為空'
+  },
+  dsh: {
+    lobbyLabel: 'dsh · lobby',
+    lobbyTitle: 'DeepSeek Harness',
+    lobbyHint: '歷史會話依工作區分組。新會話會寫入隔離的 DSH_HOME。',
+    refresh: '重新整理',
+    settings: '設定',
+    newSession: '新增會話',
+    newInWorkspace: '在此工作區新增',
+    loading: '正在讀取會話…',
+    emptyTitle: '還沒有 DSH 會話',
+    emptyHint: '選擇一個工作區資料夾即可開始第一場對話。',
+    emptyWorkspace: '這個工作區還沒有會話',
+    ungrouped: '未分組',
+    blank: '空白',
+    homeHint: '內建 agent 執行環境'
   },
   sessionStatus: {
     working: '正在處理任務',

@@ -72,6 +72,15 @@ export interface DshWireStreamClosedEvent {
   error?: string
 }
 
+/** DSH 会话没有真实 PTY；用合成 terminalId 接入既有导航/投影管道。 */
+export function dshTerminalId(sessionId: string): string {
+  return `dsh:${sessionId}`
+}
+
+export function isDshTerminalId(terminalId: string): boolean {
+  return terminalId.startsWith('dsh:')
+}
+
 export type DshHostState = 'stopped' | 'starting' | 'ready' | 'failed'
 
 export interface DshHostStatus {

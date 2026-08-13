@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
 import {
+  Bot,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
@@ -85,6 +86,7 @@ interface HomePageProps {
   onConfigureCli: (option: CliOption) => void
   onRefreshClis: () => void
   onViewSession: (session: SessionEntry) => void
+  onOpenDsh: () => void
 }
 
 function relativeTime(
@@ -129,7 +131,8 @@ export default function HomePage({
   onChooseTerminal,
   onConfigureCli,
   onRefreshClis,
-  onViewSession
+  onViewSession,
+  onOpenDsh
 }: HomePageProps) {
   const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>('all')
   const [launchPage, setLaunchPage] = useState(0)
@@ -223,6 +226,29 @@ export default function HomePage({
         </>
       )
     },
+    {
+      key: 'dsh',
+      body: (
+        <button
+          type="button"
+          data-testid="home-quick-dsh"
+          onClick={onOpenDsh}
+          className={launchCardClass}
+        >
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-strong">
+            <Bot size={16} className="size-4" />
+          </span>
+          <span className="w-full min-w-0">
+            <span className="block text-[12px] font-semibold text-text-primary">
+              {strings.navigation.dsh}
+            </span>
+            <span className="block truncate text-[10px] text-text-faint">
+              {strings.dsh.homeHint}
+            </span>
+          </span>
+        </button>
+      )
+    },
     ...clis.map((option) => ({
       key: option.definition.id,
       body: (
@@ -284,6 +310,19 @@ export default function HomePage({
           <Settings2 className="size-3" strokeWidth={1.75} />
         </button>
       </div>
+      <button
+        type="button"
+        data-testid="home-quick-dsh"
+        onClick={onOpenDsh}
+        className="cursor-target flex shrink-0 items-center gap-2 rounded-full border border-border-default bg-surface py-1.5 pr-3 pl-1.5 font-pingfang transition-colors hover:border-border-strong hover:bg-surface-hover"
+      >
+        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-strong">
+          <Bot size={16} className="size-4" />
+        </span>
+        <span className="text-[12px] font-medium whitespace-nowrap text-text-secondary">
+          {strings.navigation.dsh}
+        </span>
+      </button>
       {clis.map((option) => (
         <button
           key={option.definition.id}

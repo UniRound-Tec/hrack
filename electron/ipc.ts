@@ -51,6 +51,7 @@ import type { WorkspaceReader } from './workspace/WorkspaceReader'
 import { DshInvokeChannel } from '../shared/dsh-ipc'
 import type { DshHostManager } from './dsh-host/DshHostManager'
 import type { DshWireProxy } from './dsh-host/DshWireProxy'
+import type { DshProjectionBridge } from './dsh-host/DshProjectionBridge'
 import {
   directoryPickerDefaultPath,
   normalizePickedDirectory
@@ -81,6 +82,7 @@ export interface IpcContext {
   workspaceReader: WorkspaceReader
   dshHost: DshHostManager
   dshWire: DshWireProxy
+  dshProjections: DshProjectionBridge
   getWindow(): BrowserWindow | null
   getTray(): Tray | null
   getFloatingWindowController(): FloatingWindowController | null
@@ -396,9 +398,10 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(AgentInvokeChannel.PublishCaption, (_event, input: unknown) =>
     ctx.agentRuntime.publishCaption(input)
   )
-  ipcMain.handle(AgentInvokeChannel.ListActive, () =>
-    ctx.agentRuntime.listActive()
-  )
+  ipcMain.handle(AgentInvokeChannel.ListActive, () => [
+    ...ctx.agentRuntime.listActive(),
+    ...ctx.dshProjections.listActive()
+  ])
 
   ipcMain.handle(StatsInvokeChannel.AllTime, () => ctx.eventLog.allTimeStats())
   ipcMain.handle(StatsInvokeChannel.HistoryEvents, (_event, query: unknown) => {

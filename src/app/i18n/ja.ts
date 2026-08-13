@@ -35,12 +35,30 @@ export const ja = {
     closeSession: 'セッションを閉じる',
     closeSessionPrompt: (name: string) =>
       `「${name}」を閉じますか？CLI プロセスと子ターミナルも終了します。`,
+    closeDshSessionPrompt: (name: string) =>
+      `「${name}」をサイドバーから外しますか？セッションは削除されずアーカイブされます。`,
     sessionActions: 'セッション操作',
     createChildTerminal: '子ターミナルを作成',
     cloneSession: 'セッションを複製',
     childTerminals: '子ターミナルを展開または折りたたむ',
     renameSession: '名前を変更',
     sessionNameRequired: 'セッション名を入力してください'
+  },
+  dsh: {
+    lobbyLabel: 'dsh · lobby',
+    lobbyTitle: 'DeepSeek Harness',
+    lobbyHint: '履歴はワークスペースごとに分かれます。新規セッションは隔離された DSH_HOME に保存されます。',
+    refresh: '更新',
+    settings: '設定',
+    newSession: '新しいセッション',
+    newInWorkspace: 'このワークスペースで作成',
+    loading: 'セッションを読み込み中…',
+    emptyTitle: 'DSH セッションはまだありません',
+    emptyHint: 'ワークスペースフォルダを選んで最初の会話を始めます。',
+    emptyWorkspace: 'このワークスペースにセッションはありません',
+    ungrouped: '未分類',
+    blank: '空白',
+    homeHint: '内蔵エージェントランタイム'
   },
   sessionStatus: {
     working: 'タスクを処理中',

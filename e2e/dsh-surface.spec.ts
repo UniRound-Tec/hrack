@@ -5,9 +5,8 @@ import { resolve } from 'path'
 import { _electron as electron } from '@playwright/test'
 
 /**
- * P0 验证：DSH 页能 boot 出官方 web GUI。
- * 链路：rail 按钮 → DshPage → ensureStarted（utilityProcess fork bin.js）
- * → getBootManifest → loadBundle（wire 取回 client.js）→ AppWebEntry 渲染。
+ * P1 验收：DSH lobby 能启动 host，并按工作区列出历史会话。
+ * 链路：navigate dsh:home → ensureStarted → workspace.list / session.list。
  */
 
 const userDataDir = mkdtempSync(resolve(tmpdir(), 'vibing-dsh-p0-'))
@@ -51,7 +50,7 @@ test('dsh surface boots end to end', async () => {
       ;(window as unknown as { __vibingDebugShell: { navigate(page: string): void } })
         .__vibingDebugShell.navigate('dsh:home')
     })
-    await expect(window.getByTestId('dsh-page')).toBeVisible({ timeout: 10_000 })
+    await expect(window.getByTestId('dsh-lobby')).toBeVisible({ timeout: 10_000 })
     // host 首次 boot 要初始化 profile（离线符号链接），放宽等待
     try {
       await expect
@@ -70,25 +69,18 @@ test('dsh surface boots end to end', async () => {
         .toBe('ready')
     } catch (error) {
       const pageText = await window.evaluate(() =>
-        document.querySelector('[data-testid="dsh-page"]')?.textContent ?? '(no dsh-page)'
+        document.querySelector('[data-testid="dsh-lobby"]')?.textContent ?? '(no dsh-lobby)'
       )
       const status = await window.evaluate(async () =>
         JSON.stringify(await (window as unknown as { dshApi: { getStatus(): Promise<unknown> } }).dshApi.getStatus())
       )
-      console.log('[diag] dsh-page text:', pageText)
+      console.log('[diag] dsh-lobby text:', pageText)
       console.log('[diag] host status:', status)
       throw error
     }
 
-    // dsh GUI 真实渲染出 DOM
-    await window.waitForFunction(
-      () => {
-        const root = document.querySelector('[data-testid="dsh-page"] > div:last-child')
-        return root !== null && root.children.length > 0
-      },
-      null,
-      { polling: 200, timeout: 60_000 }
-    )
+    await expect(window.getByTestId('dsh-lobby-new')).toBeVisible({ timeout: 30_000 })
+    await expect(window.getByTestId('dsh-lobby-error')).toHaveCount(0)
     // wire 直连自检：主进程代理 host.describe
     const description = await window.evaluate(async () => {
       const api = (window as unknown as {

@@ -38,12 +38,30 @@ export const zhCN = {
     closeSession: '关闭会话',
     closeSessionPrompt: (name: string) =>
       `确定要关闭“${name}”吗？CLI 进程及其子终端会一并结束。`,
+    closeDshSessionPrompt: (name: string) =>
+      `确定要从侧栏收起“${name}”吗？会话会归档，不会删除历史。`,
     sessionActions: '会话操作',
     createChildTerminal: '新建子终端',
     cloneSession: '克隆会话',
     childTerminals: '展开或收起子终端',
     renameSession: '重命名',
     sessionNameRequired: '会话名称不能为空'
+  },
+  dsh: {
+    lobbyLabel: 'dsh · lobby',
+    lobbyTitle: 'DeepSeek Harness',
+    lobbyHint: '历史会话按工作区分组。新建会话会写入隔离的 DSH_HOME。',
+    refresh: '刷新',
+    settings: '设置',
+    newSession: '新建会话',
+    newInWorkspace: '在此工作区新建',
+    loading: '正在读取会话…',
+    emptyTitle: '还没有 DSH 会话',
+    emptyHint: '选择一个工作区目录即可创建第一场对话。',
+    emptyWorkspace: '这个工作区还没有会话',
+    ungrouped: '未分组',
+    blank: '空白',
+    homeHint: '内置 agent 运行时'
   },
   sessionStatus: {
     working: '正在处理任务',

@@ -35,12 +35,30 @@ export const en = {
     closeSession: 'Close session',
     closeSessionPrompt: (name: string) =>
       `Close “${name}”? Its CLI process and child terminals will also stop.`,
+    closeDshSessionPrompt: (name: string) =>
+      `Hide “${name}” from the sidebar? The session will be archived, not deleted.`,
     sessionActions: 'Session actions',
     createChildTerminal: 'New child terminal',
     cloneSession: 'Clone session',
     childTerminals: 'Expand or collapse child terminals',
     renameSession: 'Rename',
     sessionNameRequired: 'Session name is required'
+  },
+  dsh: {
+    lobbyLabel: 'dsh · lobby',
+    lobbyTitle: 'DeepSeek Harness',
+    lobbyHint: 'History is grouped by workspace. New sessions stay in the isolated DSH_HOME.',
+    refresh: 'Refresh',
+    settings: 'Settings',
+    newSession: 'New session',
+    newInWorkspace: 'New in this workspace',
+    loading: 'Loading sessions…',
+    emptyTitle: 'No DSH sessions yet',
+    emptyHint: 'Pick a workspace folder to start the first conversation.',
+    emptyWorkspace: 'No sessions in this workspace',
+    ungrouped: 'Ungrouped',
+    blank: 'Blank',
+    homeHint: 'Built-in agent runtime'
   },
   sessionStatus: {
     working: 'Working on the task',

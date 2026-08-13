@@ -41,7 +41,8 @@ import { WorkspaceReader } from './workspace/WorkspaceReader'
 import { WorkspaceReaderEventChannel } from '../shared/workspace-reader'
 import { DshHostManager } from './dsh-host/DshHostManager'
 import { DshWireProxy } from './dsh-host/DshWireProxy'
-import { type DshHostStatus } from '../shared/dsh-ipc'
+import { DshProjectionBridge } from './dsh-host/DshProjectionBridge'
+import { DshSessionProjector } from './dsh-host/DshSessionProjector'
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
 // 必须在 app ready 之前调用。
@@ -108,8 +109,14 @@ const broadcastToAllWindows = (channel: string, payload: unknown): void => {
 }
 const dshHost = new DshHostManager({
   defaultDshHome: join(app.getPath('userData'), 'dsh-home'),
+  broadcast: broadcastToAllWindows,
+  onBecameReady: () => dshProjector.start(),
+  onLeftReady: () => dshProjector.stop()
+})
+const dshProjections = new DshProjectionBridge({
   broadcast: broadcastToAllWindows
 })
+const dshProjector = new DshSessionProjector(dshHost, dshProjections)
 const dshWire = new DshWireProxy(dshHost, broadcastToAllWindows)
 let shutdownStarted = false
 let floatingController: FloatingWindowController | null = null
@@ -166,6 +173,7 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
     workspaceReader,
     dshHost,
     dshWire,
+    dshProjections,
     getWindow: () => (winRef && !winRef.isDestroyed() ? winRef : null),
     getTray: () => trayRef,
     getFloatingWindowController: () => floatingController,
@@ -182,7 +190,8 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
     findActiveSession: (sessionId) =>
       agentRuntime
         .listActive()
-        .find((projection) => projection.sessionId === sessionId)
+        .find((projection) => projection.sessionId === sessionId) ??
+      dshProjections.find(sessionId)
   })
   await floatingController.setEnabled(prefs.floatingWindowEnabled)
   trayRef = createTray(prefs.language, trayCallbacks)
@@ -236,6 +245,7 @@ if (isPrimaryInstance) app.on('before-quit', (event) => {
     // Agent Runtime 先写入退出事实并回收 observer；随后兜底关闭普通终端。
     await agentRuntime.disposeAll()
     await hookIngress.dispose()
+    dshProjector.stop()
     dshWire.dispose()
     await dshHost.dispose()
     floatingController?.dispose()

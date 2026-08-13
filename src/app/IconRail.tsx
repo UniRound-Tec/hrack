@@ -6,7 +6,14 @@ import {
   Terminal as TerminalIcon
 } from 'lucide-react'
 import { getAdapterIcon } from './adapterIcons'
-import { isDshPage, terminalIdFromPage, terminalPage, type PageId } from './pages'
+import {
+  dshSessionIdFromPage,
+  isDshPage,
+  sessionPage,
+  terminalIdFromPage,
+  terminalPage,
+  type PageId
+} from './pages'
 import { statusDot } from './sessionStatus'
 import { useStrings } from './i18n'
 import type { SessionEntry } from '../state/sessionsStore'
@@ -39,6 +46,7 @@ export default function IconRail({
 }: IconRailProps) {
   const strings = useStrings()
   const activeTerminalId = terminalIdFromPage(pageId)
+  const activeDshSessionId = dshSessionIdFromPage(pageId)
   const visibleSessions = sessions.slice(0, 6)
   const visibleTerminals = terminals.slice(0, 3)
 
@@ -92,11 +100,15 @@ export default function IconRail({
               type="button"
               data-testid="rail-session-item"
               title={`${session.name} · ${session.detail ?? ''}`}
-              onClick={() => onNavigate(terminalPage(session.terminalId))}
+              onClick={() => onNavigate(sessionPage(session))}
               className={`cursor-target relative flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
-                activeTerminalId === session.terminalId
-                  ? 'bg-surface-strong'
-                  : 'hover:bg-surface-hover'
+                session.kind === 'dsh'
+                  ? activeDshSessionId === session.sessionId
+                    ? 'bg-surface-strong'
+                    : 'hover:bg-surface-hover'
+                  : activeTerminalId === session.terminalId
+                    ? 'bg-surface-strong'
+                    : 'hover:bg-surface-hover'
               }`}
             >
               <Icon size={15} className="size-[15px]" />

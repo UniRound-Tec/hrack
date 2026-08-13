@@ -10,17 +10,21 @@ import TerminalPage from './TerminalPage'
 import HomePage from './HomePage'
 import SettingsPage from './SettingsPage'
 import DshPage from './DshPage'
+import DshLobbyPage from './DshLobbyPage'
 import NewSessionFlow from './NewSessionFlow'
 import CloseSessionDialog from './CloseSessionDialog'
 import TargetCursor from './effects/TargetCursor'
 import SidebarTint from './SidebarTint'
 import {
-  isDshPage,
+  dshSessionIdFromPage,
+  dshSessionPage,
   isPageId,
+  sessionPage,
   terminalIdFromPage,
   terminalPage,
   type PageId
 } from './pages'
+import { closeVisibleDshSession, refreshDshSessions, renameVisibleDshSession } from '../dsh/sessionSync'
 import {
   handleShellShortcut,
   registerShellShortcutActions
@@ -139,6 +143,7 @@ export default function AppShell() {
     [nonSessionTerminals]
   )
   const activeTerminalId = terminalIdFromPage(pageId)
+  const activeDshSessionId = dshSessionIdFromPage(pageId)
   const activeReaderTerminal = activeTerminalId
     ? (terminals.find((terminal) => terminal.id === activeTerminalId) ?? null)
     : null
@@ -172,7 +177,14 @@ export default function AppShell() {
   }, [openNewSession])
 
   useEffect(() => {
-    return window.appApi.onFocusSession(({ terminalId }) => {
+    return window.appApi.onFocusSession(({ sessionId, terminalId }) => {
+      const session = useSessionsStore
+        .getState()
+        .sessions.find((item) => item.sessionId === sessionId)
+      if (session) {
+        navigate(sessionPage(session))
+        return
+      }
       if (
         useTerminalsStore
           .getState()
@@ -211,6 +223,15 @@ export default function AppShell() {
 
   const renameSession = useCallback(
     (sessionId: string, name: string): void => {
+      const session = useSessionsStore
+        .getState()
+        .sessions.find((item) => item.sessionId === sessionId)
+      if (session?.kind === 'dsh') {
+        void renameVisibleDshSession(sessionId, name).catch(() => {
+          updateSession(sessionId, { name })
+        })
+        return
+      }
       updateSession(sessionId, { name })
       void window.agentApi.rename(sessionId, name).then((projection) => {
         if (projection) {
@@ -223,6 +244,7 @@ export default function AppShell() {
 
   const cloneSession = useCallback(
     (session: SessionEntry): void => {
+      if (session.kind === 'dsh') return
       const source = useTerminalsStore
         .getState()
         .terminals.find((terminal) => terminal.id === session.terminalId)
@@ -248,7 +270,7 @@ export default function AppShell() {
 
   const createChildTerminal = useCallback(
     async (session: SessionEntry): Promise<void> => {
-      if (!session.installationId) return
+      if (session.kind === 'dsh' || !session.installationId) return
       try {
         const report = cliReport ?? (await window.cliApi.scan(false))
         if (!cliReport) setCliReport(report)
@@ -357,16 +379,21 @@ export default function AppShell() {
     const unsubscribeEvents = window.agentApi.onEvents((events) => {
       useAgentEventsStore.getState().record(events)
     })
+    const unsubscribeDsh = window.dshApi.onStatusChanged((status) => {
+      if (status.state === 'ready') void refreshDshSessions()
+    })
     void Promise.all([
       window.ptyApi.listRecoverable(),
-      window.agentApi.listActive()
+      window.agentApi.listActive(),
+      window.dshApi.getStatus()
     ])
-      .then(([recoverable, projections]) => {
+      .then(([recoverable, projections, dshStatus]) => {
         if (cancelled) return
         restoreTerminals(recoverable)
         for (const projection of projections) {
           useSessionsStore.getState().applyProjection(projection)
         }
+        if (dshStatus.state === 'ready') void refreshDshSessions()
         useSessionNavigationStore.getState().reconcile(
           useSessionsStore
             .getState()
@@ -387,6 +414,7 @@ export default function AppShell() {
       cancelled = true
       unsubscribeProjection()
       unsubscribeEvents()
+      unsubscribeDsh()
     }
   }, [restoreTerminals])
 
@@ -459,6 +487,12 @@ export default function AppShell() {
 
   const closeSessionAndTerminal = useCallback(
     (session: SessionEntry): void => {
+      if (session.kind === 'dsh') {
+        const wasActive = dshSessionIdFromPage(pageId) === session.sessionId
+        void closeVisibleDshSession(session.sessionId)
+        if (wasActive) navigate('dsh:home')
+        return
+      }
       const children = useTerminalsStore
         .getState()
         .terminals.filter(
@@ -493,7 +527,7 @@ export default function AppShell() {
         setPageId('home')
       }
     },
-    [activeTerminalId, closeTerminal, removeSession, terminalIds]
+    [activeTerminalId, closeTerminal, navigate, pageId, removeSession, terminalIds]
   )
 
   const handleTerminalExit = useCallback(
@@ -726,12 +760,20 @@ export default function AppShell() {
                 }}
                 onConfigureCli={configureCli}
                 onRefreshClis={() => void scanClis(true)}
-                onViewSession={(session) =>
-                  navigate(terminalPage(session.terminalId))
-                }
+                onViewSession={(session) => navigate(sessionPage(session))}
+                onOpenDsh={() => navigate('dsh:home')}
               />
             )}
-            {isDshPage(pageId) && <DshPage />}
+            {pageId === 'dsh:home' && (
+              <DshLobbyPage
+                onOpenSession={(sessionId) => navigate(dshSessionPage(sessionId))}
+                onOpenSettings={() => navigate('settings')}
+              />
+            )}
+            <DshPage
+              sessionId={activeDshSessionId}
+              visible={activeDshSessionId !== null}
+            />
             {pageId === 'settings' && (
               <SettingsPage
                 shells={shells}

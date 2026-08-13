@@ -7,17 +7,27 @@ import { getStrings } from '../app/i18n'
 import { renderAgentDetail } from '../app/agentDetail'
 import { useSettingsStore } from './settingsStore'
 
+export type SessionKind = 'pty' | 'dsh'
+
 export interface SessionEntry {
   sessionId: string
   terminalId: string
   adapterId: string
   installationId?: string
+  kind?: SessionKind
   name: string
   status: SessionStatus
   detail?: string
   lastActivityAt: number
   /** renderer 恢复竞态保护；仅比较主进程投影，不参与 UI。 */
   projectionSeq?: number
+}
+
+export function sessionKindOf(
+  session: Pick<SessionEntry, 'kind' | 'adapterId' | 'terminalId'>
+): SessionKind {
+  if (session.kind === 'dsh' || session.adapterId === 'dsh') return 'dsh'
+  return session.terminalId.startsWith('dsh:') ? 'dsh' : 'pty'
 }
 
 type SessionPatch = Partial<
@@ -45,7 +55,10 @@ function mergeSessions(
     current.map((session) => [session.sessionId, session])
   )
   for (const session of incoming) {
-    merged.set(session.sessionId, { ...session })
+    merged.set(session.sessionId, {
+      ...session,
+      kind: sessionKindOf(session)
+    })
   }
   return [...merged.values()]
 }
@@ -78,11 +91,17 @@ export function createSessionsStore(): UseBoundStore<
         ) {
           return state
         }
+        const kind = sessionKindOf({
+          kind: existing?.kind ?? 'pty',
+          adapterId: projection.adapterId,
+          terminalId: projection.terminalId
+        })
         const entry: SessionEntry = {
           sessionId: projection.sessionId,
           terminalId: projection.terminalId,
           adapterId: projection.adapterId,
           installationId: projection.installationId,
+          kind,
           name: projection.name ?? existing?.name ?? 'Session',
           status: projection.status,
           detail: renderAgentDetail(
