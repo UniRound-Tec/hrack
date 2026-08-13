@@ -30,6 +30,7 @@ import {
 
 const TERMINAL_SMOOTH_SCROLL_DURATION_MS = 80
 const OUTPUT_SCROLL_SMOOTHING_RESTORE_MS = 100
+const OUTPUT_PAINT_FALLBACK_MS = 50
 
 const DISABLE_MOUSE_TRACKING =
   '\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l'
@@ -474,7 +475,28 @@ export function useXterm(
         quietPeriodMs: PTY_OUTPUT_QUIET_PERIOD_MS,
         maxPeriodMs: PTY_OUTPUT_MAX_PERIOD_MS,
         write: (data, onParsed) => term.write(data, onParsed),
-        acknowledge: (bytes) => acknowledgeParsedData(bytes, next)
+        acknowledge: (bytes) => acknowledgeParsedData(bytes, next),
+        scheduleFlush: (callback) => {
+          let pending = true
+          const commit = (): void => {
+            if (!pending) return
+            pending = false
+            cancelAnimationFrame(frame)
+            clearTimeout(fallback)
+            callback()
+          }
+          const frame = requestAnimationFrame(commit)
+          // Electron may throttle rAF while minimized or fully occluded. Keep
+          // parsing/acks moving so background agents cannot deadlock on PTY
+          // backpressure; visible terminals still commit on the next paint.
+          const fallback = setTimeout(commit, OUTPUT_PAINT_FALLBACK_MS)
+          return () => {
+            if (!pending) return
+            pending = false
+            cancelAnimationFrame(frame)
+            clearTimeout(fallback)
+          }
+        }
       })
       outputBatcher = batcher
 
@@ -675,9 +697,8 @@ export function useXterm(
     // term.open() 同一调用栈里的同步 fit 仍可能使用 xterm 尚未稳定的
     // cell metrics。等一帧再测量并 spawn，避免 CLI 先按错误列数绘制，
     // 随后被首次 ResizeObserver 触发的 ConPTY 全屏重画纠正。
-    // term.open() 会触发 WebGL 使用的 regular/bold/italic 字体加载。
-    // 必须在这些字体真正 ready 后再 fit；只在 open 前预加载 regular 字体，
-    // 仍会让 FitAddon 用 fallback cell metrics 得到错误列数。
+    // bootstrap 已预加载内嵌 regular/bold/italic/bold-italic；这里继续等待
+    // 当前用户字体，并清掉 term.open/WebGL 初始化期间可能生成的 fallback atlas。
     void document.fonts.ready.then(() => {
       if (disposed) return
       initialSpawnFrame = requestAnimationFrame(() => {
@@ -688,6 +709,7 @@ export function useXterm(
           fitFrame = null
         }
         try {
+          term.clearTextureAtlas()
           fit.fit()
         } catch {
           // 保留同步 fit 的结果；即便第二次测量失败也必须允许终端启动。

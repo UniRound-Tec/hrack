@@ -1,10 +1,12 @@
 import { expect, test } from '@playwright/test'
 import { PtyOutputBatcher } from '../src/terminal/PtyOutputBatcher'
 
-test('coalesces split PTY repaint chunks and acknowledges after one parse', () => {
+test('keeps split synchronized repaints atomic and commits them on one paint', () => {
   const writes: Uint8Array[] = []
   const parsedCallbacks: Array<() => void> = []
   const acknowledgements: number[] = []
+  const paintCallbacks: Array<() => void> = []
+  const encoder = new TextEncoder()
   const batcher = new PtyOutputBatcher({
     quietPeriodMs: 1_000,
     maxPeriodMs: 2_000,
@@ -14,20 +16,33 @@ test('coalesces split PTY repaint chunks and acknowledges after one parse', () =
     },
     acknowledge(bytes) {
       acknowledgements.push(bytes)
+    },
+    scheduleFlush(callback) {
+      paintCallbacks.push(callback)
+      return () => {
+        const index = paintCallbacks.indexOf(callback)
+        if (index >= 0) paintCallbacks.splice(index, 1)
+      }
     }
   })
 
-  batcher.push(new Uint8Array([0x1b, 0x5b, 0x48]))
-  batcher.push(new Uint8Array([0x1b, 0x5b, 0x4a]))
+  batcher.push(encoder.encode('\x1b[?2026hfirst'))
+  expect(paintCallbacks).toHaveLength(0)
+  batcher.push(encoder.encode(' frame\x1b[?2026l'))
+  expect(paintCallbacks).toHaveLength(1)
+  batcher.push(encoder.encode('\x1b[?2026hsecond frame\x1b[?2026l'))
 
   expect(writes).toHaveLength(0)
-  batcher.flush()
+  expect(paintCallbacks).toHaveLength(1)
+  paintCallbacks.shift()?.()
   expect(writes).toHaveLength(1)
-  expect([...writes[0]]).toEqual([0x1b, 0x5b, 0x48, 0x1b, 0x5b, 0x4a])
+  const expected =
+    '\x1b[?2026hfirst frame\x1b[?2026l\x1b[?2026hsecond frame\x1b[?2026l'
+  expect(new TextDecoder().decode(writes[0])).toBe(expected)
   expect(acknowledgements).toEqual([])
 
   parsedCallbacks[0]()
-  expect(acknowledgements).toEqual([6])
+  expect(acknowledgements).toEqual([encoder.encode(expected).byteLength])
   batcher.dispose()
 })
 
