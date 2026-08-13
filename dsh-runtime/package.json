@@ -1,0 +1,9 @@
+{
+  "name": "vibing-dsh-runtime",
+  "private": true,
+  "description": "vibing 内置的 deepseek-harness 运行时（隔离依赖树，随发行版打包；升级 = 在此目录 bump 版本号）。",
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-web": "0.1.0-rc.6"
+  }
+}

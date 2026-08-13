@@ -13,7 +13,18 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "useDefineForClassFields": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@deepseek-ai/dsh-client-web": [
+        "./dsh-runtime/node_modules/@deepseek-ai/dsh-client-web"
+      ],
+      "@deepseek-ai/dsh-client-modules/client": [
+        "./dsh-runtime/node_modules/@deepseek-ai/dsh-client-modules/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/cordis": [
+        "./dsh-runtime/node_modules/@deepseek-ai/cordis"
+      ]
+    }
   },
   "include": ["src/**/*", "shared/**/*"]
 }

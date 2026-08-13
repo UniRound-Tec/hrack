@@ -39,6 +39,9 @@ import { KimiObserverAdapter } from './agents/adapters/kimi'
 import { HookIngress } from './hooks/HookIngress'
 import { WorkspaceReader } from './workspace/WorkspaceReader'
 import { WorkspaceReaderEventChannel } from '../shared/workspace-reader'
+import { DshHostManager } from './dsh-host/DshHostManager'
+import { DshWireProxy } from './dsh-host/DshWireProxy'
+import { type DshHostStatus } from '../shared/dsh-ipc'
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
 // 必须在 app ready 之前调用。
@@ -95,6 +98,19 @@ const agentRuntime = new AgentSessionRuntime({
     }
   }
 })
+// DSH 内置 agent 运行时：懒启动（renderer 首次 ensureStarted），随 app 退出回收。
+const broadcastToAllWindows = (channel: string, payload: unknown): void => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.send(channel, payload)
+    }
+  }
+}
+const dshHost = new DshHostManager({
+  defaultDshHome: join(app.getPath('userData'), 'dsh-home'),
+  broadcast: broadcastToAllWindows
+})
+const dshWire = new DshWireProxy(dshHost, broadcastToAllWindows)
 let shutdownStarted = false
 let floatingController: FloatingWindowController | null = null
 let winRef: BrowserWindow | null = null
@@ -148,6 +164,8 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
     cliDiscovery,
     agentRuntime,
     workspaceReader,
+    dshHost,
+    dshWire,
     getWindow: () => (winRef && !winRef.isDestroyed() ? winRef : null),
     getTray: () => trayRef,
     getFloatingWindowController: () => floatingController,
@@ -218,6 +236,8 @@ if (isPrimaryInstance) app.on('before-quit', (event) => {
     // Agent Runtime 先写入退出事实并回收 observer；随后兜底关闭普通终端。
     await agentRuntime.disposeAll()
     await hookIngress.dispose()
+    dshWire.dispose()
+    await dshHost.dispose()
     floatingController?.dispose()
     workspaceReader.clear()
     manager.killAll()

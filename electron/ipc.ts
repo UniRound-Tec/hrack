@@ -48,6 +48,9 @@ import type { Tray } from './tray'
 import type { FloatingWindowController } from './floating/FloatingWindowController'
 import { WorkspaceReaderInvokeChannel } from '../shared/workspace-reader'
 import type { WorkspaceReader } from './workspace/WorkspaceReader'
+import { DshInvokeChannel } from '../shared/dsh-ipc'
+import type { DshHostManager } from './dsh-host/DshHostManager'
+import type { DshWireProxy } from './dsh-host/DshWireProxy'
 import {
   directoryPickerDefaultPath,
   normalizePickedDirectory
@@ -76,6 +79,8 @@ export interface IpcContext {
   cliDiscovery: AiCliDiscoveryService
   agentRuntime: AgentSessionRuntime
   workspaceReader: WorkspaceReader
+  dshHost: DshHostManager
+  dshWire: DshWireProxy
   getWindow(): BrowserWindow | null
   getTray(): Tray | null
   getFloatingWindowController(): FloatingWindowController | null
@@ -179,6 +184,28 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(WorkspaceReaderInvokeChannel.Read, (_event, request: unknown) =>
     ctx.workspaceReader.read(request)
   )
+  // ───── DSH host 生命周期（内置 agent 运行时）─────────
+  ipcMain.handle(DshInvokeChannel.GetStatus, () => ctx.dshHost.getStatus())
+  ipcMain.handle(DshInvokeChannel.EnsureStarted, () =>
+    ctx.dshHost.ensureStarted()
+  )
+  ipcMain.handle(DshInvokeChannel.Stop, () => ctx.dshHost.stop())
+  ipcMain.handle(DshInvokeChannel.WireFetch, (_e, request) =>
+    ctx.dshWire.handleFetch(request)
+  )
+  ipcMain.handle(DshInvokeChannel.GetBootManifest, () =>
+    ctx.dshWire.getBootManifest()
+  )
+  ipcMain.handle(DshInvokeChannel.WireFetchAbort, (_e, requestId) => {
+    if (typeof requestId === 'string') ctx.dshWire.abortFetch(requestId)
+  })
+  ipcMain.handle(DshInvokeChannel.WireStreamOpen, (_e, request) => {
+    ctx.dshWire.openStream(request)
+  })
+  ipcMain.handle(DshInvokeChannel.WireStreamClose, (_e, streamId) => {
+    if (typeof streamId === 'string') ctx.dshWire.closeStream(streamId)
+  })
+
   ipcMain.handle(PtyInvokeChannel.Spawn, (_e, opts: SpawnOptions) =>
     manager.spawn(opts)
   )

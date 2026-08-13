@@ -1,11 +1,12 @@
 import {
+  Bot,
   Home,
   PanelLeftOpen,
   SquarePen,
   Terminal as TerminalIcon
 } from 'lucide-react'
 import { getAdapterIcon } from './adapterIcons'
-import { terminalIdFromPage, terminalPage, type PageId } from './pages'
+import { isDshPage, terminalIdFromPage, terminalPage, type PageId } from './pages'
 import { statusDot } from './sessionStatus'
 import { useStrings } from './i18n'
 import type { SessionEntry } from '../state/sessionsStore'
@@ -68,6 +69,15 @@ export default function IconRail({
           className={railButtonClass(false)}
         >
           <SquarePen className="size-4" strokeWidth={1.75} />
+        </button>
+        <button
+          type="button"
+          data-testid="rail-dsh"
+          title={strings.navigation.dsh}
+          onClick={() => onNavigate('dsh:home')}
+          className={railButtonClass(isDshPage(pageId))}
+        >
+          <Bot className="size-4" strokeWidth={1.75} />
         </button>
       </nav>
 

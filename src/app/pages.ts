@@ -1,4 +1,9 @@
-export type PageId = 'home' | 'settings' | `terminal:${string}`
+export type PageId =
+  | 'home'
+  | 'settings'
+  | 'dsh:home'
+  | `dsh:${string}`
+  | `terminal:${string}`
 
 export function terminalPage(terminalId: string): PageId {
   return `terminal:${terminalId}`
@@ -8,10 +13,33 @@ export function terminalIdFromPage(pageId: PageId): string | null {
   return pageId.startsWith('terminal:') ? pageId.slice(9) : null
 }
 
+/** DSH lobby 页（历史会话/新建/设置入口）。 */
+export function dshHomePage(): PageId {
+  return 'dsh:home'
+}
+
+/** 某个 DSH 会话的页面（P0 阶段均由内嵌 dsh web surface 承担）。 */
+export function dshSessionPage(sessionId: string): PageId {
+  return `dsh:${sessionId}`
+}
+
+export function isDshPage(pageId: PageId): boolean {
+  return pageId === 'dsh:home' || pageId.startsWith('dsh:')
+}
+
+export function dshSessionIdFromPage(pageId: PageId): string | null {
+  if (pageId === 'dsh:home' || !pageId.startsWith('dsh:')) return null
+  return pageId.slice(4)
+}
+
 export function isPageId(value: unknown): value is PageId {
   return (
     value === 'home' ||
     value === 'settings' ||
+    value === 'dsh:home' ||
+    (typeof value === 'string' &&
+      value.startsWith('dsh:') &&
+      value.length > 4) ||
     (typeof value === 'string' &&
       value.startsWith('terminal:') &&
       value.length > 9)

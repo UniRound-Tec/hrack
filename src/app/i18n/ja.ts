@@ -23,6 +23,7 @@ export const ja = {
   navigation: {
     home: 'Home',
     newSession: 'New Session',
+    dsh: 'DeepSeek Harness',
     sessions: 'Session',
     terminals: 'Terminal',
     settings: '設定',

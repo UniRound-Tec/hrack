@@ -9,11 +9,13 @@ import TopTabBar from './TopTabBar'
 import TerminalPage from './TerminalPage'
 import HomePage from './HomePage'
 import SettingsPage from './SettingsPage'
+import DshPage from './DshPage'
 import NewSessionFlow from './NewSessionFlow'
 import CloseSessionDialog from './CloseSessionDialog'
 import TargetCursor from './effects/TargetCursor'
 import SidebarTint from './SidebarTint'
 import {
+  isDshPage,
   isPageId,
   terminalIdFromPage,
   terminalPage,
@@ -729,6 +731,7 @@ export default function AppShell() {
                 }
               />
             )}
+            {isDshPage(pageId) && <DshPage />}
             {pageId === 'settings' && (
               <SettingsPage
                 shells={shells}

@@ -23,6 +23,7 @@ export const ko = {
   navigation: {
     home: 'Home',
     newSession: 'New Session',
+    dsh: 'DeepSeek Harness',
     sessions: 'Session',
     terminals: 'Terminal',
     settings: '설정',

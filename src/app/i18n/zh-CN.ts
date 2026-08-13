@@ -26,6 +26,7 @@ export const zhCN = {
   navigation: {
     home: 'Home',
     newSession: 'New Session',
+    dsh: 'DeepSeek Harness',
     sessions: 'Session',
     terminals: 'Terminal',
     settings: '设置',
