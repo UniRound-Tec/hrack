@@ -46,6 +46,9 @@ export function emptyCorrelation(): AgentCorrelationState {
     activeTools: {},
     pendingApprovals: {},
     pendingInputs: {},
+    closedToolIds: {},
+    closedApprovalIds: {},
+    closedInputIds: {},
     lowConfidenceIdle: false,
     highConfidenceIdle: false,
     thinkingActive: false
@@ -201,6 +204,71 @@ function mergeUsage(
   return { ...target, ...update }
 }
 
+/**
+ * A terminal turn is authoritative: no tool or user-attention request owned by
+ * that turn may keep the session working/needs-you if its narrower terminal
+ * hook was lost or delivered out of order.
+ */
+function closeTurnCorrelations(
+  correlation: AgentCorrelationState,
+  turnId: string
+): void {
+  for (const [callId, tool] of Object.entries(correlation.activeTools)) {
+    if (tool.turnId === turnId) delete correlation.activeTools[callId]
+  }
+  for (const [requestId, approval] of Object.entries(
+    correlation.pendingApprovals
+  )) {
+    if (approval.turnId === turnId) delete correlation.pendingApprovals[requestId]
+  }
+  for (const [requestId, input] of Object.entries(correlation.pendingInputs)) {
+    if (input.turnId === turnId) delete correlation.pendingInputs[requestId]
+  }
+  correlation.closedApprovalIds = {}
+  correlation.closedInputIds = {}
+  correlation.closedToolIds = {}
+  if (
+    correlation.lastToolCallId &&
+    !correlation.activeTools[correlation.lastToolCallId]
+  ) {
+    correlation.lastToolCallId = Object.keys(correlation.activeTools).at(-1)
+  }
+}
+
+function closeRequestsForCall(
+  correlation: AgentCorrelationState,
+  callId: string,
+  turnId: string | undefined
+): void {
+  for (const [requestId, approval] of Object.entries(
+    correlation.pendingApprovals
+  )) {
+    if (approval.callId !== callId || approval.turnId !== turnId) continue
+    delete correlation.pendingApprovals[requestId]
+    correlation.closedApprovalIds[requestId] = true
+  }
+  for (const [requestId, input] of Object.entries(correlation.pendingInputs)) {
+    if (input.callId !== callId || input.turnId !== turnId) continue
+    delete correlation.pendingInputs[requestId]
+    correlation.closedInputIds[requestId] = true
+  }
+}
+
+function clearScopedActivity(correlation: AgentCorrelationState): void {
+  correlation.activeTools = {}
+  correlation.pendingApprovals = {}
+  correlation.pendingInputs = {}
+  correlation.closedToolIds = {}
+  correlation.closedApprovalIds = {}
+  correlation.closedInputIds = {}
+  correlation.lastToolCallId = undefined
+  correlation.lastTurnId = undefined
+  correlation.lastTurnOutcome = undefined
+  correlation.turnFailedMessage = undefined
+  correlation.thinkingActive = false
+  correlation.liveCaption = undefined
+}
+
 export function reduceAgentSession(
   previous: AgentSessionProjection,
   event: AgentEvent
@@ -215,7 +283,10 @@ export function reduceAgentSession(
     ...previous.correlation,
     activeTools: { ...previous.correlation.activeTools },
     pendingApprovals: { ...previous.correlation.pendingApprovals },
-    pendingInputs: { ...previous.correlation.pendingInputs }
+    pendingInputs: { ...previous.correlation.pendingInputs },
+    closedToolIds: { ...previous.correlation.closedToolIds },
+    closedApprovalIds: { ...previous.correlation.closedApprovalIds },
+    closedInputIds: { ...previous.correlation.closedInputIds }
   }
 
   let capabilities = previous.capabilities
@@ -233,6 +304,7 @@ export function reduceAgentSession(
         correlation.highConfidenceIdle = false
         observerHealth = 'stale'
       } else {
+        clearScopedActivity(correlation)
         correlation.highConfidenceIdle = true
         correlation.lowConfidenceIdle = false
         observerHealth = 'healthy'
@@ -240,10 +312,12 @@ export function reduceAgentSession(
       break
     }
     case 'session.exited':
+      clearScopedActivity(correlation)
       correlation.exited = true
       correlation.exitCode = event.payload.exitCode
       break
     case 'turn.started': {
+      clearScopedActivity(correlation)
       // 高置信度语义事件清除低置信度 idle override（PLAN-S1 §6.2）。
       correlation.lowConfidenceIdle = false
       correlation.highConfidenceIdle = false
@@ -258,6 +332,7 @@ export function reduceAgentSession(
     }
     case 'turn.completed': {
       if (event.payload.turnId !== correlation.lastTurnId) break
+      closeTurnCorrelations(correlation, event.payload.turnId)
       correlation.lowConfidenceIdle = false
       correlation.highConfidenceIdle = false
       correlation.lastTurnOutcome = event.payload.outcome ?? 'completed'
@@ -268,6 +343,7 @@ export function reduceAgentSession(
     }
     case 'turn.failed': {
       if (event.payload.turnId !== correlation.lastTurnId) break
+      closeTurnCorrelations(correlation, event.payload.turnId)
       correlation.lowConfidenceIdle = false
       correlation.highConfidenceIdle = false
       correlation.lastTurnOutcome = 'failed'
@@ -299,11 +375,20 @@ export function reduceAgentSession(
       observerHealth = observerHealthFor(observerHealth, capabilities, false)
       break
     case 'tool.started': {
+      const turnId = event.payload.turnId ?? correlation.lastTurnId
+      if (
+        event.payload.turnId !== undefined &&
+        (turnId !== correlation.lastTurnId ||
+          correlation.lastTurnOutcome !== undefined)
+      ) {
+        break
+      }
+      if (correlation.closedToolIds[event.payload.callId]) break
       correlation.lowConfidenceIdle = false
       correlation.highConfidenceIdle = false
       correlation.activeTools[event.payload.callId] = {
         name: event.payload.name,
-        turnId: event.payload.turnId
+        turnId
       }
       correlation.lastToolCallId = event.payload.callId
       correlation.liveCaption = undefined
@@ -312,14 +397,32 @@ export function reduceAgentSession(
       break
     }
     case 'tool.progress': {
-      if (!correlation.activeTools[event.payload.callId]) break
+      const tool = correlation.activeTools[event.payload.callId]
+      if (
+        !tool ||
+        (event.payload.turnId !== undefined &&
+          event.payload.turnId !== tool.turnId)
+      ) {
+        break
+      }
       correlation.lowConfidenceIdle = false
       correlation.highConfidenceIdle = false
       observerHealth = observerHealthFor(observerHealth, capabilities, false)
       break
     }
     case 'tool.completed': {
+      const tool = correlation.activeTools[event.payload.callId]
+      const turnId = event.payload.turnId ?? tool?.turnId ?? correlation.lastTurnId
+      if (
+        event.payload.turnId !== undefined &&
+        (turnId !== correlation.lastTurnId ||
+          correlation.lastTurnOutcome !== undefined)
+      ) {
+        break
+      }
       delete correlation.activeTools[event.payload.callId]
+      correlation.closedToolIds[event.payload.callId] = { turnId }
+      closeRequestsForCall(correlation, event.payload.callId, turnId)
       correlation.lowConfidenceIdle = false
       correlation.highConfidenceIdle = false
       observerHealth = observerHealthFor(observerHealth, capabilities, false)
@@ -327,18 +430,47 @@ export function reduceAgentSession(
     }
     case 'tool.failed': {
       // tool failed 不自动令整个 Session 为 error；只终结该 tool。
+      const tool = correlation.activeTools[event.payload.callId]
+      const turnId = event.payload.turnId ?? tool?.turnId ?? correlation.lastTurnId
+      if (
+        event.payload.turnId !== undefined &&
+        (turnId !== correlation.lastTurnId ||
+          correlation.lastTurnOutcome !== undefined)
+      ) {
+        break
+      }
       delete correlation.activeTools[event.payload.callId]
+      correlation.closedToolIds[event.payload.callId] = { turnId }
+      closeRequestsForCall(correlation, event.payload.callId, turnId)
       correlation.lowConfidenceIdle = false
       correlation.highConfidenceIdle = false
       observerHealth = observerHealthFor(observerHealth, capabilities, false)
       break
     }
     case 'approval.requested': {
+      const turnId = event.payload.turnId ?? correlation.lastTurnId
+      if (
+        event.payload.turnId !== undefined &&
+        (turnId !== correlation.lastTurnId ||
+          correlation.lastTurnOutcome !== undefined)
+      ) {
+        break
+      }
+      if (correlation.closedApprovalIds[event.payload.requestId]) break
+      const closedTool = event.payload.callId
+        ? correlation.closedToolIds[event.payload.callId]
+        : undefined
+      if (closedTool && closedTool.turnId === turnId) {
+        correlation.closedApprovalIds[event.payload.requestId] = true
+        break
+      }
       correlation.lowConfidenceIdle = false
       correlation.highConfidenceIdle = false
       correlation.pendingApprovals[event.payload.requestId] = {
         category: event.payload.category,
-        summary: event.payload.summary
+        summary: event.payload.summary,
+        callId: event.payload.callId,
+        turnId
       }
       correlation.liveCaption = undefined
       correlation.latestDetail =
@@ -349,16 +481,28 @@ export function reduceAgentSession(
     case 'approval.resolved': {
       // 只移除自己对应的 request；其余待处理项不受影响。
       delete correlation.pendingApprovals[event.payload.requestId]
+      correlation.closedApprovalIds[event.payload.requestId] = true
       correlation.lowConfidenceIdle = false
       correlation.highConfidenceIdle = false
       observerHealth = observerHealthFor(observerHealth, capabilities, false)
       break
     }
     case 'input.requested': {
+      const turnId = event.payload.turnId ?? correlation.lastTurnId
+      if (
+        event.payload.turnId !== undefined &&
+        (turnId !== correlation.lastTurnId ||
+          correlation.lastTurnOutcome !== undefined)
+      ) {
+        break
+      }
+      if (correlation.closedInputIds[event.payload.requestId]) break
       correlation.lowConfidenceIdle = false
       correlation.highConfidenceIdle = false
       correlation.pendingInputs[event.payload.requestId] = {
-        prompt: event.payload.prompt
+        prompt: event.payload.prompt,
+        callId: event.payload.callId,
+        turnId
       }
       correlation.liveCaption = undefined
       correlation.latestDetail =
@@ -368,6 +512,7 @@ export function reduceAgentSession(
     }
     case 'input.resolved': {
       delete correlation.pendingInputs[event.payload.requestId]
+      correlation.closedInputIds[event.payload.requestId] = true
       correlation.lowConfidenceIdle = false
       correlation.highConfidenceIdle = false
       observerHealth = observerHealthFor(observerHealth, capabilities, false)

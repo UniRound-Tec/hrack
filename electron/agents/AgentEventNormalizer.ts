@@ -285,37 +285,55 @@ export function normalizeAdapterEvent(value: unknown): AdapterEvent | null {
     case 'tool.progress': {
       const callId = requiredId(payload.callId)
       if (!callId) return null
+      const turnId = optionalId(payload.turnId)
       const summary = boundedText(payload.summary, MAX_SUMMARY_LENGTH) || undefined
-      normalizedPayload = summary === undefined ? { callId } : { callId, summary }
+      normalizedPayload = {
+        callId,
+        turnId,
+        ...(summary === undefined ? {} : { summary })
+      }
       break
     }
     case 'tool.completed': {
       const callId = requiredId(payload.callId)
       if (!callId) return null
+      const turnId = optionalId(payload.turnId)
       const durationMs = finiteNumber(payload.durationMs, MAX_DURATION_MS)
-      normalizedPayload = durationMs === undefined ? { callId } : { callId, durationMs }
+      normalizedPayload = {
+        callId,
+        turnId,
+        ...(durationMs === undefined ? {} : { durationMs })
+      }
       break
     }
     case 'tool.failed': {
       const callId = requiredId(payload.callId)
       const message = boundedText(payload.message, MAX_MESSAGE_LENGTH)
       if (!callId || !message) return null
+      const turnId = optionalId(payload.turnId)
       const durationMs = finiteNumber(payload.durationMs, MAX_DURATION_MS)
       normalizedPayload = durationMs === undefined
-        ? { callId, message }
-        : { callId, durationMs, message }
+        ? { callId, turnId, message }
+        : { callId, turnId, durationMs, message }
       break
     }
     case 'approval.requested': {
       const requestId = requiredId(payload.requestId)
       if (!requestId) return null
+      const turnId = optionalId(payload.turnId)
       const callId = optionalId(payload.callId)
       const category = optionalEnum(
         payload.category,
         APPROVAL_CATEGORIES
       ) as ApprovalRequestedPayload['category'] | undefined
       const summary = boundedText(payload.summary, MAX_SUMMARY_LENGTH) || undefined
-      normalizedPayload = { requestId, callId, category, summary } as AgentEventPayload
+      normalizedPayload = {
+        requestId,
+        turnId,
+        callId,
+        category,
+        summary
+      } as AgentEventPayload
       break
     }
     case 'approval.resolved': {
@@ -334,8 +352,15 @@ export function normalizeAdapterEvent(value: unknown): AdapterEvent | null {
     case 'input.requested': {
       const requestId = requiredId(payload.requestId)
       if (!requestId) return null
+      const turnId = optionalId(payload.turnId)
+      const callId = optionalId(payload.callId)
       const prompt = boundedText(payload.prompt, MAX_PROMPT_LENGTH) || undefined
-      normalizedPayload = prompt === undefined ? { requestId } : { requestId, prompt }
+      normalizedPayload = {
+        requestId,
+        turnId,
+        callId,
+        ...(prompt === undefined ? {} : { prompt })
+      }
       break
     }
     case 'input.resolved': {

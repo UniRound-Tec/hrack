@@ -57,22 +57,26 @@ export interface ToolStartedPayload {
 
 export interface ToolProgressPayload {
   callId: string
+  turnId?: string
   summary?: string
 }
 
 export interface ToolCompletedPayload {
   callId: string
+  turnId?: string
   durationMs?: number
 }
 
 export interface ToolFailedPayload {
   callId: string
+  turnId?: string
   durationMs?: number
   message: string
 }
 
 export interface ApprovalRequestedPayload {
   requestId: string
+  turnId?: string
   callId?: string
   category?: 'tool' | 'command' | 'file-change' | 'network' | 'other'
   summary?: string
@@ -85,6 +89,8 @@ export interface ApprovalResolvedPayload {
 
 export interface InputRequestedPayload {
   requestId: string
+  turnId?: string
+  callId?: string
   prompt?: string
 }
 
@@ -206,9 +212,16 @@ export interface AgentCorrelationState {
   lastToolCallId?: string
   pendingApprovals: Record<
     string,
-    { category?: string; summary?: string }
+    { category?: string; summary?: string; callId?: string; turnId?: string }
   >
-  pendingInputs: Record<string, { prompt?: string }>
+  pendingInputs: Record<
+    string,
+    { prompt?: string; callId?: string; turnId?: string }
+  >
+  /** Current-turn terminal tombstones for result-before-request delivery. */
+  closedToolIds: Record<string, { turnId?: string }>
+  closedApprovalIds: Record<string, true>
+  closedInputIds: Record<string, true>
   lowConfidenceIdle: boolean
   highConfidenceIdle: boolean
   lastTurnId?: string

@@ -181,6 +181,159 @@ test.describe('AgentEventReducer', () => {
     expect(projection.pendingAttentionCount).toBe(0)
   })
 
+  test('turn completion clears an approval whose resolved hook was missed', () => {
+    let projection = initialProjection()
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(1, 'turn.started', { turnId: 'turn-1' })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(2, 'tool.started', {
+        callId: 'tool-missed-terminal',
+        turnId: 'turn-1',
+        name: 'Bash',
+        category: 'shell'
+      })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(3, 'approval.requested', {
+        requestId: 'req-missed-resolution',
+        callId: 'tool-missed-terminal',
+        category: 'command',
+        summary: 'Approve Bash'
+      })
+    )
+    expect(projection.status).toBe('needs-you')
+
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(4, 'turn.completed', {
+        turnId: 'turn-1',
+        outcome: 'completed'
+      })
+    )
+
+    expect(projection.status).toBe('done')
+    expect(projection.activeToolCount).toBe(0)
+    expect(projection.pendingAttentionCount).toBe(0)
+    expect(projection.correlation.pendingApprovals).toEqual({})
+  })
+
+  test('turn terminal remains authoritative over a late approval request', () => {
+    let projection = initialProjection()
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(1, 'turn.started', { turnId: 'turn-1' })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(2, 'turn.completed', {
+        turnId: 'turn-1',
+        outcome: 'completed'
+      })
+    )
+
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(3, 'approval.requested', {
+        requestId: 'late-approval',
+        turnId: 'turn-1',
+        category: 'command'
+      } as AgentEventPayload)
+    )
+
+    expect(projection.status).toBe('done')
+    expect(projection.pendingAttentionCount).toBe(0)
+  })
+
+  test('a new turn occurrence overwrites unfinished facts from the prior turn', () => {
+    let projection = initialProjection()
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(1, 'turn.started', { turnId: 'turn-1' })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(2, 'approval.requested', {
+        requestId: 'approval-1',
+        turnId: 'turn-1'
+      })
+    )
+
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(3, 'turn.started', { turnId: 'turn-2' })
+    )
+
+    expect(projection.status).toBe('working')
+    expect(projection.activeTurnId).toBe('turn-2')
+    expect(projection.pendingAttentionCount).toBe(0)
+  })
+
+  test('approval resolution remains authoritative when its request arrives later', () => {
+    let projection = initialProjection()
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(1, 'turn.started', { turnId: 'turn-1' })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(2, 'approval.resolved', {
+        requestId: 'approval-1',
+        decision: 'approved'
+      })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(3, 'approval.requested', {
+        requestId: 'approval-1',
+        turnId: 'turn-1',
+        category: 'command'
+      })
+    )
+
+    expect(projection.status).toBe('working')
+    expect(projection.pendingAttentionCount).toBe(0)
+  })
+
+  test('tool terminal remains authoritative when its linked approval arrives later', () => {
+    let projection = initialProjection()
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(1, 'turn.started', { turnId: 'turn-1' })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(2, 'tool.started', {
+        callId: 'call-1',
+        turnId: 'turn-1',
+        name: 'Bash'
+      })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(3, 'tool.completed', {
+        callId: 'call-1',
+        turnId: 'turn-1'
+      } as AgentEventPayload)
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(4, 'approval.requested', {
+        requestId: 'approval-1',
+        turnId: 'turn-1',
+        callId: 'call-1',
+        category: 'command'
+      })
+    )
+
+    expect(projection.status).toBe('working')
+    expect(projection.activeToolCount).toBe(0)
+    expect(projection.pendingAttentionCount).toBe(0)
+  })
+
   test('parallel tools keep working until every call settles', () => {
     let projection = initialProjection()
     projection = reduceAgentSession(
@@ -276,6 +429,41 @@ test.describe('AgentEventReducer', () => {
     expect(projection.lastSeq).toBe(1)
   })
 
+  test('session exit overwrites every open scoped fact', () => {
+    let projection = initialProjection()
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(1, 'turn.started', { turnId: 'turn-1' })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(2, 'tool.started', {
+        callId: 'call-1',
+        turnId: 'turn-1',
+        name: 'Bash'
+      })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(3, 'approval.requested', {
+        requestId: 'approval-1',
+        turnId: 'turn-1',
+        callId: 'call-1'
+      })
+    )
+
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(4, 'session.exited', { exitCode: 0 })
+    )
+
+    expect(projection.status).toBe('exited')
+    expect(projection.detail).toBe('@agent:exited:0')
+    expect(projection.activeTurnId).toBeUndefined()
+    expect(projection.activeToolCount).toBe(0)
+    expect(projection.pendingAttentionCount).toBe(0)
+  })
+
   test('low-confidence observer silence idle is reversible and never beats needs-you', () => {
     let projection = initialProjection()
     projection = reduceAgentSession(
@@ -338,6 +526,44 @@ test.describe('AgentEventReducer', () => {
     )
     expect(projection.status).toBe('idle')
     expect(projection.statusConfidence).toBe('high')
+  })
+
+  test('high-confidence idle overwrites an open turn and its attention facts', () => {
+    let projection = initialProjection()
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(1, 'turn.started', { turnId: 'turn-1' })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(2, 'tool.started', {
+        callId: 'call-1',
+        turnId: 'turn-1',
+        name: 'Bash'
+      })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(3, 'approval.requested', {
+        requestId: 'approval-1',
+        turnId: 'turn-1',
+        callId: 'call-1'
+      })
+    )
+
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(4, 'session.idle', {
+        since: 1_004,
+        reason: 'protocol-idle',
+        confidence: 'high'
+      })
+    )
+
+    expect(projection.status).toBe('idle')
+    expect(projection.activeToolCount).toBe(0)
+    expect(projection.pendingAttentionCount).toBe(0)
+    expect(projection.activeTurnId).toBeUndefined()
   })
 
   test('turn.failed produces error until the next turn starts', () => {
