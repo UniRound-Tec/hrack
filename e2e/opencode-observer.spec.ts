@@ -9,7 +9,11 @@ import {
   OpenCodeSseParser
 } from '../electron/agents/adapters/opencode/OpenCodeSseParser'
 import type { AdapterEvent } from '../electron/agents/adapters/types'
-import type { OpenCodeNativeFact } from '../electron/agents/adapters/opencode/types'
+import {
+  OPENCODE_CAPABILITIES,
+  type OpenCodeNativeFact
+} from '../electron/agents/adapters/opencode/types'
+import { projectAdapterEvents } from './helpers/agent-projection-contract'
 
 function project(
   projector: OpenCodeEventProjector,
@@ -389,9 +393,46 @@ test.describe('OpenCode observer adapter', () => {
     )
   })
 
-  test('keeps attention until every permission and question is resolved', () => {
+  test('uses pane idle as the parent terminal without fabricating tool failure', () => {
     const projector = new OpenCodeEventProjector()
-    project(projector, [
+    const events = project(projector, [
+      {
+        type: 'session-status',
+        nativeType: 'session.status',
+        sessionId: 's1',
+        status: 'busy'
+      },
+      {
+        type: 'tool',
+        nativeType: 'message.part.updated',
+        sessionId: 's1',
+        messageId: 'm1',
+        partId: 't1',
+        callId: 'c1',
+        name: 'bash',
+        state: 'running'
+      },
+      {
+        type: 'session-idle',
+        nativeType: 'session.idle',
+        sessionId: 's1'
+      }
+    ])
+    const projection = projectAdapterEvents(events, {
+      adapterId: 'opencode',
+      source: 'rpc',
+      capabilities: OPENCODE_CAPABILITIES
+    })
+
+    expect(events.filter((item) => item.kind === 'tool.failed')).toHaveLength(0)
+    expect(events.at(-1)?.kind).toBe('turn.completed')
+    expect(projection.status).toBe('done')
+    expect(projection.activeToolCount).toBe(0)
+  })
+
+  test('lets authoritative pane idle overwrite missing permission and question replies', () => {
+    const projector = new OpenCodeEventProjector()
+    const started = project(projector, [
       {
         type: 'session-status',
         nativeType: 'session.status',
@@ -420,7 +461,7 @@ test.describe('OpenCode observer adapter', () => {
         prompt: 'Choose one'
       }
     ])
-    const partial = project(projector, [
+    const terminal = project(projector, [
       {
         type: 'permission-replied',
         nativeType: 'permission.replied',
@@ -430,8 +471,15 @@ test.describe('OpenCode observer adapter', () => {
       },
       { type: 'session-idle', nativeType: 'session.idle', sessionId: 's1' }
     ])
-    expect(partial.some((item) => item.kind === 'turn.completed')).toBe(false)
-    const final = project(projector, [
+    expect(terminal.filter((item) => item.kind === 'turn.completed')).toHaveLength(1)
+    const late = project(projector, [
+      {
+        type: 'permission-asked',
+        nativeType: 'permission.asked',
+        sessionId: 's1',
+        requestId: 'p2',
+        permission: 'edit'
+      },
       {
         type: 'permission-replied',
         nativeType: 'permission.replied',
@@ -447,9 +495,15 @@ test.describe('OpenCode observer adapter', () => {
       },
       { type: 'session-idle', nativeType: 'session.idle', sessionId: 's1' }
     ])
-    expect(final.filter((item) => item.kind === 'turn.completed')).toHaveLength(
-      1
-    )
+    const events = [...started, ...terminal, ...late]
+    const projection = projectAdapterEvents(events, {
+      adapterId: 'opencode',
+      source: 'rpc',
+      capabilities: OPENCODE_CAPABILITIES
+    })
+    expect(late.filter((item) => item.kind === 'turn.started')).toHaveLength(0)
+    expect(projection.status).toBe('idle')
+    expect(projection.pendingAttentionCount).toBe(0)
   })
 
   test('projects a non-retryable native failure as one failed turn', () => {

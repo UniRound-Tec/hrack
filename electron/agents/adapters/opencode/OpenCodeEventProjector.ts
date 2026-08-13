@@ -16,6 +16,7 @@ interface NativeSessionState {
 
 interface NativeToolState {
   publicCallId: string
+  turnId: string
   sessionId: string
   name: string
   title?: string
@@ -74,9 +75,12 @@ export class OpenCodeEventProjector {
   private readonly reasoning = new Set<string>()
   private readonly approvals = new Map<
     string,
-    { sessionId: string; callId?: string }
+    { sessionId: string; turnId: string; callId?: string }
   >()
-  private readonly inputs = new Map<string, { sessionId: string }>()
+  private readonly inputs = new Map<
+    string,
+    { sessionId: string; turnId: string }
+  >()
   private readonly seen = new Map<string, true>()
   private paneTurnId: string | undefined
   private paneTurnCounter = 0
@@ -99,16 +103,7 @@ export class OpenCodeEventProjector {
     if (this.hasWorkingSession()) {
       return this.beginPaneTurn('reconcile', now)
     }
-    return [
-      event(
-        {
-          kind: 'session.idle',
-          payload: { since: now, reason: 'protocol-idle', confidence: 'high' }
-        },
-        `opencode:reconcile:idle:${now}`,
-        'SessionStatusReconcile'
-      )
-    ]
+    return this.maybeSettle('SessionStatusReconcile', now)
   }
 
   project(fact: OpenCodeNativeFact, now = Date.now()): AdapterEvent[] {
@@ -341,7 +336,10 @@ export class OpenCodeEventProjector {
     const key = `${fact.sessionId}:${fact.callId}`
     const publicCallId = `opencode:${key}`
     let tool = this.tools.get(key)
+    if (tool?.terminal) return []
     const events = this.beginPaneTurn(fact.nativeType, now)
+    const turnId = this.paneTurnId
+    if (!turnId) return events
     events.push(
       ...this.closeReasoningForSession(fact.sessionId, fact.nativeType)
     )
@@ -349,6 +347,7 @@ export class OpenCodeEventProjector {
     if (!tool && (fact.state === 'pending' || fact.state === 'running')) {
       tool = {
         publicCallId,
+        turnId,
         sessionId: fact.sessionId,
         name: fact.name,
         title: fact.title,
@@ -362,7 +361,7 @@ export class OpenCodeEventProjector {
             kind: 'tool.started',
             payload: {
               callId: publicCallId,
-              turnId: this.paneTurnId,
+              turnId,
               name: fact.name,
               category: toolCategory(fact.name)
             }
@@ -376,6 +375,7 @@ export class OpenCodeEventProjector {
     if (!tool && (fact.state === 'completed' || fact.state === 'error')) {
       tool = {
         publicCallId,
+        turnId,
         sessionId: fact.sessionId,
         name: fact.name,
         title: fact.title,
@@ -389,7 +389,7 @@ export class OpenCodeEventProjector {
             kind: 'tool.started',
             payload: {
               callId: publicCallId,
-              turnId: this.paneTurnId,
+              turnId,
               name: fact.name,
               category: toolCategory(fact.name)
             }
@@ -407,7 +407,7 @@ export class OpenCodeEventProjector {
         event(
           {
             kind: 'tool.progress',
-            payload: { callId: publicCallId, summary: fact.title }
+            payload: { callId: publicCallId, turnId: tool.turnId, summary: fact.title }
           },
           `${key}:progress:${fact.title}`,
           fact.nativeType
@@ -434,6 +434,7 @@ export class OpenCodeEventProjector {
                 kind: 'tool.completed',
                 payload: {
                   callId: publicCallId,
+                  turnId: tool.turnId,
                   durationMs: duration(tool.startedAt, fact.endedAt)
                 }
               }
@@ -441,6 +442,7 @@ export class OpenCodeEventProjector {
                 kind: 'tool.failed',
                 payload: {
                   callId: publicCallId,
+                  turnId: tool.turnId,
                   durationMs: duration(tool.startedAt, fact.endedAt),
                   message: fact.error ?? 'OpenCode tool failed'
                 }
@@ -504,13 +506,17 @@ export class OpenCodeEventProjector {
     now: number
   ): AdapterEvent[] {
     const requestId = `opencode:${fact.sessionId}:approval:${fact.requestId}`
+    if (this.seen.has(`request:${requestId}:closed`)) return []
     if (this.approvals.has(requestId)) return []
     const events = this.beginPaneTurn(fact.nativeType, now)
+    const turnId = this.paneTurnId
+    if (!turnId) return events
     const callId = fact.callId
       ? `opencode:${fact.sessionId}:${fact.callId}`
       : undefined
     this.approvals.set(requestId, {
       sessionId: fact.sessionId,
+      turnId,
       callId: fact.callId
     })
     events.push(
@@ -519,6 +525,7 @@ export class OpenCodeEventProjector {
           kind: 'approval.requested',
           payload: {
             requestId,
+            turnId,
             callId,
             category: approvalCategory(fact.permission),
             summary: fact.title ?? fact.permission
@@ -557,14 +564,17 @@ export class OpenCodeEventProjector {
     now: number
   ): AdapterEvent[] {
     const requestId = `opencode:${fact.sessionId}:input:${fact.requestId}`
+    if (this.seen.has(`request:${requestId}:closed`)) return []
     if (this.inputs.has(requestId)) return []
     const events = this.beginPaneTurn(fact.nativeType, now)
-    this.inputs.set(requestId, { sessionId: fact.sessionId })
+    const turnId = this.paneTurnId
+    if (!turnId) return events
+    this.inputs.set(requestId, { sessionId: fact.sessionId, turnId })
     events.push(
       event(
         {
           kind: 'input.requested',
-          payload: { requestId, prompt: fact.prompt }
+          payload: { requestId, turnId, prompt: fact.prompt }
         },
         `${requestId}:asked`,
         fact.nativeType
@@ -643,22 +653,9 @@ export class OpenCodeEventProjector {
     nativeType: string
   ): AdapterEvent[] {
     const events = this.closeReasoningForSession(sessionId, nativeType)
-    for (const [key, tool] of this.tools) {
+    for (const tool of this.tools.values()) {
       if (tool.sessionId !== sessionId || tool.terminal) continue
       tool.terminal = true
-      events.push(
-        event(
-          {
-            kind: 'tool.failed',
-            payload: {
-              callId: tool.publicCallId,
-              message: 'OpenCode tool interrupted'
-            }
-          },
-          `${key}:interrupted`,
-          nativeType
-        )
-      )
     }
     return events
   }
@@ -716,12 +713,7 @@ export class OpenCodeEventProjector {
     now: number,
     cancelled = false
   ): AdapterEvent[] {
-    if (
-      this.hasWorkingSession() ||
-      this.approvals.size > 0 ||
-      this.inputs.size > 0
-    )
-      return []
+    if (this.hasWorkingSession()) return []
     if (!this.paneTurnId) {
       return [
         event(
@@ -737,6 +729,16 @@ export class OpenCodeEventProjector {
     const turnId = this.paneTurnId
     this.paneTurnId = undefined
     this.thinkingActive = false
+    this.reasoning.clear()
+    for (const requestId of this.approvals.keys()) {
+      this.mark(`request:${requestId}:closed`)
+    }
+    for (const requestId of this.inputs.keys()) {
+      this.mark(`request:${requestId}:closed`)
+    }
+    this.approvals.clear()
+    this.inputs.clear()
+    for (const tool of this.tools.values()) tool.terminal = true
     const failure = [...this.sessions.values()].find(
       (session) => session.fatalError
     )?.fatalError
