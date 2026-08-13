@@ -53,6 +53,8 @@ export const zhCN = {
     lobbyHint: '历史会话按工作区分组。新建会话会写入隔离的 DSH_HOME。',
     refresh: '刷新',
     settings: '设置',
+    settingsTitle: 'DeepSeek Harness 设置',
+    backToLobby: '返回大厅',
     newSession: '新建会话',
     newInWorkspace: '在此工作区新建',
     loading: '正在读取会话…',

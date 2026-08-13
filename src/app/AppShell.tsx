@@ -18,6 +18,7 @@ import SidebarTint from './SidebarTint'
 import {
   dshSessionIdFromPage,
   dshSessionPage,
+  dshSettingsPage,
   isPageId,
   sessionPage,
   terminalIdFromPage,
@@ -767,12 +768,19 @@ export default function AppShell() {
             {pageId === 'dsh:home' && (
               <DshLobbyPage
                 onOpenSession={(sessionId) => navigate(dshSessionPage(sessionId))}
-                onOpenSettings={() => navigate('settings')}
+                onOpenSettings={() => navigate(dshSettingsPage())}
               />
             )}
             <DshPage
               sessionId={activeDshSessionId}
-              visible={activeDshSessionId !== null}
+              mode={
+                pageId === 'dsh:settings'
+                  ? 'settings'
+                  : activeDshSessionId
+                    ? 'session'
+                    : 'hidden'
+              }
+              onLeaveSettings={() => navigate('dsh:home')}
             />
             {pageId === 'settings' && (
               <SettingsPage

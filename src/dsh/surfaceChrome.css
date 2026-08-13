@@ -1,0 +1,43 @@
+/**
+ * P2 壳层：官方 AppFrame 仍在跑，但 vibing 拥有导航。
+ * 会话页只露 conversation/details；设置 overlay 是 sidebar 的子节点，
+ * 不能对侧栏 visibility:hidden（会连 overlay 一起藏掉）。
+ */
+
+[data-dsh-surface-host] {
+  position: relative;
+}
+
+[data-dsh-surface-host] [class*='_handle'][data-side='sidebar'] {
+  display: none !important;
+}
+
+[data-dsh-surface-host][data-dsh-mode='session'] [class*='_frame'] > [class*='_sidebarCol'] {
+  visibility: hidden;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 让官方 position:fixed overlay 以 host 为包含块，不盖住 vibing 侧栏。 */
+[data-dsh-surface-host][data-dsh-mode='settings'] {
+  transform: translateZ(0);
+}
+
+[data-dsh-surface-host][data-dsh-mode='settings'][data-dsh-settings-open] [class*='_centerCol'],
+[data-dsh-surface-host][data-dsh-mode='settings'][data-dsh-settings-open] [class*='_detailsCol'] {
+  visibility: hidden;
+}
+
+[data-dsh-surface-host][data-dsh-mode='settings'] [class*='_overlay'] {
+  pointer-events: auto;
+  inset: 0 !important;
+}
+
+[data-dsh-surface-host][data-dsh-mode='settings'] [class*='_panel'] {
+  width: min(960px, 100%) !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}

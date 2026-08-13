@@ -50,6 +50,8 @@ export const ko = {
     lobbyHint: '기록은 워크스페이스별로 묶입니다. 새 세션은 격리된 DSH_HOME 에 저장됩니다.',
     refresh: '새로고침',
     settings: '설정',
+    settingsTitle: 'DeepSeek Harness 설정',
+    backToLobby: '로비로 돌아가기',
     newSession: '새 세션',
     newInWorkspace: '이 워크스페이스에서 만들기',
     loading: '세션을 불러오는 중…',

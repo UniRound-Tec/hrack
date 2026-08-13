@@ -14,10 +14,22 @@
  */
 
 import { AppWebEntry } from '@deepseek-ai/dsh-client-web'
+import { applyUiTheme, getUiThemeRegistry } from '../app/themeRuntime'
+import { useSettingsStore } from '../state/settingsStore'
 import { installIpcConnectionBundle, isDshConnectionBundle } from './ipcConnection'
+import {
+  applyDshSurfaceMode,
+  type DshSurfaceMode
+} from './surfaceChrome'
+
+export type { DshSurfaceMode }
 
 export interface DshSurfaceHandle {
   openSession(sessionId: string): Promise<void>
+  setMode(
+    mode: DshSurfaceMode,
+    options?: { onLeaveSettings?: () => void }
+  ): void
   dispose(): void
 }
 
@@ -81,6 +93,28 @@ export function attachDshSurface(container: HTMLElement): HTMLDivElement {
 function detachDshSurface(): void {
   const host = readRuntime()?.host
   if (host && host.parentElement) holding.appendChild(host)
+}
+
+function officialLocaleId(language: string): 'zh' | 'en' {
+  return language.startsWith('zh') ? 'zh' : 'en'
+}
+
+function syncOfficialLocale(entry: AppWebEntry): void {
+  const ctx = (entry as unknown as EntryInternals).ctx
+  const locale = ctx?.get('locale') as
+    | { setLocale?(id: string): void }
+    | undefined
+  try {
+    locale?.setLocale?.(officialLocaleId(useSettingsStore.getState().language))
+  } catch (error) {
+    console.warn('[dsh] failed to sync official locale', error)
+  }
+}
+
+function reapplyVibingTheme(): void {
+  const themeId = useSettingsStore.getState().uiThemeId
+  const theme = getUiThemeRegistry().get(themeId)
+  if (theme) applyUiTheme(theme)
 }
 
 function sessionsFace(entry: AppWebEntry): SessionsFace {
@@ -159,6 +193,9 @@ async function openListedSession(sessionId: string): Promise<void> {
 function createHandle(): DshSurfaceHandle {
   return {
     openSession: openListedSession,
+    setMode: (mode, options) => {
+      applyDshSurfaceMode(surfaceHost(), mode, options)
+    },
     dispose: detachDshSurface
   }
 }
@@ -206,6 +243,13 @@ async function startSurface(container: HTMLElement): Promise<DshSurfaceHandle> {
   })
   await entry.run()
   writeRuntime({ host, entry })
+  reapplyVibingTheme()
+  syncOfficialLocale(entry)
+  useSettingsStore.subscribe((settings, previous) => {
+    if (settings.language === previous.language) return
+    const runtime = readRuntime()
+    if (runtime) syncOfficialLocale(runtime.entry)
+  })
   return createHandle()
 }
 

@@ -50,6 +50,8 @@ export const en = {
     lobbyHint: 'History is grouped by workspace. New sessions stay in the isolated DSH_HOME.',
     refresh: 'Refresh',
     settings: 'Settings',
+    settingsTitle: 'DeepSeek Harness settings',
+    backToLobby: 'Back to lobby',
     newSession: 'New session',
     newInWorkspace: 'New in this workspace',
     loading: 'Loading sessions…',

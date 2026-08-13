@@ -32,7 +32,9 @@ export enum DshEventChannel {
   WireStreamClosed = 'dsh:wire-stream-closed'
 }
 
-/** dsh wire 协议只有 JSON 文本：body 一律 string，无需二进制通道。 */
+/** dsh wire 上行 body：默认 utf8 文本；附件等二进制走 base64。 */
+export type DshWireBodyEncoding = 'utf8' | 'base64'
+
 export interface DshWireFetchRequest {
   requestId: string
   method: string
@@ -40,6 +42,8 @@ export interface DshWireFetchRequest {
   path: string
   headers?: Record<string, string>
   body?: string
+  /** 缺省按 utf8 文本；base64 时主进程解码后再转发给 host。 */
+  bodyEncoding?: DshWireBodyEncoding
 }
 
 export interface DshWireFetchResponse {

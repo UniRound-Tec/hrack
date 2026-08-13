@@ -4,6 +4,7 @@ export type PageId =
   | 'home'
   | 'settings'
   | 'dsh:home'
+  | 'dsh:settings'
   | `dsh:${string}`
   | `terminal:${string}`
 
@@ -20,17 +21,30 @@ export function dshHomePage(): PageId {
   return 'dsh:home'
 }
 
-/** 某个 DSH 会话的页面（P0 阶段均由内嵌 dsh web surface 承担）。 */
+/** 某个 DSH 会话的页面：只挂对话/轨迹，不挂官方侧栏。 */
 export function dshSessionPage(sessionId: string): PageId {
   return `dsh:${sessionId}`
+}
+
+/** DSH 设置页（大厅入口，复用官方 settings.section）。 */
+export function dshSettingsPage(): PageId {
+  return 'dsh:settings'
 }
 
 export function isDshPage(pageId: PageId): boolean {
   return pageId === 'dsh:home' || pageId.startsWith('dsh:')
 }
 
+export function isDshSettingsPage(pageId: PageId): boolean {
+  return pageId === 'dsh:settings'
+}
+
+export function isDshChromePage(pageId: PageId): boolean {
+  return pageId === 'dsh:home' || pageId === 'dsh:settings'
+}
+
 export function dshSessionIdFromPage(pageId: PageId): string | null {
-  if (pageId === 'dsh:home' || !pageId.startsWith('dsh:')) return null
+  if (isDshChromePage(pageId) || !pageId.startsWith('dsh:')) return null
   return pageId.slice(4)
 }
 
@@ -51,6 +65,7 @@ export function isPageId(value: unknown): value is PageId {
     value === 'home' ||
     value === 'settings' ||
     value === 'dsh:home' ||
+    value === 'dsh:settings' ||
     (typeof value === 'string' &&
       value.startsWith('dsh:') &&
       value.length > 4) ||

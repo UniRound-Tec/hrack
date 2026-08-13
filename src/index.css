@@ -168,9 +168,15 @@
 
 html,
 body,
-#root {
+#vibing-root {
   height: 100%;
   margin: 0;
+}
+
+#vibing-root {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
 }
 
 html {
@@ -191,7 +197,7 @@ body {
 
 html[data-surface="floating"],
 html[data-surface="floating"] body,
-html[data-surface="floating"] #root {
+html[data-surface="floating"] #vibing-root {
   background: transparent;
 }
 

@@ -1,0 +1,125 @@
+/**
+ * npm 的 @deepseek-ai/dsh-client-ui-primitives 把 CSS modules stub 成 {}，
+ * className 全是 undefined。官方 apps/web 走源码，我们在这里按 DOM 角色
+ * 补回 Modal / Menu / 对话框里的 Input，否则 onboarding 会掉到窗口底部、
+ * 下拉在文档流里重叠、输入框看不见。
+ */
+
+body > [role='presentation']:has(> [role='dialog'][aria-modal='true']) {
+  position: fixed !important;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex: none !important;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+/* 官方 onboarding / API Key 会 portal 到 body。只在会话页放行，
+ * 否则会盖住大厅、Home，以及大厅自有的设置返回条。 */
+html:not([data-dsh-surface='session'])
+  body
+  > [role='presentation']:has(> [role='dialog'][aria-modal='true']) {
+  display: none !important;
+}
+
+body > [role='presentation']:has(> [role='dialog'][aria-modal='true']) > [aria-hidden='true'] {
+  position: absolute;
+  inset: 0;
+  background: var(--dsw-alias-bg-mask-1, rgb(0 0 0 / 24%));
+  backdrop-filter: var(--dsw-mask-blur, blur(2px));
+}
+
+body > [role='presentation'] > [role='dialog'][aria-modal='true'] {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  max-height: calc(100vh - 48px);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--vib-border-subtle, var(--dsw-alias-border-inverted, rgb(0 0 0 / 8%)));
+  border-radius: 24px;
+  background: var(--dsw-alias-bg-layer-2, var(--vib-bg-surface, Canvas));
+  color: var(--dsw-alias-label-primary, var(--vib-text-primary, CanvasText));
+  box-shadow: var(--dsw-shadow-lv3, 0 12px 40px rgb(0 0 0 / 16%));
+}
+
+body > [role='presentation'] > [role='dialog'][aria-modal='true'] input,
+body > [role='presentation'] > [role='dialog'][aria-modal='true'] textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid var(--vib-border-subtle, var(--dsw-alias-border-l2, rgb(0 0 0 / 12%)));
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1, var(--vib-bg-control, Canvas));
+  color: var(--dsw-alias-label-primary, var(--vib-text-primary, CanvasText));
+  font: inherit;
+}
+
+body > [role='presentation'] > [role='dialog'][aria-modal='true'] button {
+  font: inherit;
+  cursor: pointer;
+}
+
+[data-dsh-surface-host] [role='menu'],
+body > [role='menu'] {
+  box-sizing: border-box;
+  z-index: 1100;
+  display: flex;
+  min-width: 218px;
+  max-width: 360px;
+  max-height: calc(100vh - 24px);
+  flex-direction: column;
+  padding: 4px;
+  overflow: auto;
+  color-scheme: inherit;
+  border: 1px solid var(--vib-border-subtle, var(--dsw-alias-border-l2, CanvasText)) !important;
+  border-radius: 12px;
+  background: var(--vib-bg-surface, var(--dsw-alias-bg-layer-2, Canvas)) !important;
+  color: var(--vib-text-primary, var(--dsw-alias-label-primary, CanvasText)) !important;
+  box-shadow: var(--dsw-shadow-lv3, 0 8px 24px rgb(0 0 0 / 12%));
+}
+
+[data-dsh-surface-host] [role='menu'] {
+  position: absolute;
+}
+
+body > [role='menu'] {
+  position: fixed;
+}
+
+[data-dsh-surface-host] [role='menuitem'],
+body > [role='menu'] [role='menuitem'] {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--vib-text-primary, var(--dsw-alias-label-primary, CanvasText)) !important;
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-dsh-surface-host] [role='menuitem'] *,
+body > [role='menu'] [role='menuitem'] * {
+  color: inherit !important;
+}
+
+body > [role='menu'] [role='menuitem'] [class*='itemDesc'],
+[data-dsh-surface-host] [role='menuitem'] [class*='itemDesc'] {
+  color: var(--vib-text-muted, var(--dsw-alias-label-caption, GrayText)) !important;
+}
+
+[data-dsh-surface-host] [role='menuitem']:hover:not(:disabled),
+body > [role='menu'] [role='menuitem']:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 6%));
+}

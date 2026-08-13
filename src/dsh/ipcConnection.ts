@@ -105,11 +105,40 @@ function normalizeHeaders(init: HeadersInit | undefined): Record<string, string>
   return headers
 }
 
-async function ipcFetch(input: URL, init?: RequestInit): Promise<Response> {
-  const body = init?.body
-  if (body !== undefined && body !== null && typeof body !== 'string') {
-    throw new Error('dsh wire: non-string request body is not supported over IPC yet')
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  const chunk = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunk))
   }
+  return btoa(binary)
+}
+
+async function encodeWireBody(body: BodyInit | undefined | null): Promise<{
+  body?: string
+  bodyEncoding?: 'utf8' | 'base64'
+}> {
+  if (body === undefined || body === null) return {}
+  if (typeof body === 'string') return { body }
+  if (body instanceof URLSearchParams) return { body: body.toString() }
+  if (typeof FormData !== 'undefined' && body instanceof FormData) {
+    throw new Error('dsh wire: FormData is not supported over IPC')
+  }
+  let bytes: Uint8Array
+  if (body instanceof ArrayBuffer) {
+    bytes = new Uint8Array(body)
+  } else if (ArrayBuffer.isView(body)) {
+    bytes = new Uint8Array(body.buffer, body.byteOffset, body.byteLength)
+  } else if (typeof Blob !== 'undefined' && body instanceof Blob) {
+    bytes = new Uint8Array(await body.arrayBuffer())
+  } else {
+    throw new Error('dsh wire: unsupported request body type')
+  }
+  return { body: bytesToBase64(bytes), bodyEncoding: 'base64' }
+}
+
+async function ipcFetch(input: URL, init?: RequestInit): Promise<Response> {
+  const encoded = await encodeWireBody(init?.body)
   const requestId = crypto.randomUUID()
   const signal = init?.signal ?? null
   const onAbort = (): void => {
@@ -124,7 +153,7 @@ async function ipcFetch(input: URL, init?: RequestInit): Promise<Response> {
         method: init?.method ?? 'GET',
         path: input.pathname + input.search,
         headers: normalizeHeaders(init?.headers),
-        body: body ?? undefined
+        ...encoded
       }),
       new Promise<never>((_resolve, reject) => {
         signal?.addEventListener(

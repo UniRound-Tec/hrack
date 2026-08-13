@@ -50,6 +50,8 @@ export const ja = {
     lobbyHint: '履歴はワークスペースごとに分かれます。新規セッションは隔離された DSH_HOME に保存されます。',
     refresh: '更新',
     settings: '設定',
+    settingsTitle: 'DeepSeek Harness 設定',
+    backToLobby: 'ロビーに戻る',
     newSession: '新しいセッション',
     newInWorkspace: 'このワークスペースで作成',
     loading: 'セッションを読み込み中…',

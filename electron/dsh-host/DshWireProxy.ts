@@ -30,6 +30,15 @@ const PATH_PATTERN = /^\/(api|plugins)\/[A-Za-z0-9._~@/-]+(\?[A-Za-z0-9._~=&%/-]
 const MAX_BODY_BYTES = 16 * 1024 * 1024
 const MAX_STREAMS = 16
 
+function decodeWireBody(
+  body: string | undefined,
+  encoding: 'utf8' | 'base64' | undefined
+): string | Uint8Array | undefined {
+  if (body === undefined) return undefined
+  if (encoding !== 'base64') return body
+  return Buffer.from(body, 'base64')
+}
+
 export class DshWireProxy {
   private readonly pendingFetches = new Map<string, AbortController>()
   private readonly streams = new Map<string, WebSocket>()
@@ -58,7 +67,10 @@ export class DshWireProxy {
       (request.method !== 'GET' && request.method !== 'POST') ||
       (request.body !== undefined &&
         (typeof request.body !== 'string' ||
-          request.body.length > MAX_BODY_BYTES))
+          request.body.length > MAX_BODY_BYTES)) ||
+      (request.bodyEncoding !== undefined &&
+        request.bodyEncoding !== 'utf8' &&
+        request.bodyEncoding !== 'base64')
     ) {
       throw new Error('invalid dsh wire fetch request')
     }
@@ -68,7 +80,7 @@ export class DshWireProxy {
       const response = await fetch(baseUrl + request.path, {
         method: request.method,
         headers: request.headers ?? {},
-        body: request.body,
+        body: decodeWireBody(request.body, request.bodyEncoding),
         signal: controller.signal
       })
       const headers: Record<string, string> = {}

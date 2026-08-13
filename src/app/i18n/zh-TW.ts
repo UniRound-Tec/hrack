@@ -50,6 +50,8 @@ export const zhTW = {
     lobbyHint: '歷史會話依工作區分組。新會話會寫入隔離的 DSH_HOME。',
     refresh: '重新整理',
     settings: '設定',
+    settingsTitle: 'DeepSeek Harness 設定',
+    backToLobby: '返回大廳',
     newSession: '新增會話',
     newInWorkspace: '在此工作區新增',
     loading: '正在讀取會話…',
