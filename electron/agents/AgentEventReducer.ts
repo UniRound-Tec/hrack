@@ -128,7 +128,10 @@ function deriveStatus(
   if (correlation.lastTurnOutcome === 'failed') {
     return { status: 'error', confidence: 'high' }
   }
-  if (correlation.lastTurnOutcome === 'completed') {
+  if (
+    correlation.lastTurnOutcome === 'completed' ||
+    correlation.lastTurnOutcome === 'cancelled'
+  ) {
     return { status: 'done', confidence: 'high' }
   }
   return { status: 'working', confidence: 'high' }
@@ -167,7 +170,10 @@ function deriveDetail(
   }
 
   if (correlation.exited) return agentDetailExited(correlation.exitCode)
-  if (correlation.lastTurnOutcome === 'completed') {
+  if (
+    correlation.lastTurnOutcome === 'completed' ||
+    correlation.lastTurnOutcome === 'cancelled'
+  ) {
     return detailWithValue(
       AGENT_DETAIL_COMPLETED,
       correlation.latestOutputTokens

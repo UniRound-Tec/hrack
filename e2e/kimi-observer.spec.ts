@@ -15,6 +15,8 @@ import { KimiObserverAdapter } from '../electron/agents/adapters/kimi/KimiObserv
 import { ensureWslKimiManagedHooks } from '../electron/agents/adapters/kimi/KimiWslConfigStore'
 import type { AdapterEvent } from '../electron/agents/adapters/types'
 import { cliDefinitions } from '../electron/ai-cli-discovery'
+import { projectAdapterEvents } from './helpers/agent-projection-contract'
+import { KIMI_HOOK_CAPABILITIES } from '../electron/agents/adapters/kimi/types'
 
 test.describe('Kimi observer adapter', () => {
   const windowsManagedCommand = (): string => {
@@ -356,15 +358,20 @@ test.describe('Kimi observer adapter', () => {
     expect(events.map((event) => event.kind)).toEqual([
       'turn.started',
       'thinking.started',
-      'thinking.completed',
       'turn.completed'
     ])
+    const projection = projectAdapterEvents(events, {
+      adapterId: 'kimi',
+      source: 'hook',
+      capabilities: KIMI_HOOK_CAPABILITIES
+    })
     expect(events.at(-1)).toMatchObject({
       payload: {
         turnId: 'kimi:kimi-session-1:turn:1',
         outcome: 'completed'
       }
     })
+    expect(projection.status).toBe('done')
   })
 
   test('reconciles out-of-order approval and tool terminal hooks', () => {
@@ -405,24 +412,116 @@ test.describe('Kimi observer adapter', () => {
     const events = facts.flatMap((fact, index) =>
       projector.project(fact!, 2_000 + index)
     )
+    const projection = projectAdapterEvents(events, {
+      adapterId: 'kimi',
+      source: 'hook',
+      capabilities: KIMI_HOOK_CAPABILITIES
+    })
 
-    expect(events.map((event) => event.kind)).toEqual([
-      'turn.started',
-      'thinking.started',
-      'approval.requested',
-      'approval.resolved',
-      'thinking.completed',
-      'tool.started',
-      'tool.completed',
-      'turn.completed'
-    ])
+    const kinds = events.map((event) => event.kind)
+    expect(kinds.indexOf('approval.resolved')).toBeLessThan(
+      kinds.indexOf('approval.requested')
+    )
     const resolved = events.filter((event) => event.kind === 'approval.resolved')
     expect(resolved).toHaveLength(1)
     expect(resolved[0]).toMatchObject({ payload: { decision: 'approved' } })
     expect(events.filter((event) => event.kind === 'tool.started')).toHaveLength(1)
+    expect(projection.status).toBe('done')
+    expect(projection.pendingAttentionCount).toBe(0)
   })
 
-  test('reopens the same task when activity continues after Stop', () => {
+  test('resolves a permission request that arrives after its tool completed', () => {
+    const facts = [
+      parseKimiHook({
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'kimi-session-late-permission'
+      }),
+      parseKimiHook({
+        hook_event_name: 'PreToolUse',
+        session_id: 'kimi-session-late-permission',
+        tool_call_id: 'call-late',
+        tool_name: 'Bash'
+      }),
+      parseKimiHook({
+        hook_event_name: 'PostToolUse',
+        session_id: 'kimi-session-late-permission',
+        tool_call_id: 'call-late',
+        tool_name: 'Bash'
+      }),
+      parseKimiHook({
+        hook_event_name: 'PermissionRequest',
+        session_id: 'kimi-session-late-permission',
+        turn_id: 1,
+        tool_call_id: 'call-late',
+        tool_name: 'Bash'
+      })
+    ]
+    expect(facts.every(Boolean)).toBe(true)
+
+    const projector = new KimiHookProjector()
+    const events = facts.flatMap((fact, index) =>
+      projector.project(fact!, 3_000 + index)
+    )
+
+    const projection = projectAdapterEvents(events, {
+      adapterId: 'kimi',
+      source: 'hook',
+      capabilities: KIMI_HOOK_CAPABILITIES
+    })
+
+    expect(events.filter((event) => event.kind === 'approval.requested')).toHaveLength(1)
+    expect(events.filter((event) => event.kind === 'approval.resolved')).toHaveLength(0)
+    expect(projection.status).toBe('working')
+    expect(projection.pendingAttentionCount).toBe(0)
+  })
+
+  test('does not open a continuation for a late request from a closed turn', () => {
+    const facts = [
+      parseKimiHook({
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'kimi-session-closed-turn-request'
+      }),
+      parseKimiHook({
+        hook_event_name: 'PreToolUse',
+        session_id: 'kimi-session-closed-turn-request',
+        tool_call_id: 'closed-call',
+        tool_name: 'Bash'
+      }),
+      parseKimiHook({
+        hook_event_name: 'PostToolUse',
+        session_id: 'kimi-session-closed-turn-request',
+        tool_call_id: 'closed-call',
+        tool_name: 'Bash'
+      }),
+      parseKimiHook({
+        hook_event_name: 'Stop',
+        session_id: 'kimi-session-closed-turn-request'
+      }),
+      parseKimiHook({
+        hook_event_name: 'PermissionRequest',
+        session_id: 'kimi-session-closed-turn-request',
+        tool_call_id: 'closed-call',
+        tool_name: 'Bash'
+      })
+    ]
+    expect(facts.every(Boolean)).toBe(true)
+
+    const projector = new KimiHookProjector()
+    const events = facts.flatMap((fact, index) =>
+      projector.project(fact!, 3_100 + index)
+    )
+    const projection = projectAdapterEvents(events, {
+      adapterId: 'kimi',
+      source: 'hook',
+      capabilities: KIMI_HOOK_CAPABILITIES
+    })
+
+    expect(events.filter((event) => event.kind === 'turn.started')).toHaveLength(1)
+    expect(projection.status).toBe('done')
+    expect(projection.pendingAttentionCount).toBe(0)
+  })
+
+  test('opens a new public turn occurrence when activity continues after Stop', () => {
     const facts = [
       parseKimiHook({
         hook_event_name: 'UserPromptSubmit',
@@ -460,7 +559,8 @@ test.describe('Kimi observer adapter', () => {
 
     expect(starts).toHaveLength(2)
     expect(starts[0].payload.turnId).toBe('kimi:kimi-session-continuation:turn:1')
-    expect(starts[1].payload.turnId).toBe(starts[0].payload.turnId)
+    expect(starts[1].payload.turnId).toBe('kimi:kimi-session-continuation:turn:2')
+    expect(starts[1].payload.turnId).not.toBe(starts[0].payload.turnId)
     expect(starts[1].nativeId).toContain(':continued:')
     expect(completions).toHaveLength(2)
     expect(completions[1].nativeId).not.toBe(completions[0].nativeId)
@@ -501,7 +601,8 @@ test.describe('Kimi observer adapter', () => {
     const starts = events.filter((event) => event.kind === 'turn.started')
 
     expect(starts).toHaveLength(2)
-    expect(starts[1].payload.turnId).toBe(starts[0].payload.turnId)
+    expect(starts[1].payload.turnId).not.toBe(starts[0].payload.turnId)
+    expect(starts[1].payload.turnId).toBe('kimi:kimi-session-subagent:turn:2')
     expect(events.some((event) => event.kind === 'tool.started')).toBe(false)
   })
 
@@ -662,7 +763,7 @@ test.describe('Kimi observer adapter', () => {
     })
   })
 
-  test('cancels outstanding work when Kimi emits Interrupt', () => {
+  test('uses Interrupt as a parent terminal without fabricating child results', () => {
     const facts = [
       parseKimiHook({
         hook_event_name: 'UserPromptSubmit',
@@ -692,18 +793,24 @@ test.describe('Kimi observer adapter', () => {
 
     const projector = new KimiHookProjector()
     const events = facts.flatMap((fact) => projector.project(fact!))
-    expect(events.slice(-3).map((event) => event.kind)).toEqual([
-      'approval.resolved',
-      'tool.failed',
-      'turn.completed'
-    ])
-    expect(events.at(-3)).toMatchObject({ payload: { decision: 'cancelled' } })
+    const projection = projectAdapterEvents(events, {
+      adapterId: 'kimi',
+      source: 'hook',
+      capabilities: KIMI_HOOK_CAPABILITIES
+    })
+
+    expect(events.filter((event) => event.kind === 'approval.resolved')).toHaveLength(0)
+    expect(events.filter((event) => event.kind === 'tool.failed')).toHaveLength(0)
     expect(events.at(-1)).toMatchObject({
+      kind: 'turn.completed',
       payload: {
         turnId: 'kimi:kimi-session-interrupt:turn:1',
         outcome: 'cancelled'
       }
     })
+    expect(projection.status).toBe('done')
+    expect(projection.activeToolCount).toBe(0)
+    expect(projection.pendingAttentionCount).toBe(0)
   })
 
   test('projects StopFailure as a bounded turn error', () => {
@@ -726,7 +833,6 @@ test.describe('Kimi observer adapter', () => {
     expect(events.map((event) => event.kind)).toEqual([
       'turn.started',
       'thinking.started',
-      'thinking.completed',
       'turn.failed'
     ])
     expect(events.at(-1)).toMatchObject({
@@ -764,7 +870,6 @@ test.describe('Kimi observer adapter', () => {
       'session.idle',
       'turn.started',
       'thinking.started',
-      'thinking.completed',
       'turn.completed',
       'session.idle'
     ])
@@ -801,7 +906,6 @@ test.describe('Kimi observer adapter', () => {
     expect(events.map((event) => event.kind)).toEqual([
       'turn.started',
       'thinking.started',
-      'thinking.completed',
       'turn.completed',
       'session.idle'
     ])

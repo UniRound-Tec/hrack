@@ -21,7 +21,7 @@ function approvalId(nativeSessionId: string, callId: string): string {
 
 export class KimiHookProjector {
   private activeTurnId: string | undefined
-  private continuableTurnId: string | undefined
+  private continuationAvailable = false
   private thinking = false
   private turnCounter = 0
   private continuationCounter = 0
@@ -30,16 +30,8 @@ export class KimiHookProjector {
     string,
     { callId: string; turnId: string; name: string; terminal: boolean }
   >()
-  private readonly terminalTools = new Set<string>()
-  private readonly approvals = new Map<
-    string,
-    { turnId: string; callId: string }
-  >()
-  private readonly pendingApprovalResults = new Map<
-    string,
-    'approved' | 'denied' | 'cancelled'
-  >()
-  private readonly resolvedApprovals = new Set<string>()
+  private readonly seenApprovalRequests = new Set<string>()
+  private readonly seenApprovalResults = new Set<string>()
 
   project(fact: KimiNativeFact, now = Date.now()): AdapterEvent[] {
     if (fact.type === 'session-started') {
@@ -106,7 +98,7 @@ export class KimiHookProjector {
         'superseded',
         false
       )
-      this.continuableTurnId = undefined
+      this.continuationAvailable = false
       const turnId = `kimi:${fact.nativeSessionId}:turn:${++this.turnCounter}`
       this.activeTurnId = turnId
       this.thinking = true
@@ -127,7 +119,7 @@ export class KimiHookProjector {
 
     if (fact.type === 'tool-started') {
       const key = toolKey(fact.nativeSessionId, fact.toolCallId)
-      if (this.tools.has(key) || this.terminalTools.has(key)) return []
+      if (this.tools.has(key)) return []
       const activity = this.ensureActivityTurn(
         fact.nativeSessionId,
         fact.nativeType
@@ -135,7 +127,7 @@ export class KimiHookProjector {
       if (!activity.turnId) return []
       const turnId = activity.turnId
       const events = activity.events
-      this.tools.set(key, {
+      this.rememberMap(this.tools, key, {
         callId: fact.toolCallId,
         turnId,
         name: fact.toolName,
@@ -162,25 +154,21 @@ export class KimiHookProjector {
 
     if (fact.type === 'permission-requested') {
       const requestId = approvalId(fact.nativeSessionId, fact.toolCallId)
-      if (this.approvals.has(requestId) || this.resolvedApprovals.has(requestId)) {
-        return []
-      }
-      const activity = this.ensureActivityTurn(
-        fact.nativeSessionId,
-        fact.nativeType
-      )
+      if (this.seenApprovalRequests.has(requestId)) return []
+      this.rememberSet(this.seenApprovalRequests, requestId)
+      const tool = this.tools.get(toolKey(fact.nativeSessionId, fact.toolCallId))
+      const activity = tool
+        ? { turnId: tool.turnId, events: [] as AdapterEvent[] }
+        : this.ensureActivityTurn(fact.nativeSessionId, fact.nativeType)
       if (!activity.turnId) return []
       const events = activity.events
-      this.approvals.set(requestId, {
-        turnId: activity.turnId,
-        callId: fact.toolCallId
-      })
       events.push(
         nativeEvent(
           {
             kind: 'approval.requested',
             payload: {
               requestId,
+              turnId: activity.turnId,
               callId: fact.toolCallId,
               category: approvalCategory(fact.toolName),
               summary: `Approve ${fact.toolName}`
@@ -190,37 +178,23 @@ export class KimiHookProjector {
           fact.nativeType
         )
       )
-      const pending = this.pendingApprovalResults.get(requestId)
-      if (pending) {
-        events.push(
-          ...this.resolveApproval(
-            fact.nativeSessionId,
-            requestId,
-            pending,
-            fact.nativeType,
-            `resolved:${pending}`
-          )
-        )
-      }
       return events
     }
 
     if (fact.type === 'permission-resolved') {
       const requestId = approvalId(fact.nativeSessionId, fact.toolCallId)
-      if (this.resolvedApprovals.has(requestId)) return []
-      if (this.approvals.has(requestId)) {
-        return this.resolveApproval(
-          fact.nativeSessionId,
-          requestId,
-          fact.decision,
-          fact.nativeType,
-          `resolved:${fact.decision}`
+      if (this.seenApprovalResults.has(requestId)) return []
+      this.rememberSet(this.seenApprovalResults, requestId)
+      return [
+        nativeEvent(
+          {
+            kind: 'approval.resolved',
+            payload: { requestId, decision: fact.decision }
+          },
+          `${fact.nativeSessionId}:${requestId}:resolved:${fact.decision}`,
+          fact.nativeType
         )
-      }
-      if (!this.pendingApprovalResults.has(requestId)) {
-        this.rememberMap(this.pendingApprovalResults, requestId, fact.decision)
-      }
-      return []
+      ]
     }
 
     if (fact.type === 'tool-completed' || fact.type === 'tool-failed') {
@@ -245,12 +219,8 @@ export class KimiHookProjector {
     if (fact.type === 'turn-failed') {
       if (!this.activeTurnId) return []
       const turnId = this.activeTurnId
-      const events = this.closeOutstanding(
-        fact.nativeSessionId,
-        turnId,
-        fact.nativeType
-      )
-      events.push(...this.completeThinking(fact.nativeSessionId, turnId, fact.nativeType, 'failed'))
+      this.closeNativeTurn(turnId)
+      const events: AdapterEvent[] = []
       events.push(
         nativeEvent(
           {
@@ -265,7 +235,7 @@ export class KimiHookProjector {
         )
       )
       this.activeTurnId = undefined
-      this.continuableTurnId = undefined
+      this.continuationAvailable = false
       this.thinking = false
       return events
     }
@@ -293,9 +263,8 @@ export class KimiHookProjector {
     terminalType: 'tool-completed' | 'tool-failed'
   ): AdapterEvent[] {
     const key = toolKey(fact.nativeSessionId, fact.toolCallId)
-    if (this.terminalTools.has(key)) return []
-
     let tool = this.tools.get(key)
+    if (tool?.terminal) return []
     const events: AdapterEvent[] = []
     if (!tool) {
       const activity = this.ensureActivityTurn(
@@ -311,7 +280,7 @@ export class KimiHookProjector {
         name: fact.toolName,
         terminal: false
       }
-      this.tools.set(key, tool)
+      this.rememberMap(this.tools, key, tool)
       events.push(...this.completeThinking(fact.nativeSessionId, turnId, fact.nativeType))
       events.push(
         nativeEvent(
@@ -331,33 +300,24 @@ export class KimiHookProjector {
     }
 
     tool.terminal = true
-    this.rememberSet(this.terminalTools, key)
-    const requestId = approvalId(fact.nativeSessionId, fact.toolCallId)
-    if (this.approvals.has(requestId)) {
-      const decision =
-        this.pendingApprovalResults.get(requestId) ??
-        (terminalType === 'tool-completed' ? 'approved' : 'cancelled')
-      events.push(
-        ...this.resolveApproval(
-          fact.nativeSessionId,
-          requestId,
-          decision,
-          fact.nativeType,
-          `tool-terminal:${decision}`
-        )
-      )
-    }
     events.push(
       terminalType === 'tool-completed'
         ? nativeEvent(
-            { kind: 'tool.completed', payload: { callId: fact.toolCallId } },
+            {
+              kind: 'tool.completed',
+              payload: { callId: fact.toolCallId, turnId: tool.turnId }
+            },
             `${fact.nativeSessionId}:${tool.turnId}:tool:${fact.toolCallId}:completed`,
             fact.nativeType
           )
         : nativeEvent(
             {
               kind: 'tool.failed',
-              payload: { callId: fact.toolCallId, message: 'Tool failed' }
+              payload: {
+                callId: fact.toolCallId,
+                turnId: tool.turnId,
+                message: 'Tool failed'
+              }
             },
             `${fact.nativeSessionId}:${tool.turnId}:tool:${fact.toolCallId}:failed`,
             fact.nativeType
@@ -371,9 +331,9 @@ export class KimiHookProjector {
     nativeType: string
   ): { turnId?: string; events: AdapterEvent[] } {
     if (this.activeTurnId) return { turnId: this.activeTurnId, events: [] }
-    if (!this.continuableTurnId) return { events: [] }
-    const turnId = this.continuableTurnId
-    this.continuableTurnId = undefined
+    if (!this.continuationAvailable) return { events: [] }
+    const turnId = `kimi:${nativeSessionId}:turn:${++this.turnCounter}`
+    this.continuationAvailable = false
     this.activeTurnId = turnId
     this.thinking = false
     return {
@@ -397,8 +357,8 @@ export class KimiHookProjector {
   ): AdapterEvent[] {
     if (!this.activeTurnId) return []
     const turnId = this.activeTurnId
-    const events = this.closeOutstanding(nativeSessionId, turnId, nativeType)
-    events.push(...this.completeThinking(nativeSessionId, turnId, nativeType, reason))
+    this.closeNativeTurn(turnId)
+    const events: AdapterEvent[] = []
     events.push(
       nativeEvent(
         { kind: 'turn.completed', payload: { turnId, outcome } },
@@ -407,7 +367,7 @@ export class KimiHookProjector {
       )
     )
     this.activeTurnId = undefined
-    this.continuableTurnId = continuable ? turnId : undefined
+    this.continuationAvailable = continuable
     this.thinking = false
     return events
   }
@@ -429,71 +389,11 @@ export class KimiHookProjector {
     ]
   }
 
-  private resolveApproval(
-    nativeSessionId: string,
-    requestId: string,
-    decision: 'approved' | 'denied' | 'cancelled',
-    nativeType: string,
-    reason: string
-  ): AdapterEvent[] {
-    if (!this.approvals.delete(requestId)) return []
-    this.pendingApprovalResults.delete(requestId)
-    this.rememberSet(this.resolvedApprovals, requestId)
-    return [
-      nativeEvent(
-        {
-          kind: 'approval.resolved',
-          payload: { requestId, decision }
-        },
-        `${nativeSessionId}:${requestId}:${reason}`,
-        nativeType
-      )
-    ]
-  }
-
-  private closeOutstanding(
-    nativeSessionId: string,
-    turnId: string,
-    nativeType: string
-  ): AdapterEvent[] {
-    const events: AdapterEvent[] = []
-    for (const [requestId, approval] of this.approvals) {
-      if (approval.turnId !== turnId) continue
-      this.approvals.delete(requestId)
-      this.pendingApprovalResults.delete(requestId)
-      this.rememberSet(this.resolvedApprovals, requestId)
-      events.push(
-        nativeEvent(
-          {
-            kind: 'approval.resolved',
-            payload: { requestId, decision: 'cancelled' }
-          },
-          `${nativeSessionId}:${requestId}:turn-closed`,
-          nativeType
-        )
-      )
-    }
-    this.pendingApprovalResults.clear()
-    for (const [key, tool] of this.tools) {
+  private closeNativeTurn(turnId: string): void {
+    for (const tool of this.tools.values()) {
       if (tool.turnId !== turnId) continue
-      this.tools.delete(key)
-      if (tool.terminal) continue
-      this.rememberSet(this.terminalTools, key)
-      events.push(
-        nativeEvent(
-          {
-            kind: 'tool.failed',
-            payload: {
-              callId: tool.callId,
-              message: 'Tool ended without a completion event'
-            }
-          },
-          `${nativeSessionId}:${turnId}:tool:${tool.callId}:turn-closed`,
-          nativeType
-        )
-      )
+      tool.terminal = true
     }
-    return events
   }
 
   private rememberSet(set: Set<string>, value: string): void {
@@ -502,19 +402,20 @@ export class KimiHookProjector {
   }
 
   private rememberMap<T>(map: Map<string, T>, key: string, value: T): void {
-    if (map.size >= MAX_REMEMBERED_CORRELATIONS) map.clear()
+    if (map.size >= MAX_REMEMBERED_CORRELATIONS) {
+      const oldest = map.keys().next().value as string | undefined
+      if (oldest !== undefined) map.delete(oldest)
+    }
     map.set(key, value)
   }
 
   private resetCorrelation(): void {
     this.activeTurnId = undefined
-    this.continuableTurnId = undefined
+    this.continuationAvailable = false
     this.thinking = false
     this.tools.clear()
-    this.terminalTools.clear()
-    this.approvals.clear()
-    this.pendingApprovalResults.clear()
-    this.resolvedApprovals.clear()
+    this.seenApprovalRequests.clear()
+    this.seenApprovalResults.clear()
   }
 }
 
