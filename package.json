@@ -30,10 +30,11 @@
     "appId": "com.vibing.app",
     "productName": "Vibing",
     "artifactName": "Vibing-Setup-${version}.${ext}",
-    "afterPack": "scripts/assert-packaged-tray-assets.cjs",
+    "afterPack": "scripts/assert-packaged-resources.cjs",
     "files": [
       "**/*",
       "!resources/tray{,/**/*}",
+      "!dsh-runtime{,/**/*}",
       "!artifacts{,/**/*}",
       "!release{,/**/*}",
       "!test-results{,/**/*}",
@@ -45,6 +46,15 @@
         "to": "tray",
         "filter": [
           "*.png"
+        ]
+      },
+      {
+        "from": "dsh-runtime",
+        "to": "dsh-runtime",
+        "filter": [
+          "package.json",
+          "package-lock.json",
+          "node_modules/**/*"
         ]
       }
     ],

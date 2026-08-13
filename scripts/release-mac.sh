@@ -34,6 +34,7 @@ if [[ "$arch" != arm64 && "$arch" != x64 ]]; then
 fi
 
 cd "$workspace"
+npm --prefix "$workspace/dsh-runtime" ci --ignore-scripts
 npm run build
 
 CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder \
