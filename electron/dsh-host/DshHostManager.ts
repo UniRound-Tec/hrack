@@ -2,7 +2,14 @@ import { app, utilityProcess, type UtilityProcess } from 'electron'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
-import { DshEventChannel, type DshHostStatus } from '../../shared/dsh-ipc'
+import {
+  DshEventChannel,
+  type DshHomeMode,
+  type DshHostStatus,
+  type DshRetentionPolicy,
+  type DshRuntimeConfig
+} from '../../shared/dsh-ipc'
+import { getMainPrefs, persistMainPrefs } from '../main-prefs'
 
 /**
  * DshHostManager —— 以内置 utilityProcess 运行 dsh 的 web profile。
@@ -94,6 +101,44 @@ export class DshHostManager {
     return this.status
   }
 
+  resolveHome(): string {
+    const override = process.env['VIBING_DSH_HOME']
+    if (override && override.trim().length > 0) return override.trim()
+    const mode = getMainPrefs().dshHomeMode
+    if (mode === 'shared') return join(app.getPath('home'), '.dsh')
+    return this.options.defaultDshHome
+  }
+
+  getConfig(): DshRuntimeConfig {
+    const prefs = getMainPrefs()
+    return {
+      homeMode: prefs.dshHomeMode,
+      isolatedHome: this.options.defaultDshHome,
+      sharedHome: join(app.getPath('home'), '.dsh'),
+      activeHome: this.status.dshHome ?? this.resolveHome(),
+      envOverride: Boolean(process.env['VIBING_DSH_HOME']?.trim()),
+      retention: prefs.dshRetention
+    }
+  }
+
+  async setHomeMode(mode: DshHomeMode): Promise<DshHostStatus> {
+    if (mode !== 'isolated' && mode !== 'shared') {
+      throw new Error('invalid dsh home mode')
+    }
+    await persistMainPrefs({ dshHomeMode: mode })
+    return this.restart()
+  }
+
+  async setRetention(policy: DshRetentionPolicy): Promise<DshRuntimeConfig> {
+    await persistMainPrefs({ dshRetention: policy })
+    return this.getConfig()
+  }
+
+  async restart(): Promise<DshHostStatus> {
+    await this.stop()
+    return this.ensureStarted()
+  }
+
   /** 幂等启动；starting 中的并发调用共享同一个 Promise。 */
   ensureStarted(): Promise<DshHostStatus> {
     if (this.status.state === 'ready') return Promise.resolve(this.status)
@@ -134,8 +179,7 @@ export class DshHostManager {
   }
 
   private async start(): Promise<DshHostStatus> {
-    const dshHome =
-      process.env['VIBING_DSH_HOME'] ?? this.options.defaultDshHome
+    const dshHome = this.resolveHome()
     this.setStatus({ state: 'starting', dshHome })
     try {
       const binPath = resolveDshBinPath()

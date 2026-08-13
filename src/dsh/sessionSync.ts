@@ -5,6 +5,7 @@
 
 import { useSessionsStore, type SessionEntry } from '../state/sessionsStore'
 import { dshTerminalId } from '../app/pages'
+import type { DshRetentionPolicy } from '../../shared/dsh-ipc'
 import {
   archiveDshSession,
   listDshSessions,
@@ -13,6 +14,31 @@ import {
   sessionTitleOf,
   type DshSessionSummary
 } from './rpc'
+
+async function applyRetention(
+  sessions: DshSessionSummary[],
+  policy: DshRetentionPolicy
+): Promise<void> {
+  const candidates = sessions.filter(
+    (session) => !session.running && session.origin !== 'subagent'
+  )
+  let stale: DshSessionSummary[] = []
+  if (policy.kind === 'days') {
+    const cutoff = Date.now() - policy.days * 24 * 60 * 60 * 1000
+    stale = candidates.filter((session) => session.updatedAt < cutoff)
+  } else if (policy.kind === 'count') {
+    stale = [...candidates]
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .slice(policy.count)
+  }
+  for (const session of stale) {
+    try {
+      await archiveDshSession(session.sessionId)
+    } catch (error) {
+      console.warn('[dsh] retention archive failed', session.sessionId, error)
+    }
+  }
+}
 
 export type DshUiStatus = SessionEntry['status']
 
@@ -44,10 +70,18 @@ export async function refreshDshSessions(): Promise<SessionEntry[]> {
   if (status.state !== 'ready') {
     throw new Error(status.error ?? 'dsh host is not ready')
   }
-  const [sessions, workspaces] = await Promise.all([
+  const [initialSessions, initialWorkspaces, config] = await Promise.all([
     listDshSessions(),
-    listDshWorkspaces()
+    listDshWorkspaces(),
+    window.dshApi.getConfig()
   ])
+  if (config.retention.kind !== 'all') {
+    await applyRetention(initialSessions, config.retention)
+  }
+  const [sessions, workspaces] =
+    config.retention.kind === 'all'
+      ? [initialSessions, initialWorkspaces]
+      : await Promise.all([listDshSessions(), listDshWorkspaces()])
   const archived = new Set(workspaces.archivedSessionIds)
   const visible = sessions.filter(
     (session) => !archived.has(session.sessionId) && session.origin !== 'subagent'

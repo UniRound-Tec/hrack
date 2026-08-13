@@ -48,7 +48,10 @@ import type { Tray } from './tray'
 import type { FloatingWindowController } from './floating/FloatingWindowController'
 import { WorkspaceReaderInvokeChannel } from '../shared/workspace-reader'
 import type { WorkspaceReader } from './workspace/WorkspaceReader'
-import { DshInvokeChannel } from '../shared/dsh-ipc'
+import {
+  DshInvokeChannel,
+  type DshRetentionPolicy
+} from '../shared/dsh-ipc'
 import type { DshHostManager } from './dsh-host/DshHostManager'
 import type { DshWireProxy } from './dsh-host/DshWireProxy'
 import type { DshProjectionBridge } from './dsh-host/DshProjectionBridge'
@@ -192,6 +195,16 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     ctx.dshHost.ensureStarted()
   )
   ipcMain.handle(DshInvokeChannel.Stop, () => ctx.dshHost.stop())
+  ipcMain.handle(DshInvokeChannel.GetConfig, () => ctx.dshHost.getConfig())
+  ipcMain.handle(DshInvokeChannel.SetHomeMode, (_e, mode: unknown) => {
+    if (mode !== 'isolated' && mode !== 'shared') {
+      throw new Error('invalid dsh home mode')
+    }
+    return ctx.dshHost.setHomeMode(mode)
+  })
+  ipcMain.handle(DshInvokeChannel.SetRetention, (_e, policy: unknown) => {
+    return ctx.dshHost.setRetention(sanitizeRetentionPolicy(policy))
+  })
   ipcMain.handle(DshInvokeChannel.WireFetch, (_e, request) =>
     ctx.dshWire.handleFetch(request)
   )
@@ -534,6 +547,26 @@ async function applyMainPrefsUpdate(
       }
     }
   }
+}
+
+function sanitizeRetentionPolicy(value: unknown): DshRetentionPolicy {
+  if (!value || typeof value !== 'object') return { kind: 'all' }
+  const raw = value as { kind?: unknown; days?: unknown; count?: unknown }
+  if (raw.kind === 'days') {
+    const days =
+      typeof raw.days === 'number' && Number.isFinite(raw.days)
+        ? Math.max(1, Math.min(3650, Math.round(raw.days)))
+        : 30
+    return { kind: 'days', days }
+  }
+  if (raw.kind === 'count') {
+    const count =
+      typeof raw.count === 'number' && Number.isFinite(raw.count)
+        ? Math.max(1, Math.min(5000, Math.round(raw.count)))
+        : 50
+    return { kind: 'count', count }
+  }
+  return { kind: 'all' }
 }
 
 /** IPC 层形状校验；字段级清洗与语义校验由 Runtime.start 完成。 */

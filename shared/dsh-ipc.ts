@@ -20,7 +20,10 @@ export enum DshInvokeChannel {
   WireStreamOpen = 'dsh:wire-stream-open',
   WireStreamClose = 'dsh:wire-stream-close',
   /** 取回 host 注入的 __DSH_BOOT__ 清单（renderer 装配 client 模块表用）。 */
-  GetBootManifest = 'dsh:get-boot-manifest'
+  GetBootManifest = 'dsh:get-boot-manifest',
+  GetConfig = 'dsh:get-config',
+  SetHomeMode = 'dsh:set-home-mode',
+  SetRetention = 'dsh:set-retention'
 }
 
 // ───── Main → Renderer（webContents.send，广播）─────────
@@ -98,11 +101,30 @@ export interface DshHostStatus {
   pid?: number
 }
 
+export type DshHomeMode = 'isolated' | 'shared'
+
+export type DshRetentionPolicy =
+  | { kind: 'all' }
+  | { kind: 'days'; days: number }
+  | { kind: 'count'; count: number }
+
+export interface DshRuntimeConfig {
+  homeMode: DshHomeMode
+  isolatedHome: string
+  sharedHome: string
+  activeHome: string
+  envOverride: boolean
+  retention: DshRetentionPolicy
+}
+
 export interface DshApi {
   getStatus(): Promise<DshHostStatus>
   /** 幂等：已 ready/starting 时直接返回当前状态（starting 会等待结果）。 */
   ensureStarted(): Promise<DshHostStatus>
   stop(): Promise<DshHostStatus>
+  getConfig(): Promise<DshRuntimeConfig>
+  setHomeMode(mode: DshHomeMode): Promise<DshHostStatus>
+  setRetention(policy: DshRetentionPolicy): Promise<DshRuntimeConfig>
   onStatusChanged(cb: (status: DshHostStatus) => void): () => void
   /**
    * host serve 的 index.html 里注入的 window.__DSH_BOOT__ 原始值。

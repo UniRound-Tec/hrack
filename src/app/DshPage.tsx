@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import type { DshSurfaceHandle, DshSurfaceMode } from '../dsh/bootDsh'
 import type { DshHostStatus } from '../../shared/dsh-ipc'
+import DshHostSettings from './DshHostSettings'
 import { useStrings } from './i18n'
 
 type BootPhase =
@@ -163,6 +164,7 @@ export default function DshPage({
           </h1>
         </header>
       )}
+      {mode === 'settings' && phase.kind === 'ready' && <DshHostSettings />}
       <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden" />
     </section>
   )

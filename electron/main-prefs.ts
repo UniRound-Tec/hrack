@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import type { DshHomeMode, DshRetentionPolicy } from '../shared/dsh-ipc'
 
 /**
  * 主进程偏好文件 `<userData>/main-prefs.json`。
@@ -22,6 +23,8 @@ export interface MainPrefs {
     y: number
     displayId: number
   } | null
+  dshHomeMode: DshHomeMode
+  dshRetention: DshRetentionPolicy
 }
 
 export const DEFAULT_BACKGROUND_COLOR = '#ffffff'
@@ -33,7 +36,9 @@ export const defaultMainPrefs: MainPrefs = {
   globalShortcutEnabled: true,
   language: DEFAULT_LANGUAGE,
   floatingWindowEnabled: false,
-  floatingWindowPosition: null
+  floatingWindowPosition: null,
+  dshHomeMode: 'isolated',
+  dshRetention: { kind: 'all' }
 }
 
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/
@@ -89,7 +94,31 @@ function sanitize(parsed: unknown): MainPrefs {
       }
     }
   }
+  if (raw.dshHomeMode === 'isolated' || raw.dshHomeMode === 'shared') {
+    prefs.dshHomeMode = raw.dshHomeMode
+  }
+  prefs.dshRetention = sanitizeRetention(raw.dshRetention)
   return prefs
+}
+
+function sanitizeRetention(value: unknown): DshRetentionPolicy {
+  if (!value || typeof value !== 'object') return { kind: 'all' }
+  const raw = value as { kind?: unknown; days?: unknown; count?: unknown }
+  if (raw.kind === 'days') {
+    const days =
+      typeof raw.days === 'number' && Number.isFinite(raw.days)
+        ? Math.max(1, Math.min(3650, Math.round(raw.days)))
+        : 30
+    return { kind: 'days', days }
+  }
+  if (raw.kind === 'count') {
+    const count =
+      typeof raw.count === 'number' && Number.isFinite(raw.count)
+        ? Math.max(1, Math.min(5000, Math.round(raw.count)))
+        : 50
+    return { kind: 'count', count }
+  }
+  return { kind: 'all' }
 }
 
 let cachedPrefs: MainPrefs = { ...defaultMainPrefs }

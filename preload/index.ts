@@ -371,6 +371,10 @@ const dshApi: DshApi = {
   getStatus: () => ipcRenderer.invoke(DshInvokeChannel.GetStatus),
   ensureStarted: () => ipcRenderer.invoke(DshInvokeChannel.EnsureStarted),
   stop: () => ipcRenderer.invoke(DshInvokeChannel.Stop),
+  getConfig: () => ipcRenderer.invoke(DshInvokeChannel.GetConfig),
+  setHomeMode: (mode) => ipcRenderer.invoke(DshInvokeChannel.SetHomeMode, mode),
+  setRetention: (policy) =>
+    ipcRenderer.invoke(DshInvokeChannel.SetRetention, policy),
   getBootManifest: () =>
     ipcRenderer.invoke(DshInvokeChannel.GetBootManifest),
   onStatusChanged: (cb) => {
