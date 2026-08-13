@@ -8,6 +8,7 @@ const SHORT_DEDUPE_MS = 5_000
 
 interface ToolState {
   id: string
+  turnId?: string
   name: string
   summary?: string
   fingerprint: string
@@ -19,6 +20,9 @@ interface RequestState {
   id: string
   kind: 'approval' | 'input'
   callId?: string
+  toolName?: string
+  fingerprint?: string
+  summary?: string
   expiresAt: number
 }
 
@@ -108,10 +112,8 @@ export class ClaudeHookProjector {
         break
       case 'stopped':
         if (this.markShort(`stop:${this.turnId ?? 'none'}`, now)) {
-          events.push(...this.completeThinking(fact.nativeType))
           if (!fact.hasRunningBackgroundTasks && this.turnId) {
-            events.push(...this.interruptTools(fact.nativeType, 'Tool result unavailable'))
-            events.push(...this.cancelRequests('cancelled', fact.nativeType))
+            this.closeNativeTurn()
             events.push(nativeEvent(
               {
                 kind: 'turn.completed',
@@ -140,9 +142,7 @@ export class ClaudeHookProjector {
         break
       case 'stop-failed':
         if (this.turnId && this.markShort(`stop-failed:${this.turnId}`, now)) {
-          events.push(...this.completeThinking(fact.nativeType))
-          events.push(...this.interruptTools(fact.nativeType, 'Tool interrupted'))
-          events.push(...this.cancelRequests('cancelled', fact.nativeType))
+          this.closeNativeTurn()
           events.push(nativeEvent(
             {
               kind: 'turn.failed',
@@ -191,9 +191,7 @@ export class ClaudeHookProjector {
   private beginTurn(sessionId: string, nativeType: string, now: number): AdapterEvent[] {
     const events: AdapterEvent[] = []
     if (this.turnId) {
-      events.push(...this.completeThinking(nativeType))
-      events.push(...this.interruptTools(nativeType, 'Tool interrupted'))
-      events.push(...this.cancelRequests('cancelled', nativeType))
+      this.closeNativeTurn()
       events.push(nativeEvent(
         {
           kind: 'turn.completed',
@@ -207,7 +205,6 @@ export class ClaudeHookProjector {
     this.turnId = `${sessionId}:turn:${++this.turnCounter}`
     this.thinking = true
     this.thinkingEpoch++
-    this.tools.clear()
     events.push(nativeEvent(
       { kind: 'turn.started', payload: { turnId: this.turnId } },
       `${this.turnId}:started`,
@@ -225,6 +222,7 @@ export class ClaudeHookProjector {
     fact: Extract<ClaudeNativeFact, { type: 'tool-started' }>,
     now: number
   ): AdapterEvent[] {
+    if (!this.turnId) return []
     const key = `${fact.nativeSessionId}:pre:${fact.toolUseId}`
     if (!this.markStable(key)) return []
     const existing = this.tools.get(fact.toolUseId)
@@ -232,6 +230,7 @@ export class ClaudeHookProjector {
     const events = this.completeThinking(fact.nativeType)
     const tool: ToolState = existing ?? {
       id: fact.toolUseId,
+      turnId: this.turnId,
       name: fact.toolName,
       summary: fact.summary,
       fingerprint: fact.fingerprint,
@@ -244,7 +243,7 @@ export class ClaudeHookProjector {
         kind: 'tool.started',
         payload: {
           callId: tool.id,
-          turnId: this.turnId,
+          turnId: tool.turnId,
           name: tool.name,
           category: toolCategory(tool.name)
         }
@@ -261,7 +260,10 @@ export class ClaudeHookProjector {
         expiresAt: now + REQUEST_TTL_MS
       })
       events.push(nativeEvent(
-        { kind: 'input.requested', payload: { requestId } },
+        {
+          kind: 'input.requested',
+          payload: { requestId, turnId: tool.turnId, callId: tool.id }
+        },
         `${key}:input-requested`,
         fact.nativeType
       ))
@@ -279,7 +281,19 @@ export class ClaudeHookProjector {
         (!fact.toolName || tool.name === fact.toolName) &&
         (!fact.fingerprint || tool.fingerprint === fact.fingerprint)
     )
-    const callId = candidates.length === 1 ? candidates[0].id : undefined
+    let matchedTool = candidates.length === 1 ? candidates[0] : undefined
+    if (!matchedTool) {
+      const terminalCandidates = [...this.tools.values()].filter(
+        (tool) =>
+          tool.terminal &&
+          (!fact.toolName || tool.name === fact.toolName) &&
+          (!fact.fingerprint || tool.fingerprint === fact.fingerprint)
+      )
+      if (terminalCandidates.length === 1) matchedTool = terminalCandidates[0]
+    }
+    const callId = matchedTool?.id
+    const turnId = matchedTool?.turnId ?? this.turnId
+    if (!turnId) return []
     const shortKey = `permission:${fact.toolName ?? ''}:${fact.fingerprint ?? ''}:${callId ?? ''}`
     if (!this.markShort(shortKey, now)) return []
     const requestId = callId
@@ -289,13 +303,17 @@ export class ClaudeHookProjector {
       id: requestId,
       kind: 'approval',
       callId,
+      toolName: fact.toolName,
+      fingerprint: fact.fingerprint,
+      summary: fact.summary,
       expiresAt: now + REQUEST_TTL_MS
     })
-    return [nativeEvent(
+    const events = [nativeEvent(
       {
         kind: 'approval.requested',
         payload: {
           requestId,
+          turnId,
           callId,
           category: approvalCategory(fact.toolName),
           summary: fact.summary
@@ -304,6 +322,7 @@ export class ClaudeHookProjector {
       `${fact.nativeSessionId}:${requestId}:requested`,
       fact.nativeType
     )]
+    return events
   }
 
   private finishTool(
@@ -316,8 +335,10 @@ export class ClaudeHookProjector {
     let tool = this.tools.get(fact.toolUseId)
     const events: AdapterEvent[] = []
     if (!tool) {
+      if (!this.turnId) return []
       tool = {
         id: fact.toolUseId,
+        turnId: this.turnId,
         name: fact.toolName,
         summary: fact.summary,
         fingerprint: fact.fingerprint,
@@ -330,7 +351,7 @@ export class ClaudeHookProjector {
           kind: 'tool.started',
           payload: {
             callId: tool.id,
-            turnId: this.turnId,
+            turnId: tool.turnId,
             name: tool.name,
             category: toolCategory(tool.name)
           }
@@ -341,36 +362,50 @@ export class ClaudeHookProjector {
     }
     if (tool.terminal) return events
     tool.terminal = true
-
-    const request = [...this.requests.values()].find(
-      (candidate) => candidate.callId === tool!.id
-    )
-    if (request) {
-      this.requests.delete(request.id)
-      events.push(nativeEvent(
-        request.kind === 'input'
-          ? { kind: 'input.resolved', payload: { requestId: request.id } }
-          : {
-              kind: 'approval.resolved',
-              payload: {
-                requestId: request.id,
-                decision: fact.type === 'tool-completed' ? 'approved' : 'cancelled'
-              }
-            },
-        `${stable}:${request.id}:resolved`,
-        fact.nativeType
-      ))
+    const matchingUnlinked = [...this.requests.values()].filter((request) => {
+      if (request.kind !== 'approval' || request.callId) return false
+      if (!this.requestMatchesTool(request, tool!)) return false
+      return (
+        [...this.tools.values()].filter((candidate) =>
+          this.requestMatchesTool(request, candidate)
+        ).length === 1
+      )
+    })
+    if (matchingUnlinked.length === 1 && tool.turnId) {
+      const request = matchingUnlinked[0]
+      request.callId = tool.id
+      events.push(
+        nativeEvent(
+          {
+            kind: 'approval.requested',
+            payload: {
+              requestId: request.id,
+              turnId: tool.turnId,
+              callId: tool.id,
+              category: approvalCategory(request.toolName),
+              summary: request.summary
+            }
+          },
+          `${stable}:${request.id}:linked`,
+          fact.nativeType
+        )
+      )
     }
     events.push(nativeEvent(
       fact.type === 'tool-completed'
         ? {
             kind: 'tool.completed',
-            payload: { callId: tool.id, durationMs: fact.durationMs }
+            payload: {
+              callId: tool.id,
+              turnId: tool.turnId,
+              durationMs: fact.durationMs
+            }
           }
         : {
             kind: 'tool.failed',
             payload: {
               callId: tool.id,
+              turnId: tool.turnId,
               durationMs: fact.durationMs,
               message: 'Tool failed'
             }
@@ -381,12 +416,20 @@ export class ClaudeHookProjector {
     return events
   }
 
+  private requestMatchesTool(request: RequestState, tool: ToolState): boolean {
+    return (
+      (!request.toolName || request.toolName === tool.name) &&
+      (!request.fingerprint || request.fingerprint === tool.fingerprint)
+    )
+  }
+
   private handleNotification(
     fact: Extract<ClaudeNativeFact, { type: 'notification' }>,
     now: number
   ): AdapterEvent[] {
     const type = fact.notificationType
     if (type.includes('permission')) {
+      if (!this.turnId) return []
       if ([...this.requests.values()].some((request) => request.kind === 'approval')) return []
       if (!this.markShort('notification:permission', now)) return []
       const requestId = `approval:notification:${++this.requestCounter}`
@@ -396,12 +439,16 @@ export class ClaudeHookProjector {
         expiresAt: now + REQUEST_TTL_MS
       })
       return [nativeEvent(
-        { kind: 'approval.requested', payload: { requestId, category: 'other' } },
+        {
+          kind: 'approval.requested',
+          payload: { requestId, turnId: this.turnId, category: 'other' }
+        },
         `${fact.nativeSessionId}:${requestId}`,
         fact.nativeType
       )]
     }
     if (type.includes('needs_input') || type.includes('elicitation')) {
+      if (!this.turnId) return []
       if ([...this.requests.values()].some((request) => request.kind === 'input')) return []
       if (!this.markShort('notification:input', now)) return []
       const requestId = `input:notification:${++this.requestCounter}`
@@ -411,7 +458,7 @@ export class ClaudeHookProjector {
         expiresAt: now + REQUEST_TTL_MS
       })
       return [nativeEvent(
-        { kind: 'input.requested', payload: { requestId } },
+        { kind: 'input.requested', payload: { requestId, turnId: this.turnId } },
         `${fact.nativeSessionId}:${requestId}`,
         fact.nativeType
       )]
@@ -419,10 +466,8 @@ export class ClaudeHookProjector {
     if ((type.includes('idle') || type.includes('completed')) && this.turnId) {
       if (!this.markShort(`notification:${type}:${this.turnId}`, now)) return []
       const turnId = this.turnId
+      this.closeNativeTurn()
       const events = [
-        ...this.completeThinking(fact.nativeType),
-        ...this.interruptTools(fact.nativeType, 'Tool result unavailable'),
-        ...this.cancelRequests('cancelled', fact.nativeType),
         nativeEvent(
           { kind: 'turn.completed', payload: { turnId, outcome: 'completed' } },
           `${turnId}:notification-completed`,
@@ -436,11 +481,8 @@ export class ClaudeHookProjector {
   }
 
   private resetNativeSession(nativeType: string, now: number): AdapterEvent[] {
-    const events = [
-      ...this.completeThinking(nativeType),
-      ...this.interruptTools(nativeType, 'Tool interrupted'),
-      ...this.cancelRequests('cancelled', nativeType)
-    ]
+    const events: AdapterEvent[] = []
+    this.closeNativeTurn()
     if (this.turnId) {
       events.push(nativeEvent(
         {
@@ -479,36 +521,12 @@ export class ClaudeHookProjector {
     )]
   }
 
-  private interruptTools(nativeType: string, message: string): AdapterEvent[] {
-    const events: AdapterEvent[] = []
+  private closeNativeTurn(): void {
     for (const tool of this.tools.values()) {
-      if (tool.terminal) continue
       tool.terminal = true
-      events.push(nativeEvent(
-        { kind: 'tool.failed', payload: { callId: tool.id, message } },
-        `${tool.id}:interrupted`,
-        nativeType
-      ))
-    }
-    return events
-  }
-
-  private cancelRequests(
-    decision: 'cancelled',
-    nativeType: string
-  ): AdapterEvent[] {
-    const events: AdapterEvent[] = []
-    for (const request of this.requests.values()) {
-      events.push(nativeEvent(
-        request.kind === 'approval'
-          ? { kind: 'approval.resolved', payload: { requestId: request.id, decision } }
-          : { kind: 'input.resolved', payload: { requestId: request.id } },
-        `${request.id}:cancelled`,
-        nativeType
-      ))
     }
     this.requests.clear()
-    return events
+    this.thinking = false
   }
 
   private markStable(key: string): boolean {
