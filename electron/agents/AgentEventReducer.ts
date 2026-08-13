@@ -244,7 +244,7 @@ function closeTurnCorrelations(
 function closeRequestsForCall(
   correlation: AgentCorrelationState,
   callId: string,
-  turnId: string | undefined
+  turnId: string
 ): void {
   for (const [requestId, approval] of Object.entries(
     correlation.pendingApprovals
@@ -381,11 +381,10 @@ export function reduceAgentSession(
       observerHealth = observerHealthFor(observerHealth, capabilities, false)
       break
     case 'tool.started': {
-      const turnId = event.payload.turnId ?? correlation.lastTurnId
+      const turnId = event.payload.turnId
       if (
-        event.payload.turnId !== undefined &&
-        (turnId !== correlation.lastTurnId ||
-          correlation.lastTurnOutcome !== undefined)
+        turnId !== correlation.lastTurnId ||
+        correlation.lastTurnOutcome !== undefined
       ) {
         break
       }
@@ -404,11 +403,7 @@ export function reduceAgentSession(
     }
     case 'tool.progress': {
       const tool = correlation.activeTools[event.payload.callId]
-      if (
-        !tool ||
-        (event.payload.turnId !== undefined &&
-          event.payload.turnId !== tool.turnId)
-      ) {
+      if (!tool || event.payload.turnId !== tool.turnId) {
         break
       }
       correlation.lowConfidenceIdle = false
@@ -417,12 +412,10 @@ export function reduceAgentSession(
       break
     }
     case 'tool.completed': {
-      const tool = correlation.activeTools[event.payload.callId]
-      const turnId = event.payload.turnId ?? tool?.turnId ?? correlation.lastTurnId
+      const turnId = event.payload.turnId
       if (
-        event.payload.turnId !== undefined &&
-        (turnId !== correlation.lastTurnId ||
-          correlation.lastTurnOutcome !== undefined)
+        turnId !== correlation.lastTurnId ||
+        correlation.lastTurnOutcome !== undefined
       ) {
         break
       }
@@ -436,12 +429,10 @@ export function reduceAgentSession(
     }
     case 'tool.failed': {
       // tool failed 不自动令整个 Session 为 error；只终结该 tool。
-      const tool = correlation.activeTools[event.payload.callId]
-      const turnId = event.payload.turnId ?? tool?.turnId ?? correlation.lastTurnId
+      const turnId = event.payload.turnId
       if (
-        event.payload.turnId !== undefined &&
-        (turnId !== correlation.lastTurnId ||
-          correlation.lastTurnOutcome !== undefined)
+        turnId !== correlation.lastTurnId ||
+        correlation.lastTurnOutcome !== undefined
       ) {
         break
       }
@@ -454,11 +445,10 @@ export function reduceAgentSession(
       break
     }
     case 'approval.requested': {
-      const turnId = event.payload.turnId ?? correlation.lastTurnId
+      const turnId = event.payload.turnId
       if (
-        event.payload.turnId !== undefined &&
-        (turnId !== correlation.lastTurnId ||
-          correlation.lastTurnOutcome !== undefined)
+        turnId !== correlation.lastTurnId ||
+        correlation.lastTurnOutcome !== undefined
       ) {
         break
       }
@@ -494,11 +484,10 @@ export function reduceAgentSession(
       break
     }
     case 'input.requested': {
-      const turnId = event.payload.turnId ?? correlation.lastTurnId
+      const turnId = event.payload.turnId
       if (
-        event.payload.turnId !== undefined &&
-        (turnId !== correlation.lastTurnId ||
-          correlation.lastTurnOutcome !== undefined)
+        turnId !== correlation.lastTurnId ||
+        correlation.lastTurnOutcome !== undefined
       ) {
         break
       }

@@ -8,7 +8,7 @@ const SHORT_DEDUPE_MS = 5_000
 
 interface ToolState {
   id: string
-  turnId?: string
+  turnId: string
   name: string
   summary?: string
   fingerprint: string
@@ -371,7 +371,7 @@ export class ClaudeHookProjector {
         ).length === 1
       )
     })
-    if (matchingUnlinked.length === 1 && tool.turnId) {
+    if (matchingUnlinked.length === 1) {
       const request = matchingUnlinked[0]
       request.callId = tool.id
       events.push(

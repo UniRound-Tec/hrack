@@ -420,13 +420,7 @@ export class OpenCodeEventProjector {
       !tool.terminal
     ) {
       tool.terminal = true
-      events.push(
-        ...this.resolveRequestsForCall(
-          fact.sessionId,
-          fact.callId,
-          fact.nativeType
-        )
-      )
+      this.forgetRequestsForCall(fact.sessionId, fact.callId)
       events.push(
         event(
           fact.state === 'completed'
@@ -598,27 +592,11 @@ export class OpenCodeEventProjector {
     ]
   }
 
-  private resolveRequestsForCall(
-    sessionId: string,
-    callId: string,
-    nativeType: string
-  ): AdapterEvent[] {
-    const events: AdapterEvent[] = []
+  private forgetRequestsForCall(sessionId: string, callId: string): void {
     for (const [requestId, request] of [...this.approvals]) {
       if (request.sessionId !== sessionId || request.callId !== callId) continue
       this.approvals.delete(requestId)
-      events.push(
-        event(
-          {
-            kind: 'approval.resolved',
-            payload: { requestId, decision: 'approved' }
-          },
-          `${requestId}:resolved-by-tool`,
-          nativeType
-        )
-      )
     }
-    return events
   }
 
   private closeReasoningForSession(

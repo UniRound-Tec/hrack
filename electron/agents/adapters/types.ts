@@ -42,8 +42,10 @@ export interface RunningAgentContext {
 }
 
 /**
- * Adapter 输出的语义事件（不可信输入）。Runtime 负责 envelope、校验、
+ * Adapter 输出的语义事实（不可信输入）。Runtime 负责 envelope、校验、
  * 清洗、seq 分配与去重；Adapter 不自行生成 id/seq/occurredAt。
+ * Tool/request 事实必须显式带 parent turn scope。有权威的 parent terminal
+ * 时只发 parent 事实，子事实的覆盖由公共 reducer 完成。
  */
 type AdapterEventOf<E extends AgentEvent = AgentEvent> = E extends AgentEvent
   ? Pick<E, 'kind' | 'payload'> & {

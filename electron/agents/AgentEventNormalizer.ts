@@ -272,9 +272,9 @@ export function normalizeAdapterEvent(value: unknown): AdapterEvent | null {
     }
     case 'tool.started': {
       const callId = requiredId(payload.callId)
+      const turnId = requiredId(payload.turnId)
       const name = boundedText(payload.name, MAX_NAME_LENGTH)
-      if (!callId || !name) return null
-      const turnId = optionalId(payload.turnId)
+      if (!callId || !turnId || !name) return null
       const category = optionalEnum(
         payload.category,
         TOOL_CATEGORIES
@@ -284,8 +284,8 @@ export function normalizeAdapterEvent(value: unknown): AdapterEvent | null {
     }
     case 'tool.progress': {
       const callId = requiredId(payload.callId)
-      if (!callId) return null
-      const turnId = optionalId(payload.turnId)
+      const turnId = requiredId(payload.turnId)
+      if (!callId || !turnId) return null
       const summary = boundedText(payload.summary, MAX_SUMMARY_LENGTH) || undefined
       normalizedPayload = {
         callId,
@@ -296,8 +296,8 @@ export function normalizeAdapterEvent(value: unknown): AdapterEvent | null {
     }
     case 'tool.completed': {
       const callId = requiredId(payload.callId)
-      if (!callId) return null
-      const turnId = optionalId(payload.turnId)
+      const turnId = requiredId(payload.turnId)
+      if (!callId || !turnId) return null
       const durationMs = finiteNumber(payload.durationMs, MAX_DURATION_MS)
       normalizedPayload = {
         callId,
@@ -308,9 +308,9 @@ export function normalizeAdapterEvent(value: unknown): AdapterEvent | null {
     }
     case 'tool.failed': {
       const callId = requiredId(payload.callId)
+      const turnId = requiredId(payload.turnId)
       const message = boundedText(payload.message, MAX_MESSAGE_LENGTH)
-      if (!callId || !message) return null
-      const turnId = optionalId(payload.turnId)
+      if (!callId || !turnId || !message) return null
       const durationMs = finiteNumber(payload.durationMs, MAX_DURATION_MS)
       normalizedPayload = durationMs === undefined
         ? { callId, turnId, message }
@@ -319,8 +319,8 @@ export function normalizeAdapterEvent(value: unknown): AdapterEvent | null {
     }
     case 'approval.requested': {
       const requestId = requiredId(payload.requestId)
-      if (!requestId) return null
-      const turnId = optionalId(payload.turnId)
+      const turnId = requiredId(payload.turnId)
+      if (!requestId || !turnId) return null
       const callId = optionalId(payload.callId)
       const category = optionalEnum(
         payload.category,
@@ -351,8 +351,8 @@ export function normalizeAdapterEvent(value: unknown): AdapterEvent | null {
     }
     case 'input.requested': {
       const requestId = requiredId(payload.requestId)
-      if (!requestId) return null
-      const turnId = optionalId(payload.turnId)
+      const turnId = requiredId(payload.turnId)
+      if (!requestId || !turnId) return null
       const callId = optionalId(payload.callId)
       const prompt = boundedText(payload.prompt, MAX_PROMPT_LENGTH) || undefined
       normalizedPayload = {

@@ -46,6 +46,7 @@ function buildFixtureScript(): AdapterEvent[] {
       kind: 'approval.requested',
       payload: {
         requestId: 'fixture-req-1',
+        turnId: 'fixture-turn-1',
         callId: 'fixture-tool-1',
         category: 'file-change',
         summary: 'Fixture approval request'
@@ -57,7 +58,11 @@ function buildFixtureScript(): AdapterEvent[] {
     },
     {
       kind: 'tool.completed',
-      payload: { callId: 'fixture-tool-1', durationMs: 42 }
+      payload: {
+        callId: 'fixture-tool-1',
+        turnId: 'fixture-turn-1',
+        durationMs: 42
+      }
     },
     {
       kind: 'usage.updated',

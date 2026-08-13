@@ -50,33 +50,33 @@ export interface SessionIdlePayload {
 
 export interface ToolStartedPayload {
   callId: string
-  turnId?: string
+  turnId: string
   name: string
   category?: 'read' | 'edit' | 'shell' | 'search' | 'network' | 'mcp' | 'other'
 }
 
 export interface ToolProgressPayload {
   callId: string
-  turnId?: string
+  turnId: string
   summary?: string
 }
 
 export interface ToolCompletedPayload {
   callId: string
-  turnId?: string
+  turnId: string
   durationMs?: number
 }
 
 export interface ToolFailedPayload {
   callId: string
-  turnId?: string
+  turnId: string
   durationMs?: number
   message: string
 }
 
 export interface ApprovalRequestedPayload {
   requestId: string
-  turnId?: string
+  turnId: string
   callId?: string
   category?: 'tool' | 'command' | 'file-change' | 'network' | 'other'
   summary?: string
@@ -89,7 +89,7 @@ export interface ApprovalResolvedPayload {
 
 export interface InputRequestedPayload {
   requestId: string
-  turnId?: string
+  turnId: string
   callId?: string
   prompt?: string
 }
@@ -208,18 +208,18 @@ export interface AgentCorrelationState {
   exited: boolean
   exitCode?: number
   /** callId → 关联事实（只用于状态归约与去重）。 */
-  activeTools: Record<string, { name: string; turnId?: string }>
+  activeTools: Record<string, { name: string; turnId: string }>
   lastToolCallId?: string
   pendingApprovals: Record<
     string,
-    { category?: string; summary?: string; callId?: string; turnId?: string }
+    { category?: string; summary?: string; callId?: string; turnId: string }
   >
   pendingInputs: Record<
     string,
-    { prompt?: string; callId?: string; turnId?: string }
+    { prompt?: string; callId?: string; turnId: string }
   >
   /** Current-turn terminal tombstones for result-before-request delivery. */
-  closedToolIds: Record<string, { turnId?: string }>
+  closedToolIds: Record<string, { turnId: string }>
   closedApprovalIds: Record<string, true>
   closedInputIds: Record<string, true>
   lowConfidenceIdle: boolean

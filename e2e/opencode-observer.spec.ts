@@ -430,6 +430,59 @@ test.describe('OpenCode observer adapter', () => {
     expect(projection.activeToolCount).toBe(0)
   })
 
+  test('lets a tool terminal overwrite its request without fabricating approval', () => {
+    const projector = new OpenCodeEventProjector()
+    const events = project(projector, [
+      {
+        type: 'session-status',
+        nativeType: 'session.status',
+        sessionId: 's1',
+        status: 'busy'
+      },
+      {
+        type: 'tool',
+        nativeType: 'message.part.updated',
+        sessionId: 's1',
+        messageId: 'm1',
+        partId: 't1',
+        callId: 'c1',
+        name: 'bash',
+        state: 'running'
+      },
+      {
+        type: 'permission-asked',
+        nativeType: 'permission.asked',
+        sessionId: 's1',
+        requestId: 'p1',
+        callId: 'c1',
+        permission: 'bash'
+      },
+      {
+        type: 'tool',
+        nativeType: 'message.part.updated',
+        sessionId: 's1',
+        messageId: 'm1',
+        partId: 't1',
+        callId: 'c1',
+        name: 'bash',
+        state: 'completed'
+      }
+    ])
+    const projection = projectAdapterEvents(events, {
+      adapterId: 'opencode',
+      source: 'rpc',
+      capabilities: OPENCODE_CAPABILITIES
+    })
+
+    expect(
+      events.filter((item) => item.kind === 'approval.resolved')
+    ).toHaveLength(0)
+    expect(events.at(-1)?.kind).toBe('tool.completed')
+    expect(projection.pendingAttentionCount).toBe(0)
+    expect(projection.activeToolCount).toBe(0)
+    expect(projection.status).toBe('working')
+  })
+
   test('lets authoritative pane idle overwrite missing permission and question replies', () => {
     const projector = new OpenCodeEventProjector()
     const started = project(projector, [
