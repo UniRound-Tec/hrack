@@ -138,7 +138,10 @@ export class PiEventProjector {
       if (!tool || tool.terminal) return []
       return [
         this.event(
-          { kind: 'tool.progress', payload: { callId: fact.callId } },
+          {
+            kind: 'tool.progress',
+            payload: { callId: fact.callId, turnId: tool.turnId }
+          },
           fact
         )
       ]
@@ -154,13 +157,18 @@ export class PiEventProjector {
                 kind: 'tool.failed',
                 payload: {
                   callId: fact.callId,
+                  turnId: tool.turnId,
                   durationMs: fact.durationMs,
                   message: 'Pi tool failed'
                 }
               }
             : {
                 kind: 'tool.completed',
-                payload: { callId: fact.callId, durationMs: fact.durationMs }
+                payload: {
+                  callId: fact.callId,
+                  turnId: tool.turnId,
+                  durationMs: fact.durationMs
+                }
               },
           fact
         )
@@ -219,28 +227,6 @@ export class PiEventProjector {
     if (!this.activeTurnId || this.compacting) return []
     const turnId = this.activeTurnId
     const events: AdapterEvent[] = []
-    if (this.thinking) {
-      events.push(
-        this.event(
-          { kind: 'thinking.completed', payload: { turnId } },
-          fact,
-          'thinking-completed'
-        )
-      )
-    }
-    for (const [callId, tool] of this.tools) {
-      if (tool.terminal) continue
-      events.push(
-        this.event(
-          {
-            kind: 'tool.failed',
-            payload: { callId, message: 'Pi tool ended without a result' }
-          },
-          fact,
-          `tool-${callId}-closed`
-        )
-      )
-    }
     events.push(
       this.event(
         this.runOutcome === 'failed'
@@ -260,7 +246,7 @@ export class PiEventProjector {
         'settled'
       )
     )
-    this.resetRun()
+    this.closeRunCorrelation()
     return events
   }
 

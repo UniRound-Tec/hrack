@@ -7,8 +7,12 @@ import { parsePiHook } from '../electron/agents/adapters/pi/PiHookParser'
 import { PiEventProjector } from '../electron/agents/adapters/pi/PiEventProjector'
 import { buildPiExtensionSource } from '../electron/agents/adapters/pi/PiExtensionSource'
 import { PiObserverAdapter } from '../electron/agents/adapters/pi/PiObserverAdapter'
-import type { PiNativeFact } from '../electron/agents/adapters/pi/types'
+import {
+  PI_OBSERVER_CAPABILITIES,
+  type PiNativeFact
+} from '../electron/agents/adapters/pi/types'
 import type { AdapterEvent } from '../electron/agents/adapters/types'
+import { projectAdapterEvents } from './helpers/agent-projection-contract'
 
 test.describe('Pi observer adapter', () => {
   test('accepts a scoped wire fact and rejects malformed or cross-session input', () => {
@@ -219,6 +223,36 @@ test.describe('Pi observer adapter', () => {
     ).toEqual(['turn.completed'])
   })
 
+  test('uses run settled as a parent terminal without fabricating child results', () => {
+    const projector = new PiEventProjector({ supportsAgentSettled: true })
+    const base = {
+      sessionId: 'vibing-session-parent-terminal',
+      generation: 'generation-parent-terminal',
+      emittedAt: 1_755_000_000_000
+    }
+    const fact = (seq: number, value: Record<string, unknown>): PiNativeFact =>
+      ({ ...base, seq, nativeType: value.type, ...value }) as PiNativeFact
+    const events = [
+      fact(1, { type: 'session-start', reason: 'startup' }),
+      fact(2, { type: 'run-start' }),
+      fact(3, { type: 'thinking-start' }),
+      fact(4, { type: 'tool-start', callId: 'call-open', toolName: 'bash' }),
+      fact(5, { type: 'run-end', outcome: 'completed' }),
+      fact(6, { type: 'run-settled' })
+    ].flatMap((value, index) => projector.project(value, 100 + index))
+    const projection = projectAdapterEvents(events, {
+      adapterId: 'pi',
+      source: 'hook',
+      capabilities: PI_OBSERVER_CAPABILITIES
+    })
+
+    expect(events.filter((event) => event.kind === 'tool.failed')).toHaveLength(0)
+    expect(events.filter((event) => event.kind === 'thinking.completed')).toHaveLength(0)
+    expect(events.at(-1)?.kind).toBe('turn.completed')
+    expect(projection.status).toBe('done')
+    expect(projection.activeToolCount).toBe(0)
+  })
+
   for (const fixture of ['080', '082'] as const) {
     test(`replays the sanitized ${fixture} extension fixture to completion`, async () => {
       const raw = JSON.parse(
@@ -280,7 +314,9 @@ test.describe('Pi observer adapter', () => {
       }) as PiNativeFact
 
     projector.project(make('generation-1', 1, { type: 'session-start', reason: 'startup' }))
-    projector.project(make('generation-1', 2, { type: 'run-start' }))
+    const firstTurn = projector.project(
+      make('generation-1', 2, { type: 'run-start' })
+    )[0]
     expect(
       projector.project(
         make('generation-1', 3, { type: 'run-end', outcome: 'completed' })
@@ -292,7 +328,18 @@ test.describe('Pi observer adapter', () => {
       )
     ).toEqual(['turn.completed'])
 
-    projector.project(make('generation-1', 5, { type: 'run-start' }))
+    const secondTurn = projector.project(
+      make('generation-1', 5, { type: 'run-start' })
+    )[0]
+    expect(firstTurn?.kind).toBe('turn.started')
+    expect(secondTurn?.kind).toBe('turn.started')
+    expect(
+      firstTurn?.kind === 'turn.started' ? firstTurn.payload.turnId : undefined
+    ).not.toBe(
+      secondTurn?.kind === 'turn.started'
+        ? secondTurn.payload.turnId
+        : undefined
+    )
     expect(
       projector.project(
         make('generation-1', 6, {
