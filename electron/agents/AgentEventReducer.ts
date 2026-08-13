@@ -492,6 +492,13 @@ export function reduceAgentSession(
         break
       }
       if (correlation.closedInputIds[event.payload.requestId]) break
+      const closedTool = event.payload.callId
+        ? correlation.closedToolIds[event.payload.callId]
+        : undefined
+      if (closedTool && closedTool.turnId === turnId) {
+        correlation.closedInputIds[event.payload.requestId] = true
+        break
+      }
       correlation.lowConfidenceIdle = false
       correlation.highConfidenceIdle = false
       correlation.pendingInputs[event.payload.requestId] = {

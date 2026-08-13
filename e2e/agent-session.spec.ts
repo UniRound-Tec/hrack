@@ -257,7 +257,50 @@ test.describe('AgentEventReducer', () => {
     expect(projection.correlation.pendingApprovals).toEqual({})
   })
 
-  test('turn terminal remains authoritative over a late approval request', () => {
+  test('turn terminal atomically overwrites every child fact in its scope', () => {
+    let projection = initialProjection()
+    const events = [
+      makeEvent(1, 'turn.started', { turnId: 'turn-1' }),
+      makeEvent(2, 'thinking.started', { turnId: 'turn-1' }),
+      makeEvent(3, 'tool.started', {
+        callId: 'call-a',
+        turnId: 'turn-1',
+        name: 'Bash'
+      }),
+      makeEvent(4, 'tool.started', {
+        callId: 'call-b',
+        turnId: 'turn-1',
+        name: 'Edit'
+      }),
+      makeEvent(5, 'approval.requested', {
+        requestId: 'approval-a',
+        turnId: 'turn-1',
+        callId: 'call-a'
+      }),
+      makeEvent(6, 'input.requested', {
+        requestId: 'input-b',
+        turnId: 'turn-1',
+        callId: 'call-b'
+      }),
+      makeEvent(7, 'turn.completed', {
+        turnId: 'turn-1',
+        outcome: 'completed'
+      })
+    ]
+    for (const event of events) {
+      projection = reduceAgentSession(projection, event)
+    }
+
+    expect(projection.status).toBe('done')
+    expect(projection.correlation.thinkingActive).toBe(false)
+    expect(projection.activeToolCount).toBe(0)
+    expect(projection.pendingAttentionCount).toBe(0)
+    expect(projection.correlation.activeTools).toEqual({})
+    expect(projection.correlation.pendingApprovals).toEqual({})
+    expect(projection.correlation.pendingInputs).toEqual({})
+  })
+
+  test('turn terminal remains authoritative over late child facts', () => {
     let projection = initialProjection()
     projection = reduceAgentSession(
       projection,
@@ -279,8 +322,32 @@ test.describe('AgentEventReducer', () => {
         category: 'command'
       })
     )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(4, 'tool.started', {
+        callId: 'late-tool',
+        turnId: 'turn-1',
+        name: 'Bash'
+      })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(5, 'input.requested', {
+        requestId: 'late-input',
+        turnId: 'turn-1'
+      })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(6, 'activity.caption', {
+        text: '@agent:late-caption',
+        confidence: 'low'
+      })
+    )
 
     expect(projection.status).toBe('done')
+    expect(projection.detail).toBe('@agent:completed')
+    expect(projection.activeToolCount).toBe(0)
     expect(projection.pendingAttentionCount).toBe(0)
   })
 
@@ -334,7 +401,29 @@ test.describe('AgentEventReducer', () => {
     expect(projection.pendingAttentionCount).toBe(0)
   })
 
-  test('tool terminal remains authoritative when its linked approval arrives later', () => {
+  test('input resolution remains authoritative when its request arrives later', () => {
+    let projection = initialProjection()
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(1, 'turn.started', { turnId: 'turn-1' })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(2, 'input.resolved', { requestId: 'input-1' })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(3, 'input.requested', {
+        requestId: 'input-1',
+        turnId: 'turn-1'
+      })
+    )
+
+    expect(projection.status).toBe('working')
+    expect(projection.pendingAttentionCount).toBe(0)
+  })
+
+  test('tool terminal remains authoritative when linked requests arrive later', () => {
     let projection = initialProjection()
     projection = reduceAgentSession(
       projection,
@@ -362,6 +451,14 @@ test.describe('AgentEventReducer', () => {
         turnId: 'turn-1',
         callId: 'call-1',
         category: 'command'
+      })
+    )
+    projection = reduceAgentSession(
+      projection,
+      makeEvent(5, 'input.requested', {
+        requestId: 'input-1',
+        turnId: 'turn-1',
+        callId: 'call-1'
       })
     )
 
