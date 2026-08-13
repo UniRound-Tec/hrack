@@ -11,12 +11,13 @@ function nativeEvent(
 
 export class CodexHookProjector {
   private activeTurnId: string | undefined
+  private activeNativeTurnId: string | undefined
   private thinking = false
   private readonly completedTurns = new Set<string>()
   private readonly promptTurns = new Set<string>()
   private readonly tools = new Map<
     string,
-    { name: string; turnId: string; terminal: boolean }
+    { name: string; nativeTurnId: string; turnId: string; terminal: boolean }
   >()
   private readonly approvals = new Map<
     string,
@@ -48,25 +49,7 @@ export class CodexHookProjector {
     if (fact.type === 'session-ended') {
       const events: AdapterEvent[] = []
       if (this.activeTurnId) {
-        events.push(
-          ...this.closeOutstanding(
-            fact.nativeSessionId,
-            this.activeTurnId,
-            fact.nativeType
-          )
-        )
-        if (this.thinking) {
-          events.push(
-            nativeEvent(
-              {
-                kind: 'thinking.completed',
-                payload: { turnId: this.activeTurnId }
-              },
-              `${fact.nativeSessionId}:${this.activeTurnId}:thinking:session-end`,
-              fact.nativeType
-            )
-          )
-        }
+        this.closeNativeOccurrence(this.activeTurnId)
         events.push(
           nativeEvent(
             {
@@ -99,8 +82,10 @@ export class CodexHookProjector {
     if (fact.type === 'user-prompt-submit') {
       if (this.promptTurns.has(fact.turnId)) return []
       this.promptTurns.add(fact.turnId)
+      if (this.publicTurnIdFor(fact.turnId)) return []
       this.completedTurns.delete(fact.turnId)
       this.activeTurnId = fact.turnId
+      this.activeNativeTurnId = fact.turnId
       this.thinking = true
       return [
         nativeEvent(
@@ -125,22 +110,25 @@ export class CodexHookProjector {
     if (fact.type === 'subagent-started') {
       const callId = `codex:agent:${fact.agentId}`
       if (this.tools.has(callId)) return []
-      this.tools.set(callId, {
-        name: 'Agent',
-        turnId: fact.turnId,
-        terminal: false
-      })
       const events: AdapterEvent[] = this.reopenCompletedTurn(
         fact.nativeSessionId,
         fact.turnId,
         fact.nativeType
       )
-      if (this.thinking && this.activeTurnId === fact.turnId) {
+      const turnId = this.publicTurnIdFor(fact.turnId)
+      if (!turnId) return events
+      this.tools.set(callId, {
+        name: 'Agent',
+        nativeTurnId: fact.turnId,
+        turnId,
+        terminal: false
+      })
+      if (this.thinking && this.activeTurnId === turnId) {
         this.thinking = false
         events.push(
           nativeEvent(
-            { kind: 'thinking.completed', payload: { turnId: fact.turnId } },
-            `${fact.nativeSessionId}:${fact.turnId}:thinking:completed`,
+            { kind: 'thinking.completed', payload: { turnId } },
+            `${fact.nativeSessionId}:${turnId}:thinking:completed`,
             fact.nativeType
           )
         )
@@ -151,12 +139,12 @@ export class CodexHookProjector {
             kind: 'tool.started',
             payload: {
               callId,
-              turnId: fact.turnId,
+              turnId,
               name: 'Agent',
               category: 'other'
             }
           },
-          `${fact.nativeSessionId}:${fact.turnId}:${callId}:started`,
+          `${fact.nativeSessionId}:${turnId}:${callId}:started`,
           fact.nativeType
         )
       )
@@ -170,8 +158,11 @@ export class CodexHookProjector {
       tool.terminal = true
       return [
         nativeEvent(
-          { kind: 'tool.completed', payload: { callId } },
-          `${fact.nativeSessionId}:${fact.turnId}:${callId}:completed`,
+          {
+            kind: 'tool.completed',
+            payload: { callId, turnId: tool.turnId }
+          },
+          `${fact.nativeSessionId}:${tool.turnId}:${callId}:completed`,
           fact.nativeType
         )
       ]
@@ -179,22 +170,25 @@ export class CodexHookProjector {
 
     if (fact.type === 'tool-started') {
       if (this.tools.has(fact.toolUseId)) return []
-      this.tools.set(fact.toolUseId, {
-        name: fact.toolName,
-        turnId: fact.turnId,
-        terminal: false
-      })
       const events: AdapterEvent[] = this.reopenCompletedTurn(
         fact.nativeSessionId,
         fact.turnId,
         fact.nativeType
       )
-      if (this.thinking && this.activeTurnId === fact.turnId) {
+      const turnId = this.publicTurnIdFor(fact.turnId)
+      if (!turnId) return events
+      this.tools.set(fact.toolUseId, {
+        name: fact.toolName,
+        nativeTurnId: fact.turnId,
+        turnId,
+        terminal: false
+      })
+      if (this.thinking && this.activeTurnId === turnId) {
         this.thinking = false
         events.push(
           nativeEvent(
-            { kind: 'thinking.completed', payload: { turnId: fact.turnId } },
-            `${fact.nativeSessionId}:${fact.turnId}:thinking:completed`,
+            { kind: 'thinking.completed', payload: { turnId } },
+            `${fact.nativeSessionId}:${turnId}:thinking:completed`,
             fact.nativeType
           )
         )
@@ -205,12 +199,12 @@ export class CodexHookProjector {
             kind: 'tool.started',
             payload: {
               callId: fact.toolUseId,
-              turnId: fact.turnId,
+              turnId,
               name: fact.toolName,
               category: toolCategory(fact.toolName)
             }
           },
-          `${fact.nativeSessionId}:${fact.turnId}:tool:${fact.toolUseId}:started`,
+          `${fact.nativeSessionId}:${turnId}:tool:${fact.toolUseId}:started`,
           fact.nativeType
         )
       )
@@ -223,24 +217,27 @@ export class CodexHookProjector {
         fact.turnId,
         fact.nativeType
       )
+      const turnId = this.publicTurnIdFor(fact.turnId)
+      if (!turnId) return events
       const candidates = [...this.tools.entries()].filter(
         ([, tool]) =>
           !tool.terminal &&
-          tool.turnId === fact.turnId &&
+          tool.nativeTurnId === fact.turnId &&
           tool.name === fact.toolName
       )
       const callId = candidates.length === 1 ? candidates[0][0] : undefined
       const requestId = callId
         ? `codex:approval:${callId}`
-        : `codex:approval:${fact.turnId}:unmatched:${++this.approvalCounter}`
+        : `codex:approval:${turnId}:unmatched:${++this.approvalCounter}`
       if (this.approvals.has(requestId)) return []
-      this.approvals.set(requestId, { callId, turnId: fact.turnId })
+      this.approvals.set(requestId, { callId, turnId })
       events.push(
         nativeEvent(
           {
             kind: 'approval.requested',
             payload: {
               requestId,
+              turnId,
               callId,
               category: approvalCategory(fact.toolName),
               summary: fact.summary
@@ -256,11 +253,18 @@ export class CodexHookProjector {
     if (fact.type === 'tool-completed') {
       let tool = this.tools.get(fact.toolUseId)
       if (tool?.terminal) return []
-      const events: AdapterEvent[] = []
+      const events: AdapterEvent[] = this.reopenCompletedTurn(
+        fact.nativeSessionId,
+        fact.turnId,
+        fact.nativeType
+      )
       if (!tool) {
+        const turnId = this.publicTurnIdFor(fact.turnId)
+        if (!turnId) return events
         tool = {
           name: fact.toolName,
-          turnId: fact.turnId,
+          nativeTurnId: fact.turnId,
+          turnId,
           terminal: false
         }
         this.tools.set(fact.toolUseId, tool)
@@ -270,37 +274,24 @@ export class CodexHookProjector {
               kind: 'tool.started',
               payload: {
                 callId: fact.toolUseId,
-                turnId: fact.turnId,
+                turnId,
                 name: fact.toolName,
                 category: toolCategory(fact.toolName)
               }
             },
-            `${fact.nativeSessionId}:${fact.turnId}:tool:${fact.toolUseId}:synthetic-start`,
+            `${fact.nativeSessionId}:${turnId}:tool:${fact.toolUseId}:synthetic-start`,
             fact.nativeType
           )
         )
       }
       tool.terminal = true
-      const approval = [...this.approvals.entries()].find(
-        ([, request]) => request.callId === fact.toolUseId
-      )
-      if (approval) {
-        this.approvals.delete(approval[0])
-        events.push(
-          nativeEvent(
-            {
-              kind: 'approval.resolved',
-              payload: { requestId: approval[0], decision: 'approved' }
-            },
-            `${fact.nativeSessionId}:${approval[0]}:resolved`,
-            fact.nativeType
-          )
-        )
-      }
       events.push(
         nativeEvent(
-          { kind: 'tool.completed', payload: { callId: fact.toolUseId } },
-          `${fact.nativeSessionId}:${fact.turnId}:tool:${fact.toolUseId}:completed`,
+          {
+            kind: 'tool.completed',
+            payload: { callId: fact.toolUseId, turnId: tool.turnId }
+          },
+          `${fact.nativeSessionId}:${tool.turnId}:tool:${fact.toolUseId}:completed`,
           fact.nativeType
         )
       )
@@ -308,33 +299,23 @@ export class CodexHookProjector {
     }
 
     if (this.completedTurns.has(fact.turnId)) return []
+    const turnId = this.publicTurnIdFor(fact.turnId)
+    if (!turnId) return []
     this.completedTurns.add(fact.turnId)
-    const events: AdapterEvent[] = this.closeOutstanding(
-      fact.nativeSessionId,
-      fact.turnId,
-      fact.nativeType
-    )
-    if (this.thinking && this.activeTurnId === fact.turnId) {
-      events.push(
-        nativeEvent(
-          { kind: 'thinking.completed', payload: { turnId: fact.turnId } },
-          `${fact.nativeSessionId}:${fact.turnId}:thinking:completed`,
-          fact.nativeType
-        )
-      )
-    }
-    events.push(
+    this.closeNativeOccurrence(turnId)
+    const events: AdapterEvent[] = [
       nativeEvent(
         {
           kind: 'turn.completed',
-          payload: { turnId: fact.turnId, outcome: 'completed' }
+          payload: { turnId, outcome: 'completed' }
         },
-        `${fact.nativeSessionId}:${fact.turnId}:completed`,
+        `${fact.nativeSessionId}:${turnId}:completed`,
         fact.nativeType
       )
-    )
-    if (this.activeTurnId === fact.turnId) {
+    ]
+    if (this.activeTurnId === turnId) {
       this.activeTurnId = undefined
+      this.activeNativeTurnId = undefined
       this.thinking = false
     }
     return events
@@ -342,64 +323,46 @@ export class CodexHookProjector {
 
   private reopenCompletedTurn(
     nativeSessionId: string,
-    turnId: string,
+    nativeTurnId: string,
     nativeType: string
   ): AdapterEvent[] {
-    if (!this.completedTurns.delete(turnId)) return []
+    if (this.activeNativeTurnId === nativeTurnId && this.activeTurnId) return []
+    const continuation = this.completedTurns.delete(nativeTurnId)
+    const turnId = continuation
+      ? `${nativeTurnId}:continuation:${++this.continuationCounter}`
+      : nativeTurnId
+    this.activeNativeTurnId = nativeTurnId
     this.activeTurnId = turnId
     this.thinking = false
     return [
       nativeEvent(
         { kind: 'turn.started', payload: { turnId } },
-        `${nativeSessionId}:${turnId}:continued:${++this.continuationCounter}`,
+        `${nativeSessionId}:${turnId}:${continuation ? 'continued' : 'implicit'}`,
         nativeType
       )
     ]
   }
 
-  private closeOutstanding(
-    nativeSessionId: string,
-    turnId: string,
-    nativeType: string
-  ): AdapterEvent[] {
-    const events: AdapterEvent[] = []
+  private publicTurnIdFor(nativeTurnId: string): string | undefined {
+    return this.activeNativeTurnId === nativeTurnId
+      ? this.activeTurnId
+      : undefined
+  }
+
+  private closeNativeOccurrence(turnId: string): void {
     for (const [requestId, approval] of this.approvals) {
       if (approval.turnId !== turnId) continue
       this.approvals.delete(requestId)
-      events.push(
-        nativeEvent(
-          {
-            kind: 'approval.resolved',
-            payload: { requestId, decision: 'cancelled' }
-          },
-          `${nativeSessionId}:${requestId}:turn-closed`,
-          nativeType
-        )
-      )
     }
-    for (const [callId, tool] of this.tools) {
+    for (const tool of this.tools.values()) {
       if (tool.turnId !== turnId) continue
-      this.tools.delete(callId)
-      if (tool.terminal) continue
-      events.push(
-        nativeEvent(
-          {
-            kind: 'tool.failed',
-            payload: {
-              callId,
-              message: 'Tool ended without a completion event'
-            }
-          },
-          `${nativeSessionId}:${turnId}:tool:${callId}:turn-closed`,
-          nativeType
-        )
-      )
+      tool.terminal = true
     }
-    return events
   }
 
   private resetCorrelation(): void {
     this.activeTurnId = undefined
+    this.activeNativeTurnId = undefined
     this.thinking = false
     this.completedTurns.clear()
     this.promptTurns.clear()

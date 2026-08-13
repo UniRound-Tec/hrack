@@ -7,8 +7,10 @@ import { CodexObserverAdapter } from '../electron/agents/adapters/codex/CodexObs
 import { wslRuntimeCommand } from '../electron/agents/adapters/wslRuntimeCommand'
 import { parseCodexHook } from '../electron/agents/adapters/codex/CodexHookParser'
 import { CodexHookProjector } from '../electron/agents/adapters/codex/CodexHookProjector'
+import { CODEX_HOOK_CAPABILITIES } from '../electron/agents/adapters/codex/types'
 import type { AdapterEvent } from '../electron/agents/adapters/types'
 import { wslLaunchOptions } from '../electron/ai-cli-discovery'
+import { projectAdapterEvents } from './helpers/agent-projection-contract'
 
 test.describe('Codex observer adapter', () => {
   test('falls back to the wrapper directory when cached WSL PATH is unavailable', () => {
@@ -80,7 +82,6 @@ test.describe('Codex observer adapter', () => {
     expect(events.map((event) => event.kind)).toEqual([
       'turn.started',
       'thinking.started',
-      'thinking.completed',
       'turn.completed'
     ])
     expect(events.at(-1)).toMatchObject({
@@ -88,7 +89,7 @@ test.describe('Codex observer adapter', () => {
     })
   })
 
-  test('deduplicates tool replay and resolves only an unambiguous permission', () => {
+  test('deduplicates tool replay and lets tool terminal overwrite linked attention', () => {
     const canary = 'SECRET_CODEX_TOOL_CANARY'
     const values = [
       {
@@ -144,9 +145,13 @@ test.describe('Codex observer adapter', () => {
       'thinking.completed',
       'tool.started',
       'approval.requested',
-      'approval.resolved',
       'tool.completed'
     ])
+    const projection = projectAdapterEvents(events, {
+      adapterId: 'codex',
+      source: 'hook',
+      capabilities: CODEX_HOOK_CAPABILITIES
+    })
     expect(events.find((event) => event.kind === 'tool.started')).toMatchObject({
       payload: {
         callId: 'call-1',
@@ -158,9 +163,10 @@ test.describe('Codex observer adapter', () => {
     expect(
       events.find((event) => event.kind === 'approval.requested')
     ).toMatchObject({ payload: { callId: 'call-1', category: 'command' } })
+    expect(projection.pendingAttentionCount).toBe(0)
   })
 
-  test('Stop closes orphaned tools and ambiguous approvals before completing the turn', () => {
+  test('uses Stop as the parent terminal for orphaned tools and ambiguous approvals', () => {
     const projector = new CodexHookProjector()
     const facts = [
       parseCodexHook({
@@ -207,18 +213,17 @@ test.describe('Codex observer adapter', () => {
     ]
     expect(facts.every(Boolean)).toBe(true)
     const events = facts.flatMap((fact) => projector.project(fact!))
-    const stopEvents = events.slice(-3)
-    expect(stopEvents.map((event) => event.kind)).toEqual([
-      'approval.resolved',
-      'tool.failed',
-      'turn.completed'
-    ])
-    expect(stopEvents[0]).toMatchObject({
-      payload: { decision: 'cancelled' }
+    const projection = projectAdapterEvents(events, {
+      adapterId: 'codex',
+      source: 'hook',
+      capabilities: CODEX_HOOK_CAPABILITIES
     })
-    expect(stopEvents[1]).toMatchObject({
-      payload: { callId: 'failed-before-permission' }
-    })
+    expect(events.at(-1)?.kind).toBe('turn.completed')
+    expect(events.filter((event) => event.kind === 'approval.resolved')).toHaveLength(0)
+    expect(events.filter((event) => event.kind === 'tool.failed')).toHaveLength(0)
+    expect(projection.status).toBe('done')
+    expect(projection.pendingAttentionCount).toBe(0)
+    expect(projection.activeToolCount).toBe(0)
   })
 
   test('projects subagents as Agent tools without counting compaction as a tool', () => {
@@ -298,6 +303,7 @@ test.describe('Codex observer adapter', () => {
       ...projector.project(lateStart)
     ]
     expect(events.map((event) => event.kind)).toEqual([
+      'turn.started',
       'tool.started',
       'tool.completed'
     ])
@@ -337,9 +343,9 @@ test.describe('Codex observer adapter', () => {
       })
     ]
     const events = facts.flatMap((fact) => projector.project(fact!))
-    expect(events.filter((event) => event.kind === 'turn.started')).toHaveLength(
-      2
-    )
+    const starts = events.filter((event) => event.kind === 'turn.started')
+    expect(starts).toHaveLength(2)
+    expect(starts[1].payload.turnId).not.toBe(starts[0].payload.turnId)
     expect(
       events.filter((event) => event.kind === 'turn.completed')
     ).toHaveLength(2)
@@ -374,7 +380,6 @@ test.describe('Codex observer adapter', () => {
       'session.idle',
       'turn.started',
       'thinking.started',
-      'thinking.completed',
       'turn.completed',
       'session.idle'
     ])
