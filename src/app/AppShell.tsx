@@ -11,6 +11,7 @@ import HomePage from './HomePage'
 import SettingsPage from './SettingsPage'
 import DshPage from './DshPage'
 import DshLobbyPage from './DshLobbyPage'
+import DshSettingsPage from './DshSettingsPage'
 import NewSessionFlow from './NewSessionFlow'
 import CloseSessionDialog from './CloseSessionDialog'
 import TargetCursor from './effects/TargetCursor'
@@ -771,16 +772,12 @@ export default function AppShell() {
                 onOpenSettings={() => navigate(dshSettingsPage())}
               />
             )}
+            {pageId === 'dsh:settings' && (
+              <DshSettingsPage onBack={() => navigate('dsh:home')} />
+            )}
             <DshPage
-              sessionId={activeDshSessionId}
-              mode={
-                pageId === 'dsh:settings'
-                  ? 'settings'
-                  : activeDshSessionId
-                    ? 'session'
-                    : 'hidden'
-              }
-              onLeaveSettings={() => navigate('dsh:home')}
+              sessionId={dshSessionIdFromPage(pageId)}
+              mode={dshSessionIdFromPage(pageId) ? 'session' : 'hidden'}
             />
             {pageId === 'settings' && (
               <SettingsPage

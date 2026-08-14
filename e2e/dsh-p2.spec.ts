@@ -122,15 +122,13 @@ test('dsh p2 chrome: lobby settings session and contrast', async () => {
 
     await window.getByTestId('dsh-lobby-settings').click()
     await expect(window.getByTestId('dsh-settings')).toBeVisible({ timeout: 60_000 })
-    await expect(window.getByTestId('dsh-settings-bar')).toBeVisible({
-      timeout: 60_000
-    })
-    await expect(window.getByRole('button', { name: '打开配置文件' })).toBeVisible({
+    await expect(window.getByTestId('dsh-settings-back')).toBeVisible()
+    await expect(window.getByTestId('dsh-host-settings')).toBeVisible({
       timeout: 30_000
     })
     await window.screenshot({ path: '.dev-shots/dsh-p2-settings.png' })
 
-    await window.getByTestId('dsh-settings-back').click({ force: true })
+    await window.getByTestId('dsh-settings-back').click()
     await expect(window.getByTestId('dsh-lobby')).toBeVisible({ timeout: 20_000 })
     await navigate(window, 'home')
     await expect(window.getByTestId('home-page')).toBeVisible({ timeout: 20_000 })

@@ -73,13 +73,17 @@ export async function refreshDshSessions(): Promise<SessionEntry[]> {
   const [initialSessions, initialWorkspaces, config] = await Promise.all([
     listDshSessions(),
     listDshWorkspaces(),
-    window.dshApi.getConfig()
+    window.dshApi.getConfig().catch((error) => {
+      console.warn('[dsh] getConfig unavailable, skip retention', error)
+      return null
+    })
   ])
-  if (config.retention.kind !== 'all') {
-    await applyRetention(initialSessions, config.retention)
+  const retention = config?.retention ?? { kind: 'all' as const }
+  if (retention.kind !== 'all') {
+    await applyRetention(initialSessions, retention)
   }
   const [sessions, workspaces] =
-    config.retention.kind === 'all'
+    retention.kind === 'all'
       ? [initialSessions, initialWorkspaces]
       : await Promise.all([listDshSessions(), listDshWorkspaces()])
   const archived = new Set(workspaces.archivedSessionIds)

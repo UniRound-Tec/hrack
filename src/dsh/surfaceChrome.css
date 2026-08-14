@@ -31,13 +31,23 @@
 [data-dsh-surface-host][data-dsh-mode='settings'] [class*='_overlay'] {
   pointer-events: auto;
   inset: 0 !important;
+  display: flex !important;
+  align-items: stretch !important;
+  justify-content: stretch !important;
+  padding: 0 !important;
+  background: var(--vib-bg-content, var(--dsw-alias-bg-layer-2, Canvas));
+}
+
+[data-dsh-surface-host][data-dsh-mode='settings'] [class*='_mask'] {
+  display: none !important;
 }
 
 [data-dsh-surface-host][data-dsh-mode='settings'] [class*='_panel'] {
-  width: min(960px, 100%) !important;
-  max-width: 100% !important;
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  max-width: none !important;
   height: 100% !important;
-  max-height: 100% !important;
+  max-height: none !important;
   border-radius: 0 !important;
   box-shadow: none !important;
 }

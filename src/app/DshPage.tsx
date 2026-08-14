@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
 import type { DshSurfaceHandle, DshSurfaceMode } from '../dsh/bootDsh'
 import type { DshHostStatus } from '../../shared/dsh-ipc'
-import DshHostSettings from './DshHostSettings'
-import { useStrings } from './i18n'
 
 type BootPhase =
   | { kind: 'idle' }
@@ -13,8 +10,7 @@ type BootPhase =
 
 interface DshPageProps {
   sessionId: string | null
-  mode: DshSurfaceMode
-  onLeaveSettings: () => void
+  mode: Exclude<DshSurfaceMode, 'settings'>
 }
 
 function isRecoverableDoubleBoot(message: string): boolean {
@@ -27,17 +23,13 @@ function isRecoverableDoubleBoot(message: string): boolean {
  */
 export default function DshPage({
   sessionId,
-  mode,
-  onLeaveSettings
+  mode
 }: DshPageProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const readyRef = useRef(false)
   const handleRef = useRef<DshSurfaceHandle | null>(null)
-  const leaveSettingsRef = useRef(onLeaveSettings)
-  leaveSettingsRef.current = onLeaveSettings
   const [phase, setPhase] = useState<BootPhase>({ kind: 'idle' })
   const [hostStatus, setHostStatus] = useState<DshHostStatus | null>(null)
-  const strings = useStrings()
   const visible = mode !== 'hidden'
 
   useEffect(() => {
@@ -69,9 +61,7 @@ export default function DshPage({
           await handle.openSession(sessionId)
           if (disposed) return
         }
-        handle.setMode(mode, {
-          onLeaveSettings: () => leaveSettingsRef.current()
-        })
+        handle.setMode(mode)
         readyRef.current = true
         setPhase({ kind: 'ready' })
       } catch (error) {
@@ -97,14 +87,12 @@ export default function DshPage({
 
   useEffect(() => {
     if (!visible || !readyRef.current) return
-    handleRef.current?.setMode(mode, {
-      onLeaveSettings: () => leaveSettingsRef.current()
-    })
+    handleRef.current?.setMode(mode)
   }, [mode, visible])
 
   return (
     <section
-      data-testid={mode === 'settings' ? 'dsh-settings' : 'dsh-page'}
+      data-testid="dsh-page"
       data-dsh-session={sessionId ?? ''}
       data-dsh-mode={mode}
       className="absolute inset-0 flex h-full flex-col overflow-hidden"
@@ -145,26 +133,6 @@ export default function DshPage({
           )}
         </div>
       )}
-      {mode === 'settings' && phase.kind === 'ready' && (
-        <header
-          data-testid="dsh-settings-bar"
-          className="relative z-[1101] flex shrink-0 items-center gap-2 border-b border-border-subtle px-4 py-2"
-        >
-          <button
-            type="button"
-            data-testid="dsh-settings-back"
-            onClick={onLeaveSettings}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-pingfang text-[12px] text-text-secondary hover:bg-surface-strong hover:text-text-primary"
-          >
-            <ArrowLeft className="size-3.5" strokeWidth={1.75} />
-            {strings.dsh.backToLobby}
-          </button>
-          <h1 className="font-pingfang text-[13px] font-medium text-text-primary">
-            {strings.dsh.settingsTitle}
-          </h1>
-        </header>
-      )}
-      {mode === 'settings' && phase.kind === 'ready' && <DshHostSettings />}
       <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden" />
     </section>
   )

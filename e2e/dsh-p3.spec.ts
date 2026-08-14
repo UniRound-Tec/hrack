@@ -31,7 +31,8 @@ test('dsh p3 persists home mode and retention from lobby settings', async () => 
     await expect(window.getByTestId('dsh-home-path')).toContainText('dsh-home')
     await window.screenshot({ path: '.dev-shots/dsh-p3-settings.png' })
 
-    await window.getByTestId('dsh-retention-kind').selectOption('days')
+    await window.getByTestId('dsh-retention-kind').click()
+    await window.getByTestId('dsh-retention-kind-option-days').click()
     await expect(window.getByTestId('dsh-retention-days')).toBeVisible()
     await window.getByTestId('dsh-retention-days').fill('14')
     await expect
