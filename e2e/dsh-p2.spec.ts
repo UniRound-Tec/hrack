@@ -128,6 +128,49 @@ test('dsh p2 chrome: lobby settings session and contrast', async () => {
     })
     await window.screenshot({ path: '.dev-shots/dsh-p2-settings.png' })
 
+    // Full access 警告弹窗：应用内 Dialog 必须出现且在窗口内居中（回归：
+    // 旧实现用 window.confirm，Electron 原生框不做窗口内定位，明显错位）。
+    await window.getByTestId('dsh-default-permission').click({ timeout: 30_000 })
+    const fullAccessOption = window.getByTestId(
+      'dsh-default-permission-option-danger-full-access'
+    )
+    if (await fullAccessOption.isVisible().catch(() => false)) {
+      await fullAccessOption.click()
+      const confirm = window.getByTestId('dsh-permission-confirm')
+      await expect(confirm).toBeVisible({ timeout: 10_000 })
+      const geometry = await confirm.evaluate((node) => {
+        const box = node.getBoundingClientRect()
+        return {
+          left: box.left,
+          top: box.top,
+          width: box.width,
+          height: box.height,
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight
+        }
+      })
+      const centerX = geometry.left + geometry.width / 2
+      const centerY = geometry.top + geometry.height / 2
+      expect(Math.abs(centerX - geometry.innerWidth / 2)).toBeLessThan(
+        geometry.innerWidth * 0.1
+      )
+      expect(Math.abs(centerY - geometry.innerHeight / 2)).toBeLessThan(
+        geometry.innerHeight * 0.1
+      )
+      await window.screenshot({ path: '.dev-shots/dsh-p2-permission-confirm.png' })
+      // 取消：弹窗关闭，权限保持原值。
+      const before = await window
+        .getByTestId('dsh-default-permission')
+        .getAttribute('data-value')
+      await window.getByTestId('dsh-permission-confirm-cancel').click()
+      await expect(confirm).toHaveCount(0)
+      await expect(
+        window.getByTestId('dsh-default-permission')
+      ).toHaveAttribute('data-value', before ?? '')
+    } else {
+      console.log('[p2] permission schema has no danger-full-access option; skip')
+    }
+
     await window.getByTestId('dsh-settings-back').click()
     await expect(window.getByTestId('dsh-lobby')).toBeVisible({ timeout: 20_000 })
     await navigate(window, 'home')
@@ -184,6 +227,78 @@ test('dsh p2 chrome: lobby settings session and contrast', async () => {
         await window.waitForTimeout(300)
       }
     }
+
+    // 官方 RiskConfirmation（Full access 确认）回归：fallback CSS 必须把
+    // 弹窗约束成常规尺寸并窗口内居中（曾退化为 1054px 宽的横条）。
+    const accessTrigger = window.locator('button[aria-label^="访问模式"]')
+    if (await accessTrigger.isVisible().catch(() => false)) {
+      await accessTrigger.click()
+      const fullAccessItem = window
+        .getByRole('menu')
+        .getByRole('menuitem', { name: /full access/i })
+      if (await fullAccessItem.isVisible().catch(() => false)) {
+        await fullAccessItem.click()
+        const confirmDialog = window.getByRole('dialog', { name: /full access/i })
+        await expect(confirmDialog).toBeVisible({ timeout: 10_000 })
+        const geometry = await confirmDialog.evaluate((node) => {
+          const box = node.getBoundingClientRect()
+          return {
+            width: box.width,
+            offsetX: Math.abs(box.left + box.width / 2 - window.innerWidth / 2),
+            offsetY: Math.abs(box.top + box.height / 2 - window.innerHeight / 2),
+            vw: window.innerWidth,
+            vh: window.innerHeight
+          }
+        })
+        expect(geometry.width).toBeLessThanOrEqual(700)
+        expect(geometry.offsetX).toBeLessThan(geometry.vw * 0.1)
+        expect(geometry.offsetY).toBeLessThan(geometry.vh * 0.1)
+        // 内部排版：footer 按钮同行右对齐；警告图标与文本同行横排。
+        const internals = await confirmDialog.evaluate((node) => {
+          const dialog = (node.closest('[role="dialog"]') ?? node) as HTMLElement
+          const footer = [...dialog.querySelectorAll(':scope > div')].find(
+            (d) => d.querySelector(':scope > button') && !d.querySelector('h2')
+          )
+          const buttons = footer
+            ? ([...footer.querySelectorAll(':scope > button')] as HTMLElement[])
+            : []
+          const dialogRight = dialog.getBoundingClientRect().right
+          const last = buttons[buttons.length - 1]?.getBoundingClientRect()
+          const warning = [...dialog.querySelectorAll('div')].find(
+            (d) => d.querySelector(':scope > svg') && d.querySelector(':scope > p')
+          )
+          const svg = warning?.querySelector(':scope > svg')?.getBoundingClientRect()
+          const text = warning?.querySelector(':scope > p')?.getBoundingClientRect()
+          return {
+            footerButtonCount: buttons.length,
+            footerSameRow:
+              buttons.length >= 2 &&
+              new Set(buttons.map((b) => Math.round(b.getBoundingClientRect().top)))
+                .size === 1,
+            footerRightGap: last ? Math.round(dialogRight - last.right) : -1,
+            warningSameRow: Boolean(
+              svg &&
+                text &&
+                text.left > svg.left &&
+                svg.top >= text.top - 4 &&
+                svg.top <= text.bottom
+            )
+          }
+        })
+        expect(internals.footerButtonCount).toBeGreaterThanOrEqual(2)
+        expect(internals.footerSameRow).toBe(true)
+        expect(internals.footerRightGap).toBeGreaterThanOrEqual(0)
+        expect(internals.footerRightGap).toBeLessThanOrEqual(48)
+        expect(internals.warningSameRow).toBe(true)
+        await window.screenshot({ path: '.dev-shots/dsh-p2-full-access.png' })
+        await confirmDialog.getByRole('button', { name: '取消' }).click()
+        await expect(confirmDialog).toHaveCount(0)
+      } else {
+        console.log('[p2] permission menu lacks Full access option; skip')
+      }
+      await window.keyboard.press('Escape')
+    }
+
     await window.screenshot({ path: '.dev-shots/dsh-p2-session.png' })
 
     const sample = await window.evaluate(measureContrast)

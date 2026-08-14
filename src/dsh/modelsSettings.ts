@@ -79,11 +79,3 @@ export function joinProviderRows(
     }
   })
 }
-
-export function collectProviderKeyRefs(rows: readonly JoinedProvider[]): string[] {
-  return [
-    ...new Set(
-      rows.flatMap((row) => (row.apiKeyEnv ? [row.apiKeyEnv] : []))
-    )
-  ]
-}

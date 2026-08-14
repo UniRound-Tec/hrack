@@ -11,11 +11,13 @@ import {
 } from '../dsh/rpc'
 import {
   deriveKeyRef,
+  getPath,
   joinProviderRows,
   type JoinedProvider
 } from '../dsh/modelsSettings'
 import { useStrings } from './i18n'
 import Dropdown from './Dropdown'
+import { DshConfirmDialog } from './DshConfirmDialog'
 
 interface DshModelsSettingsProps {
   providers: DshProvider[]
@@ -51,7 +53,10 @@ export default function DshModelsSettings({
 
   const [addMode, setAddMode] = useState<'catalog' | 'custom' | null>(null)
   const [addProviderId, setAddProviderId] = useState('')
-  const [addKey, setAddKey] = useState('')
+  // 三个互可见的输入面各自持有一份 key 草稿，避免串写/写错凭据。
+  const [editKey, setEditKey] = useState('')
+  const [catalogKey, setCatalogKey] = useState('')
+  const [customKey, setCustomKey] = useState('')
   const [addBaseUrl, setAddBaseUrl] = useState('')
   const [customRoute, setCustomRoute] = useState('')
   const [customName, setCustomName] = useState('')
@@ -59,6 +64,8 @@ export default function DshModelsSettings({
   const [customModel, setCustomModel] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  /** 待确认删除的 provider id（应用内弹窗确认，替代 window.confirm）。 */
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
 
   const locked = busy || saving || !writable
 
@@ -76,17 +83,19 @@ export default function DshModelsSettings({
 
   const adopt = async (row: JoinedProvider): Promise<void> => {
     const keyRef = deriveKeyRef(row.entry.provider)
-    const key = addKey.trim()
+    const key = catalogKey.trim()
     if (row.entry.settingsPath.length > 0) {
+      // 合并已有 profile 字段（如 baseUrl），不整体覆盖。
+      const namespace = hostSettings?.namespaces.find(
+        (item) => item.ns === row.entry.settingsNs
+      )
+      const current = getPath(namespace?.value, row.entry.settingsPath)
+      const merged: Record<string, unknown> =
+        typeof current === 'object' && current !== null ? { ...current } : {}
+      if (key) merged.apiKeyEnv = keyRef
       await mutateDshSettings({
         ns: row.entry.settingsNs,
-        ops: [
-          {
-            op: 'set',
-            path: row.entry.settingsPath,
-            value: key ? { apiKeyEnv: keyRef } : {}
-          }
-        ]
+        ops: [{ op: 'set', path: row.entry.settingsPath, value: merged }]
       })
     }
     if (key) await setDshCredential(keyRef, key)
@@ -121,7 +130,7 @@ export default function DshModelsSettings({
                   )}
                   <span
                     className={`size-2 rounded-full ${
-                      row.credential?.configured || !row.apiKeyEnv
+                      row.credential?.configured
                         ? 'bg-status-done-dot'
                         : 'bg-status-idle-dot'
                     }`}
@@ -145,17 +154,7 @@ export default function DshModelsSettings({
                       type="button"
                       disabled={locked}
                       className="font-pingfang text-[12px] text-status-error disabled:opacity-40"
-                      onClick={() => {
-                        if (!window.confirm(strings.dsh.deleteProviderConfirm)) {
-                          return
-                        }
-                        void apply(() =>
-                          mutateDshSettings({
-                            ns: row.entry.settingsNs,
-                            ops: [{ op: 'unset', path: row.entry.settingsPath }]
-                          })
-                        )
-                      }}
+                      onClick={() => setPendingDelete(row.entry.provider)}
                     >
                       {strings.dsh.delete}
                     </button>
@@ -170,21 +169,36 @@ export default function DshModelsSettings({
                 <div className="mt-3 flex items-center gap-1.5">
                   <input
                     type="password"
-                    value={addKey}
+                    value={editKey}
                     placeholder={strings.dsh.apiKeyPlaceholder}
-                    onChange={(event) => setAddKey(event.target.value)}
+                    onChange={(event) => setEditKey(event.target.value)}
                     className="w-[220px] rounded-lg border border-border-default bg-input px-2.5 py-1.5 font-maple text-[12px]"
                   />
                   <button
                     type="button"
-                    disabled={locked || addKey.trim().length === 0}
+                    disabled={locked || editKey.trim().length === 0}
                     onClick={() =>
                       void apply(async () => {
-                        await setDshCredential(
-                          row.apiKeyEnv ?? deriveKeyRef(row.entry.provider),
-                          addKey.trim()
-                        )
-                        setAddKey('')
+                        const keyRef = row.apiKeyEnv ?? deriveKeyRef(row.entry.provider)
+                        // 双写：凭据本体 + profile 的 apiKeyEnv 引用。
+                        // 只写凭据不写引用时，key 会存进 provider 永远不读的槽位。
+                        if (!row.apiKeyEnv && row.entry.settingsPath.length > 0) {
+                          const namespace = hostSettings?.namespaces.find(
+                            (item) => item.ns === row.entry.settingsNs
+                          )
+                          const current = getPath(namespace?.value, row.entry.settingsPath)
+                          const merged: Record<string, unknown> =
+                            typeof current === 'object' && current !== null
+                              ? { ...current }
+                              : {}
+                          merged.apiKeyEnv = keyRef
+                          await mutateDshSettings({
+                            ns: row.entry.settingsNs,
+                            ops: [{ op: 'set', path: row.entry.settingsPath, value: merged }]
+                          })
+                        }
+                        await setDshCredential(keyRef, editKey.trim())
+                        setEditKey('')
                         setEditing(null)
                       })
                     }
@@ -215,9 +229,9 @@ export default function DshModelsSettings({
           />
           <input
             type="password"
-            value={addKey}
+            value={catalogKey}
             placeholder={strings.dsh.apiKeyPlaceholder}
-            onChange={(event) => setAddKey(event.target.value)}
+            onChange={(event) => setCatalogKey(event.target.value)}
             className="mt-3 w-full rounded-lg border border-border-default bg-input px-2.5 py-1.5 font-maple text-[12px]"
           />
           <div className="mt-3 flex justify-end gap-2">
@@ -238,7 +252,7 @@ export default function DshModelsSettings({
                 void apply(async () => {
                   await adopt(target)
                   setAddMode(null)
-                  setAddKey('')
+                  setCatalogKey('')
                 })
               }}
               className="rounded-lg bg-button-primary px-3 py-1.5 font-pingfang text-[12px] text-button-primary-fg"
@@ -299,9 +313,9 @@ export default function DshModelsSettings({
           />
           <input
             type="password"
-            value={addKey}
+            value={customKey}
             placeholder={strings.dsh.apiKeyPlaceholder}
-            onChange={(event) => setAddKey(event.target.value)}
+            onChange={(event) => setCustomKey(event.target.value)}
             className="mt-3 w-full rounded-lg border border-border-default bg-input px-2.5 py-1.5 font-maple text-[12px]"
           />
           <div className="mt-3 flex justify-end gap-2">
@@ -324,7 +338,7 @@ export default function DshModelsSettings({
                 void apply(async () => {
                   const route = customRoute.trim()
                   const keyRef = deriveKeyRef(route)
-                  const keyValue = addKey.trim()
+                  const keyValue = customKey.trim()
                   await mutateDshSettings({
                     ns: 'llm-pi-ai',
                     expectedRevision: customRevision,
@@ -350,7 +364,7 @@ export default function DshModelsSettings({
                   setCustomName('')
                   setCustomModel('')
                   setAddBaseUrl('')
-                  setAddKey('')
+                  setCustomKey('')
                 })
               }
               className="rounded-lg bg-button-primary px-3 py-1.5 font-pingfang text-[12px] text-button-primary-fg"
@@ -374,7 +388,7 @@ export default function DshModelsSettings({
             }
             onClick={() => {
               setAddProviderId(addable[0]?.entry.provider ?? '')
-              setAddKey('')
+              setCatalogKey('')
               setAddMode('catalog')
             }}
             className="inline-flex items-center gap-1 rounded-lg border border-border-default px-3 py-1.5 font-pingfang text-[12px] text-text-secondary disabled:opacity-40"
@@ -387,7 +401,7 @@ export default function DshModelsSettings({
             data-testid="dsh-add-custom-btn"
             disabled={locked}
             onClick={() => {
-              setAddKey('')
+              setCustomKey('')
               setAddMode('custom')
             }}
             className="inline-flex items-center gap-1 rounded-lg border border-border-default px-3 py-1.5 font-pingfang text-[12px] text-text-secondary"
@@ -397,6 +411,32 @@ export default function DshModelsSettings({
           </button>
         </div>
       )}
+
+      {pendingDelete &&
+        (() => {
+          const target = rows.find((row) => row.entry.provider === pendingDelete)
+          if (!target) return null
+          return (
+            <DshConfirmDialog
+              title={strings.dsh.delete}
+              message={strings.dsh.deleteProviderConfirm}
+              testId="dsh-provider-delete-confirm"
+              danger
+              busy={locked}
+              onConfirm={() => {
+                const entry = target.entry
+                setPendingDelete(null)
+                void apply(() =>
+                  mutateDshSettings({
+                    ns: entry.settingsNs,
+                    ops: [{ op: 'unset', path: entry.settingsPath }]
+                  })
+                )
+              }}
+              onCancel={() => setPendingDelete(null)}
+            />
+          )
+        })()}
     </div>
   )
 }

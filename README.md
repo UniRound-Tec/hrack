@@ -111,6 +111,8 @@ npm install
 npm run dev
 ```
 
+`npm install` also bootstraps the built-in DSH runtime: the isolated dependency tree in `dsh-runtime/` is gitignored (~254 MiB), so `postinstall` (plus the `predev` / `pretypecheck` / `build` hooks) runs `npm run ensure:dsh`, which installs it on first run and is a fast no-op afterwards.
+
 Useful checks:
 
 ```bash

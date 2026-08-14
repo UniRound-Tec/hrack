@@ -111,6 +111,8 @@ npm install
 npm run dev
 ```
 
+`npm install` 会同时初始化内置 DSH 运行时：`dsh-runtime/` 隔离依赖树不入库（约 254 MiB），由 `postinstall`（以及 `predev` / `pretypecheck` / `build` 钩子）执行 `npm run ensure:dsh` 首次安装，之后是毫秒级 no-op。
+
 常用检查：
 
 ```bash

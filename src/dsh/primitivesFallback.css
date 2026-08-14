@@ -35,14 +35,155 @@ body > [role='presentation'] > [role='dialog'][aria-modal='true'] {
   position: relative;
   z-index: 1;
   display: flex;
+  width: min(600px, 100%);
   max-height: calc(100vh - 48px);
   flex-direction: column;
   overflow: hidden;
+  box-sizing: border-box;
   border: 1px solid var(--vib-border-subtle, var(--dsw-alias-border-inverted, rgb(0 0 0 / 8%)));
   border-radius: 24px;
   background: var(--dsw-alias-bg-layer-2, var(--vib-bg-surface, Canvas));
   color: var(--dsw-alias-label-primary, var(--vib-text-primary, CanvasText));
   box-shadow: var(--dsw-shadow-lv3, 0 12px 40px rgb(0 0 0 / 16%));
+}
+
+/* Modal 内部结构（CSS modules 全 stub 无 class，按角色补排版）：
+ *   div[role=dialog] > div.content > [div.header(h2+close), p.description?, div.body]
+ *                      > div.footer > button…
+ * 角色识别用 :has()：header = 拥有 h2 的块；footer = 直接子节点是 button
+ * 且无 h2 的块；body = content 下既无 h2 也无直接 button 的块。 */
+
+body > [role='presentation'] > [role='dialog'][aria-modal='true'] * {
+  box-sizing: border-box;
+}
+
+body > [role='presentation'] > [role='dialog'][aria-modal='true'] > div {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+}
+
+/* header：标题 + 右上角关闭 */
+body > [role='presentation'] > [role='dialog'][aria-modal='true'] div:has(> h2) {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+body > [role='presentation'] > [role='dialog'][aria-modal='true'] h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+body > [role='presentation'] > [role='dialog'][aria-modal='true'] p {
+  margin: 0;
+  line-height: 22px;
+}
+
+/* header 的 icon-only 关闭按钮 */
+body > [role='presentation'] > [role='dialog'][aria-modal='true'] div:has(> h2) > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+}
+
+body > [role='presentation'] > [role='dialog'][aria-modal='true'] div:has(> h2) > button:hover {
+  opacity: 1;
+}
+
+/* 正文块：警告行 / 勾选行等纵向排布 */
+body > [role='presentation']
+  > [role='dialog'][aria-modal='true']
+  > div
+  > div:not(:has(> h2)):not(:has(> button)) {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* 警告行（直接子节点含 svg 的块）：图标 + 说明文本横向排布 */
+body > [role='presentation']
+  > [role='dialog'][aria-modal='true']
+  > div
+  > div:not(:has(> h2)):not(:has(> button))
+  > div:has(> svg) {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+body > [role='presentation'] > [role='dialog'][aria-modal='true'] svg {
+  flex: none;
+  color: var(--dsw-alias-label-secondary, var(--vib-text-secondary, inherit));
+}
+
+/* 勾选行（仅限含 checkbox 的 label，避免影响表单弹窗的文本 label） */
+body > [role='presentation'] > [role='dialog'][aria-modal='true'] label:has(> input[type='checkbox']) {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 20px;
+}
+
+/* checkbox 不能吃文本 input 的拉伸规则 */
+body > [role='presentation'] > [role='dialog'][aria-modal='true'] input[type='checkbox'] {
+  width: auto !important;
+  min-height: 0 !important;
+  margin: 2px 0 0;
+  accent-color: var(--dsw-alias-label-primary, var(--vib-text-primary, CanvasText));
+}
+
+/* footer：按钮横向右对齐 */
+body > [role='presentation']
+  > [role='dialog'][aria-modal='true']
+  > div:has(> button):not(:has(h2)) {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+body > [role='presentation']
+  > [role='dialog'][aria-modal='true']
+  > div:has(> button):not(:has(h2))
+  > button {
+  min-height: 32px;
+  padding: 6px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--vib-border-subtle, var(--dsw-alias-border-l2, rgb(0 0 0 / 12%)));
+  background: transparent;
+  color: var(--dsw-alias-label-primary, var(--vib-text-primary, CanvasText));
+}
+
+body > [role='presentation']
+  > [role='dialog'][aria-modal='true']
+  > div:has(> button):not(:has(h2))
+  > button:disabled {
+  opacity: 0.45;
+}
+
+/* 主操作（最后一个按钮 = primary variant） */
+body > [role='presentation']
+  > [role='dialog'][aria-modal='true']
+  > div:has(> button):not(:has(h2))
+  > button:last-child {
+  border-color: transparent;
+  background: var(--dsw-alias-bg-inverted, var(--vib-text-primary, CanvasText));
+  color: var(--dsw-alias-label-inverted, var(--vib-bg-surface, Canvas));
 }
 
 body > [role='presentation'] > [role='dialog'][aria-modal='true'] input,

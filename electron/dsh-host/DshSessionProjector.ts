@@ -14,7 +14,8 @@ interface ProjectorSession {
   cwd?: string
   agentPreset?: string
   pendingAttention: boolean
-  error?: string
+  /** undefined = 保持上次值；null = 显式清除（如收到新的 session-status）。 */
+  error?: string | null
   updatedAt: number
 }
 
@@ -193,7 +194,12 @@ export class DshSessionProjector {
       cwd: partial.cwd ?? previous?.cwd,
       agentPreset: partial.agentPreset ?? previous?.agentPreset,
       pendingAttention: partial.pendingAttention ?? previous?.pendingAttention ?? false,
-      error: partial.error,
+      // error 与其余字段不同：mux 侧的 upsert（title / approval）不带 error，
+      // 不能因此把 host/agent-error 已记录的错误抹掉；只有显式传 null 才清除。
+      error:
+        partial.error !== undefined
+          ? partial.error
+          : previous?.error,
       updatedAt: partial.updatedAt ?? Date.now()
     }
     this.sessions.set(next.sessionId, next)
@@ -223,7 +229,8 @@ export class DshSessionProjector {
       this.upsert({
         sessionId,
         running: payload.running === true,
-        error: undefined
+        // 新的运行状态本身就是错误已消退的证据（如恢复运行）。
+        error: payload.running === true ? null : undefined
       })
       return
     }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowLeft,
   Copy,
@@ -32,6 +32,7 @@ import {
 } from '../dsh/rpc'
 import { useStrings, type AppStrings } from './i18n'
 import Dropdown from './Dropdown'
+import { DshDialog, DshConfirmDialog } from './DshConfirmDialog'
 import DshModelsSettings, { loadProviderCredentials } from './DshModelsSettings'
 import DshPluginInventory from './DshPluginInventory'
 
@@ -166,11 +167,24 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
   const [copyName, setCopyName] = useState('')
   const [viewContent, setViewContent] = useState<{ title: string; content: string } | null>(null)
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
+  /** 待确认的 Full access 权限切换（应用内居中弹窗，替代 window.confirm）。 */
+  const [pendingPermission, setPendingPermission] = useState<string | null>(null)
+  /** 待确认的 DSH_HOME 模式切换；确认后重启 host 并重载窗口。 */
+  const [pendingHomeMode, setPendingHomeMode] = useState<DshHomeMode | null>(null)
   const [revealedPath, setRevealedPath] = useState<Record<string, string>>({})
   const [pluginDraft, setPluginDraft] = useState<Record<string, string>>({})
+  /** 首次加载才显示整页 loading；后续静默刷新保持表单挂载、不丢编辑态。 */
+  const loadedOnce = useRef(false)
+  /** plugin 草稿有未保存修改时，静默刷新不得用服务端值覆盖。 */
+  const pluginDraftDirty = useRef(false)
+  /** retention 数字输入的本地草稿：只在 blur/Enter 提交，杜绝每击键持久化。 */
+  const [retentionEdit, setRetentionEdit] = useState<{
+    kind: 'days' | 'count'
+    text: string
+  } | null>(null)
 
   const reload = useCallback(async () => {
-    setLoading(true)
+    if (!loadedOnce.current) setLoading(true)
     setError(null)
     try {
       const status = await window.dshApi.ensureStarted()
@@ -205,16 +219,19 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
       const loop = nextHost?.namespaces.find((item) => item.ns === 'agent-loop')?.value ?? {}
       const search =
         nextHost?.namespaces.find((item) => item.ns === 'web-search-deepseek')?.value ?? {}
-      setPluginDraft({
-        timeoutMs: numberFrom(shell.timeoutMs),
-        maxOutputBytes: numberFrom(shell.maxOutputBytes),
-        maxParallelToolCalls: numberFrom(loop.maxParallelToolCalls),
-        baseUrl: stringFrom(search.baseUrl),
-        maxUses: numberFrom(search.maxUses)
-      })
+      if (!pluginDraftDirty.current) {
+        setPluginDraft({
+          timeoutMs: numberFrom(shell.timeoutMs),
+          maxOutputBytes: numberFrom(shell.maxOutputBytes),
+          maxParallelToolCalls: numberFrom(loop.maxParallelToolCalls),
+          baseUrl: stringFrom(search.baseUrl),
+          maxUses: numberFrom(search.maxUses)
+        })
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
+      loadedOnce.current = true
       setLoading(false)
     }
   }, [])
@@ -246,9 +263,13 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
     }
   }
 
-  const changeHome = async (mode: DshHomeMode): Promise<void> => {
+  const requestHomeChange = (mode: DshHomeMode): void => {
     if (!config || mode === config.homeMode || config.envOverride) return
-    if (!window.confirm(strings.dsh.homeSwitchConfirm)) return
+    setPendingHomeMode(mode)
+  }
+
+  const changeHome = async (mode: DshHomeMode): Promise<void> => {
+    setPendingHomeMode(null)
     setBusy(true)
     try {
       await window.dshApi.setHomeMode(mode)
@@ -263,6 +284,40 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
     await run(async () => {
       setConfig(await window.dshApi.setRetention(policy))
     })
+  }
+
+  /**
+   * 提交 retention 数字草稿。只在 blur/Enter 触发；空值或 <1 不持久化
+   * （否则主进程会把 Number('')===0 clamp 成 1，误触发批量归档）。
+   */
+  const commitRetentionEdit = (): void => {
+    const edit = retentionEdit
+    setRetentionEdit(null)
+    if (!edit) return
+    const parsed = Math.trunc(Number(edit.text))
+    if (!Number.isFinite(parsed) || parsed < 1) return
+    if (edit.kind === 'days') {
+      const days = Math.min(3650, parsed)
+      if (config?.retention.kind === 'days' && config.retention.days === days) {
+        return
+      }
+      void changeRetention({ kind: 'days', days })
+    } else {
+      const count = Math.min(5000, parsed)
+      if (config?.retention.kind === 'count' && config.retention.count === count) {
+        return
+      }
+      void changeRetention({ kind: 'count', count })
+    }
+  }
+
+  const cancelRetentionEdit = (): void => {
+    setRetentionEdit(null)
+  }
+
+  const updatePluginDraft = (key: string, value: string): void => {
+    pluginDraftDirty.current = true
+    setPluginDraft((current) => ({ ...current, [key]: value }))
   }
 
   const savePlugin = async (
@@ -287,6 +342,7 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
         ops.push({ op: 'set', path: [field.key], value })
       }
       await mutateDshSettings({ ns, ops })
+      pluginDraftDirty.current = false
     })
   }
 
@@ -399,10 +455,10 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
                       }))}
                       buttonClassName="min-w-[180px] rounded-full"
                       onChange={(next) => {
-                        if (
-                          next === 'danger-full-access' &&
-                          !window.confirm(strings.dsh.fullAccessConfirm)
-                        ) {
+                        // Full access 有应用内居中确认弹窗（window.confirm 在
+                        // Electron 里不做窗口内定位，会相对窗口错位）。
+                        if (next === 'danger-full-access') {
+                          setPendingPermission(next)
                           return
                         }
                         void run(() =>
@@ -455,7 +511,7 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
                         type="button"
                         data-testid={`dsh-home-${mode}`}
                         disabled={busy || config.envOverride}
-                        onClick={() => void changeHome(mode)}
+                        onClick={() => requestHomeChange(mode)}
                         className={`rounded-md px-2.5 py-1 font-pingfang text-[11px] ${
                           config.homeMode === mode
                             ? 'bg-control-active text-text-primary'
@@ -501,13 +557,19 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
                         data-testid="dsh-retention-days"
                         type="number"
                         min={1}
-                        value={config.retention.days}
-                        onChange={(event) =>
-                          void changeRetention({
-                            kind: 'days',
-                            days: Number(event.target.value)
-                          })
+                        value={
+                          retentionEdit?.kind === 'days'
+                            ? retentionEdit.text
+                            : String(config.retention.days)
                         }
+                        onChange={(event) =>
+                          setRetentionEdit({ kind: 'days', text: event.target.value })
+                        }
+                        onBlur={commitRetentionEdit}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') event.currentTarget.blur()
+                          if (event.key === 'Escape') cancelRetentionEdit()
+                        }}
                         className="w-20 rounded-lg border border-border-default bg-input px-2 py-1.5 font-maple text-[12px]"
                       />
                     )}
@@ -516,13 +578,19 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
                         data-testid="dsh-retention-count"
                         type="number"
                         min={1}
-                        value={config.retention.count}
-                        onChange={(event) =>
-                          void changeRetention({
-                            kind: 'count',
-                            count: Number(event.target.value)
-                          })
+                        value={
+                          retentionEdit?.kind === 'count'
+                            ? retentionEdit.text
+                            : String(config.retention.count)
                         }
+                        onChange={(event) =>
+                          setRetentionEdit({ kind: 'count', text: event.target.value })
+                        }
+                        onBlur={commitRetentionEdit}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') event.currentTarget.blur()
+                          if (event.key === 'Escape') cancelRetentionEdit()
+                        }}
                         className="w-20 rounded-lg border border-border-default bg-input px-2 py-1.5 font-maple text-[12px]"
                       />
                     )}
@@ -596,16 +664,12 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
                   <Field
                     label={strings.dsh.pluginTimeout}
                     value={pluginDraft.timeoutMs ?? ''}
-                    onChange={(value) =>
-                      setPluginDraft((current) => ({ ...current, timeoutMs: value }))
-                    }
+                    onChange={(value) => updatePluginDraft('timeoutMs', value)}
                   />
                   <Field
                     label={strings.dsh.pluginOutput}
                     value={pluginDraft.maxOutputBytes ?? ''}
-                    onChange={(value) =>
-                      setPluginDraft((current) => ({ ...current, maxOutputBytes: value }))
-                    }
+                    onChange={(value) => updatePluginDraft('maxOutputBytes', value)}
                   />
                 </PluginCard>
                 <PluginCard
@@ -621,12 +685,7 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
                   <Field
                     label={strings.dsh.pluginParallel}
                     value={pluginDraft.maxParallelToolCalls ?? ''}
-                    onChange={(value) =>
-                      setPluginDraft((current) => ({
-                        ...current,
-                        maxParallelToolCalls: value
-                      }))
-                    }
+                    onChange={(value) => updatePluginDraft('maxParallelToolCalls', value)}
                   />
                 </PluginCard>
                 <PluginCard
@@ -643,16 +702,12 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
                   <Field
                     label={strings.dsh.pluginEndpoint}
                     value={pluginDraft.baseUrl ?? ''}
-                    onChange={(value) =>
-                      setPluginDraft((current) => ({ ...current, baseUrl: value }))
-                    }
+                    onChange={(value) => updatePluginDraft('baseUrl', value)}
                   />
                   <Field
                     label={strings.dsh.pluginMaxUses}
                     value={pluginDraft.maxUses ?? ''}
-                    onChange={(value) =>
-                      setPluginDraft((current) => ({ ...current, maxUses: value }))
-                    }
+                    onChange={(value) => updatePluginDraft('maxUses', value)}
                   />
                 </PluginCard>
                   </>
@@ -719,12 +774,20 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
                                   <IconAction
                                     label={strings.dsh.view}
                                     onClick={() =>
-                                      void readDshAgentPreset(preset.id).then((value) =>
-                                        setViewContent({
-                                          title: text.name,
-                                          content: value.content
-                                        })
-                                      )
+                                      void readDshAgentPreset(preset.id)
+                                        .then((value) =>
+                                          setViewContent({
+                                            title: text.name,
+                                            content: value.content
+                                          })
+                                        )
+                                        .catch((cause) =>
+                                          setError(
+                                            cause instanceof Error
+                                              ? cause.message
+                                              : String(cause)
+                                          )
+                                        )
                                     }
                                   >
                                     <Eye className="size-3.5" />
@@ -738,14 +801,22 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
                                         : strings.dsh.showPath
                                     }
                                     onClick={() =>
-                                      void openDshAgentPreset(preset.id).then((path) => {
-                                        if (path) {
-                                          setRevealedPath((current) => ({
-                                            ...current,
-                                            [preset.id]: path
-                                          }))
-                                        }
-                                      })
+                                      void openDshAgentPreset(preset.id)
+                                        .then((path) => {
+                                          if (path) {
+                                            setRevealedPath((current) => ({
+                                              ...current,
+                                              [preset.id]: path
+                                            }))
+                                          }
+                                        })
+                                        .catch((cause) =>
+                                          setError(
+                                            cause instanceof Error
+                                              ? cause.message
+                                              : String(cause)
+                                          )
+                                        )
                                     }
                                   >
                                     <FolderOpen className="size-3.5" />
@@ -790,7 +861,7 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
       </div>
 
       {copyFrom && (
-        <Dialog
+        <DshDialog
           title={strings.dsh.copyTitle}
           onClose={() => setCopyFrom(null)}
           actions={
@@ -841,11 +912,11 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
               className="mt-1 w-full rounded-lg border border-border-default bg-input px-2.5 py-1.5 font-maple text-[12px]"
             />
           </label>
-        </Dialog>
+        </DshDialog>
       )}
 
       {viewContent && (
-        <Dialog
+        <DshDialog
           title={viewContent.title}
           onClose={() => setViewContent(null)}
           actions={
@@ -861,11 +932,11 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
           <pre className="max-h-[50vh] overflow-auto rounded-lg bg-surface-strong p-3 font-maple text-[11px] text-text-secondary">
             {viewContent.content}
           </pre>
-        </Dialog>
+        </DshDialog>
       )}
 
       {pendingDelete && (
-        <Dialog
+        <DshDialog
           title={strings.dsh.deleteTitle}
           onClose={() => setPendingDelete(null)}
           actions={
@@ -879,13 +950,14 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
               </button>
               <button
                 type="button"
+                disabled={busy}
                 onClick={() =>
                   void run(async () => {
                     await removeDshAgentPreset(pendingDelete)
                     setPendingDelete(null)
                   })
                 }
-                className="rounded-lg bg-status-error px-3 py-1.5 font-pingfang text-[12px] text-text-inverse"
+                className="rounded-lg bg-status-error px-3 py-1.5 font-pingfang text-[12px] text-text-inverse disabled:opacity-40"
               >
                 {strings.dsh.delete}
               </button>
@@ -895,7 +967,39 @@ export default function DshSettingsPage({ onBack }: DshSettingsPageProps) {
           <p className="font-pingfang text-[13px] text-text-muted">
             {strings.dsh.deleteHint}
           </p>
-        </Dialog>
+        </DshDialog>
+      )}
+
+      {pendingPermission && permissions && (
+        <DshConfirmDialog
+          title={strings.dsh.permissionTitle}
+          message={strings.dsh.fullAccessConfirm}
+          testId="dsh-permission-confirm"
+          busy={busy}
+          onConfirm={() => {
+            const next = pendingPermission
+            setPendingPermission(null)
+            void run(() =>
+              mutateDshSettings({
+                ns: 'permission',
+                expectedRevision: permissions.revision,
+                ops: [{ op: 'set', path: ['defaultPreset'], value: next }]
+              })
+            )
+          }}
+          onCancel={() => setPendingPermission(null)}
+        />
+      )}
+
+      {pendingHomeMode && (
+        <DshConfirmDialog
+          title={strings.dsh.homeLabel}
+          message={strings.dsh.homeSwitchConfirm}
+          testId="dsh-home-confirm"
+          busy={busy}
+          onConfirm={() => void changeHome(pendingHomeMode)}
+          onCancel={() => setPendingHomeMode(null)}
+        />
       )}
     </section>
   )
@@ -1010,35 +1114,5 @@ function IconAction({
     >
       {children}
     </button>
-  )
-}
-
-function Dialog({
-  title,
-  onClose,
-  actions,
-  children
-}: {
-  title: string
-  onClose: () => void
-  actions: ReactNode
-  children: ReactNode
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-      <button
-        type="button"
-        aria-label="close"
-        className="absolute inset-0 bg-backdrop"
-        onClick={onClose}
-      />
-      <div className="relative z-10 w-full max-w-lg rounded-2xl bg-surface p-5 shadow-window">
-        <h3 className="mb-3 font-pingfang text-[16px] font-medium text-text-primary">
-          {title}
-        </h3>
-        {children}
-        <div className="mt-4 flex justify-end gap-2">{actions}</div>
-      </div>
-    </div>
   )
 }

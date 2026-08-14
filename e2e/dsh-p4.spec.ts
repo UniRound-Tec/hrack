@@ -29,6 +29,15 @@ test('dsh p4 packages the isolated runtime next to the host', async () => {
       (item) => item.from === 'dsh-runtime' && item.to === 'dsh-runtime'
     )
   ).toBe(true)
+  // node_modules 必须以独立 fileset 提供：electron-builder 会对 from 根下的
+  // 顶层 node_modules 目录硬性剪枝，`node_modules/**/*` include 无法覆盖。
+  expect(
+    pack.build.extraResources.some(
+      (item) =>
+        item.from === 'dsh-runtime/node_modules' &&
+        item.to === 'dsh-runtime/node_modules'
+    )
+  ).toBe(true)
 
   const { app, window } = await launchApp({ createDefaultTerminal: false })
   try {

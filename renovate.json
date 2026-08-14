@@ -4,7 +4,7 @@
   "packageRules": [
     {
       "groupName": "deepseek-harness",
-      "matchFileNames": ["dsh-runtime/package.json"],
+      "matchFileNames": ["dsh-runtime/**"],
       "matchPackageNames": ["@deepseek-ai/**"]
     }
   ]

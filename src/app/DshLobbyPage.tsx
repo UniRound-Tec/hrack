@@ -54,6 +54,14 @@ function groupSessions(
   return groups
 }
 
+function titleCasePreset(value: string): string {
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(value)) return value
+  return value
+    .split('-')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
 export default function DshLobbyPage({
   onOpenSession,
   onOpenSettings
@@ -70,6 +78,10 @@ export default function DshLobbyPage({
     setLoading(true)
     setError(null)
     try {
+      // refreshDshSessions 内部会先应用 retention 策略再拉取列表（写 zustand，
+      // 侧栏直接受益）；随后再取工作区分组供本页展示，避免“先画归档前快照、
+      // 后台再偷偷归档”的错位。
+      await refreshDshSessions()
       const status = await window.dshApi.ensureStarted()
       if (status.state !== 'ready') {
         throw new Error(status.error ?? 'dsh host is not ready')
@@ -81,7 +93,6 @@ export default function DshLobbyPage({
       setWorkspaces(workspaceList.items)
       setArchived(workspaceList.archivedSessionIds)
       setSessions(sessionList)
-      await refreshDshSessions()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -252,7 +263,9 @@ export default function DshLobbyPage({
                               {sessionTitleOf(session)}
                             </span>
                             <span className={`block truncate font-pingfang text-[11px] ${statusTone[status]}`}>
-                              {session.agentPreset ?? statusLabel(status)}
+                              {session.agentPreset
+                                ? titleCasePreset(session.agentPreset)
+                                : statusLabel(status)}
                             </span>
                           </span>
                           {session.blank && (

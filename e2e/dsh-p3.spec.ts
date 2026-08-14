@@ -34,7 +34,9 @@ test('dsh p3 persists home mode and retention from lobby settings', async () => 
     await window.getByTestId('dsh-retention-kind').click()
     await window.getByTestId('dsh-retention-kind-option-days').click()
     await expect(window.getByTestId('dsh-retention-days')).toBeVisible()
+    // 数字输入按 blur 提交（防“每击键持久化被 clamp 成 1”的回归）。
     await window.getByTestId('dsh-retention-days').fill('14')
+    await window.getByTestId('dsh-retention-days').blur()
     await expect
       .poll(async () => {
         const config = await window.evaluate(() => window.dshApi.getConfig())
