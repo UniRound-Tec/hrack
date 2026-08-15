@@ -83,9 +83,9 @@ function assertDshRuntime(context) {
     }
   }
 
-  // 4. Unix：spawn-helper 必须带执行位（npm tarball 剥离 +x，靠
-  //    ensure-spawn-helper.mjs 恢复；copyDir 必须把模式位带进包里）。
-  if (['darwin', 'linux'].includes(context.electronPlatformName)) {
+  // 4. macOS：node-pty 通过 spawn-helper 启动子进程，因此 helper 必须存在
+  //    且带执行位。Linux 的原生实现直接使用 forkpty，不会生成或使用 helper。
+  if (context.electronPlatformName === 'darwin') {
     for (const archName of archNames) {
       const nativeDir = findNodePtyNativeDir(
         runtimeRoot,

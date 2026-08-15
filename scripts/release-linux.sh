@@ -47,9 +47,6 @@ done
 
 cd "$workspace"
 npm --prefix "$workspace/dsh-runtime" ci --no-audit --no-fund
-# node-pty's npm tarball may not retain the helper executable bit. Restore it
-# before electron-builder copies dsh-runtime into the application resources.
-node "$workspace/dsh-runtime/node_modules/@deepseek-ai/dsh-subprocess-local/scripts/ensure-spawn-helper.mjs"
 npm run build
 
 CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder \
@@ -83,12 +80,12 @@ fi
 app_dir="$(dirname "$executable_path")"
 dsh_bin="$app_dir/resources/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js"
 node_pty_root="$app_dir/resources/dsh-runtime/node_modules/node-pty"
-spawn_helper=''
+node_pty_native=''
 for candidate in \
-  "$node_pty_root/build/Release/spawn-helper" \
-  "$node_pty_root/prebuilds/linux-${arch}/spawn-helper"; do
+  "$node_pty_root/build/Release/pty.node" \
+  "$node_pty_root/prebuilds/linux-${arch}/pty.node"; do
   if [[ -f "$candidate" ]]; then
-    spawn_helper="$candidate"
+    node_pty_native="$candidate"
     break
   fi
 done
@@ -98,8 +95,8 @@ for required in "$dsh_bin"; do
     exit 1
   fi
 done
-if [[ -z "$spawn_helper" || ! -x "$spawn_helper" ]]; then
-  echo "Packaged DSH spawn-helper is not executable: $spawn_helper" >&2
+if [[ -z "$node_pty_native" ]]; then
+  echo 'Packaged DSH node-pty native runtime is missing.' >&2
   exit 1
 fi
 
