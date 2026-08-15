@@ -85,7 +85,7 @@ export default function FloatingApp() {
         className="w-full select-none overflow-hidden rounded-xl border border-border-default bg-overlay shadow-[0_3px_8px_-4px_rgba(0,0,0,0.28)]"
       >
         <header className="app-drag-region flex h-8 shrink-0 items-center gap-2 px-2.5">
-          <span className="font-ammonite text-[13px] leading-none text-brand-logo-muted">
+          <span className="font-brand text-[13px] leading-none text-brand-logo-muted">
             vibing
           </span>
           {attentionCount > 0 && (

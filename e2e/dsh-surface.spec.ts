@@ -51,6 +51,21 @@ test('dsh surface boots end to end', async () => {
       'data-dsh-mode',
       'slot'
     )
+    const loading = window.getByTestId('dsh-surface-loading')
+    await expect(loading).toBeVisible({ timeout: 10_000 })
+    const brand = window.getByTestId('dsh-surface-brand')
+    await expect(brand).toBeVisible()
+    await expect(brand.locator('svg')).toHaveCount(2)
+    await expect(brand.locator('svg').first()).toHaveAttribute(
+      'viewBox',
+      '0 0 131 24'
+    )
+    await expect(window.getByTestId('dsh-surface-progress')).toHaveAttribute(
+      'aria-valuemax',
+      '100'
+    )
+    await expect(window.getByTestId('dsh-surface-progress-fill')).toBeVisible()
+    await window.screenshot({ path: '.dev-shots/dsh-loading-official-brand.png' })
     // host 首次 boot 要初始化 profile（离线符号链接），放宽等待
     try {
       await expect

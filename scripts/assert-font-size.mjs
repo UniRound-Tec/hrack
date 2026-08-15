@@ -7,16 +7,16 @@ const assets = join(repositoryRoot, 'out', 'renderer', 'assets')
 const MAX_PINGFANG_BYTES = 1024 * 1024
 const entries = await readdir(assets)
 const pingfang = entries.filter((name) => /^PingFangSC-.*\.woff2$/i.test(name))
-const ammonite = entries.filter((name) => /^Ammonite-.*\.woff2$/i.test(name))
+const brand = entries.filter((name) => /^Vibing-brand-.*\.woff2$/i.test(name))
 const forbiddenFullFonts = entries.filter((name) =>
-  /PingFangSC-(?:Light|Thin|Ultralight).*\.woff2$|Ammonite-.*\.otf$/i.test(name)
+  /PingFangSC-(?:Light|Thin|Ultralight).*\.woff2$|\.(?:otf|ttf)$|^(?:Hey-November|Accelerare|Ammonite)-.*\.woff2$/i.test(name)
 )
 
 if (pingfang.length !== 3) {
   throw new Error(`Expected 3 built PingFang subsets, found ${pingfang.length}`)
 }
-if (ammonite.length !== 1) {
-  throw new Error(`Expected 1 built Ammonite subset, found ${ammonite.length}`)
+if (brand.length !== 1) {
+  throw new Error(`Expected 1 built Vibing brand subset, found ${brand.length}`)
 }
 if (forbiddenFullFonts.length > 0) {
   throw new Error(`Full or unused fonts reached the build: ${forbiddenFullFonts.join(', ')}`)

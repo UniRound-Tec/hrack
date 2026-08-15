@@ -5,6 +5,8 @@ import {
   useRef,
   useState
 } from 'react'
+import { motion, useReducedMotion } from 'motion/react'
+import DeepSeekText from '@lobehub/icons/es/DeepSeek/components/Text'
 import type {
   DshSurfaceBounds,
   DshSurfaceSnapshot
@@ -37,6 +39,96 @@ function sameBounds(
     left.y === right.y &&
     left.width === right.width &&
     left.height === right.height
+  )
+}
+
+interface DshBootScreenProps {
+  label: string
+  detail: string
+}
+
+function DshBootScreen({ label, detail }: DshBootScreenProps) {
+  const reducedMotion = useReducedMotion()
+  const progress = reducedMotion
+    ? 0.72
+    : [0.06, 0.24, 0.45, 0.64, 0.78, 0.88, 0.92]
+
+  return (
+    <div
+      data-testid="dsh-surface-loading"
+      aria-busy="true"
+      aria-live="polite"
+      className="flex flex-col items-center"
+    >
+      <div
+        data-testid="dsh-surface-brand"
+        role="img"
+        aria-label="DeepSeek"
+        className="relative h-10 w-[218px] text-brand-logo select-none"
+      >
+        <DeepSeekText
+          aria-hidden="true"
+          size="100%"
+          className="h-full w-full"
+        />
+        <motion.span
+          aria-hidden="true"
+          className="absolute inset-0 block text-brand-logo-shine blur-[0.35px]"
+          initial={false}
+          animate={
+            reducedMotion
+              ? { opacity: 0 }
+              : {
+                  opacity: 1,
+                  clipPath: [
+                    'polygon(-32% 0, -8% 0, -18% 100%, -42% 100%)',
+                    'polygon(142% 0, 166% 0, 156% 100%, 132% 100%)'
+                  ]
+                }
+          }
+          transition={
+            reducedMotion
+              ? { duration: 0 }
+              : { duration: 3.2, ease: 'linear', repeat: Infinity }
+          }
+        >
+          <DeepSeekText size="100%" className="h-full w-full" />
+        </motion.span>
+      </div>
+      <span className="mt-5 text-sm text-text-secondary">{label}</span>
+      <div
+        data-testid="dsh-surface-progress"
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuetext={detail}
+        className="mt-3 h-1 w-64 max-w-[55vw] overflow-hidden rounded-full bg-surface-strong"
+      >
+        <motion.span
+          data-testid="dsh-surface-progress-fill"
+          className="block h-full w-full origin-left rounded-full"
+          initial={{ scaleX: reducedMotion ? 0.72 : 0.06 }}
+          animate={{ scaleX: progress }}
+          transition={
+            reducedMotion
+              ? { duration: 0 }
+              : {
+                  duration: 18,
+                  ease: 'easeOut',
+                  times: [0, 0.08, 0.2, 0.38, 0.58, 0.78, 1]
+                }
+          }
+          style={{
+            background:
+              'linear-gradient(90deg, var(--vib-brand-logoMuted), var(--vib-brand-logoShine) 72%, var(--vib-brand-logo))',
+            boxShadow:
+              '0 0 12px color-mix(in srgb, var(--vib-brand-logoShine) 40%, transparent)'
+          }}
+        />
+      </div>
+      <span className="mt-2 text-xs text-text-faint">{detail}</span>
+    </div>
   )
 }
 
@@ -200,14 +292,10 @@ export default function DshPage({
               </button>
             </>
           ) : (
-            <>
-              <span className="text-sm text-text-secondary">
-                {strings.dsh.booting}
-              </span>
-              <span className="text-xs text-text-faint">
-                {strings.dsh.bootHostInit}
-              </span>
-            </>
+            <DshBootScreen
+              label={strings.dsh.booting}
+              detail={strings.dsh.bootHostInit}
+            />
           )}
         </div>
       )}

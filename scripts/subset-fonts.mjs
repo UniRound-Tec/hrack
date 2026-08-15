@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, extname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import subsetFont from 'subset-font'
@@ -8,6 +8,15 @@ const sourceRoot = join(repositoryRoot, 'src')
 const fontRoot = join(sourceRoot, 'assets', 'fonts')
 const outputRoot = join(fontRoot, '.subset')
 const MAX_PINGFANG_BYTES = 1024 * 1024
+const brandFont = {
+  label: 'Ultramarines Condensed Italic',
+  source: join(
+    fontRoot,
+    'ultramarines-condensed-italic',
+    'ultramarinescondital-9.ttf'
+  ),
+  subset: join(outputRoot, 'Vibing-brand.woff2')
+}
 const PRINTABLE_ASCII = Array.from(
   { length: 95 },
   (_, index) => String.fromCharCode(index + 32)
@@ -70,6 +79,9 @@ async function subset(input, output, text) {
   return buffer.byteLength
 }
 
+// The subset directory is generated-only. Recreate it so renamed or removed
+// fonts cannot linger locally and accidentally mask a migration error.
+await rm(outputRoot, { recursive: true, force: true })
 await mkdir(outputRoot, { recursive: true })
 const characters = await uiText()
 const pingfangFiles = [
@@ -85,9 +97,9 @@ for (const filename of pingfangFiles) {
     characters
   )
 }
-const ammoniteBytes = await subset(
-  join(fontRoot, 'ammonite', 'Ammonite-2.otf'),
-  join(outputRoot, 'Ammonite-vibing.woff2'),
+const brandBytes = await subset(
+  brandFont.source,
+  brandFont.subset,
   'vibing'
 )
 
@@ -98,5 +110,5 @@ if (pingfangBytes >= MAX_PINGFANG_BYTES) {
 }
 
 console.log(
-  `Font subsets ready: PingFang ${pingfangBytes} bytes, Ammonite ${ammoniteBytes} bytes, ${characters.length} UI characters.`
+  `Font subsets ready: PingFang ${pingfangBytes} bytes, ${brandFont.label} ${brandBytes} bytes, ${characters.length} UI characters.`
 )

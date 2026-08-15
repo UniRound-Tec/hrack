@@ -95,8 +95,8 @@
 }
 
 @font-face {
-  font-family: "Ammonite";
-  src: url("./assets/fonts/.subset/Ammonite-vibing.woff2") format("woff2");
+  font-family: "Vibing Brand";
+  src: url("./assets/fonts/.subset/Vibing-brand.woff2") format("woff2");
   font-style: normal;
   font-weight: 400;
   font-display: swap;
@@ -105,7 +105,7 @@
 @theme inline {
   --font-sans: var(--font-pingfang);
   --font-heading: var(--font-pingfang);
-  --font-ammonite: "Ammonite", sans-serif;
+  --font-brand: "Vibing Brand", sans-serif;
   /* PingFang 无谚文/部分日文假名；ko/ja 界面字形回退平台系统栈（M5.c §4.6） */
   --font-pingfang: "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Microsoft YaHei",
     "Apple SD Gothic Neo", "Malgun Gothic", "Hiragino Kaku Gothic ProN", Meiryo,

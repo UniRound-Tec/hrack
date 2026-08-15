@@ -53,7 +53,7 @@ export default function IconRail({
       data-testid="icon-rail"
       className="flex w-12 shrink-0 flex-col items-center pt-3 pb-2"
     >
-      <span className="font-ammonite text-[20px] leading-none text-brand-logo-muted select-none">
+      <span className="font-brand text-[20px] leading-none text-brand-logo-muted select-none">
         v
       </span>
 

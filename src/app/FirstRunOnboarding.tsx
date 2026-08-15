@@ -124,7 +124,7 @@ export default function FirstRunOnboarding({
               shineColor="var(--vib-brand-logoShine)"
               speed={3.2}
               spread={100}
-              className="font-ammonite text-[52px] leading-none tracking-[0.08em]"
+              className="font-brand text-[52px] leading-none tracking-[0.08em]"
             />
           </header>
 
