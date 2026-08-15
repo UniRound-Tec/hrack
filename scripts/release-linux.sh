@@ -57,16 +57,22 @@ CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder \
 
 image_name="HRack-${version}-linux-${arch}.AppImage"
 deb_name="HRack-${version}-linux-${arch}.deb"
-image_path="$release_dir/$image_name"
-deb_path="$release_dir/$deb_name"
+image_path="$(find "$release_dir" -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+deb_path="$(find "$release_dir" -maxdepth 1 -type f -name '*.deb' -print -quit)"
 executable_path="$(find "$release_dir" -maxdepth 3 -type f -name hrack -path '*linux*unpacked*' -print -quit)"
 
-for required in "$image_path" "$deb_path" "$executable_path"; do
-  if [[ ! -f "$required" ]]; then
-    echo "Release output is missing: $required" >&2
-    exit 1
-  fi
-done
+if [[ -z "$image_path" || ! -f "$image_path" ]]; then
+  echo 'Release output is missing: AppImage.' >&2
+  exit 1
+fi
+if [[ -z "$deb_path" || ! -f "$deb_path" ]]; then
+  echo 'Release output is missing: Debian package.' >&2
+  exit 1
+fi
+if [[ -z "$executable_path" || ! -f "$executable_path" ]]; then
+  echo 'Release output is missing: unpacked HRack executable.' >&2
+  exit 1
+fi
 if [[ ! -x "$image_path" || ! -x "$executable_path" ]]; then
   echo 'Linux AppImage or unpacked application is not executable.' >&2
   exit 1
@@ -132,8 +138,9 @@ else
 fi
 
 mkdir -p "$artifact_dir"
-for source in "$image_path" "$deb_path"; do
-  filename="$(basename "$source")"
+for artifact in "$image_path:$image_name" "$deb_path:$deb_name"; do
+  source="${artifact%%:*}"
+  filename="${artifact#*:}"
   destination="$artifact_dir/$filename"
   cp -f "$source" "$destination"
   digest="$(sha256sum "$destination" | awk '{print $1}')"
