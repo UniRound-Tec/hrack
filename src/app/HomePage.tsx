@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
 import {
-  Bot,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
@@ -15,6 +14,7 @@ import type {
   LaunchableCli,
   ShellOption
 } from '../../shared/ipc-contract'
+import type { DshRuntimeScanReport } from '../../shared/dsh-ipc'
 import type { SessionEntry } from '../state/sessionsStore'
 import { getAdapterIcon, getAdapterName } from './adapterIcons'
 import ClickSpark from './effects/ClickSpark'
@@ -80,11 +80,13 @@ interface HomePageProps {
   shells: readonly ShellOption[]
   clis: readonly LaunchableCli[]
   cliScanning: boolean
+  dshRuntimeReport: DshRuntimeScanReport | null
+  dshRuntimeScanning: boolean
   defaultTerminal: string
   onLaunchDefaultTerminal: () => void
   onChooseTerminal: () => void
   onConfigureCli: (option: CliOption) => void
-  onRefreshClis: () => void
+  onRefreshRuntimes: () => void
   onViewSession: (session: SessionEntry) => void
   onOpenDsh: () => void
 }
@@ -107,6 +109,17 @@ function LaunchIcon({ option }: { option: CliOption }) {
   return <Icon size={16} className="size-4" />
 }
 
+function DshLaunchIcon(): React.ReactNode {
+  const Icon = getAdapterIcon('dsh')
+  return (
+    <Icon
+      size={16}
+      className="size-4"
+      data-testid="home-dsh-brand-icon"
+    />
+  )
+}
+
 function runtimeSummary(option: CliOption): string {
   return option.installations
     .map((installation) =>
@@ -121,16 +134,39 @@ function runtimeSummary(option: CliOption): string {
     .join(' · ')
 }
 
+function dshRuntimeSummary(
+  report: DshRuntimeScanReport | null,
+  scanning: boolean,
+  strings: ReturnType<typeof useStrings>
+): string {
+  const locations = report?.candidates.flatMap((candidate): string[] => {
+    if (candidate.kind !== 'installation') return []
+    if (candidate.runtime.kind === 'wsl') {
+      return [`WSL · ${candidate.runtime.distro}`]
+    }
+    return [candidate.runtime.platform === 'windows'
+      ? 'Windows'
+      : candidate.runtime.platform === 'macos'
+        ? 'macOS'
+        : 'Linux']
+  }) ?? []
+  const uniqueLocations = [...new Set(locations)]
+  if (uniqueLocations.length > 0) return uniqueLocations.join(' · ')
+  return scanning ? strings.dsh.runtimeScanning : strings.dsh.homeHint
+}
+
 export default function HomePage({
   sessions,
   shells,
   clis,
   cliScanning,
+  dshRuntimeReport,
+  dshRuntimeScanning,
   defaultTerminal,
   onLaunchDefaultTerminal,
   onChooseTerminal,
   onConfigureCli,
-  onRefreshClis,
+  onRefreshRuntimes,
   onViewSession,
   onOpenDsh
 }: HomePageProps) {
@@ -139,6 +175,11 @@ export default function HomePage({
   const [realHistory, setRealHistory] = useState<readonly HistoryEvent[] | null>(null)
   const [realStats, setRealStats] = useState<AllTimeStats | null>(null)
   const strings = useStrings()
+  const dshSummary = dshRuntimeSummary(
+    dshRuntimeReport,
+    dshRuntimeScanning,
+    strings
+  )
 
   // 所有环境都通过 IPC 读取真实的历史与累计统计。
   useEffect(() => {
@@ -236,14 +277,14 @@ export default function HomePage({
           className={launchCardClass}
         >
           <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-strong">
-            <Bot size={16} className="size-4" />
+            <DshLaunchIcon />
           </span>
           <span className="w-full min-w-0">
             <span className="block text-[12px] font-semibold text-text-primary">
               {strings.navigation.dsh}
             </span>
             <span className="block truncate text-[10px] text-text-faint">
-              {strings.dsh.homeHint}
+              {dshSummary}
             </span>
           </span>
         </button>
@@ -317,7 +358,7 @@ export default function HomePage({
         className="cursor-target flex shrink-0 items-center gap-2 rounded-full border border-border-default bg-surface py-1.5 pr-3 pl-1.5 font-pingfang transition-colors hover:border-border-strong hover:bg-surface-hover"
       >
         <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-strong">
-          <Bot size={16} className="size-4" />
+          <DshLaunchIcon />
         </span>
         <span className="text-[12px] font-medium whitespace-nowrap text-text-secondary">
           {strings.navigation.dsh}
@@ -368,13 +409,13 @@ export default function HomePage({
             <button
               type="button"
               data-testid="cli-scan-refresh"
-              onClick={onRefreshClis}
-              disabled={cliScanning}
-              aria-busy={cliScanning}
+              onClick={onRefreshRuntimes}
+              disabled={cliScanning || dshRuntimeScanning}
+              aria-busy={cliScanning || dshRuntimeScanning}
               className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-pingfang text-[10px] text-text-faint transition-colors hover:bg-surface-strong hover:text-text-secondary disabled:cursor-wait disabled:opacity-70"
             >
               <RefreshCw
-                className={`size-3 ${cliScanning ? 'animate-spin' : ''}`}
+                className={`size-3 ${cliScanning || dshRuntimeScanning ? 'animate-spin' : ''}`}
                 strokeWidth={1.75}
               />
               {strings.newSession.refreshClis}
@@ -513,13 +554,13 @@ export default function HomePage({
             <button
               type="button"
               data-testid="cli-scan-refresh"
-              onClick={onRefreshClis}
-              disabled={cliScanning}
-              aria-busy={cliScanning}
+              onClick={onRefreshRuntimes}
+              disabled={cliScanning || dshRuntimeScanning}
+              aria-busy={cliScanning || dshRuntimeScanning}
               className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-pingfang text-[10px] text-text-faint transition-colors hover:bg-surface-strong hover:text-text-secondary disabled:cursor-wait disabled:opacity-70"
             >
               <RefreshCw
-                className={`size-3 ${cliScanning ? 'animate-spin' : ''}`}
+                className={`size-3 ${cliScanning || dshRuntimeScanning ? 'animate-spin' : ''}`}
                 strokeWidth={1.75}
               />
               {strings.newSession.refreshClis}

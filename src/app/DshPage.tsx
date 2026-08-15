@@ -1,46 +1,76 @@
-import { useEffect, useRef, useState } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
+import type {
+  DshSurfaceBounds,
+  DshSurfaceSnapshot
+} from '../../shared/dsh-ipc'
+import { createDshSurfaceAppearance } from '../dsh/themeBridge'
+import { useSettingsStore } from '../state/settingsStore'
+import {
+  builtInLightTheme,
+  getUiThemeRegistry,
+  useThemeRegistryVersion
+} from './themeRuntime'
 import { useStrings } from './i18n'
-import type { DshSurfaceHandle, DshSurfaceMode } from '../dsh/bootDsh'
-import type { DshHostStatus } from '../../shared/dsh-ipc'
-
-type BootPhase =
-  | { kind: 'idle' }
-  | { kind: 'booting' }
-  | { kind: 'ready' }
-  | { kind: 'failed'; message: string }
 
 interface DshPageProps {
-  sessionId: string | null
-  mode: Exclude<DshSurfaceMode, 'settings'>
+  /** Stable Vibing identity created only from Home. */
+  slotId: string | null
+  /** Official DSH session currently bound to this slot. */
+  adapterSessionId?: string
+  active: boolean
+  /** Native child views sit above renderer portals, so dialogs explicitly hide it. */
+  obscured: boolean
 }
 
-function isRecoverableDoubleBoot(message: string): boolean {
-  return message.includes('double boot') || message.includes('already installed')
+function sameBounds(
+  left: DshSurfaceBounds | null,
+  right: DshSurfaceBounds
+): boolean {
+  return (
+    left?.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height
+  )
 }
 
 /**
- * DSH 域内页：官方 GUI 单例常驻，用 mode 切会话 / 设置。
- * 大厅仍由 DshLobbyPage 承担；本页不再露出官方侧栏。
- *
- * 懒启动：首次可见（mode !== 'hidden'）才 boot，之后不再重入——官方 surface
- * 是 renderer 进程单例。sessionId 变化只调 openSession，mode 变化只调
- * setMode；openSession 失败要在覆盖层可见，不能只 console.error 后停在
- * 上一个会话。
+ * Renderer half of the official-page adapter. This component owns only a
+ * measured rectangle plus loading/error UI. DSH's DOM, styles and portals live
+ * in the main-process WebContentsView and are controlled through semantic IPC.
  */
 export default function DshPage({
-  sessionId,
-  mode
+  slotId,
+  adapterSessionId,
+  active,
+  obscured
 }: DshPageProps) {
   const strings = useStrings()
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const bootStartedRef = useRef(false)
-  const handleRef = useRef<DshSurfaceHandle | null>(null)
-  /** 最近一次发起 openSession 的目标，用于丢弃过期 rejection。 */
-  const openSessionIdRef = useRef<string | null>(null)
-  const [phase, setPhase] = useState<BootPhase>({ kind: 'idle' })
-  const [openError, setOpenError] = useState<string | null>(null)
-  const [hostStatus, setHostStatus] = useState<DshHostStatus | null>(null)
-  const visible = mode !== 'hidden'
+  const requestRef = useRef(0)
+  const [bounds, setBounds] = useState<DshSurfaceBounds | null>(null)
+  const [snapshot, setSnapshot] = useState<DshSurfaceSnapshot>({
+    phase: 'hidden',
+    visible: false
+  })
+  const [retry, setRetry] = useState(0)
+  const uiThemeId = useSettingsStore((state) => state.uiThemeId)
+  const language = useSettingsStore((state) => state.language)
+  const dshScale = useSettingsStore((state) => state.dshScale)
+  const themeVersion = useThemeRegistryVersion((state) => state.version)
+  const appearance = useMemo(() => {
+    const theme = getUiThemeRegistry().get(uiThemeId) ?? builtInLightTheme
+    return createDshSurfaceAppearance(theme, language, dshScale)
+  }, [uiThemeId, language, dshScale, themeVersion])
+  const mode = active && slotId ? 'slot' : 'hidden'
+  const shouldShow = active && slotId !== null && !obscured
+  const hasBounds = bounds !== null
 
   useEffect(() => {
     document.documentElement.dataset.dshSurface = mode
@@ -51,89 +81,123 @@ export default function DshPage({
     }
   }, [mode])
 
-  // 懒启动 + 一次性 boot：不随 sessionId/mode 重入。
-  useEffect(() => {
-    if (!visible || bootStartedRef.current) return
-    bootStartedRef.current = true
-    let disposed = false
-    const unsubscribe = window.dshApi.onStatusChanged((status) => {
-      if (!disposed) setHostStatus(status)
-    })
-    void (async () => {
-      try {
-        setPhase({ kind: 'booting' })
-        const { bootDshSurface } = await import('../dsh/bootDsh')
-        if (disposed) return
-        const handle = await bootDshSurface(containerRef.current!)
-        if (disposed) return
-        handleRef.current = handle
-        setPhase({ kind: 'ready' })
-      } catch (error) {
-        if (disposed) return
-        setPhase({
-          kind: 'failed',
-          message: error instanceof Error ? error.message : String(error)
-        })
-        console.error('dsh surface boot failed', error)
-      }
-    })()
+  useLayoutEffect(() => {
+    const element = containerRef.current
+    if (!element) return
+    let frame: number | null = null
+    const measure = (): void => {
+      if (frame !== null) return
+      frame = requestAnimationFrame(() => {
+        frame = null
+        const rect = element.getBoundingClientRect()
+        if (rect.width < 1 || rect.height < 1) return
+        const next = {
+          x: Math.max(0, rect.left),
+          y: Math.max(0, rect.top),
+          width: rect.width,
+          height: rect.height
+        }
+        setBounds((current) => (sameBounds(current, next) ? current : next))
+      })
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    window.addEventListener('resize', measure)
+    measure()
     return () => {
-      disposed = true
-      unsubscribe()
+      observer.disconnect()
+      window.removeEventListener('resize', measure)
+      if (frame !== null) cancelAnimationFrame(frame)
     }
-  }, [visible])
+  }, [active])
 
-  // sessionId / mode 变化：boot 完成后分别驱动 setMode 与 openSession。
+  // Semantic changes rebuild/show the official surface. Bounds changes use the
+  // separate high-frequency channel below and intentionally do not retrigger it.
   useEffect(() => {
-    if (phase.kind !== 'ready') return
-    const handle = handleRef.current
-    if (!handle) return
-    setOpenError(null)
-    handle.setMode(mode)
-    if (mode === 'session' && sessionId) {
-      // A 会话的迟到 rejection 不应给 B 会话的界面报错。
-      openSessionIdRef.current = sessionId
-      const requested = sessionId
-      handle
-        .openSession(requested)
-        .catch((error) => {
-          if (openSessionIdRef.current !== requested) return
-          console.error('dsh surface openSession failed', error)
-          setOpenError(
-            error instanceof Error ? error.message : String(error)
-          )
+    if (!shouldShow || !hasBounds) return
+    const request = ++requestRef.current
+    setSnapshot({
+      phase: 'loading',
+      visible: false,
+      slotId: slotId ?? undefined,
+      sessionId: adapterSessionId,
+      bounds: bounds ?? undefined
+    })
+    void window.dshSurfaceApi
+      .show({
+        slotId: slotId!,
+        intent: adapterSessionId ? 'resume' : 'new',
+        ...(adapterSessionId ? { sessionId: adapterSessionId } : {}),
+        bounds: bounds!,
+        appearance
+      })
+      .then((next) => {
+        if (request === requestRef.current) setSnapshot(next)
+      })
+      .catch((error) => {
+        if (request !== requestRef.current) return
+        setSnapshot({
+          phase: 'failed',
+          visible: false,
+          slotId: slotId ?? undefined,
+          sessionId: adapterSessionId,
+          error: error instanceof Error ? error.message : String(error)
         })
-    }
-  }, [mode, sessionId, phase.kind])
+      })
+    // `bounds` is deliberately represented by hasBounds here; later geometry
+    // updates flow through setBounds without reopening the DSH session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldShow, slotId, adapterSessionId, hasBounds, appearance, retry])
+
+  useEffect(() => {
+    if (!shouldShow || !bounds) return
+    void window.dshSurfaceApi.setBounds(bounds)
+  }, [shouldShow, bounds])
+
+  useEffect(() => {
+    if (shouldShow) return
+    ++requestRef.current
+    setSnapshot({ phase: 'hidden', visible: false })
+    void window.dshSurfaceApi.hide()
+  }, [shouldShow])
+
+  useEffect(
+    () => () => {
+      ++requestRef.current
+      void window.dshSurfaceApi.hide()
+    },
+    []
+  )
 
   return (
     <section
       data-testid="dsh-page"
-      data-dsh-session={sessionId ?? ''}
+      data-dsh-slot={slotId ?? ''}
+      data-dsh-session={adapterSessionId ?? ''}
       data-dsh-mode={mode}
-      className="absolute inset-0 flex h-full flex-col overflow-hidden"
-      style={{ display: visible ? 'flex' : 'none' }}
+      data-dsh-surface-phase={snapshot.phase}
+      className="absolute inset-0 flex h-full flex-col overflow-hidden bg-content"
+      style={{ display: active ? 'flex' : 'none' }}
     >
-      {phase.kind !== 'ready' && visible && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-app">
-          {phase.kind === 'failed' ? (
+      <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden" />
+      {shouldShow && snapshot.phase !== 'ready' && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-content">
+          {snapshot.phase === 'failed' ? (
             <>
               <span className="text-sm text-status-exited">
                 {strings.dsh.bootFailed}
               </span>
               <pre className="max-w-2xl overflow-auto rounded-lg bg-surface-strong p-3 text-xs text-text-muted">
-                {phase.message}
+                {snapshot.error}
               </pre>
-              {isRecoverableDoubleBoot(phase.message) && (
-                <button
-                  type="button"
-                  data-testid="dsh-reload"
-                  className="rounded-md bg-surface-strong px-3 py-1.5 text-xs text-text-primary"
-                  onClick={() => window.location.reload()}
-                >
-                  {strings.dsh.bootReload}
-                </button>
-              )}
+              <button
+                type="button"
+                data-testid="dsh-surface-retry"
+                className="rounded-md bg-surface-strong px-3 py-1.5 text-xs text-text-primary"
+                onClick={() => setRetry((value) => value + 1)}
+              >
+                {strings.dsh.refresh}
+              </button>
             </>
           ) : (
             <>
@@ -141,29 +205,12 @@ export default function DshPage({
                 {strings.dsh.booting}
               </span>
               <span className="text-xs text-text-faint">
-                {hostStatus?.state === 'starting'
-                  ? strings.dsh.bootHostInit
-                  : hostStatus?.state ?? 'stopped'}
+                {strings.dsh.bootHostInit}
               </span>
             </>
           )}
         </div>
       )}
-      {openError && visible && phase.kind === 'ready' && (
-        <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-3 border-b border-border-subtle bg-surface px-4 py-2">
-          <span className="truncate font-pingfang text-[12px] text-status-error">
-            {openError}
-          </span>
-          <button
-            type="button"
-            className="shrink-0 rounded-md px-2 py-1 font-pingfang text-[11px] text-text-muted hover:bg-surface-strong"
-            onClick={() => setOpenError(null)}
-          >
-            {strings.common.close}
-          </button>
-        </div>
-      )}
-      <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden" />
     </section>
   )
 }

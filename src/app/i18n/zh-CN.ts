@@ -39,7 +39,7 @@ export const zhCN = {
     closeSessionPrompt: (name: string) =>
       `确定要关闭“${name}”吗？CLI 进程及其子终端会一并结束。`,
     closeDshSessionPrompt: (name: string) =>
-      `确定要从侧栏收起“${name}”吗？会话会归档，不会删除历史。`,
+      `确定要让 Vibing 不再关注“${name}”吗？DSH 中的会话和历史不会受影响。`,
     sessionActions: '会话操作',
     createChildTerminal: '新建子终端',
     cloneSession: '克隆会话',
@@ -81,6 +81,18 @@ export const zhCN = {
     fullAccessConfirm: '启用 Full access 后，新会话会减少确认步骤。确定继续？',
     enterTitle: '繁忙时 Enter 键行为',
     enterHint: '仅在智能体运行时生效；Cmd/Ctrl+Enter 使用另一行为',
+    surfaceScale: '会话界面缩放',
+    surfaceScaleHint: '只影响 Vibing 内的 DSH 页面，不修改 DSH 配置',
+    runtimeLabel: 'DSH 运行时',
+    runtimeHint: '扫描 Windows 主机和每个 WSL 发行版；自动模式优先使用本机兼容版本，失败时回退内置版。',
+    runtimeAuto: '自动（本机优先）',
+    runtimeBundled: (version: string) => `内置 · ${version}`,
+    runtimeLocal: (location: string, version?: string) =>
+      `${location}${version ? ` · ${version}` : ''}`,
+    runtimeScanning: '正在扫描 DSH…',
+    runtimeRefresh: '重新扫描 DSH',
+    runtimeScanFailed: 'DSH 扫描失败',
+    runtimeMissing: '本机 DSH 已不可用',
     enterQueue: '排队发送',
     enterSteer: '插队发送',
     modelsIntro: '填写 API 密钥后即可使用下列供应商的模型。',

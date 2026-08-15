@@ -12,7 +12,8 @@ import { emptyCorrelation } from '../agents/AgentEventReducer'
 import { dshTerminalId } from '../../shared/dsh-ipc'
 
 export interface DshProjectionSnapshot {
-  sessionId: string
+  slotId: string
+  adapterSessionId: string
   name: string
   status: AgentSessionProjection['status']
   detail?: string
@@ -41,11 +42,12 @@ export class DshProjectionBridge {
   }
 
   apply(snapshot: DshProjectionSnapshot): AgentSessionProjection {
-    const previous = this.projections.get(snapshot.sessionId)
+    const previous = this.projections.get(snapshot.slotId)
     const lastSeq = Math.max(previous?.lastSeq ?? 0, snapshot.lastSeq, ++this.seq)
     const projection: AgentSessionProjection = {
-      sessionId: snapshot.sessionId,
-      terminalId: dshTerminalId(snapshot.sessionId),
+      sessionId: snapshot.slotId,
+      adapterSessionId: snapshot.adapterSessionId,
+      terminalId: dshTerminalId(snapshot.slotId),
       installationId: 'dsh',
       adapterId: 'dsh',
       name: snapshot.name,
@@ -66,20 +68,21 @@ export class DshProjectionBridge {
       correlation: emptyCorrelation()
     }
     if (projection.status === 'exited') {
-      this.projections.delete(snapshot.sessionId)
+      this.projections.delete(snapshot.slotId)
     } else {
-      this.projections.set(snapshot.sessionId, projection)
+      this.projections.set(snapshot.slotId, projection)
     }
     this.options.broadcast(AgentEventChannel.Projection, projection)
     return projection
   }
 
-  remove(sessionId: string): void {
-    const existing = this.projections.get(sessionId)
+  remove(slotId: string): void {
+    const existing = this.projections.get(slotId)
     if (!existing) return
     this.apply({
-      sessionId,
-      name: existing.name ?? sessionId,
+      slotId,
+      adapterSessionId: existing.adapterSessionId ?? slotId,
+      name: existing.name ?? slotId,
       status: 'exited',
       lastActivityAt: Date.now(),
       lastSeq: existing.lastSeq + 1
@@ -87,8 +90,8 @@ export class DshProjectionBridge {
   }
 
   clear(): void {
-    for (const sessionId of [...this.projections.keys()]) {
-      this.remove(sessionId)
+    for (const slotId of [...this.projections.keys()]) {
+      this.remove(slotId)
     }
   }
 }

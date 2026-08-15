@@ -4,7 +4,6 @@ export type PageId =
   | 'home'
   | 'settings'
   | 'dsh:home'
-  | 'dsh:settings'
   | `dsh:${string}`
   | `terminal:${string}`
 
@@ -16,35 +15,25 @@ export function terminalIdFromPage(pageId: PageId): string | null {
   return pageId.startsWith('terminal:') ? pageId.slice(9) : null
 }
 
-/** DSH lobby 页（历史会话/新建/设置入口）。 */
-export function dshHomePage(): PageId {
-  return 'dsh:home'
-}
-
-/** 某个 DSH 会话的页面：只挂对话/轨迹，不挂官方侧栏。 */
-export function dshSessionPage(sessionId: string): PageId {
-  return `dsh:${sessionId}`
-}
-
-/** DSH 设置页（大厅入口，复用官方 settings.section）。 */
-export function dshSettingsPage(): PageId {
-  return 'dsh:settings'
+/** Home 创建的某个 DSH 跟踪位；完整界面由官方 Web 自己渲染。 */
+export function dshSlotPage(slotId: string): PageId {
+  return `dsh:${slotId}`
 }
 
 export function isDshPage(pageId: PageId): boolean {
   return pageId === 'dsh:home' || pageId.startsWith('dsh:')
 }
 
-export function isDshSettingsPage(pageId: PageId): boolean {
-  return pageId === 'dsh:settings'
-}
-
-export function isDshChromePage(pageId: PageId): boolean {
-  return pageId === 'dsh:home' || pageId === 'dsh:settings'
-}
-
-export function dshSessionIdFromPage(pageId: PageId): string | null {
-  if (isDshChromePage(pageId) || !pageId.startsWith('dsh:')) return null
+export function dshSlotIdFromPage(pageId: PageId): string | null {
+  // dsh:settings was the removed Vibing-owned settings route. Keep treating
+  // it as a non-session target so stale dev links can be normalized home.
+  if (
+    pageId === 'dsh:home' ||
+    pageId === 'dsh:settings' ||
+    !pageId.startsWith('dsh:')
+  ) {
+    return null
+  }
   return pageId.slice(4)
 }
 
@@ -56,7 +45,7 @@ export function sessionPage(session: {
   terminalId: string
 }): PageId {
   return session.kind === 'dsh'
-    ? dshSessionPage(session.sessionId)
+    ? dshSlotPage(session.sessionId)
     : terminalPage(session.terminalId)
 }
 
@@ -65,7 +54,6 @@ export function isPageId(value: unknown): value is PageId {
     value === 'home' ||
     value === 'settings' ||
     value === 'dsh:home' ||
-    value === 'dsh:settings' ||
     (typeof value === 'string' &&
       value.startsWith('dsh:') &&
       value.length > 4) ||

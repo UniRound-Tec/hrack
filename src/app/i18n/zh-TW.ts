@@ -36,7 +36,7 @@ export const zhTW = {
     closeSessionPrompt: (name: string) =>
       `確定要關閉「${name}」嗎？CLI 程序及其子終端將一併結束。`,
     closeDshSessionPrompt: (name: string) =>
-      `確定要從側欄收起「${name}」嗎？工作階段會封存，不會刪除歷史。`,
+      `確定要讓 Vibing 不再關注「${name}」嗎？DSH 中的工作階段與歷史不會受影響。`,
     sessionActions: '工作階段操作',
     createChildTerminal: '新增子終端',
     cloneSession: '複製工作階段',
@@ -78,6 +78,18 @@ export const zhTW = {
     fullAccessConfirm: '啟用 Full access 後，新會話會減少確認步驟。確定繼續？',
     enterTitle: '忙碌時 Enter 鍵行為',
     enterHint: '僅在智能體執行時生效；Cmd/Ctrl+Enter 使用另一行為',
+    surfaceScale: '工作階段介面縮放',
+    surfaceScaleHint: '只影響 Vibing 內的 DSH 頁面，不修改 DSH 設定',
+    runtimeLabel: 'DSH 執行環境',
+    runtimeHint: '掃描 Windows 主機與每個 WSL 發行版；自動模式優先使用本機相容版本，失敗時回退內建版。',
+    runtimeAuto: '自動（本機優先）',
+    runtimeBundled: (version: string) => `內建 · ${version}`,
+    runtimeLocal: (location: string, version?: string) =>
+      `${location}${version ? ` · ${version}` : ''}`,
+    runtimeScanning: '正在掃描 DSH…',
+    runtimeRefresh: '重新掃描 DSH',
+    runtimeScanFailed: 'DSH 掃描失敗',
+    runtimeMissing: '本機 DSH 已無法使用',
     enterQueue: '排隊傳送',
     enterSteer: '插隊傳送',
     modelsIntro: '填寫 API 金鑰後即可使用下列供應商的模型。',

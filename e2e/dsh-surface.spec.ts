@@ -5,8 +5,7 @@ import { resolve } from 'path'
 import { _electron as electron } from '@playwright/test'
 
 /**
- * P1 验收：DSH lobby 能启动 host，并按工作区列出历史会话。
- * 链路：navigate dsh:home → ensureStarted → workspace.list / session.list。
+ * P1 验收：Home 新建 DSH 跟踪位后，官方页面能启动 host 并通过 wire 连通。
  */
 
 const userDataDir = mkdtempSync(resolve(tmpdir(), 'vibing-dsh-p0-'))
@@ -45,12 +44,13 @@ test('dsh surface boots end to end', async () => {
       await expect(complete).toBeEnabled({ timeout: 30_000 })
       await complete.click()
     }
-    // rail 按钮仅在 rail 导航模式渲染；测试沿用 sidebar 模式，改走调试桥导航
-    await window.evaluate(() => {
-      ;(window as unknown as { __vibingDebugShell: { navigate(page: string): void } })
-        .__vibingDebugShell.navigate('dsh:home')
-    })
-    await expect(window.getByTestId('dsh-lobby')).toBeVisible({ timeout: 10_000 })
+    await expect(window.getByTestId('home-page')).toBeVisible({ timeout: 20_000 })
+    await window.getByTestId('home-quick-dsh').click()
+    await expect(window.getByTestId('dsh-page')).toBeVisible({ timeout: 10_000 })
+    await expect(window.getByTestId('dsh-page')).toHaveAttribute(
+      'data-dsh-mode',
+      'slot'
+    )
     // host 首次 boot 要初始化 profile（离线符号链接），放宽等待
     try {
       await expect
@@ -69,18 +69,21 @@ test('dsh surface boots end to end', async () => {
         .toBe('ready')
     } catch (error) {
       const pageText = await window.evaluate(() =>
-        document.querySelector('[data-testid="dsh-lobby"]')?.textContent ?? '(no dsh-lobby)'
+        document.querySelector('[data-testid="dsh-page"]')?.textContent ?? '(no dsh-page)'
       )
       const status = await window.evaluate(async () =>
         JSON.stringify(await (window as unknown as { dshApi: { getStatus(): Promise<unknown> } }).dshApi.getStatus())
       )
-      console.log('[diag] dsh-lobby text:', pageText)
+      console.log('[diag] dsh-page text:', pageText)
       console.log('[diag] host status:', status)
       throw error
     }
 
-    await expect(window.getByTestId('dsh-lobby-new')).toBeVisible({ timeout: 30_000 })
-    await expect(window.getByTestId('dsh-lobby-error')).toHaveCount(0)
+    await expect(window.getByTestId('dsh-page')).toHaveAttribute(
+      'data-dsh-surface-phase',
+      'ready',
+      { timeout: 30_000 }
+    )
     // wire 直连自检：主进程代理 host.describe
     const description = await window.evaluate(async () => {
       const api = (window as unknown as {
@@ -106,7 +109,7 @@ test('dsh surface boots end to end', async () => {
       return { status: response.status, body: JSON.parse(response.body) as unknown }
     })
     expect(description.status).toBe(200)
-    await window.screenshot({ path: '.dev-shots/dsh-p0-surface.png' })
+    await window.screenshot({ path: '.dev-shots/dsh-p0-official-surface.png' })
   } finally {
     await app.close()
   }

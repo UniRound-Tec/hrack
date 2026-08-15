@@ -20,7 +20,6 @@ import {
   type UiThemeType,
   type UserThemeFile
 } from '../../shared/theme-schema'
-import { applyDshThemeBridge } from '../dsh/themeBridge'
 
 export interface UiThemeLoadError {
   filename: string
@@ -155,7 +154,6 @@ export function applyUiTheme(theme: ResolvedUiTheme): void {
       color
     )
   }
-  applyDshThemeBridge(theme)
 }
 
 export function buildUiThemeRegistry(

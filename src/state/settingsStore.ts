@@ -33,6 +33,8 @@ export interface SettingsSnapshot {
   workspaceTreeWidth: number
   /** 导航会话是否随最新活动重排；默认关闭以保持稳定位置。 */
   attentionPriorityEnabled: boolean
+  /** 官方 DSH Web surface 的独立缩放，不写入 DSH 自身设置。 */
+  dshScale: number
 }
 
 /** v3 及更早版本的默认字号；v4 起默认 14，迁移时把旧默认值一并带过去。 */
@@ -55,7 +57,8 @@ export const defaultSettings: SettingsSnapshot = {
   globalShortcutEnabled: true,
   readerWidthRatio: 0.52,
   workspaceTreeWidth: 220,
-  attentionPriorityEnabled: false
+  attentionPriorityEnabled: false,
+  dshScale: 0.9
 }
 
 /** Terminal consumers only need this stable subset. */
@@ -87,6 +90,7 @@ export interface SettingsState extends SettingsSnapshot {
   setReaderWidthRatio(ratio: number): void
   setWorkspaceTreeWidth(width: number): void
   setAttentionPriorityEnabled(enabled: boolean): void
+  setDshScale(scale: number): void
   reset(): void
 }
 
@@ -106,6 +110,12 @@ function isAppLocale(value: unknown): value is AppLocale {
     value === 'ja' ||
     value === 'ko'
   )
+}
+
+function normalizeDshScale(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.round(Math.max(0.75, Math.min(1.25, value)) * 100) / 100
+    : defaultSettings.dshScale
 }
 
 /**
@@ -209,7 +219,8 @@ export function migrateSettings(
     attentionPriorityEnabled:
       typeof legacy.attentionPriorityEnabled === 'boolean'
         ? legacy.attentionPriorityEnabled
-        : defaultSettings.attentionPriorityEnabled
+        : defaultSettings.attentionPriorityEnabled,
+    dshScale: normalizeDshScale(legacy.dshScale)
   }
 }
 
@@ -252,13 +263,14 @@ export const createSettingsState: StateCreator<SettingsState> = (set) => ({
     }),
   setAttentionPriorityEnabled: (attentionPriorityEnabled) =>
     set({ attentionPriorityEnabled }),
+  setDshScale: (dshScale) => set({ dshScale: normalizeDshScale(dshScale) }),
   reset: () => set(defaultSettings)
 })
 
 export const useSettingsStore = create<SettingsState>()(
   persist(createSettingsState, {
     name: 'vibing-terminal-settings',
-    version: 9,
+    version: 10,
     migrate: migrateSettings,
     partialize: ({
       onboardingCompleted,
@@ -274,7 +286,8 @@ export const useSettingsStore = create<SettingsState>()(
       globalShortcutEnabled,
       readerWidthRatio,
       workspaceTreeWidth,
-      attentionPriorityEnabled
+      attentionPriorityEnabled,
+      dshScale
     }) => ({
       onboardingCompleted,
       uiThemeId,
@@ -289,7 +302,8 @@ export const useSettingsStore = create<SettingsState>()(
       globalShortcutEnabled,
       readerWidthRatio,
       workspaceTreeWidth,
-      attentionPriorityEnabled
+      attentionPriorityEnabled,
+      dshScale
     })
   })
 )

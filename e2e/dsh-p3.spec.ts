@@ -1,16 +1,13 @@
 import { expect, test } from '@playwright/test'
 import { launchApp } from './helpers'
 
-test('dsh p3 persists home mode and retention from lobby settings', async () => {
+test('dsh p3 delegates product settings to the official Web surface', async () => {
   test.setTimeout(240_000)
   const { app, window } = await launchApp({ createDefaultTerminal: false })
   try {
-    await window.evaluate(() => {
-      ;(
-        window as unknown as { __vibingDebugShell: { navigate(page: string): void } }
-      ).__vibingDebugShell.navigate('dsh:home')
-    })
-    await expect(window.getByTestId('dsh-lobby')).toBeVisible({ timeout: 20_000 })
+    await expect(window.getByTestId('home-page')).toBeVisible({ timeout: 20_000 })
+    await window.getByTestId('home-quick-dsh').click()
+    await expect(window.getByTestId('dsh-page')).toBeVisible({ timeout: 20_000 })
     await expect
       .poll(
         async () =>
@@ -23,28 +20,14 @@ test('dsh p3 persists home mode and retention from lobby settings', async () => 
     expect(before.homeMode).toBe('isolated')
     expect(before.activeHome.replace(/\\/g, '/')).toContain('dsh-home')
     expect(before.retention).toEqual({ kind: 'all' })
-
-    await window.getByTestId('dsh-lobby-settings').click()
-    await expect(window.getByTestId('dsh-host-settings')).toBeVisible({
-      timeout: 60_000
-    })
-    await expect(window.getByTestId('dsh-home-path')).toContainText('dsh-home')
-    await window.screenshot({ path: '.dev-shots/dsh-p3-settings.png' })
-
-    await window.getByTestId('dsh-retention-kind').click()
-    await window.getByTestId('dsh-retention-kind-option-days').click()
-    await expect(window.getByTestId('dsh-retention-days')).toBeVisible()
-    // 数字输入按 blur 提交（防“每击键持久化被 clamp 成 1”的回归）。
-    await window.getByTestId('dsh-retention-days').fill('14')
-    await window.getByTestId('dsh-retention-days').blur()
-    await expect
-      .poll(async () => {
-        const config = await window.evaluate(() => window.dshApi.getConfig())
-        return JSON.stringify(config.retention)
-      })
-      .toBe(JSON.stringify({ kind: 'days', days: 14 }))
-
-    await window.screenshot({ path: '.dev-shots/dsh-p3-retention.png' })
+    await expect(window.getByTestId('dsh-page')).toHaveAttribute(
+      'data-dsh-surface-phase',
+      'ready',
+      { timeout: 30_000 }
+    )
+    await expect(window.getByTestId('dsh-lobby')).toHaveCount(0)
+    await expect(window.getByTestId('dsh-host-settings')).toHaveCount(0)
+    await window.screenshot({ path: '.dev-shots/dsh-p3-official-settings.png' })
   } finally {
     await app.close()
   }

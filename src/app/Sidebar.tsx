@@ -16,7 +16,7 @@ import { createPortal } from 'react-dom'
 import ShinyText from './effects/ShinyText'
 import { getAdapterIcon } from './adapterIcons'
 import {
-  dshSessionIdFromPage,
+  dshSlotIdFromPage,
   sessionPage,
   terminalIdFromPage,
   terminalPage,
@@ -77,7 +77,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const strings = useStrings()
   const activeTerminalId = terminalIdFromPage(pageId)
-  const activeDshSessionId = dshSessionIdFromPage(pageId)
+  const activeDshSlotId = dshSlotIdFromPage(pageId)
   const [sessionMenu, setSessionMenu] = useState<{
     sessionId: string
     top: number
@@ -214,7 +214,7 @@ export default function Sidebar({
             )
             const active =
               session.kind === 'dsh'
-                ? activeDshSessionId === session.sessionId
+                ? activeDshSlotId === session.sessionId
                 : activeTerminalId === session.terminalId ||
                   children.some((terminal) => terminal.id === activeTerminalId)
             const menuOpen = sessionMenu?.sessionId === session.sessionId

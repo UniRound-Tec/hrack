@@ -10,7 +10,10 @@ import { useSettingsStore } from './settingsStore'
 export type SessionKind = 'pty' | 'dsh'
 
 export interface SessionEntry {
+  /** Vibing-owned stable identity used by navigation and presentation. */
   sessionId: string
+  /** Adapter-owned session identity, e.g. the official DSH session id. */
+  adapterSessionId?: string
   terminalId: string
   adapterId: string
   installationId?: string
@@ -43,6 +46,8 @@ export interface SessionsState {
   applyProjection(projection: AgentSessionProjection): void
   updateSession(sessionId: string, patch: SessionPatch): void
   markExited(sessionId: string, exitCode: number | undefined, at?: number): void
+  /** DSH-only local unfollow: remove presentation without a permanent tombstone. */
+  unfollowSession(sessionId: string): void
   removeSession(sessionId: string): void
   removeSessions(sessionIds: readonly string[]): void
 }
@@ -81,6 +86,13 @@ export function createSessionsStore(): UseBoundStore<
     // 已关闭（墓碑）的会话不复活；已存在的条目保留用户重命名。
     applyProjection: (projection) =>
       set((state) => {
+        if (projection.adapterId === 'dsh' && projection.status === 'exited') {
+          return {
+            sessions: state.sessions.filter(
+              (session) => session.sessionId !== projection.sessionId
+            )
+          }
+        }
         if (state.closedSessionIds.includes(projection.sessionId)) return state
         const existing = state.sessions.find(
           (session) => session.sessionId === projection.sessionId
@@ -98,6 +110,8 @@ export function createSessionsStore(): UseBoundStore<
         })
         const entry: SessionEntry = {
           sessionId: projection.sessionId,
+          adapterSessionId:
+            projection.adapterSessionId ?? existing?.adapterSessionId,
           terminalId: projection.terminalId,
           adapterId: projection.adapterId,
           installationId: projection.installationId,
@@ -136,7 +150,14 @@ export function createSessionsStore(): UseBoundStore<
                 lastActivityAt: at
               }
             : session
-        )
+          )
+      })),
+    unfollowSession: (sessionId) =>
+      set((state) => ({
+        sessions: state.sessions.filter(
+          (session) => session.sessionId !== sessionId
+        ),
+        closedSessionIds: state.closedSessionIds.filter((id) => id !== sessionId)
       })),
     removeSession: (sessionId) =>
       set((state) => ({

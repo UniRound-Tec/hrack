@@ -50,11 +50,13 @@ import { WorkspaceReaderInvokeChannel } from '../shared/workspace-reader'
 import type { WorkspaceReader } from './workspace/WorkspaceReader'
 import {
   DshInvokeChannel,
-  type DshRetentionPolicy
+  type DshRetentionPolicy,
+  type DshRuntimePreference
 } from '../shared/dsh-ipc'
 import type { DshHostManager } from './dsh-host/DshHostManager'
 import type { DshWireProxy } from './dsh-host/DshWireProxy'
 import type { DshProjectionBridge } from './dsh-host/DshProjectionBridge'
+import type { DshWebSurfaceController } from './dsh-surface/DshWebSurfaceController'
 import {
   directoryPickerDefaultPath,
   normalizePickedDirectory
@@ -86,6 +88,7 @@ export interface IpcContext {
   dshHost: DshHostManager
   dshWire: DshWireProxy
   dshProjections: DshProjectionBridge
+  getDshSurfaceController(): DshWebSurfaceController | null
   getWindow(): BrowserWindow | null
   getTray(): Tray | null
   getFloatingWindowController(): FloatingWindowController | null
@@ -94,6 +97,17 @@ export interface IpcContext {
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   const win = BrowserWindow.fromWebContents(event.sender)
   return win && !win.isDestroyed() ? win : null
+}
+
+function dshSurfaceController(
+  event: IpcMainInvokeEvent,
+  ctx: IpcContext
+): DshWebSurfaceController {
+  const controller = ctx.getDshSurfaceController()
+  if (!controller || !controller.owns(senderWindow(event))) {
+    throw new Error('DSH surface is unavailable for this window')
+  }
+  return controller
 }
 
 function parseDirectoryPickerRuntime(value: unknown): CliRuntime {
@@ -121,6 +135,25 @@ function parseDirectoryPickerRuntime(value: unknown): CliRuntime {
     return { kind: 'host', platform: runtime.platform }
   }
   throw new Error('Invalid directory picker runtime')
+}
+
+function parseDshRuntimePreference(value: unknown): DshRuntimePreference {
+  if (!value || typeof value !== 'object') {
+    throw new Error('invalid dsh runtime preference')
+  }
+  const raw = value as Record<string, unknown>
+  if (raw.kind === 'auto' || raw.kind === 'bundled') {
+    return { kind: raw.kind }
+  }
+  if (
+    raw.kind === 'installation' &&
+    typeof raw.installationId === 'string' &&
+    raw.installationId.length > 0 &&
+    raw.installationId.length <= 4_096
+  ) {
+    return { kind: 'installation', installationId: raw.installationId }
+  }
+  throw new Error('invalid dsh runtime preference')
 }
 
 function parseDirectoryPickerRequest(value: unknown): DirectoryPickerRequest {
@@ -196,6 +229,12 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   )
   ipcMain.handle(DshInvokeChannel.Stop, () => ctx.dshHost.stop())
   ipcMain.handle(DshInvokeChannel.GetConfig, () => ctx.dshHost.getConfig())
+  ipcMain.handle(DshInvokeChannel.ScanRuntimes, (_e, force: unknown) =>
+    ctx.dshHost.scanRuntimes(force === true)
+  )
+  ipcMain.handle(DshInvokeChannel.SetRuntime, (_e, preference: unknown) =>
+    ctx.dshHost.setRuntime(parseDshRuntimePreference(preference))
+  )
   ipcMain.handle(DshInvokeChannel.SetHomeMode, (_e, mode: unknown) => {
     if (mode !== 'isolated' && mode !== 'shared') {
       throw new Error('invalid dsh home mode')
@@ -219,6 +258,18 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   })
   ipcMain.handle(DshInvokeChannel.WireStreamClose, (_e, streamId) => {
     if (typeof streamId === 'string') ctx.dshWire.closeStream(streamId)
+  })
+  ipcMain.handle(DshInvokeChannel.SurfaceShow, (event, request: unknown) =>
+    dshSurfaceController(event, ctx).show(request)
+  )
+  ipcMain.handle(DshInvokeChannel.SurfaceSetBounds, (event, bounds: unknown) => {
+    dshSurfaceController(event, ctx).setBounds(bounds)
+  })
+  ipcMain.handle(DshInvokeChannel.SurfaceHide, (event) => {
+    dshSurfaceController(event, ctx).hide()
+  })
+  ipcMain.handle(DshInvokeChannel.SurfaceUnfollow, (event, sessionId: unknown) => {
+    dshSurfaceController(event, ctx).unfollow(sessionId)
   })
 
   ipcMain.handle(PtyInvokeChannel.Spawn, (_e, opts: SpawnOptions) =>

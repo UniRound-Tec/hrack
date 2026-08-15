@@ -1,5 +1,4 @@
 import {
-  Bot,
   Home,
   PanelLeftOpen,
   SquarePen,
@@ -7,8 +6,7 @@ import {
 } from 'lucide-react'
 import { getAdapterIcon } from './adapterIcons'
 import {
-  dshSessionIdFromPage,
-  isDshPage,
+  dshSlotIdFromPage,
   sessionPage,
   terminalIdFromPage,
   terminalPage,
@@ -46,7 +44,7 @@ export default function IconRail({
 }: IconRailProps) {
   const strings = useStrings()
   const activeTerminalId = terminalIdFromPage(pageId)
-  const activeDshSessionId = dshSessionIdFromPage(pageId)
+  const activeDshSlotId = dshSlotIdFromPage(pageId)
   const visibleSessions = sessions.slice(0, 6)
   const visibleTerminals = terminals.slice(0, 3)
 
@@ -78,15 +76,6 @@ export default function IconRail({
         >
           <SquarePen className="size-4" strokeWidth={1.75} />
         </button>
-        <button
-          type="button"
-          data-testid="rail-dsh"
-          title={strings.navigation.dsh}
-          onClick={() => onNavigate('dsh:home')}
-          className={railButtonClass(isDshPage(pageId))}
-        >
-          <Bot className="size-4" strokeWidth={1.75} />
-        </button>
       </nav>
 
       <span className="my-2.5 h-px w-6 shrink-0 bg-border-subtle" />
@@ -103,7 +92,7 @@ export default function IconRail({
               onClick={() => onNavigate(sessionPage(session))}
               className={`cursor-target relative flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
                 session.kind === 'dsh'
-                  ? activeDshSessionId === session.sessionId
+                  ? activeDshSlotId === session.sessionId
                     ? 'bg-surface-strong'
                     : 'hover:bg-surface-hover'
                   : activeTerminalId === session.terminalId

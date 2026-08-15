@@ -1,23 +1,13 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { mkdirSync } from 'fs'
 import { resolve } from 'path'
 import { launchApp } from './helpers'
-
-interface ContrastSample {
-  menuBg: string
-  itemColor: string
-  contrast: number
-  darkTheme: boolean
-}
 
 async function waitHostReady(window: Page): Promise<void> {
   await expect
     .poll(
       async () =>
-        window.evaluate(async () => {
-          const status = await window.dshApi.getStatus()
-          return status.state
-        }),
+        window.evaluate(async () => (await window.dshApi.getStatus()).state),
       { timeout: 120_000, intervals: [500, 1000, 2000] }
     )
     .toBe('ready')
@@ -29,6 +19,44 @@ async function navigate(window: Page, page: string): Promise<void> {
       window as unknown as { __vibingDebugShell: { navigate(page: string): void } }
     ).__vibingDebugShell.navigate(next)
   }, page)
+}
+
+interface DshBinding {
+  slotId: string
+  adapterSessionId?: string
+}
+
+async function dshBindings(window: Page): Promise<DshBinding[]> {
+  return window.evaluate(() =>
+    (
+      window as unknown as {
+        __vibingDebugShell: {
+          agentSessions(): Array<{
+            sessionId: string
+            adapterSessionId?: string
+            kind?: string
+          }>
+        }
+      }
+    ).__vibingDebugShell
+      .agentSessions()
+      .filter((session) => session.kind === 'dsh')
+      .map((session) => ({
+        slotId: session.sessionId,
+        adapterSessionId: session.adapterSessionId
+      }))
+  )
+}
+
+async function activeDshBindings(window: Page): Promise<DshBinding[]> {
+  return window.evaluate(async () =>
+    (await window.agentApi.listActive())
+      .filter((session) => session.adapterId === 'dsh')
+      .map((session) => ({
+        slotId: session.sessionId,
+        adapterSessionId: session.adapterSessionId
+      }))
+  )
 }
 
 async function dshRpc<T>(
@@ -63,132 +91,148 @@ async function dshRpc<T>(
   return envelope.result.value as T
 }
 
-function measureContrast(): ContrastSample {
-  const menu = document.createElement('div')
-  menu.setAttribute('role', 'menu')
-  menu.style.position = 'fixed'
-  menu.style.left = '80px'
-  menu.style.top = '120px'
-  const item = document.createElement('button')
-  item.setAttribute('role', 'menuitem')
-  item.textContent = '标准模式'
-  const desc = document.createElement('span')
-  desc.className = 'itemDesc'
-  desc.textContent = '功能完整的编码 Agent'
-  item.append(desc)
-  menu.append(item)
-  document.body.append(menu)
-  const menuStyle = getComputedStyle(menu)
-  const itemStyle = getComputedStyle(item)
-  const parse = (value: string): [number, number, number] => {
-    const match = value.match(/(\d+),\s*(\d+),\s*(\d+)/)
-    if (!match) return [0, 0, 0]
-    return [Number(match[1]), Number(match[2]), Number(match[3])]
-  }
-  const luminance = ([r, g, b]: [number, number, number]): number => {
-    const lin = [r, g, b].map((channel) => {
-      const value = channel / 255
-      return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
-    })
-    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
-  }
-  const bg = parse(menuStyle.backgroundColor)
-  const fg = parse(itemStyle.color)
-  const light = luminance(bg)
-  const dark = luminance(fg)
-  return {
-    menuBg: menuStyle.backgroundColor,
-    itemColor: itemStyle.color,
-    contrast: (Math.max(light, dark) + 0.05) / (Math.min(light, dark) + 0.05),
-    darkTheme: document.body.hasAttribute('data-ds-dark-theme')
+interface SurfaceInspection {
+  phase: string
+  visible: boolean
+  hideTransitionCount?: number
+  slotId?: string
+  sessionId?: string
+  bounds?: { x: number; y: number; width: number; height: number }
+  zoomFactor?: number
+  error?: string
+  page?: {
+    currentSession?: string
+    linkedStyleSheets: string[]
+    cssRuleCount: number
+    viewportWidth: number
+    bodyTextLength: number
+    bodyFontSize: string
+    darkTheme: boolean
+    frameDisplay?: string
+    frameColumns?: string
+    sidebarClosed: boolean
+    sidebarDefaultApplied?: boolean
+    embedded: boolean
   }
 }
 
-test('dsh p2 chrome: lobby settings session and contrast', async () => {
+async function inspectSurface(
+  app: ElectronApplication
+): Promise<SurfaceInspection | null> {
+  return app.evaluate(() =>
+    (globalThis as unknown as {
+      __vibingMainDebug: {
+        dshSurfaceInspect(): Promise<SurfaceInspection> | null
+        dshSurfaceDismissOnboarding(): Promise<boolean> | false
+      }
+    }).__vibingMainDebug.dshSurfaceInspect()
+  )
+}
+
+test('the collapsed Vibing rail has no separate DSH Home launcher', async () => {
+  const { app, window } = await launchApp({ createDefaultTerminal: false })
+  try {
+    await expect(window.getByTestId('home-page')).toBeVisible({ timeout: 20_000 })
+    await window.evaluate(() => {
+      ;(
+        window as unknown as {
+          __vibingDebugShell: { setNavMode(mode: 'rail'): void }
+        }
+      ).__vibingDebugShell.setNavMode('rail')
+    })
+    await expect(window.getByTestId('icon-rail')).toBeVisible()
+    await expect(window.getByTestId('rail-dsh')).toHaveCount(0)
+    await navigate(window, 'home')
+    await expect(window.getByTestId('home-dsh-brand-icon')).toBeVisible()
+  } finally {
+    await app.close()
+  }
+})
+
+test('Home-created DSH slots independently follow the session selected inside each slot', async () => {
   test.setTimeout(240_000)
   const { app, window, userDataDir } = await launchApp({
     createDefaultTerminal: false
   })
   try {
     await expect(window.getByTestId('home-page')).toBeVisible({ timeout: 20_000 })
-    await window.screenshot({ path: '.dev-shots/dsh-p2-home.png' })
-
-    await navigate(window, 'dsh:home')
-    await expect(window.getByTestId('dsh-lobby')).toBeVisible({ timeout: 20_000 })
-    await waitHostReady(window)
-    await expect(window.getByTestId('dsh-lobby-new')).toBeVisible({ timeout: 30_000 })
-    await expect(window.getByTestId('dsh-lobby-error')).toHaveCount(0)
-    await window.screenshot({ path: '.dev-shots/dsh-p2-lobby.png' })
-
-    await window.getByTestId('dsh-lobby-settings').click()
-    await expect(window.getByTestId('dsh-settings')).toBeVisible({ timeout: 60_000 })
-    await expect(window.getByTestId('dsh-settings-back')).toBeVisible()
-    await expect(window.getByTestId('dsh-host-settings')).toBeVisible({
-      timeout: 30_000
-    })
-    await window.screenshot({ path: '.dev-shots/dsh-p2-settings.png' })
-
-    // Full access 警告弹窗：应用内 Dialog 必须出现且在窗口内居中（回归：
-    // 旧实现用 window.confirm，Electron 原生框不做窗口内定位，明显错位）。
-    await window.getByTestId('dsh-default-permission').click({ timeout: 30_000 })
-    const fullAccessOption = window.getByTestId(
-      'dsh-default-permission-option-danger-full-access'
+    // Scale is a Vibing-owned host concern, so it lives in general settings;
+    // all DSH business settings stay in the complete official page.
+    await navigate(window, 'settings')
+    await expect(window.getByTestId('settings-page')).toBeVisible()
+    await window.getByTestId('dsh-surface-scale').click()
+    await window.getByTestId('dsh-surface-scale-option-0.8').click()
+    await expect(window.getByTestId('dsh-surface-scale')).toHaveAttribute(
+      'data-value',
+      '0.8'
     )
-    if (await fullAccessOption.isVisible().catch(() => false)) {
-      await fullAccessOption.click()
-      const confirm = window.getByTestId('dsh-permission-confirm')
-      await expect(confirm).toBeVisible({ timeout: 10_000 })
-      const geometry = await confirm.evaluate((node) => {
-        const box = node.getBoundingClientRect()
-        return {
-          left: box.left,
-          top: box.top,
-          width: box.width,
-          height: box.height,
-          innerWidth: window.innerWidth,
-          innerHeight: window.innerHeight
-        }
-      })
-      const centerX = geometry.left + geometry.width / 2
-      const centerY = geometry.top + geometry.height / 2
-      expect(Math.abs(centerX - geometry.innerWidth / 2)).toBeLessThan(
-        geometry.innerWidth * 0.1
-      )
-      expect(Math.abs(centerY - geometry.innerHeight / 2)).toBeLessThan(
-        geometry.innerHeight * 0.1
-      )
-      await window.screenshot({ path: '.dev-shots/dsh-p2-permission-confirm.png' })
-      // 取消：弹窗关闭，权限保持原值。
-      const before = await window
-        .getByTestId('dsh-default-permission')
-        .getAttribute('data-value')
-      await window.getByTestId('dsh-permission-confirm-cancel').click()
-      await expect(confirm).toHaveCount(0)
-      await expect(
-        window.getByTestId('dsh-default-permission')
-      ).toHaveAttribute('data-value', before ?? '')
-    } else {
-      console.log('[p2] permission schema has no danger-full-access option; skip')
-    }
 
-    await window.getByTestId('dsh-settings-back').click()
-    await expect(window.getByTestId('dsh-lobby')).toBeVisible({ timeout: 20_000 })
     await navigate(window, 'home')
-    await expect(window.getByTestId('home-page')).toBeVisible({ timeout: 20_000 })
-    const homeCovered = await window.evaluate(() => {
-      const dialog = document.querySelector(
-        'body > [role="presentation"] > [role="dialog"][aria-modal="true"]'
+    await window.getByTestId('home-quick-dsh').click()
+    const surfaceHost = window.getByTestId('dsh-page')
+    await expect(surfaceHost).toBeVisible({ timeout: 20_000 })
+    await expect(surfaceHost).toHaveAttribute('data-dsh-mode', 'slot')
+    await expect
+      .poll(() => surfaceHost.getAttribute('data-dsh-slot'))
+      .not.toBe('')
+    const slot1 = await surfaceHost.getAttribute('data-dsh-slot')
+    expect(slot1).toBeTruthy()
+    await waitHostReady(window)
+    await expect
+      .poll(
+        async () => {
+          const inspection = await inspectSurface(app)
+          return `${inspection?.phase}:${inspection?.visible}:${inspection?.error ?? ''}`
+        },
+        { timeout: 90_000, intervals: [250, 500, 1000] }
       )
-      if (!dialog) return false
-      return getComputedStyle(dialog.parentElement!).display !== 'none'
-    })
-    expect(homeCovered).toBe(false)
-    await window.screenshot({ path: '.dev-shots/dsh-p2-home-after-settings.png' })
+      .toBe('ready:true:')
+
+    const defaultSurface = await inspectSurface(app)
+    expect(defaultSurface).not.toBeNull()
+    expect(defaultSurface?.slotId).toBe(slot1)
+    expect(defaultSurface?.sessionId).toBeUndefined()
+    expect(defaultSurface?.zoomFactor).toBeCloseTo(0.8, 2)
+    expect(defaultSurface?.page?.linkedStyleSheets.length).toBeGreaterThanOrEqual(2)
+    expect(defaultSurface?.page?.cssRuleCount).toBeGreaterThan(100)
+    expect(defaultSurface?.page?.bodyTextLength).toBeGreaterThan(0)
+    expect(defaultSurface?.page?.embedded).toBe(true)
+
+    await app.evaluate(() =>
+      (globalThis as unknown as {
+        __vibingMainDebug: {
+          dshSurfaceDismissOnboarding(): Promise<boolean> | false
+        }
+      }).__vibingMainDebug.dshSurfaceDismissOnboarding()
+    )
+    await expect
+      .poll(async () => (await inspectSurface(app))?.page?.sidebarClosed, {
+        timeout: 10_000
+      })
+      .toBe(true)
+    await expect
+      .poll(async () => {
+        const columns = (await inspectSurface(app))?.page?.frameColumns
+        return Number.parseFloat(columns?.split(' ')[0] ?? 'Infinity')
+      })
+      .toBeCloseTo(56, 0)
+    const officialDefault = await inspectSurface(app)
+    expect(officialDefault?.page?.frameDisplay).toBe('grid')
+    expect(officialDefault?.page?.sidebarDefaultApplied).toBe(true)
+
+    const placeholder = await surfaceHost.boundingBox()
+    expect(placeholder).not.toBeNull()
+    expect(Math.abs((officialDefault?.bounds?.x ?? 0) - placeholder!.x)).toBeLessThan(2)
+    expect(Math.abs((officialDefault?.bounds?.y ?? 0) - placeholder!.y)).toBeLessThan(2)
+    expect(
+      Math.abs((officialDefault?.bounds?.width ?? 0) - placeholder!.width)
+    ).toBeLessThan(2)
+    expect(
+      Math.abs((officialDefault?.bounds?.height ?? 0) - placeholder!.height)
+    ).toBeLessThan(2)
 
     const workspaceDir = resolve(userDataDir, 'e2e-workspace')
     mkdirSync(workspaceDir, { recursive: true })
-    await navigate(window, 'dsh:home')
-    await expect(window.getByTestId('dsh-lobby')).toBeVisible({ timeout: 20_000 })
     const workspace = await dshRpc<{ workspace?: { workspaceId?: string } }>(
       window,
       'workspace.create',
@@ -196,116 +240,193 @@ test('dsh p2 chrome: lobby settings session and contrast', async () => {
     )
     const workspaceId = workspace.workspace?.workspaceId
     expect(workspaceId).toBeTruthy()
-    const created = await dshRpc<{ sessionId: string }>(window, 'session.create', {
+    const sessionA = await dshRpc<{ sessionId: string }>(window, 'session.create', {
       workspaceId
     })
-    expect(created.sessionId).toBeTruthy()
+    const sessionB = await dshRpc<{ sessionId: string }>(window, 'session.create', {
+      workspaceId
+    })
+    const sessionC = await dshRpc<{ sessionId: string }>(window, 'session.create', {
+      workspaceId
+    })
+    const sessionD = await dshRpc<{ sessionId: string }>(window, 'session.create', {
+      workspaceId
+    })
 
-    await navigate(window, `dsh:${created.sessionId}`)
-    await expect(window.getByTestId('dsh-page')).toBeVisible({ timeout: 60_000 })
+    await app.evaluate(
+      (_electron, { sessionId }) =>
+        (globalThis as unknown as {
+          __vibingMainDebug: {
+            dshSurfaceSelectSession(sessionId: string): Promise<boolean> | false
+          }
+        }).__vibingMainDebug.dshSurfaceSelectSession(sessionId),
+      { sessionId: sessionA.sessionId }
+    )
     await expect
       .poll(
-        async () =>
-          window.evaluate(() => {
-            const host = document.querySelector('[data-dsh-surface-host]')
-            if (!host) return 'no-host'
-            const sidebar = host.querySelector<HTMLElement>('[class*="_sidebarCol"]')
-            const style = sidebar ? getComputedStyle(sidebar) : null
-            return JSON.stringify({
-              mode: host.getAttribute('data-dsh-mode'),
-              sidebar: style?.visibility,
-              width: host.getBoundingClientRect().width
-            })
-          }),
-        { timeout: 60_000 }
+        async () => {
+          const inspection = await inspectSurface(app)
+          return `${inspection?.phase}:${inspection?.visible}:${inspection?.error ?? ''}`
+        },
+        { timeout: 90_000, intervals: [250, 500, 1000] }
       )
-      .toContain('"mode":"session"')
-    for (const name of ['继续', '稍后配置']) {
-      const button = window.getByRole('button', { name })
-      if (await button.isVisible().catch(() => false)) {
-        await button.click()
-        await window.waitForTimeout(300)
-      }
-    }
+      .toBe('ready:true:')
 
-    // 官方 RiskConfirmation（Full access 确认）回归：fallback CSS 必须把
-    // 弹窗约束成常规尺寸并窗口内居中（曾退化为 1054px 宽的横条）。
-    const accessTrigger = window.locator('button[aria-label^="访问模式"]')
-    if (await accessTrigger.isVisible().catch(() => false)) {
-      await accessTrigger.click()
-      const fullAccessItem = window
-        .getByRole('menu')
-        .getByRole('menuitem', { name: /full access/i })
-      if (await fullAccessItem.isVisible().catch(() => false)) {
-        await fullAccessItem.click()
-        const confirmDialog = window.getByRole('dialog', { name: /full access/i })
-        await expect(confirmDialog).toBeVisible({ timeout: 10_000 })
-        const geometry = await confirmDialog.evaluate((node) => {
-          const box = node.getBoundingClientRect()
-          return {
-            width: box.width,
-            offsetX: Math.abs(box.left + box.width / 2 - window.innerWidth / 2),
-            offsetY: Math.abs(box.top + box.height / 2 - window.innerHeight / 2),
-            vw: window.innerWidth,
-            vh: window.innerHeight
+    const inspection = await inspectSurface(app)
+    expect(inspection).not.toBeNull()
+    expect(inspection?.slotId).toBe(slot1)
+    expect(inspection?.sessionId).toBe(sessionA.sessionId)
+    expect(inspection?.zoomFactor).toBeCloseTo(0.8, 2)
+    expect(inspection?.page?.currentSession).toBe(sessionA.sessionId)
+    expect(inspection?.page?.sidebarClosed).toBe(true)
+    await expect
+      .poll(() => dshBindings(window))
+      .toEqual([{ slotId: slot1!, adapterSessionId: sessionA.sessionId }])
+    await expect
+      .poll(() => activeDshBindings(window))
+      .toEqual([{ slotId: slot1!, adapterSessionId: sessionA.sessionId }])
+
+    const hideCountBeforeOfficialSwitch =
+      (await inspectSurface(app))?.hideTransitionCount ?? 0
+    await app.evaluate(
+      (_electron, { sessionId }) =>
+        (globalThis as unknown as {
+          __vibingMainDebug: {
+            dshSurfaceSelectSession(sessionId: string): Promise<boolean> | false
           }
-        })
-        expect(geometry.width).toBeLessThanOrEqual(700)
-        expect(geometry.offsetX).toBeLessThan(geometry.vw * 0.1)
-        expect(geometry.offsetY).toBeLessThan(geometry.vh * 0.1)
-        // 内部排版：footer 按钮同行右对齐；警告图标与文本同行横排。
-        const internals = await confirmDialog.evaluate((node) => {
-          const dialog = (node.closest('[role="dialog"]') ?? node) as HTMLElement
-          const footer = [...dialog.querySelectorAll(':scope > div')].find(
-            (d) => d.querySelector(':scope > button') && !d.querySelector('h2')
-          )
-          const buttons = footer
-            ? ([...footer.querySelectorAll(':scope > button')] as HTMLElement[])
-            : []
-          const dialogRight = dialog.getBoundingClientRect().right
-          const last = buttons[buttons.length - 1]?.getBoundingClientRect()
-          const warning = [...dialog.querySelectorAll('div')].find(
-            (d) => d.querySelector(':scope > svg') && d.querySelector(':scope > p')
-          )
-          const svg = warning?.querySelector(':scope > svg')?.getBoundingClientRect()
-          const text = warning?.querySelector(':scope > p')?.getBoundingClientRect()
-          return {
-            footerButtonCount: buttons.length,
-            footerSameRow:
-              buttons.length >= 2 &&
-              new Set(buttons.map((b) => Math.round(b.getBoundingClientRect().top)))
-                .size === 1,
-            footerRightGap: last ? Math.round(dialogRight - last.right) : -1,
-            warningSameRow: Boolean(
-              svg &&
-                text &&
-                text.left > svg.left &&
-                svg.top >= text.top - 4 &&
-                svg.top <= text.bottom
-            )
+        }).__vibingMainDebug.dshSurfaceSelectSession(sessionId),
+      { sessionId: sessionB.sessionId }
+    )
+    await expect
+      .poll(() => dshBindings(window))
+      .toEqual([{ slotId: slot1!, adapterSessionId: sessionB.sessionId }])
+    await expect
+      .poll(() => activeDshBindings(window))
+      .toEqual([{ slotId: slot1!, adapterSessionId: sessionB.sessionId }])
+    expect((await inspectSurface(app))?.hideTransitionCount).toBe(
+      hideCountBeforeOfficialSwitch
+    )
+
+    // Only Home creates a second Vibing tracking slot.
+    await navigate(window, 'home')
+    await window.getByTestId('home-quick-dsh').click()
+    await expect
+      .poll(() => surfaceHost.getAttribute('data-dsh-slot'))
+      .not.toBe(slot1)
+    const slot2 = await surfaceHost.getAttribute('data-dsh-slot')
+    expect(slot2).toBeTruthy()
+    expect(slot2).not.toBe(slot1)
+    await expect
+      .poll(async () => {
+        const state = await inspectSurface(app)
+        return `${state?.slotId}:${state?.phase}`
+      })
+      .toBe(`${slot2}:ready`)
+    expect((await inspectSurface(app))?.page?.currentSession).toBeUndefined()
+    await expect
+      .poll(() => dshBindings(window))
+      .toEqual([{ slotId: slot1!, adapterSessionId: sessionB.sessionId }])
+
+    await app.evaluate(
+      (_electron, { sessionId }) =>
+        (globalThis as unknown as {
+          __vibingMainDebug: {
+            dshSurfaceSelectSession(sessionId: string): Promise<boolean> | false
           }
-        })
-        expect(internals.footerButtonCount).toBeGreaterThanOrEqual(2)
-        expect(internals.footerSameRow).toBe(true)
-        expect(internals.footerRightGap).toBeGreaterThanOrEqual(0)
-        expect(internals.footerRightGap).toBeLessThanOrEqual(48)
-        expect(internals.warningSameRow).toBe(true)
-        await window.screenshot({ path: '.dev-shots/dsh-p2-full-access.png' })
-        await confirmDialog.getByRole('button', { name: '取消' }).click()
-        await expect(confirmDialog).toHaveCount(0)
-      } else {
-        console.log('[p2] permission menu lacks Full access option; skip')
-      }
-      await window.keyboard.press('Escape')
-    }
+        }).__vibingMainDebug.dshSurfaceSelectSession(sessionId),
+      { sessionId: sessionC.sessionId }
+    )
+    await expect
+      .poll(async () =>
+        (await dshBindings(window)).sort((left, right) =>
+          left.slotId.localeCompare(right.slotId)
+        )
+      )
+      .toEqual(
+        [
+          { slotId: slot1!, adapterSessionId: sessionB.sessionId },
+          { slotId: slot2!, adapterSessionId: sessionC.sessionId }
+        ].sort((left, right) => left.slotId.localeCompare(right.slotId))
+      )
 
-    await window.screenshot({ path: '.dev-shots/dsh-p2-session.png' })
+    // Reopening slot 1 restores B, then an official switch replaces only slot 1.
+    await navigate(window, `dsh:${slot1}`)
+    await expect
+      .poll(async () => (await inspectSurface(app))?.page?.currentSession)
+      .toBe(sessionB.sessionId)
+    await app.evaluate(
+      (_electron, { sessionId }) =>
+        (globalThis as unknown as {
+          __vibingMainDebug: {
+            dshSurfaceSelectSession(sessionId: string): Promise<boolean> | false
+          }
+        }).__vibingMainDebug.dshSurfaceSelectSession(sessionId),
+      { sessionId: sessionD.sessionId }
+    )
+    await expect
+      .poll(async () =>
+        (await dshBindings(window)).sort((left, right) =>
+          left.slotId.localeCompare(right.slotId)
+        )
+      )
+      .toEqual(
+        [
+          { slotId: slot1!, adapterSessionId: sessionD.sessionId },
+          { slotId: slot2!, adapterSessionId: sessionC.sessionId }
+        ].sort((left, right) => left.slotId.localeCompare(right.slotId))
+      )
 
-    const sample = await window.evaluate(measureContrast)
-    await window.screenshot({ path: '.dev-shots/dsh-p2-menu.png' })
-    console.log('[contrast]', sample)
-    expect(sample.contrast).toBeGreaterThan(4.5)
-    expect(sample.menuBg).not.toMatch(/rgba\(0,\s*0,\s*0,\s*0\)/)
+    const activeRow = window.locator(
+      `[data-testid="sidebar-session-item"][data-session-id="${slot1}"]`
+    )
+    await activeRow.hover()
+    await activeRow.locator('..').getByTestId('sidebar-session-close').click()
+    await expect(window.getByTestId('close-session-confirm-dialog')).toBeVisible()
+    await window.getByTestId('close-session-confirm-submit').click()
+    await expect.poll(() => dshBindings(window)).toEqual([
+      { slotId: slot2!, adapterSessionId: sessionC.sessionId }
+    ])
+    await expect
+      .poll(() => activeDshBindings(window))
+      .toEqual([{ slotId: slot2!, adapterSessionId: sessionC.sessionId }])
+
+    const listedAfterUnfollow = await dshRpc<{
+      items?: Array<{ sessionId?: string }>
+    }>(window, 'session.list', {})
+    const workspacesAfterUnfollow = await dshRpc<{
+      archivedSessionIds?: string[]
+    }>(window, 'workspace.list', {})
+    expect(
+      listedAfterUnfollow.items?.some(
+        (session) => session.sessionId === sessionD.sessionId
+      )
+    ).toBe(true)
+    expect(workspacesAfterUnfollow.archivedSessionIds ?? []).not.toContain(
+      sessionD.sessionId
+    )
+
+    await navigate(window, `dsh:${slot2}`)
+    await expect
+      .poll(async () => (await inspectSurface(app))?.page?.currentSession)
+      .toBe(sessionC.sessionId)
+
+    // Renderer portals must not sit underneath the native child view.
+    await app.evaluate(() => {
+      ;(globalThis as unknown as {
+        __vibingMainDebug: { openNewSession(): void }
+      }).__vibingMainDebug.openNewSession()
+    })
+    await expect(window.getByTestId('new-session-overlay')).toBeVisible()
+    await expect
+      .poll(async () => (await inspectSurface(app))?.visible)
+      .toBe(false)
+    await window.getByTestId('new-session-close').click()
+    await expect
+      .poll(async () => (await inspectSurface(app))?.visible, {
+        timeout: 30_000
+      })
+      .toBe(true)
+
   } finally {
     await app.close()
   }

@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { getAdapterIcon } from './adapterIcons'
 import {
-  dshSessionIdFromPage,
+  dshSlotIdFromPage,
   sessionPage,
   terminalIdFromPage,
   terminalPage,
@@ -70,7 +70,7 @@ export default function TopTabBar({
 }: TopTabBarProps) {
   const strings = useStrings()
   const activeTerminalId = terminalIdFromPage(pageId)
-  const activeDshSessionId = dshSessionIdFromPage(pageId)
+  const activeDshSlotId = dshSlotIdFromPage(pageId)
   const barRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [hovered, setHovered] = useState<HoveredTab | null>(null)
@@ -189,7 +189,7 @@ export default function TopTabBar({
             const Icon = getAdapterIcon(session.adapterId)
             const active =
               session.kind === 'dsh'
-                ? activeDshSessionId === session.sessionId
+                ? activeDshSlotId === session.sessionId
                 : activeTerminalId === session.terminalId
             return (
               <div

@@ -36,7 +36,7 @@ export const en = {
     closeSessionPrompt: (name: string) =>
       `Close “${name}”? Its CLI process and child terminals will also stop.`,
     closeDshSessionPrompt: (name: string) =>
-      `Hide “${name}” from the sidebar? The session will be archived, not deleted.`,
+      `Stop following “${name}” in Vibing? Its DSH session and history will be unchanged.`,
     sessionActions: 'Session actions',
     createChildTerminal: 'New child terminal',
     cloneSession: 'Clone session',
@@ -78,6 +78,18 @@ export const en = {
     fullAccessConfirm: 'Full access reduces confirmation steps. Continue?',
     enterTitle: 'Enter while busy',
     enterHint: 'Only while the agent is running. Cmd/Ctrl+Enter uses the other action.',
+    surfaceScale: 'Session interface scale',
+    surfaceScaleHint: 'Only affects DSH inside Vibing and does not change DSH settings.',
+    runtimeLabel: 'DSH runtime',
+    runtimeHint: 'Scans the host and every WSL distribution. Auto prefers a compatible local install and falls back to the bundled runtime.',
+    runtimeAuto: 'Auto (local first)',
+    runtimeBundled: (version: string) => `Bundled · ${version}`,
+    runtimeLocal: (location: string, version?: string) =>
+      `${location}${version ? ` · ${version}` : ''}`,
+    runtimeScanning: 'Scanning for DSH…',
+    runtimeRefresh: 'Rescan DSH',
+    runtimeScanFailed: 'DSH scan failed',
+    runtimeMissing: 'Local DSH is unavailable',
     enterQueue: 'Queue',
     enterSteer: 'Steer',
     modelsIntro: 'Enter your API keys to use models from the following providers.',

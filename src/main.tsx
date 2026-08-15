@@ -2,8 +2,6 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import FloatingApp from './floating/FloatingApp'
 import './index.css'
-import '../dsh-runtime/node_modules/@deepseek-ai/dsh-client-ui-theme/lib/styles/design-platform.css'
-import './dsh/primitivesFallback.css'
 import mapleMonoLicenseUrl from './assets/fonts/maple-mono/LICENSE.txt?url'
 import {
   applyUiTheme,

@@ -36,7 +36,7 @@ export const ko = {
     closeSessionPrompt: (name: string) =>
       `“${name}” 세션을 닫을까요? CLI 프로세스와 하위 터미널도 함께 종료됩니다.`,
     closeDshSessionPrompt: (name: string) =>
-      `사이드바에서 “${name}”을(를) 숨길까요? 세션은 삭제되지 않고 보관됩니다.`,
+      `Vibing에서 “${name}” 세션 추적을 중지할까요? DSH 세션과 기록은 변경되지 않습니다.`,
     sessionActions: '세션 작업',
     createChildTerminal: '하위 터미널 만들기',
     cloneSession: '세션 복제',
@@ -78,6 +78,18 @@ export const ko = {
     fullAccessConfirm: 'Full access 는 확인 단계를 줄입니다. 계속할까요?',
     enterTitle: '작업 중 Enter',
     enterHint: '에이전트 실행 중에만 적용됩니다. Cmd/Ctrl+Enter 는 다른 동작입니다.',
+    surfaceScale: '세션 화면 배율',
+    surfaceScaleHint: 'Vibing 안의 DSH 페이지만 조정하며 DSH 설정은 변경하지 않습니다.',
+    runtimeLabel: 'DSH 런타임',
+    runtimeHint: '호스트와 각 WSL 배포판을 검색합니다. 자동 모드는 호환되는 로컬 설치를 우선하고 내장 런타임으로 대체합니다.',
+    runtimeAuto: '자동(로컬 우선)',
+    runtimeBundled: (version: string) => `내장 · ${version}`,
+    runtimeLocal: (location: string, version?: string) =>
+      `${location}${version ? ` · ${version}` : ''}`,
+    runtimeScanning: 'DSH 검색 중…',
+    runtimeRefresh: 'DSH 다시 검색',
+    runtimeScanFailed: 'DSH 검색 실패',
+    runtimeMissing: '로컬 DSH를 사용할 수 없음',
     enterQueue: '대기열',
     enterSteer: '끼어들기',
     modelsIntro: 'API 키를 넣으면 아래 제공자의 모델을 쓸 수 있습니다.',

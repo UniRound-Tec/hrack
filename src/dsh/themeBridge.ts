@@ -1,14 +1,11 @@
 /**
- * 把 vibing 主题色写进官方 `--dsw-*` alias。
- * 官方 design-platform.css 把 alias 挂在 body / body[data-ds-dark-theme]，
- * 必须用 inline 盖掉，否则浅色菜单底会继承深色 caption 字。
+ * 把通过校验的 Vibing 主题解析成官方 DSH ThemeRuntime 接受的 alias。
+ * 这里只产生 JSON-safe appearance；真正应用发生在隔离官方页面中。
  */
 
-import {
-  uiTokenToCssVariable,
-  type ResolvedUiTheme,
-  type UiColorToken
-} from '../../shared/theme-schema'
+import type { DshSurfaceAppearance } from '../../shared/dsh-ipc'
+import type { ResolvedUiTheme, UiColorToken } from '../../shared/theme-schema'
+import type { AppLocale } from '../app/i18n'
 
 const DSW_FROM_VIB: ReadonlyArray<readonly [string, UiColorToken]> = [
   ['--dsw-alias-bg-base', 'bg.app'],
@@ -38,19 +35,20 @@ const DSW_FROM_VIB: ReadonlyArray<readonly [string, UiColorToken]> = [
   ['--dsw-alias-scrollbar-hover-l2', 'scrollbar.thumb.hover']
 ]
 
-export function applyDshThemeBridge(theme: ResolvedUiTheme): void {
-  const root = document.documentElement
-  const body = document.body
-  root.dataset.uiThemeType = theme.type
-  root.style.colorScheme = theme.type
-  body?.toggleAttribute('data-ds-dark-theme', theme.type === 'dark')
-  const targets = [root, body].filter((node): node is HTMLElement => Boolean(node))
+export function createDshSurfaceAppearance(
+  theme: ResolvedUiTheme,
+  locale: AppLocale,
+  scale: number
+): DshSurfaceAppearance {
+  const tokens: Record<string, string> = {}
   for (const [dsw, token] of DSW_FROM_VIB) {
-    const value = theme.colors[token]
-    for (const node of targets) node.style.setProperty(dsw, value)
+    tokens[dsw] = theme.colors[token]
   }
-  // 保证 fallback 菜单即使没吃到 --vib-* 也能读到实色。
-  root.style.setProperty(uiTokenToCssVariable('bg.surface'), theme.colors['bg.surface'])
-  root.style.setProperty(uiTokenToCssVariable('text.primary'), theme.colors['text.primary'])
-  root.style.setProperty(uiTokenToCssVariable('text.muted'), theme.colors['text.muted'])
+  return {
+    colorScheme: theme.type,
+    locale: locale.startsWith('zh') ? 'zh' : 'en',
+    scale,
+    backgroundColor: theme.colors['bg.content'],
+    tokens
+  }
 }

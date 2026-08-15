@@ -1,3 +1,5 @@
+import type { CliRuntime, CliRuntimeError } from './ipc-contract'
+
 /**
  * DSH host IPC 契约 —— 主进程 / preload / renderer 三方共享。
  *
@@ -22,8 +24,16 @@ export enum DshInvokeChannel {
   /** 取回 host 注入的 __DSH_BOOT__ 清单（renderer 装配 client 模块表用）。 */
   GetBootManifest = 'dsh:get-boot-manifest',
   GetConfig = 'dsh:get-config',
+  ScanRuntimes = 'dsh:scan-runtimes',
+  SetRuntime = 'dsh:set-runtime',
   SetHomeMode = 'dsh:set-home-mode',
-  SetRetention = 'dsh:set-retention'
+  SetRetention = 'dsh:set-retention',
+  /** 隔离官方 Web surface：语义 show 与高频 bounds 更新分离。 */
+  SurfaceShow = 'dsh:surface-show',
+  SurfaceSetBounds = 'dsh:surface-set-bounds',
+  SurfaceHide = 'dsh:surface-hide',
+  /** 只移除 Vibing 的当前投影，不修改或归档 DSH 会话。 */
+  SurfaceUnfollow = 'dsh:surface-unfollow'
 }
 
 // ───── Main → Renderer（webContents.send，广播）─────────
@@ -34,6 +44,10 @@ export enum DshEventChannel {
   WireStreamMessage = 'dsh:wire-stream-message',
   WireStreamClosed = 'dsh:wire-stream-closed'
 }
+
+/** Official Web preload → its owning controller only. */
+export const DSH_SURFACE_ACTIVE_SESSION_REPORT_CHANNEL =
+  'dsh:surface-active-session-report'
 
 /** dsh wire 上行 body：默认 utf8 文本；附件等二进制走 base64。 */
 export type DshWireBodyEncoding = 'utf8' | 'base64'
@@ -79,9 +93,9 @@ export interface DshWireStreamClosedEvent {
   error?: string
 }
 
-/** DSH 会话没有真实 PTY；用合成 terminalId 接入既有导航/投影管道。 */
-export function dshTerminalId(sessionId: string): string {
-  return `dsh:${sessionId}`
+/** DSH 跟踪位没有真实 PTY；用稳定 slotId 接入既有导航/投影管道。 */
+export function dshTerminalId(slotId: string): string {
+  return `dsh:${slotId}`
 }
 
 export function isDshTerminalId(terminalId: string): boolean {
@@ -99,9 +113,37 @@ export interface DshHostStatus {
   /** state === 'failed' 时的人类可读原因（含 host 最近输出摘录）。 */
   error?: string
   pid?: number
+  /** 本次实际启动的运行时；auto 发生回退时以这里为准。 */
+  activeRuntime?: DshRuntimeCandidate
 }
 
 export type DshHomeMode = 'isolated' | 'shared'
+
+export type DshRuntimePreference =
+  | { kind: 'auto' }
+  | { kind: 'bundled' }
+  | { kind: 'installation'; installationId: string }
+
+export type DshRuntimeCandidate =
+  | {
+      id: 'bundled'
+      kind: 'bundled'
+      version: string
+    }
+  | {
+      id: string
+      kind: 'installation'
+      runtime: CliRuntime
+      resolvedExecutable: string
+      version?: string
+    }
+
+export interface DshRuntimeScanReport {
+  startedAt: number
+  finishedAt: number
+  candidates: DshRuntimeCandidate[]
+  runtimeErrors: CliRuntimeError[]
+}
 
 export type DshRetentionPolicy =
   | { kind: 'all' }
@@ -115,6 +157,8 @@ export interface DshRuntimeConfig {
   activeHome: string
   envOverride: boolean
   retention: DshRetentionPolicy
+  runtimePreference: DshRuntimePreference
+  activeRuntime?: DshRuntimeCandidate
 }
 
 export interface DshApi {
@@ -123,6 +167,8 @@ export interface DshApi {
   ensureStarted(): Promise<DshHostStatus>
   stop(): Promise<DshHostStatus>
   getConfig(): Promise<DshRuntimeConfig>
+  scanRuntimes(force?: boolean): Promise<DshRuntimeScanReport>
+  setRuntime(preference: DshRuntimePreference): Promise<DshHostStatus>
   setHomeMode(mode: DshHomeMode): Promise<DshHostStatus>
   setRetention(policy: DshRetentionPolicy): Promise<DshRuntimeConfig>
   onStatusChanged(cb: (status: DshHostStatus) => void): () => void
@@ -132,6 +178,62 @@ export interface DshApi {
    * 声明该类型，renderer 侧交给 dsh-client-web 的 parseBootManifest 校验。
    */
   getBootManifest(): Promise<unknown>
+}
+
+// ───── Official Web surface（Renderer → Main）──────────
+
+export interface DshSurfaceBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** Renderer 已从通过校验的 Vibing 主题解析出的 DSH token 覆盖。 */
+export interface DshSurfaceAppearance {
+  colorScheme: 'light' | 'dark'
+  locale: 'zh' | 'en'
+  /** Electron zoom factor；0.75–1.25。 */
+  scale: number
+  backgroundColor: string
+  tokens: Record<string, string>
+}
+
+export interface DshSurfaceShowRequest {
+  /** Home 创建的稳定 Vibing 跟踪位；官方页内切换不会改变它。 */
+  slotId: string
+  /** Home 新建必须回到官方默认页；已有 slot 才恢复绑定会话。 */
+  intent: 'new' | 'resume'
+  /**
+   * 已有跟踪位绑定的官方 DSH session；仅 resume 时提供。
+   */
+  sessionId?: string
+  bounds: DshSurfaceBounds
+  appearance: DshSurfaceAppearance
+}
+
+export type DshSurfacePhase = 'hidden' | 'loading' | 'ready' | 'failed'
+
+export interface DshSurfaceSnapshot {
+  phase: DshSurfacePhase
+  visible: boolean
+  slotId?: string
+  sessionId?: string
+  bounds?: DshSurfaceBounds
+  url?: string
+  error?: string
+}
+
+/**
+ * Vibing renderer 的唯一 DSH presentation seam。官方页面的装配、DOM 与
+ * Cordis runtime 全部留在主进程 Adapter 后面。
+ */
+export interface DshSurfaceApi {
+  show(request: DshSurfaceShowRequest): Promise<DshSurfaceSnapshot>
+  setBounds(bounds: DshSurfaceBounds): Promise<void>
+  hide(): Promise<void>
+  /** Stop projecting one Vibing slot locally; official DSH state is untouched. */
+  unfollow(slotId: string): Promise<void>
 }
 
 /**

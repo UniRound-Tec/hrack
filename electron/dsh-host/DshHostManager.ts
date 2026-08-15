@@ -1,44 +1,112 @@
-import { app, utilityProcess, type UtilityProcess } from 'electron'
+import {
+  app,
+  utilityProcess,
+  type UtilityProcess
+} from 'electron'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
+import type { CliInstallation } from '../../shared/ipc-contract'
 import {
   DshEventChannel,
   type DshHomeMode,
   type DshHostStatus,
   type DshRetentionPolicy,
-  type DshRuntimeConfig
+  type DshRuntimeCandidate,
+  type DshRuntimeConfig,
+  type DshRuntimePreference,
+  type DshRuntimeScanReport
 } from '../../shared/dsh-ipc'
+import {
+  DSH_CLI_DEFINITION_ID,
+  type AiCliDiscoveryService
+} from '../ai-cli-discovery'
 import { getMainPrefs, persistMainPrefs } from '../main-prefs'
+import {
+  DSH_WSL_PID_MARKER,
+  buildDshExternalSpawnSpec,
+  bundledDshRuntime,
+  dshCandidateFromInstallation,
+  selectDshRuntimeCandidates
+} from './DshRuntime'
 
 /**
- * DshHostManager —— 以内置 utilityProcess 运行 dsh 的 web profile。
- *
- * 形态选择（PLAN-DSH-INTEGRATION §2）：fork @deepseek-ai/dsh 自带的
- * lib/bin.js（`dsh web --host 127.0.0.1 --port <预分配>`），把 dsh 当黑盒，
- * 不 import 其内部模块——上游 rc 阶段内部导出随时会变，bin 是唯一稳定入口。
- * utilityProcess 提供纯 Node 语义（无 Chromium），崩溃与主进程隔离。
- *
- * DSH_HOME 默认指向 vibing 私有目录（<userData>/dsh-home），与命令行 dsh
- * 互不污染；首次 boot 时 dsh 会自动初始化 profile 并把安装目录依赖闭包
- * 链接进 $DSH_HOME/profiles/node_modules（dsh-app-boot 的
- * healProfilesModuleFallback），全程不需要 pnpm/网络。
+ * DshHostManager —— 对外只暴露一个 DSH Web host，内部可由内置包、当前
+ * 主机安装或指定 WSL 发行版提供。surface / wire / projector 不需要知道
+ * 运行时来自哪里，始终只消费通过能力门禁的 loopback baseUrl。
  */
 
 const HOST_STARTUP_TIMEOUT_MS = 60_000
+const EXTERNAL_HOST_STARTUP_TIMEOUT_MS = 30_000
 const HOST_READY_POLL_MS = 250
 const OUTPUT_TAIL_LIMIT = 32 * 1024
+const REQUIRED_CONTROL_PLANE_METHODS = [
+  'session.list',
+  'workspace.list'
+] as const
+
+interface ManagedDshChild {
+  readonly pid?: number
+  readonly stdout: NodeJS.ReadableStream | null
+  readonly stderr: NodeJS.ReadableStream | null
+  kill(): void
+  onceExit(listener: (code: number | null, error?: Error) => void): void
+}
+
+interface DshLaunchTarget {
+  candidate: DshRuntimeCandidate
+  installation?: CliInstallation
+}
+
+function wrapUtilityProcess(child: UtilityProcess): ManagedDshChild {
+  return {
+    pid: child.pid,
+    stdout: child.stdout,
+    stderr: child.stderr,
+    kill: () => {
+      child.kill()
+    },
+    onceExit: (listener) => {
+      child.once('exit', (code) => listener(code))
+    }
+  }
+}
+
+function wrapSpawnedProcess(child: ChildProcess): ManagedDshChild {
+  return {
+    pid: child.pid,
+    stdout: child.stdout,
+    stderr: child.stderr,
+    kill: () => {
+      child.kill()
+    },
+    onceExit: (listener) => {
+      let settled = false
+      const finish = (code: number | null, error?: Error): void => {
+        if (settled) return
+        settled = true
+        listener(code, error)
+      }
+      child.once('error', (error) => finish(null, error))
+      child.once('exit', (code) => finish(code))
+    }
+  }
+}
 
 export interface DshHostManagerOptions {
   /** 默认 DSH_HOME（<userData>/dsh-home），由 main 注入。 */
   defaultDshHome: string
+  discovery: Pick<
+    AiCliDiscoveryService,
+    'scanDefinition' | 'runtimeEnvironment' | 'runtimeHome'
+  >
   broadcast: (channel: string, payload: DshHostStatus) => void
   onBecameReady?: () => void
   onLeftReady?: () => void
 }
 
-/** 预分配一个 127.0.0.1 空闲端口。listen(0) → 取端口 → close 存在竞态，
- *  但仅本机开发面；host 绑定失败会落入 failed 态并可重启，可接受。 */
+/** 预分配一个 Windows/当前主机 loopback 空闲端口。 */
 function allocatePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer()
@@ -65,15 +133,7 @@ const DSH_BIN_SEGMENTS = [
   'bin.js'
 ] as const
 
-/**
- * 解析内置 dsh CLI 入口。dsh 全家桶住在隔离子树 dsh-runtime/（单一扁平
- * node_modules，npm 提升不再拆散家族——cordis Loader 按 importer 实路径
- * 向上查找插件，跨树混布会 ERR_MODULE_NOT_FOUND）。
- *
- * 不要用 app.getAppPath()：e2e / `electron <script>` 会把它指到脚本目录
- * （out/main 或 scripts），而不是仓库根。unpackaged 从本文件编译产物
- * （out/main）上两级回到 repo；packaged 走 extraResources。
- */
+/** 解析随 Vibing 发布的 DSH CLI 入口。 */
 export function resolveDshBinPath(): string {
   const relative = join(...DSH_BIN_SEGMENTS)
   const candidates = app.isPackaged
@@ -89,11 +149,33 @@ export function resolveDshBinPath(): string {
   return found
 }
 
+function isRuntimePreference(value: unknown): value is DshRuntimePreference {
+  if (!value || typeof value !== 'object') return false
+  const raw = value as { kind?: unknown; installationId?: unknown }
+  return (
+    raw.kind === 'auto' ||
+    raw.kind === 'bundled' ||
+    (
+      raw.kind === 'installation' &&
+      typeof raw.installationId === 'string' &&
+      raw.installationId.length > 0 &&
+      raw.installationId.length <= 4_096
+    )
+  )
+}
+
+function trimPosixHome(home: string): string {
+  return home === '/' ? '' : home.replace(/\/+$/, '')
+}
+
 export class DshHostManager {
-  private child: UtilityProcess | null = null
+  private child: ManagedDshChild | null = null
   private status: DshHostStatus = { state: 'stopped' }
   private starting: Promise<DshHostStatus> | null = null
   private outputTail = ''
+  private activeWslProcess: { distro: string; pid: number } | null = null
+  private activeWindowsProcessTreePid: number | null = null
+  private activePosixProcessGroupPid: number | null = null
 
   constructor(private readonly options: DshHostManagerOptions) {}
 
@@ -101,6 +183,7 @@ export class DshHostManager {
     return this.status
   }
 
+  /** 内置版与 native 安装沿用现有 Windows/macOS/Linux DSH_HOME 语义。 */
   resolveHome(): string {
     const override = process.env['VIBING_DSH_HOME']
     if (override && override.trim().length > 0) return override.trim()
@@ -117,8 +200,46 @@ export class DshHostManager {
       sharedHome: join(app.getPath('home'), '.dsh'),
       activeHome: this.status.dshHome ?? this.resolveHome(),
       envOverride: Boolean(process.env['VIBING_DSH_HOME']?.trim()),
-      retention: prefs.dshRetention
+      retention: prefs.dshRetention,
+      runtimePreference: prefs.dshRuntimePreference,
+      activeRuntime: this.status.activeRuntime
     }
+  }
+
+  async scanRuntimes(force = false): Promise<DshRuntimeScanReport> {
+    const report = await this.options.discovery.scanDefinition(
+      DSH_CLI_DEFINITION_ID,
+      force
+    )
+    const localCandidates = report.installations.map(
+      dshCandidateFromInstallation
+    )
+    const orderedLocals = selectDshRuntimeCandidates(
+      { kind: 'auto' },
+      localCandidates
+    ).filter(
+      (candidate): candidate is Extract<
+        DshRuntimeCandidate,
+        { kind: 'installation' }
+      > => candidate.kind === 'installation'
+    )
+    return {
+      startedAt: report.startedAt,
+      finishedAt: report.finishedAt,
+      candidates: [bundledDshRuntime, ...orderedLocals],
+      runtimeErrors: report.runtimeErrors
+    }
+  }
+
+  async setRuntime(
+    preference: DshRuntimePreference
+  ): Promise<DshHostStatus> {
+    if (!isRuntimePreference(preference)) {
+      throw new Error('invalid dsh runtime preference')
+    }
+    const shouldRestart = this.status.state !== 'stopped'
+    await persistMainPrefs({ dshRuntimePreference: preference })
+    return shouldRestart ? this.restart() : this.status
   }
 
   async setHomeMode(mode: DshHomeMode): Promise<DshHostStatus> {
@@ -150,12 +271,12 @@ export class DshHostManager {
   }
 
   async stop(): Promise<DshHostStatus> {
-    const child = this.child
-    this.child = null
-    if (child) {
-      child.kill()
-    }
-    this.setStatus({ state: 'stopped', dshHome: this.status.dshHome })
+    await this.stopChild()
+    this.setStatus({
+      state: 'stopped',
+      dshHome: this.status.dshHome,
+      activeRuntime: this.status.activeRuntime
+    })
     return this.status
   }
 
@@ -178,78 +299,326 @@ export class DshHostManager {
     this.outputTail = (this.outputTail + chunk).slice(-OUTPUT_TAIL_LIMIT)
   }
 
-  private async start(): Promise<DshHostStatus> {
-    const dshHome = this.resolveHome()
-    this.setStatus({ state: 'starting', dshHome })
+  private async resolveLaunchTargets(): Promise<DshLaunchTarget[]> {
+    const preference = getMainPrefs().dshRuntimePreference
+    let report: Awaited<
+      ReturnType<AiCliDiscoveryService['scanDefinition']>
+    >
     try {
-      const binPath = resolveDshBinPath()
-      const port = await allocatePort()
-      const baseUrl = `http://127.0.0.1:${port}`
-      // cordis-plugin-hmr 需要 Node 内部 ESM loader；Electron 的 Node 没有
-      // 预编译 node-addon-require-builtin，必须显式 --expose-internals，
-      // 否则 host 打印 URL 后立刻以 "HMR service" 崩掉。
-      const child = utilityProcess.fork(binPath, [
-        'web',
-        '--host', '127.0.0.1',
-        '--port', String(port)
-      ], {
-        serviceName: 'dsh-host',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        execArgv: ['--expose-internals'],
-        env: {
-          ...process.env,
-          DSH_HOME: dshHome,
-          // 内嵌形态默认关闭遥测；用户仍可在共享 ~/.dsh 模式下自行管理。
-          DSH_TELEMETRY_DISABLED: process.env['DSH_TELEMETRY_DISABLED'] ?? '1'
+      report = await this.options.discovery.scanDefinition(
+        DSH_CLI_DEFINITION_ID,
+        false
+      )
+    } catch (error) {
+      if (preference.kind !== 'auto') throw error
+      this.appendOutput(`runtime scan failed: ${String(error)}\n`)
+      return [{ candidate: bundledDshRuntime }]
+    }
+    const installations = new Map(
+      report.installations.map((installation) => [installation.id, installation])
+    )
+    const localCandidates = report.installations.map(
+      dshCandidateFromInstallation
+    )
+    return selectDshRuntimeCandidates(preference, localCandidates).map(
+      (candidate) => ({
+        candidate,
+        installation:
+          candidate.kind === 'installation'
+            ? installations.get(candidate.id)
+            : undefined
+      })
+    )
+  }
+
+  private resolveTargetHome(target: DshLaunchTarget): string {
+    if (
+      target.candidate.kind !== 'installation' ||
+      target.candidate.runtime.kind !== 'wsl'
+    ) {
+      return this.resolveHome()
+    }
+    const override = process.env['VIBING_DSH_HOME']?.trim()
+    if (override) {
+      if (!override.startsWith('/') || override.includes('\0')) {
+        throw new Error(
+          'VIBING_DSH_HOME must be a Linux absolute path for a WSL DSH runtime'
+        )
+      }
+      return override
+    }
+    if (!target.installation) {
+      throw new Error('selected WSL DSH installation is missing')
+    }
+    const home = this.options.discovery.runtimeHome(target.installation)
+    if (!home || !home.startsWith('/') || home.includes('\0')) {
+      throw new Error(
+        `cannot resolve HOME for ${target.candidate.runtime.distro}`
+      )
+    }
+    const root = trimPosixHome(home)
+    return getMainPrefs().dshHomeMode === 'shared'
+      ? `${root}/.dsh`
+      : `${root}/.local/share/vibing/dsh-home`
+  }
+
+  private async start(): Promise<DshHostStatus> {
+    this.outputTail = ''
+    this.setStatus({ state: 'starting' })
+    try {
+      const targets = await this.resolveLaunchTargets()
+      const failures: string[] = []
+      for (const target of targets) {
+        try {
+          return await this.startTarget(target)
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error)
+          failures.push(`${target.candidate.id}: ${detail}`)
+          this.appendOutput(`\n[${target.candidate.id}] ${detail}\n`)
+          await this.stopChild()
         }
-      })
-      console.log('[dsh-host] forked', binPath, 'port', port, 'home', dshHome)
-      this.child = child
-      this.outputTail = ''
-      child.stdout?.on('data', (data: Buffer) => {
-        const text = data.toString('utf8')
-        this.appendOutput(text)
-        console.log('[dsh-host]', text.trimEnd())
-      })
-      child.stderr?.on('data', (data: Buffer) => {
-        const text = data.toString('utf8')
-        this.appendOutput(text)
-        console.error('[dsh-host]', text.trimEnd())
-      })
-      child.once('exit', (code) => {
-        if (this.child !== child) return
-        this.child = null
-        // ready 之前退出 = 启动失败；ready 之后退出 = 异常崩溃（P1 再做自动重启）。
-        this.setStatus({
-          state: 'failed',
-          dshHome,
-          error: `dsh host exited (code ${code}). tail:\n${this.outputTail.slice(-2048)}`
-        })
-      })
-      this.setStatus({ state: 'starting', dshHome, pid: child.pid })
-      await this.waitReady(baseUrl)
-      this.setStatus({ state: 'ready', dshHome, baseUrl, pid: child.pid })
-      return this.status
+      }
+      throw new Error(failures.join('\n'))
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      await this.stop()
+      await this.stopChild()
       this.setStatus({
         state: 'failed',
-        dshHome,
+        dshHome: this.status.dshHome,
+        activeRuntime: this.status.activeRuntime,
         error: `${message}\n${this.outputTail.slice(-2048)}`
       })
       return this.status
     }
   }
 
-  /** host 起来后任意 HTTP 响应（含 404）都说明 server 已监听。 */
-  private async waitReady(baseUrl: string): Promise<void> {
-    const deadline = Date.now() + HOST_STARTUP_TIMEOUT_MS
+  private async startTarget(target: DshLaunchTarget): Promise<DshHostStatus> {
+    const dshHome = this.resolveTargetHome(target)
+    const port = await allocatePort()
+    const baseUrl = `http://127.0.0.1:${port}`
+    const child = this.spawnTarget(target, port, dshHome)
+    this.child = child
+    this.activeWslProcess = null
+    this.activeWindowsProcessTreePid =
+      target.candidate.kind === 'installation' &&
+      target.candidate.runtime.kind === 'host' &&
+      target.candidate.runtime.platform === 'windows' &&
+      child.pid
+        ? child.pid
+        : null
+    this.activePosixProcessGroupPid =
+      target.candidate.kind === 'installation' &&
+      target.candidate.runtime.kind === 'host' &&
+      target.candidate.runtime.platform !== 'windows' &&
+      child.pid
+        ? child.pid
+        : null
+    let ready = false
+
+    const handleOutput = (data: Buffer | string, isError: boolean): void => {
+      const text = data.toString()
+      this.appendOutput(text)
+      if (
+        target.candidate.kind === 'installation' &&
+        target.candidate.runtime.kind === 'wsl'
+      ) {
+        const match = this.outputTail.match(
+          new RegExp(`${DSH_WSL_PID_MARKER}(\\d+)`)
+        )
+        const pid = Number(match?.[1])
+        if (Number.isSafeInteger(pid) && pid > 1) {
+          this.activeWslProcess = {
+            distro: target.candidate.runtime.distro,
+            pid
+          }
+        }
+      }
+      const clean = text.trimEnd()
+      if (!clean) return
+      if (isError) console.error('[dsh-host]', clean)
+      else console.log('[dsh-host]', clean)
+    }
+    child.stdout?.on('data', (data: Buffer) => handleOutput(data, false))
+    child.stderr?.on('data', (data: Buffer) => handleOutput(data, true))
+    child.onceExit((code, error) => {
+      if (this.child !== child) return
+      this.child = null
+      this.activeWslProcess = null
+      this.activeWindowsProcessTreePid = null
+      this.activePosixProcessGroupPid = null
+      if (!ready) return
+      this.setStatus({
+        state: 'failed',
+        dshHome,
+        activeRuntime: target.candidate,
+        error: error
+          ? `dsh host failed: ${error.message}`
+          : `dsh host exited (code ${code}). tail:\n${this.outputTail.slice(-2048)}`
+      })
+    })
+    this.setStatus({
+      state: 'starting',
+      dshHome,
+      pid: child.pid,
+      activeRuntime: target.candidate
+    })
+    console.log(
+      '[dsh-host] started',
+      target.candidate.id,
+      'port',
+      port,
+      'home',
+      dshHome
+    )
+    await this.waitReady(
+      baseUrl,
+      target.candidate.kind === 'bundled'
+        ? HOST_STARTUP_TIMEOUT_MS
+        : EXTERNAL_HOST_STARTUP_TIMEOUT_MS
+    )
+    if (this.child !== child) {
+      throw new Error('dsh host exited before becoming ready')
+    }
+    ready = true
+    this.setStatus({
+      state: 'ready',
+      dshHome,
+      baseUrl,
+      pid: child.pid,
+      activeRuntime: target.candidate
+    })
+    return this.status
+  }
+
+  private spawnTarget(
+    target: DshLaunchTarget,
+    port: number,
+    dshHome: string
+  ): ManagedDshChild {
+    if (target.candidate.kind === 'bundled') {
+      const child = utilityProcess.fork(resolveDshBinPath(), [
+        'web',
+        '--host', '127.0.0.1',
+        '--port', String(port)
+      ], {
+        serviceName: 'dsh-host',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        // Electron Node 需要显式暴露内部 ESM loader；系统安装走自己的 Node。
+        execArgv: ['--expose-internals'],
+        env: {
+          ...process.env,
+          DSH_HOME: dshHome,
+          DSH_TELEMETRY_DISABLED:
+            process.env['DSH_TELEMETRY_DISABLED'] ?? '1'
+        }
+      })
+      return wrapUtilityProcess(child)
+    }
+    if (!target.installation) {
+      throw new Error('selected DSH installation is missing')
+    }
+    const spec = buildDshExternalSpawnSpec({
+      candidate: target.candidate,
+      port,
+      dshHome,
+      environmentPath:
+        this.options.discovery.runtimeEnvironment(target.installation).PATH,
+      commandInterpreter: process.env.ComSpec,
+      inheritedEnv: process.env
+    })
+    const detached =
+      target.candidate.runtime.kind === 'host' &&
+      target.candidate.runtime.platform !== 'windows'
+    return wrapSpawnedProcess(spawn(spec.file, spec.args, {
+      env: spec.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached,
+      windowsHide: true,
+      windowsVerbatimArguments: spec.windowsVerbatimArguments ?? false
+    }))
+  }
+
+  private async stopChild(): Promise<void> {
+    const child = this.child
+    const remote = this.activeWslProcess
+    const windowsTreePid = this.activeWindowsProcessTreePid
+    const posixGroupPid = this.activePosixProcessGroupPid
+    this.child = null
+    this.activeWslProcess = null
+    this.activeWindowsProcessTreePid = null
+    this.activePosixProcessGroupPid = null
+    if (remote) await this.terminateWslProcess(remote)
+    if (windowsTreePid) await this.terminateWindowsProcessTree(windowsTreePid)
+    if (posixGroupPid) {
+      try {
+        process.kill(-posixGroupPid, 'SIGTERM')
+      } catch {
+        // Already exited.
+      }
+    }
+    child?.kill()
+  }
+
+  /** npm 的 dsh.cmd 会再拉起 node；只 kill cmd 会留下真正的 host。 */
+  private terminateWindowsProcessTree(pid: number): Promise<void> {
+    return new Promise((resolve) => {
+      execFile(
+        'taskkill.exe',
+        ['/pid', String(pid), '/t', '/f'],
+        { timeout: 3_000, windowsHide: true },
+        () => resolve()
+      )
+    })
+  }
+
+  /** 先按捕获到的 Linux PID 结束目标，再回收 wsl.exe，避免遗留 host。 */
+  private terminateWslProcess(target: { distro: string; pid: number }): Promise<void> {
+    return new Promise((resolve) => {
+      execFile(
+        'wsl.exe',
+        [
+          '--distribution', target.distro,
+          '--exec', 'kill', '-TERM', String(target.pid)
+        ],
+        { timeout: 2_000, windowsHide: true },
+        () => resolve()
+      )
+    })
+  }
+
+  /**
+   * 静态首页会早于 RPC control plane 开始响应。只有 projector 依赖的
+   * RPC 均成功后，host 才能进入 ready；这同时是本机/WSL 的能力门禁。
+   */
+  private async waitReady(baseUrl: string, timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs
     let lastError: unknown = null
     while (Date.now() < deadline) {
       if (!this.child) throw new Error('dsh host exited before becoming ready')
       try {
-        await fetch(baseUrl + '/', { signal: AbortSignal.timeout(2000) })
+        for (const method of REQUIRED_CONTROL_PLANE_METHODS) {
+          const rpcId = crypto.randomUUID()
+          const response = await fetch(`${baseUrl}/api/${method}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              type: 'client-request',
+              rpcId,
+              method,
+              payload: {}
+            }),
+            signal: AbortSignal.timeout(2000)
+          })
+          if (!response.ok) throw new Error(`${method} HTTP ${response.status}`)
+          const envelope = (await response.json()) as {
+            result?: { ok?: boolean; error?: { message?: string } }
+          }
+          if (envelope.result?.ok !== true) {
+            throw new Error(
+              envelope.result?.error?.message ?? `${method} is not ready`
+            )
+          }
+        }
         return
       } catch (error) {
         lastError = error
@@ -257,7 +626,7 @@ export class DshHostManager {
       }
     }
     throw new Error(
-      `dsh host did not become ready within ${HOST_STARTUP_TIMEOUT_MS}ms: ${String(lastError)}`
+      `dsh host did not become ready within ${timeoutMs}ms: ${String(lastError)}`
     )
   }
 }

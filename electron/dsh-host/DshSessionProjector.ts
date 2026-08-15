@@ -19,6 +19,9 @@ interface ProjectorSession {
   updatedAt: number
 }
 
+const BOOTSTRAP_RETRY_INITIAL_MS = 100
+const BOOTSTRAP_RETRY_MAX_MS = 2_000
+
 function titleOf(session: ProjectorSession): string {
   if (session.cwd) {
     const base = session.cwd.replace(/[/\\]+$/, '').split(/[/\\]/).pop()
@@ -43,6 +46,15 @@ export class DshSessionProjector {
   private sessions = new Map<string, ProjectorSession>()
   private seq = 0
   private running = false
+  /** Stable Home-created entries mapped to the official DSH session they monitor. */
+  private slots = new Map<string, string | undefined>()
+  /** Closed slot ids cannot be revived by a late renderer show/event. */
+  private closedSlotIds = new Set<string>()
+  /** Only official-page selections in this slot may replace its binding. */
+  private activeSlotId: string | undefined
+  private bootstrapRetryTimer: ReturnType<typeof setTimeout> | null = null
+  private bootstrapFailures = 0
+  private lifecycleGeneration = 0
 
   constructor(
     private readonly host: DshHostManager,
@@ -52,17 +64,58 @@ export class DshSessionProjector {
   start(): void {
     if (this.running) return
     this.running = true
-    void this.bootstrap()
+    this.bootstrapFailures = 0
+    const generation = ++this.lifecycleGeneration
+    void this.bootstrap(generation)
   }
 
   stop(): void {
     this.running = false
+    ++this.lifecycleGeneration
+    if (this.bootstrapRetryTimer) {
+      clearTimeout(this.bootstrapRetryTimer)
+      this.bootstrapRetryTimer = null
+    }
     this.hostSocket?.close()
     this.muxSocket?.close()
     this.hostSocket = null
     this.muxSocket = null
     this.bridge.clear()
     this.sessions.clear()
+    this.slots.clear()
+    this.closedSlotIds.clear()
+    this.activeSlotId = undefined
+  }
+
+  /** Activate one Home-created slot without importing any official history. */
+  activateSlot(slotId: string, adapterSessionId?: string): void {
+    if (this.closedSlotIds.has(slotId)) return
+    this.activeSlotId = slotId
+    if (!this.slots.has(slotId) || adapterSessionId !== undefined) {
+      this.slots.set(slotId, adapterSessionId)
+    }
+    this.publishSlot(slotId)
+  }
+
+  /** Replace only the active slot's official-session binding. */
+  setActiveSession(sessionId: string | undefined): void {
+    const slotId = this.activeSlotId
+    if (!slotId) return
+    const previousSessionId = this.slots.get(slotId)
+    this.slots.set(slotId, sessionId)
+    if (!sessionId) {
+      if (previousSessionId) this.bridge.remove(slotId)
+      return
+    }
+    this.publishSlot(slotId)
+  }
+
+  /** Remove one Vibing slot without touching the official DSH session. */
+  unfollow(slotId: string): void {
+    this.slots.delete(slotId)
+    this.closedSlotIds.add(slotId)
+    if (this.activeSlotId === slotId) this.activeSlotId = undefined
+    this.bridge.remove(slotId)
   }
 
   private requireBaseUrl(): string {
@@ -97,7 +150,7 @@ export class DshSessionProjector {
     return envelope.result.value as T
   }
 
-  private async bootstrap(): Promise<void> {
+  private async bootstrap(generation: number): Promise<void> {
     try {
       const listed = await this.rpc<{
         items?: Array<{
@@ -114,6 +167,7 @@ export class DshSessionProjector {
         archivedSessionIds?: string[]
       }>('workspace.list')
       const archived = new Set(workspaces.archivedSessionIds ?? [])
+      if (!this.running || generation !== this.lifecycleGeneration) return
       this.sessions.clear()
       for (const item of listed.items ?? []) {
         if (
@@ -142,10 +196,26 @@ export class DshSessionProjector {
           updatedAt: item.updatedAt ?? Date.now()
         })
       }
-      this.publishAll()
+      this.bootstrapFailures = 0
+      this.publishSlots()
       this.openStreams()
     } catch (error) {
-      console.error('[dsh-projector] bootstrap failed', error)
+      if (!this.running || generation !== this.lifecycleGeneration) return
+      this.bootstrapFailures++
+      const retryDelay = Math.min(
+        BOOTSTRAP_RETRY_INITIAL_MS * 2 ** (this.bootstrapFailures - 1),
+        BOOTSTRAP_RETRY_MAX_MS
+      )
+      console.warn(
+        `[dsh-projector] bootstrap failed; retrying in ${retryDelay}ms`,
+        error
+      )
+      this.bootstrapRetryTimer = setTimeout(() => {
+        this.bootstrapRetryTimer = null
+        if (this.running && generation === this.lifecycleGeneration) {
+          void this.bootstrap(generation)
+        }
+      }, retryDelay)
     }
   }
 
@@ -203,7 +273,9 @@ export class DshSessionProjector {
       updatedAt: partial.updatedAt ?? Date.now()
     }
     this.sessions.set(next.sessionId, next)
-    this.publish(next)
+    for (const [slotId, adapterSessionId] of this.slots) {
+      if (adapterSessionId === next.sessionId) this.publish(slotId, next)
+    }
   }
 
   private onHostFrame(payload: Record<string, unknown>): void {
@@ -222,7 +294,11 @@ export class DshSessionProjector {
     }
     if (type === 'host/session-removed' && typeof sessionId === 'string') {
       this.sessions.delete(sessionId)
-      this.bridge.remove(sessionId)
+      for (const [slotId, adapterSessionId] of this.slots) {
+        if (adapterSessionId !== sessionId) continue
+        this.slots.set(slotId, undefined)
+        this.bridge.remove(slotId)
+      }
       return
     }
     if (type === 'host/session-status' && typeof sessionId === 'string') {
@@ -262,10 +338,11 @@ export class DshSessionProjector {
     }
   }
 
-  private publish(session: ProjectorSession): void {
+  private publish(slotId: string, session: ProjectorSession): void {
     const mapped = statusOf(session)
     this.bridge.apply({
-      sessionId: session.sessionId,
+      slotId,
+      adapterSessionId: session.sessionId,
       name: session.name || titleOf(session),
       status: mapped.status,
       detail: mapped.detail,
@@ -274,7 +351,16 @@ export class DshSessionProjector {
     })
   }
 
-  private publishAll(): void {
-    for (const session of this.sessions.values()) this.publish(session)
+  private publishSlot(slotId: string): void {
+    const adapterSessionId = this.slots.get(slotId)
+    if (!adapterSessionId) return
+    const session = this.sessions.get(adapterSessionId)
+    if (session) this.publish(slotId, session)
+  }
+
+  private publishSlots(): void {
+    for (const slotId of this.slots.keys()) {
+      this.publishSlot(slotId)
+    }
   }
 }

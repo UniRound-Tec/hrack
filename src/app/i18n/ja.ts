@@ -36,7 +36,7 @@ export const ja = {
     closeSessionPrompt: (name: string) =>
       `「${name}」を閉じますか？CLI プロセスと子ターミナルも終了します。`,
     closeDshSessionPrompt: (name: string) =>
-      `「${name}」をサイドバーから外しますか？セッションは削除されずアーカイブされます。`,
+      `Vibing で「${name}」の追跡をやめますか？DSH のセッションと履歴は変更されません。`,
     sessionActions: 'セッション操作',
     createChildTerminal: '子ターミナルを作成',
     cloneSession: 'セッションを複製',
@@ -78,6 +78,18 @@ export const ja = {
     fullAccessConfirm: 'Full access は確認ステップを減らします。続けますか？',
     enterTitle: '実行中の Enter',
     enterHint: 'エージェント実行中のみ。Cmd/Ctrl+Enter は別動作です。',
+    surfaceScale: 'セッション画面の拡大率',
+    surfaceScaleHint: 'Vibing 内の DSH ページだけに適用され、DSH 設定は変更しません。',
+    runtimeLabel: 'DSH ランタイム',
+    runtimeHint: 'ホストと各 WSL ディストリビューションを検索します。自動では互換性のあるローカル版を優先し、内蔵版へフォールバックします。',
+    runtimeAuto: '自動（ローカル優先）',
+    runtimeBundled: (version: string) => `内蔵 · ${version}`,
+    runtimeLocal: (location: string, version?: string) =>
+      `${location}${version ? ` · ${version}` : ''}`,
+    runtimeScanning: 'DSH を検索中…',
+    runtimeRefresh: 'DSH を再検索',
+    runtimeScanFailed: 'DSH の検索に失敗しました',
+    runtimeMissing: 'ローカル DSH は利用できません',
     enterQueue: 'キュー',
     enterSteer: '割り込み',
     modelsIntro: 'API キーを入れると、次のプロバイダのモデルを使えます。',

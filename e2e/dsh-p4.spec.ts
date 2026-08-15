@@ -41,12 +41,9 @@ test('dsh p4 packages the isolated runtime next to the host', async () => {
 
   const { app, window } = await launchApp({ createDefaultTerminal: false })
   try {
-    await window.evaluate(() => {
-      ;(
-        window as unknown as { __vibingDebugShell: { navigate(page: string): void } }
-      ).__vibingDebugShell.navigate('dsh:home')
-    })
-    await expect(window.getByTestId('dsh-lobby')).toBeVisible({ timeout: 20_000 })
+    await expect(window.getByTestId('home-page')).toBeVisible({ timeout: 20_000 })
+    await window.getByTestId('home-quick-dsh').click()
+    await expect(window.getByTestId('dsh-page')).toBeVisible({ timeout: 20_000 })
     await expect
       .poll(
         async () =>
@@ -56,7 +53,17 @@ test('dsh p4 packages the isolated runtime next to the host', async () => {
       .toBe('ready')
     const config = await window.evaluate(() => window.dshApi.getConfig())
     expect(config.homeMode).toBe('isolated')
-    await window.screenshot({ path: '.dev-shots/dsh-p4-lobby.png' })
+    expect(config.runtimePreference).toEqual({ kind: 'auto' })
+    expect(config.activeRuntime).toMatchObject({
+      id: 'bundled',
+      kind: 'bundled'
+    })
+    await expect(window.getByTestId('dsh-page')).toHaveAttribute(
+      'data-dsh-surface-phase',
+      'ready',
+      { timeout: 30_000 }
+    )
+    await window.screenshot({ path: '.dev-shots/dsh-p4-official-web.png' })
   } finally {
     await app.close()
   }

@@ -1,7 +1,11 @@
 import { app } from 'electron'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { DshHomeMode, DshRetentionPolicy } from '../shared/dsh-ipc'
+import type {
+  DshHomeMode,
+  DshRetentionPolicy,
+  DshRuntimePreference
+} from '../shared/dsh-ipc'
 
 /**
  * 主进程偏好文件 `<userData>/main-prefs.json`。
@@ -25,6 +29,7 @@ export interface MainPrefs {
   } | null
   dshHomeMode: DshHomeMode
   dshRetention: DshRetentionPolicy
+  dshRuntimePreference: DshRuntimePreference
 }
 
 export const DEFAULT_BACKGROUND_COLOR = '#ffffff'
@@ -38,7 +43,8 @@ export const defaultMainPrefs: MainPrefs = {
   floatingWindowEnabled: false,
   floatingWindowPosition: null,
   dshHomeMode: 'isolated',
-  dshRetention: { kind: 'all' }
+  dshRetention: { kind: 'all' },
+  dshRuntimePreference: { kind: 'auto' }
 }
 
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/
@@ -98,7 +104,25 @@ function sanitize(parsed: unknown): MainPrefs {
     prefs.dshHomeMode = raw.dshHomeMode
   }
   prefs.dshRetention = sanitizeRetention(raw.dshRetention)
+  prefs.dshRuntimePreference = sanitizeDshRuntimePreference(
+    raw.dshRuntimePreference
+  )
   return prefs
+}
+
+function sanitizeDshRuntimePreference(value: unknown): DshRuntimePreference {
+  if (!value || typeof value !== 'object') return { kind: 'auto' }
+  const raw = value as { kind?: unknown; installationId?: unknown }
+  if (raw.kind === 'bundled') return { kind: 'bundled' }
+  if (
+    raw.kind === 'installation' &&
+    typeof raw.installationId === 'string' &&
+    raw.installationId.length > 0 &&
+    raw.installationId.length <= 4_096
+  ) {
+    return { kind: 'installation', installationId: raw.installationId }
+  }
+  return { kind: 'auto' }
 }
 
 function sanitizeRetention(value: unknown): DshRetentionPolicy {
@@ -122,6 +146,7 @@ function sanitizeRetention(value: unknown): DshRetentionPolicy {
 }
 
 let cachedPrefs: MainPrefs = { ...defaultMainPrefs }
+let persistenceQueue: Promise<void> = Promise.resolve()
 
 function prefsPath(): string {
   return join(app.getPath('userData'), 'main-prefs.json')
@@ -149,14 +174,19 @@ export async function persistMainPrefs(
 ): Promise<MainPrefs> {
   const merged = { ...cachedPrefs, ...patch }
   cachedPrefs = merged
-  try {
-    const path = prefsPath()
-    await mkdir(dirname(path), { recursive: true })
-    const temp = `${path}.tmp`
-    await writeFile(temp, JSON.stringify(merged, null, 2), 'utf8')
-    await rename(temp, path)
-  } catch (error) {
-    console.error('[main-prefs] 落盘失败:', error)
-  }
+  // 主题、悬浮窗和 DSH 设置可能在同一帧写入；串行化可同时避免固定
+  // .tmp 文件互相 rename，以及较早快照最后落盘覆盖新偏好。
+  persistenceQueue = persistenceQueue.then(async () => {
+    try {
+      const path = prefsPath()
+      await mkdir(dirname(path), { recursive: true })
+      const temp = `${path}.tmp`
+      await writeFile(temp, JSON.stringify(merged, null, 2), 'utf8')
+      await rename(temp, path)
+    } catch (error) {
+      console.error('[main-prefs] 落盘失败:', error)
+    }
+  })
+  await persistenceQueue
   return { ...merged }
 }

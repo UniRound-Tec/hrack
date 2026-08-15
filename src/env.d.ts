@@ -16,7 +16,7 @@ import type {
 } from '../shared/ipc-contract'
 import type { VibingDebugShellApi } from './app/AppShell'
 import type { WorkspaceReaderApi } from '../shared/workspace-reader'
-import type { DshApi, DshWireApi } from '../shared/dsh-ipc'
+import type { DshApi, DshSurfaceApi, DshWireApi } from '../shared/dsh-ipc'
 
 // renderer 全局类型：preload 通过 contextBridge 注入 window.ptyApi。
 declare global {
@@ -36,6 +36,7 @@ declare global {
     appThemeApi: AppThemeApi
     dshApi: DshApi
     dshWireApi: DshWireApi
+    dshSurfaceApi: DshSurfaceApi
     __VIBING_E2E__?: true
     __vibingDebugShell?: VibingDebugShellApi
   }
