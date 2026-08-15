@@ -16,3 +16,6 @@ src/assets/fonts/.subset/
 .claude/
 .dev-shots/
 docs/
+
+# 内置 dsh 运行时的隔离依赖树（dsh-runtime/package*.json 需提交）
+dsh-runtime/node_modules/

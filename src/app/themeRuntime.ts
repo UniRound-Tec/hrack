@@ -146,6 +146,7 @@ const builtInThemes = [
 export function applyUiTheme(theme: ResolvedUiTheme): void {
   const root = document.documentElement
   root.dataset.uiTheme = theme.id
+  root.dataset.uiThemeType = theme.type
   root.style.colorScheme = theme.type
   for (const [token, color] of Object.entries(theme.colors)) {
     root.style.setProperty(

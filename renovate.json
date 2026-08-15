@@ -1,0 +1,11 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "groupName": "deepseek-harness",
+      "matchFileNames": ["dsh-runtime/**"],
+      "matchPackageNames": ["@deepseek-ai/**"]
+    }
+  ]
+}

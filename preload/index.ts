@@ -58,6 +58,19 @@ import {
   type WorkspaceChange,
   type WorkspaceReaderApi
 } from '../shared/workspace-reader'
+import {
+  DshEventChannel,
+  DshInvokeChannel,
+  type DshApi,
+  type DshHostStatus,
+  type DshSurfaceApi,
+  type DshWireApi,
+  type DshWireFetchRequest,
+  type DshWireStreamClosedEvent,
+  type DshWireStreamMessageEvent,
+  type DshWireStreamOpenedEvent,
+  type DshWireStreamOpenRequest
+} from '../shared/dsh-ipc'
 
 /** 推算 Windows build 号（os.release() 形如 "10.0.26200"）。 */
 function windowsBuildNumber(): number {
@@ -355,6 +368,94 @@ const appThemeApi: AppThemeApi = {
   }
 }
 
+const dshApi: DshApi = {
+  getStatus: () => ipcRenderer.invoke(DshInvokeChannel.GetStatus),
+  ensureStarted: () => ipcRenderer.invoke(DshInvokeChannel.EnsureStarted),
+  stop: () => ipcRenderer.invoke(DshInvokeChannel.Stop),
+  getConfig: () => ipcRenderer.invoke(DshInvokeChannel.GetConfig),
+  scanRuntimes: (force = false) =>
+    ipcRenderer.invoke(DshInvokeChannel.ScanRuntimes, force),
+  setRuntime: (preference) =>
+    ipcRenderer.invoke(DshInvokeChannel.SetRuntime, preference),
+  setHomeMode: (mode) => ipcRenderer.invoke(DshInvokeChannel.SetHomeMode, mode),
+  setRetention: (policy) =>
+    ipcRenderer.invoke(DshInvokeChannel.SetRetention, policy),
+  getBootManifest: () =>
+    ipcRenderer.invoke(DshInvokeChannel.GetBootManifest),
+  onStatusChanged: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      status: DshHostStatus
+    ): void => {
+      if (status && typeof status === 'object' && typeof status.state === 'string') {
+        cb(status)
+      }
+    }
+    ipcRenderer.on(DshEventChannel.StatusChanged, handler)
+    return () =>
+      ipcRenderer.removeListener(DshEventChannel.StatusChanged, handler)
+  }
+}
+
+const dshWireApi: DshWireApi = {
+  fetch: (request: DshWireFetchRequest) =>
+    ipcRenderer.invoke(DshInvokeChannel.WireFetch, request),
+  abortFetch: (requestId) =>
+    ipcRenderer.invoke(DshInvokeChannel.WireFetchAbort, requestId),
+  openStream: (request: DshWireStreamOpenRequest) =>
+    ipcRenderer.invoke(DshInvokeChannel.WireStreamOpen, request),
+  closeStream: (streamId) =>
+    ipcRenderer.invoke(DshInvokeChannel.WireStreamClose, streamId),
+  onStreamOpened: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      payload: DshWireStreamOpenedEvent
+    ): void => {
+      if (payload && typeof payload.streamId === 'string') cb(payload)
+    }
+    ipcRenderer.on(DshEventChannel.WireStreamOpened, handler)
+    return () =>
+      ipcRenderer.removeListener(DshEventChannel.WireStreamOpened, handler)
+  },
+  onStreamMessage: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      payload: DshWireStreamMessageEvent
+    ): void => {
+      if (
+        payload &&
+        typeof payload.streamId === 'string' &&
+        typeof payload.data === 'string'
+      ) {
+        cb(payload)
+      }
+    }
+    ipcRenderer.on(DshEventChannel.WireStreamMessage, handler)
+    return () =>
+      ipcRenderer.removeListener(DshEventChannel.WireStreamMessage, handler)
+  },
+  onStreamClosed: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      payload: DshWireStreamClosedEvent
+    ): void => {
+      if (payload && typeof payload.streamId === 'string') cb(payload)
+    }
+    ipcRenderer.on(DshEventChannel.WireStreamClosed, handler)
+    return () =>
+      ipcRenderer.removeListener(DshEventChannel.WireStreamClosed, handler)
+  }
+}
+
+const dshSurfaceApi: DshSurfaceApi = {
+  show: (request) => ipcRenderer.invoke(DshInvokeChannel.SurfaceShow, request),
+  setBounds: (bounds) =>
+    ipcRenderer.invoke(DshInvokeChannel.SurfaceSetBounds, bounds),
+  hide: () => ipcRenderer.invoke(DshInvokeChannel.SurfaceHide),
+  unfollow: (slotId) =>
+    ipcRenderer.invoke(DshInvokeChannel.SurfaceUnfollow, slotId)
+}
+
 try {
   contextBridge.exposeInMainWorld('ptyApi', ptyApi)
   contextBridge.exposeInMainWorld('clipboardApi', clipboardApi)
@@ -369,6 +470,9 @@ try {
   contextBridge.exposeInMainWorld('workspaceReader', workspaceReader)
   contextBridge.exposeInMainWorld('appApi', appApi)
   contextBridge.exposeInMainWorld('appThemeApi', appThemeApi)
+  contextBridge.exposeInMainWorld('dshApi', dshApi)
+  contextBridge.exposeInMainWorld('dshWireApi', dshWireApi)
+  contextBridge.exposeInMainWorld('dshSurfaceApi', dshSurfaceApi)
   // E2E：主进程设置 VIBING_E2E 时，向渲染进程注入标记，激活 debugBridge（即便是生产构建）
   if (process.env['VIBING_E2E']) {
     contextBridge.exposeInMainWorld('__VIBING_E2E__', true)

@@ -239,7 +239,10 @@ export interface AgentCorrelationState {
 }
 
 export interface AgentSessionProjection {
+  /** Vibing-owned stable identity for this monitored entry. */
   sessionId: string
+  /** Adapter-owned session identity when it differs from the Vibing entry id. */
+  adapterSessionId?: string
   terminalId: string
   installationId: string
   adapterId: string

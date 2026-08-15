@@ -16,7 +16,13 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'preload/index.ts') }
+        input: {
+          index: resolve(__dirname, 'preload/index.ts'),
+          'dsh-surface': resolve(
+            __dirname,
+            'electron/dsh-surface/preload.ts'
+          )
+        }
       }
     }
   },

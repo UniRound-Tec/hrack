@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { CliScanReport, ShellOption } from '../../shared/ipc-contract'
 import type { AgentEvent } from '../../shared/agent-events'
+import type { DshRuntimeScanReport } from '../../shared/dsh-ipc'
 import TitleBar from './TitleBar'
 import Sidebar from './Sidebar'
 import IconRail from './IconRail'
@@ -9,16 +10,25 @@ import TopTabBar from './TopTabBar'
 import TerminalPage from './TerminalPage'
 import HomePage from './HomePage'
 import SettingsPage from './SettingsPage'
+import DshPage from './DshPage'
 import NewSessionFlow from './NewSessionFlow'
 import CloseSessionDialog from './CloseSessionDialog'
 import TargetCursor from './effects/TargetCursor'
 import SidebarTint from './SidebarTint'
 import {
+  dshSlotIdFromPage,
+  dshSlotPage,
+  isDshPage,
   isPageId,
+  sessionPage,
   terminalIdFromPage,
   terminalPage,
   type PageId
 } from './pages'
+import {
+  renameVisibleDshSession,
+  unfollowVisibleDshSlot
+} from '../dsh/sessionSync'
 import {
   handleShellShortcut,
   registerShellShortcutActions
@@ -65,6 +75,11 @@ export default function AppShell() {
   const [cliReport, setCliReport] = useState<CliScanReport | null>(null)
   const [cliScanning, setCliScanning] = useState(true)
   const [cliScanError, setCliScanError] = useState<string | null>(null)
+  const [dshRuntimeReport, setDshRuntimeReport] =
+    useState<DshRuntimeScanReport | null>(null)
+  const [dshRuntimeScanning, setDshRuntimeScanning] = useState(true)
+  const [dshRuntimeScanError, setDshRuntimeScanError] =
+    useState<string | null>(null)
   const pendingCliLaunches = useRef(new Map<string, PendingCliLaunch>())
   const navMode = useSettingsStore((state) => state.navMode)
   const setNavMode = useSettingsStore((state) => state.setNavMode)
@@ -114,9 +129,22 @@ export default function AppShell() {
     }
   }, [])
 
+  const scanDshRuntimes = useCallback(async (force = false): Promise<void> => {
+    setDshRuntimeScanning(true)
+    setDshRuntimeScanError(null)
+    try {
+      setDshRuntimeReport(await window.dshApi.scanRuntimes(force))
+    } catch (error) {
+      setDshRuntimeScanError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setDshRuntimeScanning(false)
+    }
+  }, [])
+
   useEffect(() => {
     void scanClis(false)
-  }, [scanClis])
+    void scanDshRuntimes(false)
+  }, [scanClis, scanDshRuntimes])
 
   const terminalIds = useMemo(
     () => new Set(terminals.map((terminal) => terminal.id)),
@@ -137,6 +165,13 @@ export default function AppShell() {
     [nonSessionTerminals]
   )
   const activeTerminalId = terminalIdFromPage(pageId)
+  const activeDshSlotId = dshSlotIdFromPage(pageId)
+  const activeDshAdapterSessionId = activeDshSlotId
+    ? sessions.find(
+        (session) =>
+          session.kind === 'dsh' && session.sessionId === activeDshSlotId
+      )?.adapterSessionId
+    : undefined
   const activeReaderTerminal = activeTerminalId
     ? (terminals.find((terminal) => terminal.id === activeTerminalId) ?? null)
     : null
@@ -150,11 +185,17 @@ export default function AppShell() {
 
   const navigate = useCallback(
     (nextPage: PageId): void => {
-      const terminalId = terminalIdFromPage(nextPage)
+      // The old custom DSH settings route no longer owns a page. Existing dev
+      // links land on the complete official Web app instead.
+      const destination =
+        nextPage === 'dsh:settings' || nextPage === 'dsh:home'
+          ? ('home' as const)
+          : nextPage
+      const terminalId = terminalIdFromPage(destination)
       if (terminalId && terminalIds.has(terminalId)) {
         activateTerminal(terminalId)
       }
-      setPageId(nextPage)
+      setPageId(destination)
     },
     [activateTerminal, terminalIds]
   )
@@ -164,13 +205,24 @@ export default function AppShell() {
     setNewSessionOpen(true)
   }, [])
 
+  const openDshSlot = useCallback((): void => {
+    navigate(dshSlotPage(crypto.randomUUID()))
+  }, [navigate])
+
   // 托盘「新建会话」菜单：与 Ctrl+Shift+T 同路径。
   useEffect(() => {
     return window.appApi.onOpenNewSession(openNewSession)
   }, [openNewSession])
 
   useEffect(() => {
-    return window.appApi.onFocusSession(({ terminalId }) => {
+    return window.appApi.onFocusSession(({ sessionId, terminalId }) => {
+      const session = useSessionsStore
+        .getState()
+        .sessions.find((item) => item.sessionId === sessionId)
+      if (session) {
+        navigate(sessionPage(session))
+        return
+      }
       if (
         useTerminalsStore
           .getState()
@@ -209,6 +261,23 @@ export default function AppShell() {
 
   const renameSession = useCallback(
     (sessionId: string, name: string): void => {
+      const session = useSessionsStore
+        .getState()
+        .sessions.find((item) => item.sessionId === sessionId)
+      if (session?.kind === 'dsh') {
+        if (session.adapterSessionId) {
+          void renameVisibleDshSession(
+            sessionId,
+            session.adapterSessionId,
+            name
+          ).catch(() => {
+            updateSession(sessionId, { name })
+          })
+        } else {
+          updateSession(sessionId, { name })
+        }
+        return
+      }
       updateSession(sessionId, { name })
       void window.agentApi.rename(sessionId, name).then((projection) => {
         if (projection) {
@@ -221,6 +290,7 @@ export default function AppShell() {
 
   const cloneSession = useCallback(
     (session: SessionEntry): void => {
+      if (session.kind === 'dsh') return
       const source = useTerminalsStore
         .getState()
         .terminals.find((terminal) => terminal.id === session.terminalId)
@@ -246,7 +316,7 @@ export default function AppShell() {
 
   const createChildTerminal = useCallback(
     async (session: SessionEntry): Promise<void> => {
-      if (!session.installationId) return
+      if (session.kind === 'dsh' || !session.installationId) return
       try {
         const report = cliReport ?? (await window.cliApi.scan(false))
         if (!cliReport) setCliReport(report)
@@ -341,6 +411,7 @@ export default function AppShell() {
         currentSessions.map((session) => session.terminalId),
         true
       )
+      if (projection.status === 'exited') return
       if (
         !previous ||
         projection.lastSeq > (previous.projectionSeq ?? -1) ||
@@ -457,6 +528,12 @@ export default function AppShell() {
 
   const closeSessionAndTerminal = useCallback(
     (session: SessionEntry): void => {
+      if (session.kind === 'dsh') {
+        const wasActive = dshSlotIdFromPage(pageId) === session.sessionId
+        void unfollowVisibleDshSlot(session.sessionId)
+        if (wasActive) navigate('home')
+        return
+      }
       const children = useTerminalsStore
         .getState()
         .terminals.filter(
@@ -491,7 +568,7 @@ export default function AppShell() {
         setPageId('home')
       }
     },
-    [activeTerminalId, closeTerminal, removeSession, terminalIds]
+    [activeTerminalId, closeTerminal, navigate, pageId, removeSession, terminalIds]
   )
 
   const handleTerminalExit = useCallback(
@@ -716,6 +793,8 @@ export default function AppShell() {
                 shells={shells}
                 clis={cliReport?.launchable ?? []}
                 cliScanning={cliScanning}
+                dshRuntimeReport={dshRuntimeReport}
+                dshRuntimeScanning={dshRuntimeScanning}
                 defaultTerminal={defaultTerminal}
                 onLaunchDefaultTerminal={launchDefaultTerminal}
                 onChooseTerminal={() => {
@@ -723,12 +802,19 @@ export default function AppShell() {
                   setNewSessionOpen(true)
                 }}
                 onConfigureCli={configureCli}
-                onRefreshClis={() => void scanClis(true)}
-                onViewSession={(session) =>
-                  navigate(terminalPage(session.terminalId))
-                }
+                onRefreshRuntimes={() => {
+                  void Promise.all([scanClis(true), scanDshRuntimes(true)])
+                }}
+                onViewSession={(session) => navigate(sessionPage(session))}
+                onOpenDsh={openDshSlot}
               />
             )}
+            <DshPage
+              slotId={activeDshSlotId}
+              adapterSessionId={activeDshAdapterSessionId}
+              active={isDshPage(pageId)}
+              obscured={newSessionOpen || pendingCloseSession !== null}
+            />
             {pageId === 'settings' && (
               <SettingsPage
                 shells={shells}
@@ -737,6 +823,10 @@ export default function AppShell() {
                 cliScanError={cliScanError}
                 cliRuntimeErrors={cliReport?.runtimeErrors ?? []}
                 onRefreshClis={() => void scanClis(true)}
+                dshRuntimeReport={dshRuntimeReport}
+                dshRuntimeScanning={dshRuntimeScanning}
+                dshRuntimeScanError={dshRuntimeScanError}
+                onRefreshDshRuntimes={() => void scanDshRuntimes(true)}
               />
             )}
             {activeTerminalId && !terminalIds.has(activeTerminalId) && (

@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test'
 import { createStore } from 'zustand/vanilla'
 import {
+  NO_OBSERVER_CAPABILITIES,
+  type AgentSessionProjection
+} from '../shared/agent-events'
+import {
   createSettingsState,
   defaultSettings,
   migrateSettings,
@@ -17,7 +21,7 @@ import {
   statusTone
 } from '../src/app/sessionStatus'
 
-test.describe('settingsStore v9', () => {
+test.describe('settingsStore v10', () => {
   test('migrates v0/v1 terminal defaults before applying the v3 schema', () => {
     const fromV0 = migrateSettings(
       {
@@ -38,7 +42,8 @@ test.describe('settingsStore v9', () => {
       floatEnabled: false,
       defaultTerminal: 'powershell',
       language: defaultSettings.language,
-      globalShortcutEnabled: true
+      globalShortcutEnabled: true,
+      dshScale: 0.9
     })
 
     const fromV1 = migrateSettings(
@@ -86,7 +91,8 @@ test.describe('settingsStore v9', () => {
       globalShortcutEnabled: true,
       readerWidthRatio: 0.52,
       workspaceTreeWidth: 220,
-      attentionPriorityEnabled: false
+      attentionPriorityEnabled: false,
+      dshScale: 0.9
     })
     expect(migrated).not.toHaveProperty('themeId')
   })
@@ -133,6 +139,7 @@ test.describe('settingsStore v9', () => {
     store.getState().setReaderWidthRatio(0.6)
     store.getState().setWorkspaceTreeWidth(280)
     store.getState().setAttentionPriorityEnabled(true)
+    store.getState().setDshScale(1.1)
 
     expect(store.getState()).toMatchObject({
       onboardingCompleted: true,
@@ -146,7 +153,8 @@ test.describe('settingsStore v9', () => {
       language: 'zh-TW',
       readerWidthRatio: 0.6,
       workspaceTreeWidth: 280,
-      attentionPriorityEnabled: true
+      attentionPriorityEnabled: true,
+      dshScale: 1.1
     })
 
     store.getState().reset()
@@ -264,5 +272,65 @@ test.describe('sessionsStore', () => {
       expect(statusTone[status]).toContain('status-')
       expect(statusLabel(status).length).toBeGreaterThan(0)
     }
+  })
+
+  test('DSH projection keeps a stable local slot and its official binding', () => {
+    const store = createSessionsStore()
+    const sessionId = 'dsh-slot-1'
+    const adapterSessionId = 'official-dsh-session-1'
+    const projection: AgentSessionProjection = {
+      sessionId,
+      terminalId: `dsh:${sessionId}`,
+      installationId: 'dsh',
+      adapterId: 'dsh',
+      adapterSessionId,
+      name: 'Current DSH session',
+      status: 'idle',
+      statusConfidence: 'high',
+      observerHealth: 'healthy',
+      activeToolCount: 0,
+      pendingAttentionCount: 0,
+      lastActivityAt: 2,
+      capabilities: NO_OBSERVER_CAPABILITIES,
+      lastSeq: 1,
+      correlation: {
+        exited: false,
+        activeTools: {},
+        pendingApprovals: {},
+        pendingInputs: {},
+        lowConfidenceIdle: false,
+        highConfidenceIdle: false,
+        thinkingActive: false
+      }
+    }
+    store.getState().applyProjection(projection)
+    expect(store.getState().sessions).toMatchObject([
+      { sessionId, adapterSessionId }
+    ])
+
+    store.getState().applyProjection({
+      ...projection,
+      adapterSessionId: 'official-dsh-session-2',
+      lastSeq: 2
+    })
+    expect(store.getState().sessions).toMatchObject([
+      {
+        sessionId,
+        adapterSessionId: 'official-dsh-session-2'
+      }
+    ])
+
+    store.getState().unfollowSession(sessionId)
+    expect(store.getState().sessions).toEqual([])
+    expect(store.getState().closedSessionIds).toEqual([])
+
+    store.getState().applyProjection({
+      ...projection,
+      status: 'exited',
+      lastSeq: 3,
+      correlation: { ...projection.correlation, exited: true }
+    })
+    expect(store.getState().sessions).toEqual([])
+    expect(store.getState().closedSessionIds).toEqual([])
   })
 })

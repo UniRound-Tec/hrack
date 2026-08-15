@@ -11,7 +11,13 @@ import {
   X
 } from 'lucide-react'
 import { getAdapterIcon } from './adapterIcons'
-import { terminalIdFromPage, terminalPage, type PageId } from './pages'
+import {
+  dshSlotIdFromPage,
+  sessionPage,
+  terminalIdFromPage,
+  terminalPage,
+  type PageId
+} from './pages'
 import { statusDot, statusLabel, statusTone } from './sessionStatus'
 import { useStrings } from './i18n'
 import type { SessionEntry } from '../state/sessionsStore'
@@ -63,6 +69,8 @@ export default function TopTabBar({
   onCloseTerminal
 }: TopTabBarProps) {
   const strings = useStrings()
+  const activeTerminalId = terminalIdFromPage(pageId)
+  const activeDshSlotId = dshSlotIdFromPage(pageId)
   const barRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [hovered, setHovered] = useState<HoveredTab | null>(null)
@@ -74,7 +82,6 @@ export default function TopTabBar({
   } | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [renameError, setRenameError] = useState(false)
-  const activeTerminalId = terminalIdFromPage(pageId)
   const menuSession = sessions.find(
     (session) => session.sessionId === sessionMenu?.sessionId
   )
@@ -180,7 +187,10 @@ export default function TopTabBar({
         >
           {sessions.map((session) => {
             const Icon = getAdapterIcon(session.adapterId)
-            const active = activeTerminalId === session.terminalId
+            const active =
+              session.kind === 'dsh'
+                ? activeDshSlotId === session.sessionId
+                : activeTerminalId === session.terminalId
             return (
               <div
                 key={session.sessionId}
@@ -203,7 +213,7 @@ export default function TopTabBar({
                   data-testid="toptab-session-item"
                   data-session-id={session.sessionId}
                   aria-current={active ? 'page' : undefined}
-                  onClick={() => onNavigate(terminalPage(session.terminalId))}
+                  onClick={() => onNavigate(sessionPage(session))}
                   className={`${tabButtonClass(active)} pr-1`}
                 >
                   <span
@@ -310,32 +320,36 @@ export default function TopTabBar({
         >
           {sessionMenu.mode === 'actions' ? (
             <>
-              <button
-                type="button"
-                role="menuitem"
-                data-testid="toptab-session-child-terminal"
-                onClick={() => {
-                  setSessionMenu(null)
-                  onCreateChildTerminal(menuSession)
-                }}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-pingfang text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
-              >
-                <SquareTerminal className="size-3" strokeWidth={1.75} />
-                {strings.navigation.createChildTerminal}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                data-testid="toptab-session-clone"
-                onClick={() => {
-                  setSessionMenu(null)
-                  onCloneSession(menuSession)
-                }}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-pingfang text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
-              >
-                <Copy className="size-3" strokeWidth={1.75} />
-                {strings.navigation.cloneSession}
-              </button>
+              {menuSession.kind !== 'dsh' && (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-testid="toptab-session-child-terminal"
+                    onClick={() => {
+                      setSessionMenu(null)
+                      onCreateChildTerminal(menuSession)
+                    }}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-pingfang text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  >
+                    <SquareTerminal className="size-3" strokeWidth={1.75} />
+                    {strings.navigation.createChildTerminal}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-testid="toptab-session-clone"
+                    onClick={() => {
+                      setSessionMenu(null)
+                      onCloneSession(menuSession)
+                    }}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-pingfang text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  >
+                    <Copy className="size-3" strokeWidth={1.75} />
+                    {strings.navigation.cloneSession}
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 role="menuitem"

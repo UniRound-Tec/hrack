@@ -49,6 +49,15 @@ import type { FloatingWindowController } from './floating/FloatingWindowControll
 import { WorkspaceReaderInvokeChannel } from '../shared/workspace-reader'
 import type { WorkspaceReader } from './workspace/WorkspaceReader'
 import {
+  DshInvokeChannel,
+  type DshRetentionPolicy,
+  type DshRuntimePreference
+} from '../shared/dsh-ipc'
+import type { DshHostManager } from './dsh-host/DshHostManager'
+import type { DshWireProxy } from './dsh-host/DshWireProxy'
+import type { DshProjectionBridge } from './dsh-host/DshProjectionBridge'
+import type { DshWebSurfaceController } from './dsh-surface/DshWebSurfaceController'
+import {
   directoryPickerDefaultPath,
   normalizePickedDirectory
 } from './directory-picker'
@@ -76,6 +85,10 @@ export interface IpcContext {
   cliDiscovery: AiCliDiscoveryService
   agentRuntime: AgentSessionRuntime
   workspaceReader: WorkspaceReader
+  dshHost: DshHostManager
+  dshWire: DshWireProxy
+  dshProjections: DshProjectionBridge
+  getDshSurfaceController(): DshWebSurfaceController | null
   getWindow(): BrowserWindow | null
   getTray(): Tray | null
   getFloatingWindowController(): FloatingWindowController | null
@@ -84,6 +97,17 @@ export interface IpcContext {
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   const win = BrowserWindow.fromWebContents(event.sender)
   return win && !win.isDestroyed() ? win : null
+}
+
+function dshSurfaceController(
+  event: IpcMainInvokeEvent,
+  ctx: IpcContext
+): DshWebSurfaceController {
+  const controller = ctx.getDshSurfaceController()
+  if (!controller || !controller.owns(senderWindow(event))) {
+    throw new Error('DSH surface is unavailable for this window')
+  }
+  return controller
 }
 
 function parseDirectoryPickerRuntime(value: unknown): CliRuntime {
@@ -111,6 +135,25 @@ function parseDirectoryPickerRuntime(value: unknown): CliRuntime {
     return { kind: 'host', platform: runtime.platform }
   }
   throw new Error('Invalid directory picker runtime')
+}
+
+function parseDshRuntimePreference(value: unknown): DshRuntimePreference {
+  if (!value || typeof value !== 'object') {
+    throw new Error('invalid dsh runtime preference')
+  }
+  const raw = value as Record<string, unknown>
+  if (raw.kind === 'auto' || raw.kind === 'bundled') {
+    return { kind: raw.kind }
+  }
+  if (
+    raw.kind === 'installation' &&
+    typeof raw.installationId === 'string' &&
+    raw.installationId.length > 0 &&
+    raw.installationId.length <= 4_096
+  ) {
+    return { kind: 'installation', installationId: raw.installationId }
+  }
+  throw new Error('invalid dsh runtime preference')
 }
 
 function parseDirectoryPickerRequest(value: unknown): DirectoryPickerRequest {
@@ -179,6 +222,56 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(WorkspaceReaderInvokeChannel.Read, (_event, request: unknown) =>
     ctx.workspaceReader.read(request)
   )
+  // ───── DSH host 生命周期（内置 agent 运行时）─────────
+  ipcMain.handle(DshInvokeChannel.GetStatus, () => ctx.dshHost.getStatus())
+  ipcMain.handle(DshInvokeChannel.EnsureStarted, () =>
+    ctx.dshHost.ensureStarted()
+  )
+  ipcMain.handle(DshInvokeChannel.Stop, () => ctx.dshHost.stop())
+  ipcMain.handle(DshInvokeChannel.GetConfig, () => ctx.dshHost.getConfig())
+  ipcMain.handle(DshInvokeChannel.ScanRuntimes, (_e, force: unknown) =>
+    ctx.dshHost.scanRuntimes(force === true)
+  )
+  ipcMain.handle(DshInvokeChannel.SetRuntime, (_e, preference: unknown) =>
+    ctx.dshHost.setRuntime(parseDshRuntimePreference(preference))
+  )
+  ipcMain.handle(DshInvokeChannel.SetHomeMode, (_e, mode: unknown) => {
+    if (mode !== 'isolated' && mode !== 'shared') {
+      throw new Error('invalid dsh home mode')
+    }
+    return ctx.dshHost.setHomeMode(mode)
+  })
+  ipcMain.handle(DshInvokeChannel.SetRetention, (_e, policy: unknown) => {
+    return ctx.dshHost.setRetention(sanitizeRetentionPolicy(policy))
+  })
+  ipcMain.handle(DshInvokeChannel.WireFetch, (_e, request) =>
+    ctx.dshWire.handleFetch(request)
+  )
+  ipcMain.handle(DshInvokeChannel.GetBootManifest, () =>
+    ctx.dshWire.getBootManifest()
+  )
+  ipcMain.handle(DshInvokeChannel.WireFetchAbort, (_e, requestId) => {
+    if (typeof requestId === 'string') ctx.dshWire.abortFetch(requestId)
+  })
+  ipcMain.handle(DshInvokeChannel.WireStreamOpen, (_e, request) => {
+    ctx.dshWire.openStream(request)
+  })
+  ipcMain.handle(DshInvokeChannel.WireStreamClose, (_e, streamId) => {
+    if (typeof streamId === 'string') ctx.dshWire.closeStream(streamId)
+  })
+  ipcMain.handle(DshInvokeChannel.SurfaceShow, (event, request: unknown) =>
+    dshSurfaceController(event, ctx).show(request)
+  )
+  ipcMain.handle(DshInvokeChannel.SurfaceSetBounds, (event, bounds: unknown) => {
+    dshSurfaceController(event, ctx).setBounds(bounds)
+  })
+  ipcMain.handle(DshInvokeChannel.SurfaceHide, (event) => {
+    dshSurfaceController(event, ctx).hide()
+  })
+  ipcMain.handle(DshInvokeChannel.SurfaceUnfollow, (event, sessionId: unknown) => {
+    dshSurfaceController(event, ctx).unfollow(sessionId)
+  })
+
   ipcMain.handle(PtyInvokeChannel.Spawn, (_e, opts: SpawnOptions) =>
     manager.spawn(opts)
   )
@@ -369,9 +462,10 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(AgentInvokeChannel.PublishCaption, (_event, input: unknown) =>
     ctx.agentRuntime.publishCaption(input)
   )
-  ipcMain.handle(AgentInvokeChannel.ListActive, () =>
-    ctx.agentRuntime.listActive()
-  )
+  ipcMain.handle(AgentInvokeChannel.ListActive, () => [
+    ...ctx.agentRuntime.listActive(),
+    ...ctx.dshProjections.listActive()
+  ])
 
   ipcMain.handle(StatsInvokeChannel.AllTime, () => ctx.eventLog.allTimeStats())
   ipcMain.handle(StatsInvokeChannel.HistoryEvents, (_event, query: unknown) => {
@@ -504,6 +598,26 @@ async function applyMainPrefsUpdate(
       }
     }
   }
+}
+
+function sanitizeRetentionPolicy(value: unknown): DshRetentionPolicy {
+  if (!value || typeof value !== 'object') return { kind: 'all' }
+  const raw = value as { kind?: unknown; days?: unknown; count?: unknown }
+  if (raw.kind === 'days') {
+    const days =
+      typeof raw.days === 'number' && Number.isFinite(raw.days)
+        ? Math.max(1, Math.min(3650, Math.round(raw.days)))
+        : 30
+    return { kind: 'days', days }
+  }
+  if (raw.kind === 'count') {
+    const count =
+      typeof raw.count === 'number' && Number.isFinite(raw.count)
+        ? Math.max(1, Math.min(5000, Math.round(raw.count)))
+        : 50
+    return { kind: 'count', count }
+  }
+  return { kind: 'all' }
 }
 
 /** IPC 层形状校验；字段级清洗与语义校验由 Runtime.start 完成。 */

@@ -39,6 +39,11 @@ import { KimiObserverAdapter } from './agents/adapters/kimi'
 import { HookIngress } from './hooks/HookIngress'
 import { WorkspaceReader } from './workspace/WorkspaceReader'
 import { WorkspaceReaderEventChannel } from '../shared/workspace-reader'
+import { DshHostManager } from './dsh-host/DshHostManager'
+import { DshWireProxy } from './dsh-host/DshWireProxy'
+import { DshProjectionBridge } from './dsh-host/DshProjectionBridge'
+import { DshSessionProjector } from './dsh-host/DshSessionProjector'
+import { DshWebSurfaceController } from './dsh-surface/DshWebSurfaceController'
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
 // 必须在 app ready 之前调用。
@@ -95,9 +100,48 @@ const agentRuntime = new AgentSessionRuntime({
     }
   }
 })
+// DSH 内置 agent 运行时：懒启动（renderer 首次 ensureStarted），随 app 退出回收。
+const broadcastToAllWindows = (channel: string, payload: unknown): void => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.send(channel, payload)
+    }
+  }
+}
+let dshSurfaceController: DshWebSurfaceController | null = null
+const dshHost = new DshHostManager({
+  defaultDshHome: join(app.getPath('userData'), 'dsh-home'),
+  discovery: cliDiscovery,
+  broadcast: broadcastToAllWindows,
+  onBecameReady: () => dshProjector.start(),
+  onLeftReady: () => {
+    dshProjector.stop()
+    dshSurfaceController?.hostStopped()
+  }
+})
+const dshProjections = new DshProjectionBridge({
+  broadcast: broadcastToAllWindows
+})
+const dshProjector = new DshSessionProjector(dshHost, dshProjections)
+const dshWire = new DshWireProxy(dshHost, broadcastToAllWindows)
 let shutdownStarted = false
 let floatingController: FloatingWindowController | null = null
 let winRef: BrowserWindow | null = null
+
+const attachDshSurface = (window: BrowserWindow): void => {
+  dshSurfaceController?.dispose()
+  const controller = new DshWebSurfaceController(window, dshHost, {
+    activateSlot: (slotId, sessionId) =>
+      dshProjector.activateSlot(slotId, sessionId),
+    setActiveSession: (sessionId) => dshProjector.setActiveSession(sessionId),
+    unfollow: (slotId) => dshProjector.unfollow(slotId)
+  })
+  dshSurfaceController = controller
+  window.once('closed', () => {
+    controller.dispose()
+    if (dshSurfaceController === controller) dshSurfaceController = null
+  })
+}
 
 const showWindow = (): void => {
   if (!winRef || winRef.isDestroyed()) return
@@ -148,6 +192,10 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
     cliDiscovery,
     agentRuntime,
     workspaceReader,
+    dshHost,
+    dshWire,
+    dshProjections,
+    getDshSurfaceController: () => dshSurfaceController,
     getWindow: () => (winRef && !winRef.isDestroyed() ? winRef : null),
     getTray: () => trayRef,
     getFloatingWindowController: () => floatingController,
@@ -158,13 +206,15 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
 
   registerIpc(manager, ctx)
   winRef = createWindow(prefs)
+  attachDshSurface(winRef)
   floatingController = new ElectronFloatingWindowController({
     getMainWindow: () =>
       winRef && !winRef.isDestroyed() ? winRef : null,
     findActiveSession: (sessionId) =>
       agentRuntime
         .listActive()
-        .find((projection) => projection.sessionId === sessionId)
+        .find((projection) => projection.sessionId === sessionId) ??
+      dshProjections.find(sessionId)
   })
   await floatingController.setEnabled(prefs.floatingWindowEnabled)
   trayRef = createTray(prefs.language, trayCallbacks)
@@ -196,13 +246,20 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
         if (winRef && !winRef.isDestroyed() && !winRef.webContents.isDestroyed()) {
           winRef.webContents.send(AppEventChannel.OpenNewSession)
         }
-      }
+      },
+      dshSurfaceSnapshot: () => dshSurfaceController?.snapshot() ?? null,
+      dshSurfaceInspect: () => dshSurfaceController?.inspect() ?? null,
+      dshSurfaceDismissOnboarding: () =>
+        dshSurfaceController?.dismissOnboardingForTest() ?? false,
+      dshSurfaceSelectSession: (sessionId: unknown) =>
+        dshSurfaceController?.selectSessionForTest(sessionId) ?? false
     }
   }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       winRef = createWindow(prefs)
+      attachDshSurface(winRef)
     } else {
       showWindow()
     }
@@ -218,6 +275,11 @@ if (isPrimaryInstance) app.on('before-quit', (event) => {
     // Agent Runtime 先写入退出事实并回收 observer；随后兜底关闭普通终端。
     await agentRuntime.disposeAll()
     await hookIngress.dispose()
+    dshProjector.stop()
+    dshWire.dispose()
+    dshSurfaceController?.dispose()
+    dshSurfaceController = null
+    await dshHost.dispose()
     floatingController?.dispose()
     workspaceReader.clear()
     manager.killAll()

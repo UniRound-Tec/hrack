@@ -33,6 +33,12 @@ function Assert-ReleaseConfig {
   if (-not $trayMapping) {
     throw 'resources/tray must be copied to the packaged resources/tray directory.'
   }
+  $dshMapping = @($package.build.extraResources) | Where-Object {
+    $_.from -eq 'dsh-runtime' -and $_.to -eq 'dsh-runtime'
+  }
+  if (-not $dshMapping) {
+    throw 'dsh-runtime must be copied to packaged extraResources.'
+  }
 }
 
 function Get-IconDigest([string]$Path) {
@@ -69,6 +75,9 @@ try {
 
   Push-Location $workspace
   try {
+    & npm.cmd --prefix (Join-Path $workspace 'dsh-runtime') ci --ignore-scripts
+    if ($LASTEXITCODE -ne 0) { throw 'dsh-runtime install failed.' }
+
     & npm.cmd run build
     if ($LASTEXITCODE -ne 0) { throw 'Application build failed.' }
 
@@ -84,6 +93,11 @@ try {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
       throw "Release output is missing: $required"
     }
+  }
+
+  $dshBin = Join-Path $releaseDir 'win-unpacked\resources\dsh-runtime\node_modules\@deepseek-ai\dsh\lib\bin.js'
+  if (-not (Test-Path -LiteralPath $dshBin -PathType Leaf)) {
+    throw "Packaged dsh bin is missing: $dshBin"
   }
 
   & node (Join-Path $workspace 'scripts\verify-packaged-tray.cjs') $unpackedExe

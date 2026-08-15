@@ -15,7 +15,13 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import ShinyText from './effects/ShinyText'
 import { getAdapterIcon } from './adapterIcons'
-import { terminalIdFromPage, terminalPage, type PageId } from './pages'
+import {
+  dshSlotIdFromPage,
+  sessionPage,
+  terminalIdFromPage,
+  terminalPage,
+  type PageId
+} from './pages'
 import { statusDot, statusLabel, statusTone } from './sessionStatus'
 import { useStrings, type AppStrings } from './i18n'
 import type { SessionEntry } from '../state/sessionsStore'
@@ -71,6 +77,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const strings = useStrings()
   const activeTerminalId = terminalIdFromPage(pageId)
+  const activeDshSlotId = dshSlotIdFromPage(pageId)
   const [sessionMenu, setSessionMenu] = useState<{
     sessionId: string
     top: number
@@ -206,8 +213,10 @@ export default function Sidebar({
               (terminal) => terminal.parentSessionId === session.sessionId
             )
             const active =
-              activeTerminalId === session.terminalId ||
-              children.some((terminal) => terminal.id === activeTerminalId)
+              session.kind === 'dsh'
+                ? activeDshSlotId === session.sessionId
+                : activeTerminalId === session.terminalId ||
+                  children.some((terminal) => terminal.id === activeTerminalId)
             const menuOpen = sessionMenu?.sessionId === session.sessionId
             const renaming = renamingSessionId === session.sessionId
             const expanded = expandedSessionIds.includes(session.sessionId)
@@ -250,7 +259,7 @@ export default function Sidebar({
                       event
                     )
                   }
-                  onClick={() => onNavigate(terminalPage(session.terminalId))}
+                  onClick={() => onNavigate(sessionPage(session))}
                   onContextMenu={(event) => {
                     if (renaming) return
                     event.preventDefault()
@@ -491,37 +500,41 @@ export default function Sidebar({
           style={{ top: sessionMenu.top, left: sessionMenu.left }}
           className="shell-popover fixed z-[100] max-h-52 w-44 overflow-y-auto rounded-lg border border-border-default bg-surface p-1"
         >
-          <button
-            type="button"
-            role="menuitem"
-            data-testid="sidebar-session-child-terminal"
-            onClick={() => {
-              setSessionMenu(null)
-              setExpandedSessionIds((current) =>
-                current.includes(menuSession.sessionId)
-                  ? current
-                  : [...current, menuSession.sessionId]
-              )
-              onCreateChildTerminal(menuSession)
-            }}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-pingfang text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
-          >
-            <SquareTerminal className="size-3" strokeWidth={1.75} />
-            {strings.navigation.createChildTerminal}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            data-testid="sidebar-session-clone"
-            onClick={() => {
-              setSessionMenu(null)
-              onCloneSession(menuSession)
-            }}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-pingfang text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
-          >
-            <Copy className="size-3" strokeWidth={1.75} />
-            {strings.navigation.cloneSession}
-          </button>
+          {menuSession.kind !== 'dsh' && (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="sidebar-session-child-terminal"
+                onClick={() => {
+                  setSessionMenu(null)
+                  setExpandedSessionIds((current) =>
+                    current.includes(menuSession.sessionId)
+                      ? current
+                      : [...current, menuSession.sessionId]
+                  )
+                  onCreateChildTerminal(menuSession)
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-pingfang text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+              >
+                <SquareTerminal className="size-3" strokeWidth={1.75} />
+                {strings.navigation.createChildTerminal}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="sidebar-session-clone"
+                onClick={() => {
+                  setSessionMenu(null)
+                  onCloneSession(menuSession)
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-pingfang text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+              >
+                <Copy className="size-3" strokeWidth={1.75} />
+                {strings.navigation.cloneSession}
+              </button>
+            </>
+          )}
           <button
             type="button"
             role="menuitem"

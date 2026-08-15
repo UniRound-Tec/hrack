@@ -21,11 +21,15 @@ import type {
   SpawnOptions
 } from '../shared/ipc-contract'
 import { parseWslUncPath } from './directory-picker'
+import dshRuntimePackage from '../dsh-runtime/package.json'
 
 const COMMAND_TIMEOUT_MS = 2_500
 const COMMAND_MAX_BUFFER = 64 * 1024
 const SCAN_CONCURRENCY = 4
-const CLI_SCAN_CACHE_VERSION = 4
+const CLI_SCAN_CACHE_VERSION = 6
+export const DSH_CLI_DEFINITION_ID = 'dsh'
+export const DSH_COMPATIBLE_VERSION =
+  dshRuntimePackage.dependencies['@deepseek-ai/dsh']
 const SYSTEM_WSL_DISTROS = new Set([
   'docker-desktop',
   'docker-desktop-data',
@@ -54,6 +58,10 @@ export interface CliDefinition {
   probes: CliProbe[]
   knownPaths?: { windows?: string[]; unixHomeRelative?: string[] }
   launchArgs?: string[]
+  /** false 时参与发现与缓存，但不作为普通终端 CLI 卡片展示。 */
+  exposeInLauncher?: boolean
+  /** false 时不把 /mnt/<drive>/ 下的 Windows shim 当成 WSL 安装。 */
+  allowWslWindowsInterop?: boolean
 }
 
 const versionLike = /(?:\bv?\d+\.\d+(?:\.\d+)?\b)/i
@@ -65,8 +73,34 @@ const versionProbe = (brand: RegExp): CliProbe => ({
   outputPattern: brandedOrVersion(brand)
 })
 
+function exactVersionPattern(version: string): RegExp {
+  const escaped = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(?:^|\\s)${escaped}(?:\\s|$)`, 'i')
+}
+
 /** Product facts only. Installation state always comes from the scanner. */
 export const cliDefinitions: readonly CliDefinition[] = [
+  {
+    id: DSH_CLI_DEFINITION_ID,
+    adapterId: 'dsh',
+    displayName: 'DeepSeek Harness',
+    hint: 'DeepSeek Harness Web agent',
+    iconId: 'dsh',
+    observerImplemented: true,
+    exposeInLauncher: false,
+    allowWslWindowsInterop: false,
+    executables: { windows: ['dsh'], unix: ['dsh'] },
+    probes: [{
+      args: ['--version'],
+      // 官方 Web surface 会调用 rc.6 的 sessions/layout/theme seam；其它
+      // 版本必须先升级兼容层，不能仅凭命令名相同就加载进 Electron。
+      outputPattern: exactVersionPattern(DSH_COMPATIBLE_VERSION)
+    }],
+    knownPaths: {
+      windows: ['%APPDATA%\\npm\\dsh.cmd'],
+      unixHomeRelative: ['.local/bin/dsh']
+    }
+  },
   {
     id: 'claude', adapterId: 'claude-code', displayName: 'Claude Code',
     hint: 'Anthropic coding agent', iconId: 'claude-code',
@@ -501,6 +535,7 @@ async function scanWindowsDefinition(
   }
   errors.push({
     runtime,
+    definitionId: definition.id,
     code: timedOut ? 'timeout' : 'probe-failed',
     detail: `${definition.displayName}: ${candidates.map((candidate) => candidate.path).join(', ')}`
   })
@@ -648,7 +683,13 @@ function resolveWslCandidates(
   const interopPath: ResolvedCandidate[] = []
   for (const executable of definition.executables.unix ?? []) {
     for (const candidate of inventory.byExecutable.get(executable) ?? []) {
-      ;(isWslWindowsMount(candidate.path) ? interopPath : nativePath).push(candidate)
+      if (isWslWindowsMount(candidate.path)) {
+        if (definition.allowWslWindowsInterop !== false) {
+          interopPath.push(candidate)
+        }
+      } else {
+        nativePath.push(candidate)
+      }
     }
     for (const path of wslFallbackExecutablePaths(home, executable)) {
       if (inventory.knownPaths.has(path)) nativePath.push({ path, via: 'path' })
@@ -761,6 +802,7 @@ async function scanNativeDefinition(
   }
   errors.push({
     runtime,
+    definitionId: definition.id,
     code: timedOut ? 'timeout' : 'probe-failed',
     detail: `${definition.displayName}: ${candidates.map((candidate) => candidate.path).join(', ')}`
   })
@@ -824,7 +866,8 @@ async function listWslDistros(): Promise<{ distros: string[]; error?: CliRuntime
 async function scanWslDistro(
   distro: string,
   errors: CliRuntimeError[],
-  environmentPaths: Map<string, string>
+  environmentPaths: Map<string, string>,
+  homes: Map<string, string>
 ): Promise<CliInstallation[]> {
   const runtime: CliRuntime = { kind: 'wsl', distro }
   const environment = await wslUserEnvironment(distro)
@@ -833,6 +876,7 @@ async function scanWslDistro(
     return []
   }
   environmentPaths.set(distro, environment.path)
+  homes.set(distro, environment.home)
   const inventory = await scanWslCandidateInventory(
     distro,
     environment.home,
@@ -879,6 +923,7 @@ async function scanWslDistro(
     {
       errors.push({
         runtime,
+        definitionId: definition.id,
         code: timedOut ? 'timeout' : 'probe-failed',
         detail: `${definition.displayName}: ${candidates.map((candidate) => candidate.path).join(', ')}`
       })
@@ -890,8 +935,14 @@ async function scanWslDistro(
 
 function groupLaunchable(installations: readonly CliInstallation[]): LaunchableCli[] {
   const prioritizedDefinitions = [
-    ...cliDefinitions.filter((definition) => definition.observerImplemented),
-    ...cliDefinitions.filter((definition) => !definition.observerImplemented)
+    ...cliDefinitions.filter(
+      (definition) =>
+        definition.exposeInLauncher !== false && definition.observerImplemented
+    ),
+    ...cliDefinitions.filter(
+      (definition) =>
+        definition.exposeInLauncher !== false && !definition.observerImplemented
+    )
   ]
   return prioritizedDefinitions.flatMap((definition) => {
     const matches = installations.filter((item) => item.definitionId === definition.id)
@@ -912,7 +963,10 @@ function groupLaunchable(installations: readonly CliInstallation[]): LaunchableC
 interface PersistedCliScan {
   version: typeof CLI_SCAN_CACHE_VERSION
   report: CliScanReport
+  /** 包含不展示在普通 CLI 大厅中的辅助定义（当前为 DSH）。 */
+  installations: CliInstallation[]
   wslEnvironmentPaths: Record<string, string>
+  wslHomes: Record<string, string>
 }
 
 function recordOf(value: unknown): Record<string, unknown> | null {
@@ -973,7 +1027,9 @@ function parseCachedInstallation(
 
 function parsePersistedCliScan(value: unknown): {
   report: CliScanReport
+  installations: CliInstallation[]
   wslEnvironmentPaths: Map<string, string>
+  wslHomes: Map<string, string>
 } | null {
   const root = recordOf(value)
   const rawReport = recordOf(root?.report)
@@ -991,7 +1047,11 @@ function parsePersistedCliScan(value: unknown): {
     const raw = recordOf(value)
     const rawDefinition = recordOf(raw?.definition)
     const definition = cliDefinitions.find((item) => item.id === rawDefinition?.id)
-    if (!definition || !Array.isArray(raw?.installations)) return []
+    if (
+      !definition ||
+      definition.exposeInLauncher === false ||
+      !Array.isArray(raw?.installations)
+    ) return []
     const installations = raw.installations
       .map((item) => parseCachedInstallation(item, definition))
       .filter((item): item is CliInstallation => Boolean(item))
@@ -1016,6 +1076,31 @@ function parsePersistedCliScan(value: unknown): {
       }
     }
   }
+  if (!Array.isArray(root.installations)) return null
+  const installations = root.installations
+    .flatMap((value): CliInstallation[] => {
+      const raw = recordOf(value)
+      const definition = cliDefinitions.find(
+        (item) => item.id === raw?.definitionId
+      )
+      if (!definition) return []
+      const parsed = parseCachedInstallation(value, definition)
+      return parsed ? [parsed] : []
+    })
+  const homes = new Map<string, string>()
+  const rawHomes = recordOf(root.wslHomes)
+  if (rawHomes) {
+    for (const [distro, home] of Object.entries(rawHomes)) {
+      if (
+        distro.length <= 128 &&
+        typeof home === 'string' &&
+        home.startsWith('/') &&
+        !home.includes('\0')
+      ) {
+        homes.set(distro, home)
+      }
+    }
+  }
   return {
     report: {
       startedAt: rawReport.startedAt,
@@ -1023,7 +1108,9 @@ function parsePersistedCliScan(value: unknown): {
       launchable,
       runtimeErrors: []
     },
-    wslEnvironmentPaths: paths
+    installations,
+    wslEnvironmentPaths: paths,
+    wslHomes: homes
   }
 }
 
@@ -1145,7 +1232,9 @@ async function runtimeWorkspace(
 export class AiCliDiscoveryService {
   private cached: CliScanReport | null = null
   private activeScan: Promise<CliScanReport> | null = null
+  private installations: CliInstallation[] = []
   private wslEnvironmentPaths = new Map<string, string>()
+  private wslHomes = new Map<string, string>()
 
   constructor(private readonly cachePath?: string) {}
 
@@ -1169,7 +1258,9 @@ export class AiCliDiscoveryService {
       )
       if (!cached) return null
       this.cached = cached.report
+      this.installations = cached.installations
       this.wslEnvironmentPaths = cached.wslEnvironmentPaths
+      this.wslHomes = cached.wslHomes
       return cached.report
     } catch {
       return null
@@ -1181,7 +1272,9 @@ export class AiCliDiscoveryService {
     const payload: PersistedCliScan = {
       version: CLI_SCAN_CACHE_VERSION,
       report,
-      wslEnvironmentPaths: Object.fromEntries(this.wslEnvironmentPaths)
+      installations: this.installations,
+      wslEnvironmentPaths: Object.fromEntries(this.wslEnvironmentPaths),
+      wslHomes: Object.fromEntries(this.wslHomes)
     }
     try {
       await mkdir(dirname(this.cachePath), { recursive: true })
@@ -1196,10 +1289,48 @@ export class AiCliDiscoveryService {
   private async performScan(): Promise<CliScanReport> {
     const startedAt = Date.now()
     if (process.env['VIBING_E2E_CLI_FIXTURE'] === '1') {
-      return (this.cached = e2eFixtureReport(startedAt))
+      const report = e2eFixtureReport(startedAt)
+      this.installations = report.launchable.flatMap(
+        (cli) => cli.installations
+      )
+      this.wslEnvironmentPaths = new Map()
+      this.wslHomes = new Map()
+      const dshExecutable = process.env['VIBING_E2E_DSH_INSTALLATION']
+      if (dshExecutable && dshExecutable.length <= 4_096) {
+        const distro = process.env['VIBING_E2E_DSH_WSL_DISTRO']
+        const runtime: CliRuntime = distro
+          ? { kind: 'wsl', distro }
+          : {
+              kind: 'host',
+              platform: process.platform === 'win32'
+                ? 'windows'
+                : process.platform === 'darwin'
+                  ? 'macos'
+                  : 'linux'
+            }
+        this.installations.push({
+          id: installationId(DSH_CLI_DEFINITION_ID, runtime, dshExecutable),
+          definitionId: DSH_CLI_DEFINITION_ID,
+          runtime,
+          resolvedExecutable: dshExecutable,
+          detectedVia: 'known-path',
+          version: DSH_COMPATIBLE_VERSION,
+          verification: 'verified'
+        })
+        if (runtime.kind === 'wsl') {
+          const environmentPath = process.env['VIBING_E2E_DSH_WSL_PATH']
+          const home = process.env['VIBING_E2E_DSH_WSL_HOME']
+          if (environmentPath) {
+            this.wslEnvironmentPaths.set(runtime.distro, environmentPath)
+          }
+          if (home) this.wslHomes.set(runtime.distro, home)
+        }
+      }
+      return (this.cached = report)
     }
     const errors: CliRuntimeError[] = []
     const wslEnvironmentPaths = new Map<string, string>()
+    const wslHomes = new Map<string, string>()
     let installations: CliInstallation[] = []
 
     if (process.platform === 'win32') {
@@ -1212,7 +1343,7 @@ export class AiCliDiscoveryService {
       installations.push(...host.filter((value): value is CliInstallation => Boolean(value)))
       if (wsl.error) errors.push(wsl.error)
       const distroInstallations = await mapLimit(wsl.distros, 2, (distro) =>
-        scanWslDistro(distro, errors, wslEnvironmentPaths)
+        scanWslDistro(distro, errors, wslEnvironmentPaths, wslHomes)
       )
       installations.push(...distroInstallations.flat())
     } else {
@@ -1233,10 +1364,42 @@ export class AiCliDiscoveryService {
       launchable: groupLaunchable(installations),
       runtimeErrors: errors
     }
+    this.installations = installations
     this.wslEnvironmentPaths = wslEnvironmentPaths
+    this.wslHomes = wslHomes
     this.cached = report
     await this.persistScan(report)
     return report
+  }
+
+  /**
+   * 读取一个定义的扫描结果。隐藏定义（如 DSH）复用普通 CLI 的同一轮
+   * host/WSL 扫描与缓存，但不会出现在 launchable 卡片中。
+   */
+  async scanDefinition(
+    definitionId: string,
+    force = false
+  ): Promise<{
+    startedAt: number
+    finishedAt: number
+    installations: CliInstallation[]
+    runtimeErrors: CliRuntimeError[]
+  }> {
+    if (!cliDefinitions.some((definition) => definition.id === definitionId)) {
+      throw new Error(`Unknown CLI definition: ${definitionId}`)
+    }
+    const report = await this.scan(force)
+    return {
+      startedAt: report.startedAt,
+      finishedAt: report.finishedAt,
+      installations: this.installations.filter(
+        (installation) => installation.definitionId === definitionId
+      ),
+      runtimeErrors: report.runtimeErrors.filter(
+        (error) =>
+          error.definitionId === definitionId || error.definitionId === undefined
+      )
+    }
   }
 
   /** 按 installationId 找回本次扫描的已验证安装；已失效返回 null。 */
@@ -1289,6 +1452,12 @@ export class AiCliDiscoveryService {
     if (installation.runtime.kind !== 'wsl') return {}
     const path = this.wslEnvironmentPaths.get(installation.runtime.distro)
     return path ? { PATH: path } : {}
+  }
+
+  /** 扫描时解析出的目标运行环境 Home；WSL 启动不可猜测 `/home/<user>`。 */
+  runtimeHome(installation: CliInstallation): string | null {
+    if (installation.runtime.kind !== 'wsl') return homedir()
+    return this.wslHomes.get(installation.runtime.distro) ?? null
   }
 
   async prepareLaunch(

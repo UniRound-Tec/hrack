@@ -164,6 +164,8 @@ export interface LaunchableCli {
 
 export interface CliRuntimeError {
   runtime: CliRuntime
+  /** 探针针对某个产品失败时标出定义；运行环境整体不可用时省略。 */
+  definitionId?: string
   code: 'unavailable' | 'timeout' | 'probe-failed'
   detail: string
 }
