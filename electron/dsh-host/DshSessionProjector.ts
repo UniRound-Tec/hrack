@@ -110,7 +110,7 @@ export class DshSessionProjector {
     this.publishSlot(slotId)
   }
 
-  /** Remove one Vibing slot without touching the official DSH session. */
+  /** Remove one HRack slot without touching the official DSH session. */
   unfollow(slotId: string): void {
     this.slots.delete(slotId)
     this.closedSlotIds.add(slotId)

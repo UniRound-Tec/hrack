@@ -473,9 +473,9 @@ try {
   contextBridge.exposeInMainWorld('dshApi', dshApi)
   contextBridge.exposeInMainWorld('dshWireApi', dshWireApi)
   contextBridge.exposeInMainWorld('dshSurfaceApi', dshSurfaceApi)
-  // E2E：主进程设置 VIBING_E2E 时，向渲染进程注入标记，激活 debugBridge（即便是生产构建）
-  if (process.env['VIBING_E2E']) {
-    contextBridge.exposeInMainWorld('__VIBING_E2E__', true)
+  // E2E：主进程设置 HRACK_E2E 时，向渲染进程注入标记，激活 debugBridge（即便是生产构建）
+  if (process.env['HRACK_E2E']) {
+    contextBridge.exposeInMainWorld('__HRACK_E2E__', true)
   }
 } catch (err) {
   console.error('[preload] exposeInMainWorld failed:', err)

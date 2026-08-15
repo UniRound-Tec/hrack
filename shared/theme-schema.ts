@@ -188,5 +188,5 @@ export function resolveUiTheme(
 }
 
 export function uiTokenToCssVariable(token: UiColorToken): string {
-  return `--vib-${token.replaceAll('.', '-')}`
+  return `--hrack-${token.replaceAll('.', '-')}`
 }

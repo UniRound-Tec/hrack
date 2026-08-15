@@ -195,7 +195,7 @@ export default function SettingsPage({
   }
 
   return (
-    <ClickSpark sparkColor="var(--vib-accent-spark)" sparkSize={8} sparkRadius={18} sparkCount={10} duration={450}>
+    <ClickSpark sparkColor="var(--hrack-accent-spark)" sparkSize={8} sparkRadius={18} sparkCount={10} duration={450}>
       <section data-testid="settings-page" className="sidebar-scroll h-full overflow-y-auto">
         <header className="px-8 pt-10 pb-6">
           <p className="mb-3 font-maple text-[10px] tracking-[0.28em] text-text-faint uppercase">{strings.settings.preferences}</p>

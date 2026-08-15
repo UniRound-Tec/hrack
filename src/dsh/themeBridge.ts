@@ -1,5 +1,5 @@
 /**
- * 把通过校验的 Vibing 主题解析成官方 DSH ThemeRuntime 接受的 alias。
+ * 把通过校验的 HRack 主题解析成官方 DSH ThemeRuntime 接受的 alias。
  * 这里只产生 JSON-safe appearance；真正应用发生在隔离官方页面中。
  */
 

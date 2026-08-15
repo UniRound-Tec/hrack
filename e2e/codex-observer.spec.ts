@@ -33,7 +33,7 @@ test.describe('Codex observer adapter', () => {
         }
       },
       ['features', 'list'],
-      'vibing-codex-features'
+      'hrack-codex-features'
     )
 
     expect(command).toEqual({
@@ -45,7 +45,7 @@ test.describe('Codex observer adapter', () => {
         '/bin/sh',
         '-lc',
         'p="$1"; shift; PATH="$(dirname "$p"):$PATH" exec "$p" "$@"',
-        'vibing-codex-features',
+        'hrack-codex-features',
         '/home/user/.nvm/versions/node/v22.22.3/bin/codex',
         'features',
         'list'
@@ -390,7 +390,7 @@ test.describe('Codex observer adapter', () => {
   })
 
   test('honors explicit inline Hook overrides and degrades without probing', async () => {
-    const runDir = await mkdtemp(join(tmpdir(), 'vibing-codex-conflict-'))
+    const runDir = await mkdtemp(join(tmpdir(), 'hrack-codex-conflict-'))
     let probed = false
     const adapter = new CodexObserverAdapter({
       runCommand: async () => {
@@ -445,7 +445,7 @@ test.describe('Codex observer adapter', () => {
   })
 
   test('prepares a per-session host drop and delivers hooks through the adapter seam', async () => {
-    const runDir = await mkdtemp(join(tmpdir(), 'vibing-codex-adapter-'))
+    const runDir = await mkdtemp(join(tmpdir(), 'hrack-codex-adapter-'))
     const adapter = new CodexObserverAdapter({
       runCommand: async () => ({ code: 0, stdout: 'hooks stable true\n' }),
       pollIntervalMs: 10
@@ -476,7 +476,7 @@ test.describe('Codex observer adapter', () => {
       expect(prepared.launch.prependArgs).not.toContain(
         '--dangerously-bypass-hook-trust'
       )
-      const dropDir = prepared.launch.env?.VIBING_CODEX_HOOK_DROP
+      const dropDir = prepared.launch.env?.HRACK_CODEX_HOOK_DROP
       expect(dropDir).toBeTruthy()
 
       const events: AdapterEvent[] = []
@@ -513,7 +513,7 @@ test.describe('Codex observer adapter', () => {
 
   test('preserves non-ASCII hook JSON through the real Windows byte bridge', async () => {
     test.skip(process.platform !== 'win32')
-    const runDir = await mkdtemp(join(tmpdir(), 'vibing-codex-bytes-'))
+    const runDir = await mkdtemp(join(tmpdir(), 'hrack-codex-bytes-'))
     const adapter = new CodexObserverAdapter({
       pollIntervalMs: 20,
       runCommand: async () => ({ code: 0, stdout: 'hooks stable true\n' })
@@ -557,7 +557,7 @@ test.describe('Codex observer adapter', () => {
           '-ExecutionPolicy',
           'Bypass',
           '-Command',
-          '& $env:VIBING_CODEX_HOOK_BRIDGE_WINDOWS'
+          '& $env:HRACK_CODEX_HOOK_BRIDGE_WINDOWS'
         ],
         { env, stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true }
       )
@@ -590,7 +590,7 @@ test.describe('Codex observer adapter', () => {
   })
 
   test('translates and round-trips a WSL drop without using curl.exe', async () => {
-    const runDir = await mkdtemp(join(tmpdir(), 'vibing-codex-wsl-'))
+    const runDir = await mkdtemp(join(tmpdir(), 'hrack-codex-wsl-'))
     const calls: Array<{ file: string; args: readonly string[] }> = []
     const adapter = new CodexObserverAdapter({
       runCommand: async (file, args) => {
@@ -599,10 +599,10 @@ test.describe('Codex observer adapter', () => {
           return { code: 0, stdout: 'hooks stable true\n' }
         }
         if (args.includes('wslpath')) {
-          return { code: 0, stdout: '/mnt/c/vibing-run\n' }
+          return { code: 0, stdout: '/mnt/c/hrack-run\n' }
         }
         const nonce = args.at(-1)
-        if (args.includes('vibing-codex-probe') && nonce) {
+        if (args.includes('hrack-codex-probe') && nonce) {
           await writeFile(join(runDir, 'codex-drop', `${nonce}.probe`), nonce)
           return { code: 0, stdout: '' }
         }
@@ -630,11 +630,11 @@ test.describe('Codex observer adapter', () => {
           verification: 'verified'
         }
       })
-      expect(prepared.launch.env?.VIBING_CODEX_HOOK_DROP).toBe(
-        '/mnt/c/vibing-run/codex-drop'
+      expect(prepared.launch.env?.HRACK_CODEX_HOOK_DROP).toBe(
+        '/mnt/c/hrack-run/codex-drop'
       )
-      expect(prepared.launch.env?.VIBING_CODEX_HOOK_BRIDGE).toBe(
-        '/mnt/c/vibing-run/codex-hook-bridge.sh'
+      expect(prepared.launch.env?.HRACK_CODEX_HOOK_BRIDGE).toBe(
+        '/mnt/c/hrack-run/codex-hook-bridge.sh'
       )
       expect(calls[0]).toEqual({
         file: 'wsl.exe',
@@ -674,8 +674,8 @@ test.describe('Codex observer adapter', () => {
       [],
       {
         env: {
-          VIBING_CODEX_HOOK_DROP: '/mnt/c/vibing-run/codex-drop',
-          VIBING_CODEX_HOOK_BRIDGE: '/mnt/c/vibing-run/codex-hook-bridge.sh'
+          HRACK_CODEX_HOOK_DROP: '/mnt/c/hrack-run/codex-drop',
+          HRACK_CODEX_HOOK_BRIDGE: '/mnt/c/hrack-run/codex-hook-bridge.sh'
         }
       }
     )
@@ -688,8 +688,8 @@ test.describe('Codex observer adapter', () => {
       '/home/test',
       '--exec',
       'env',
-      'VIBING_CODEX_HOOK_DROP=/mnt/c/vibing-run/codex-drop',
-      'VIBING_CODEX_HOOK_BRIDGE=/mnt/c/vibing-run/codex-hook-bridge.sh',
+      'HRACK_CODEX_HOOK_DROP=/mnt/c/hrack-run/codex-drop',
+      'HRACK_CODEX_HOOK_BRIDGE=/mnt/c/hrack-run/codex-hook-bridge.sh',
       '/home/test/bin/codex'
     ])
   })

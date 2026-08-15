@@ -1,6 +1,27 @@
 # Changelog
 
-本文件记录 Vibing 各公开版本的重要变化。版本号遵循 [Semantic Versioning](https://semver.org/)。
+本文件记录 HRack 各公开版本的重要变化。版本号遵循 [Semantic Versioning](https://semver.org/)。
+
+## [0.3.0] - 2026-08-16
+
+### 新增
+
+- 产品由 Vibing 更名为 HRack（Harness Rack），更新应用界面、图标、安装包与项目文档。
+- 嵌入 DeepSeek Harness 官方 Web 界面，优先使用兼容的本机或 WSL DSH，随包版本仅作为兜底。
+- 新增 Kimi Code 会话监听，并统一 Claude Code、Codex、OpenCode、Pi 与 Kimi 的状态覆盖语义。
+- 新会话快速启动面板加入 DeepSeek Harness，并补齐已注册 CLI 的品牌图标。
+- 新增 Linux x64 AppImage 与 Debian 安装包，以及 Windows、macOS、Linux 并行构建的 GitHub Release 流程。
+
+### 改进
+
+- DSH 侧边栏只关注当前激活会话，支持多个独立 DSH 窗口并避免重复悬浮会话。
+- 修复审批完成后仍停留在“需要你的确认”、Kimi thinking 未同步、嵌入页面错位与品牌字体裁切等问题。
+- DSH 运行时扫描覆盖 Windows 主机与 WSL，并明确采用“本机优先、随包兜底”的选择策略。
+
+### 发布说明
+
+- Windows x64 提供引导式 NSIS 安装包；macOS 提供 Apple Silicon DMG；Linux x64 提供 AppImage 与 Debian 包。
+- Windows 与 macOS 产物尚未进行商业代码签名，系统首次启动时可能显示安全提醒。
 
 ## [0.2.2] - 2026-08-07
 

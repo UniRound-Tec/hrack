@@ -15,9 +15,9 @@ import type {
 
 /**
  * 启动打包后的 Electron 应用（需先 npm run build 产出 out/main/index.js）。
- * 设置 VIBING_E2E=1 让 preload 注入 __VIBING_E2E__ 标记，激活 window.__vibingDebug 调试桥。
+ * 设置 HRACK_E2E=1 让 preload 注入 __HRACK_E2E__ 标记，激活 window.__hrackDebug 调试桥。
  *
- * M5.c：默认每次 launch 使用独立 userData 临时目录（VIBING_USER_DATA_DIR），
+ * M5.c：默认每次 launch 使用独立 userData 临时目录（HRACK_USER_DATA_DIR），
  * 保证 stats / 主题热重载 / 重启持久化等断言从干净状态出发。
  * 传入 userDataDir 可复用同一目录（重启持久化验证）。
  */
@@ -34,14 +34,14 @@ export async function launchApp(options: {
 }> {
   const main = resolve(__dirname, '../out/main/index.js')
   const userDataDir =
-    options.userDataDir ?? mkdtempSync(resolve(tmpdir(), 'vibing-e2e-'))
+    options.userDataDir ?? mkdtempSync(resolve(tmpdir(), 'hrack-e2e-'))
   const app = await electron.launch({
     args: [main],
     env: {
       ...process.env,
-      VIBING_E2E: '1',
-      VIBING_E2E_CLI_FIXTURE: options.cliFixture === false ? '0' : '1',
-      VIBING_USER_DATA_DIR: userDataDir,
+      HRACK_E2E: '1',
+      HRACK_E2E_CLI_FIXTURE: options.cliFixture === false ? '0' : '1',
+      HRACK_USER_DATA_DIR: userDataDir,
       ...options.env
     }
   })
@@ -52,7 +52,7 @@ export async function launchApp(options: {
         Boolean(document.querySelector('[data-testid="first-run-onboarding"]')) ||
         Boolean(
           (window as unknown as Record<string, unknown>)[
-            '__vibingDebugShell'
+            '__hrackDebugShell'
           ]
         ),
       null,
@@ -70,7 +70,7 @@ export async function launchApp(options: {
       () =>
         Boolean(
           (window as unknown as Record<string, unknown>)[
-            '__vibingDebugShell'
+            '__hrackDebugShell'
           ]
         ),
       null,
@@ -78,13 +78,13 @@ export async function launchApp(options: {
     )
     await window.evaluate(() => {
       const debugWindow = window as unknown as {
-        __vibingDebugShell: {
+        __hrackDebugShell: {
           navigate(pageId: 'home'): void
           setNavMode(mode: 'sidebar'): void
         }
       }
-      debugWindow.__vibingDebugShell.setNavMode('sidebar')
-      debugWindow.__vibingDebugShell.navigate('home')
+      debugWindow.__hrackDebugShell.setNavMode('sidebar')
+      debugWindow.__hrackDebugShell.navigate('home')
     })
 
     if (options.createDefaultTerminal === false) {
@@ -109,11 +109,11 @@ export async function launchApp(options: {
     await window.waitForFunction(
       () =>
         Boolean(
-          (window as unknown as Record<string, unknown>)['__vibingDebug']
+          (window as unknown as Record<string, unknown>)['__hrackDebug']
         ) &&
         Boolean(
           (window as unknown as Record<string, unknown>)[
-            '__vibingDebugTabs'
+            '__hrackDebugTabs'
           ]
         ),
       null,
@@ -121,14 +121,14 @@ export async function launchApp(options: {
     )
     await window.evaluate(() => {
       const debugWindow = window as unknown as {
-        __vibingDebugTabs: { list(): string[] }
-        __vibingDebugShell: {
+        __hrackDebugTabs: { list(): string[] }
+        __hrackDebugShell: {
           navigate(pageId: `terminal:${string}`): void
         }
       }
-      const [terminalId] = debugWindow.__vibingDebugTabs.list()
+      const [terminalId] = debugWindow.__hrackDebugTabs.list()
       if (terminalId) {
-        debugWindow.__vibingDebugShell.navigate(`terminal:${terminalId}`)
+        debugWindow.__hrackDebugShell.navigate(`terminal:${terminalId}`)
       }
     })
     // 调试桥早于 PTY 首帧注册。等待权威 PTY 流完成首轮输出与尺寸重绘，
@@ -155,13 +155,13 @@ export async function closeTerminalAt(window: Page, index: number): Promise<void
 
 /** 通过调试桥读 buffer 快照 */
 export async function snapshot(window: Page) {
-  return window.evaluate(() => (window as unknown as { __vibingDebug: { snapshot(): unknown } }).__vibingDebug.snapshot())
+  return window.evaluate(() => (window as unknown as { __hrackDebug: { snapshot(): unknown } }).__hrackDebug.snapshot())
 }
 
 /** 通过调试桥 dump 整个 buffer 文本行 */
 export async function dumpBuffer(window: Page): Promise<string[]> {
   return window.evaluate(() =>
-    (window as unknown as { __vibingDebug: { dumpBuffer(): string[] } }).__vibingDebug.dumpBuffer()
+    (window as unknown as { __hrackDebug: { dumpBuffer(): string[] } }).__hrackDebug.dumpBuffer()
   )
 }
 
@@ -169,8 +169,8 @@ export async function dumpBuffer(window: Page): Promise<string[]> {
 export async function dumpLogicalBuffer(window: Page): Promise<string[]> {
   return window.evaluate(() =>
     (window as unknown as {
-      __vibingDebug: { dumpLogicalBuffer(): string[] }
-    }).__vibingDebug.dumpLogicalBuffer()
+      __hrackDebug: { dumpLogicalBuffer(): string[] }
+    }).__hrackDebug.dumpLogicalBuffer()
   )
 }
 
@@ -262,15 +262,15 @@ export async function waitForShellRoundTrip(
 export async function terminalSelection(window: Page): Promise<string> {
   return window.evaluate(() =>
     (window as unknown as {
-      __vibingDebug: { selectionText(): string }
-    }).__vibingDebug.selectionText()
+      __hrackDebug: { selectionText(): string }
+    }).__hrackDebug.selectionText()
   )
 }
 
 /** 通过调试桥 dump 当前视口文本行。 */
 export async function dumpViewport(window: Page): Promise<string[]> {
   return window.evaluate(() =>
-    (window as unknown as { __vibingDebug: { dumpViewport(): string[] } }).__vibingDebug.dumpViewport()
+    (window as unknown as { __hrackDebug: { dumpViewport(): string[] } }).__hrackDebug.dumpViewport()
   )
 }
 
@@ -279,21 +279,21 @@ export async function scrollLines(window: Page, amount: number): Promise<void> {
   await window.evaluate(
     (value) =>
       (window as unknown as {
-        __vibingDebug: { scrollLines(amount: number): void }
-      }).__vibingDebug.scrollLines(value),
+        __hrackDebug: { scrollLines(amount: number): void }
+      }).__hrackDebug.scrollLines(value),
     amount
   )
 }
 
 export async function scrollToTop(window: Page): Promise<void> {
   await window.evaluate(() =>
-    (window as unknown as { __vibingDebug: { scrollToTop(): void } }).__vibingDebug.scrollToTop()
+    (window as unknown as { __hrackDebug: { scrollToTop(): void } }).__hrackDebug.scrollToTop()
   )
 }
 
 export async function scrollToBottom(window: Page): Promise<void> {
   await window.evaluate(() =>
-    (window as unknown as { __vibingDebug: { scrollToBottom(): void } }).__vibingDebug.scrollToBottom()
+    (window as unknown as { __hrackDebug: { scrollToBottom(): void } }).__hrackDebug.scrollToBottom()
   )
 }
 
@@ -301,8 +301,8 @@ export async function scrollToBottom(window: Page): Promise<void> {
 export async function selectTerminalText(window: Page, text: string): Promise<boolean> {
   return window.evaluate((value) =>
     (window as unknown as {
-      __vibingDebug: { selectText(text: string): boolean }
-    }).__vibingDebug.selectText(value),
+      __hrackDebug: { selectText(text: string): boolean }
+    }).__hrackDebug.selectText(value),
     text
   )
 }
@@ -311,10 +311,10 @@ export async function selectTerminalText(window: Page, text: string): Promise<bo
 export async function dumpAuthoritativeHistory(window: Page): Promise<PtyHistorySnapshot | null> {
   return window.evaluate(() =>
     (window as unknown as {
-      __vibingDebug: {
+      __hrackDebug: {
         dumpAuthoritativeHistory(): Promise<PtyHistorySnapshot | null>
       }
-    }).__vibingDebug.dumpAuthoritativeHistory()
+    }).__hrackDebug.dumpAuthoritativeHistory()
   )
 }
 
@@ -322,10 +322,10 @@ export async function dumpAuthoritativeHistory(window: Page): Promise<PtyHistory
 export async function flowControl(window: Page): Promise<PtyFlowControlSnapshot | null> {
   return window.evaluate(() =>
     (window as unknown as {
-      __vibingDebug: {
+      __hrackDebug: {
         flowControl(): Promise<PtyFlowControlSnapshot | null>
       }
-    }).__vibingDebug.flowControl()
+    }).__hrackDebug.flowControl()
   )
 }
 
@@ -374,8 +374,8 @@ export async function setPtyAckDelay(window: Page, milliseconds: number): Promis
   await window.evaluate(
     (value) =>
       (window as unknown as {
-        __vibingDebug: { setPtyAckDelay(milliseconds: number): void }
-      }).__vibingDebug.setPtyAckDelay(value),
+        __hrackDebug: { setPtyAckDelay(milliseconds: number): void }
+      }).__hrackDebug.setPtyAckDelay(value),
     milliseconds
   )
 }
@@ -383,7 +383,7 @@ export async function setPtyAckDelay(window: Page, milliseconds: number): Promis
 /** 主动触发一次 fit + pty resize（绕过 debounce） */
 export async function forceResize(window: Page): Promise<void> {
   await window.evaluate(() =>
-    (window as unknown as { __vibingDebug: { forceResize(): void } }).__vibingDebug.forceResize()
+    (window as unknown as { __hrackDebug: { forceResize(): void } }).__hrackDebug.forceResize()
   )
 }
 
@@ -391,7 +391,7 @@ export async function forceResize(window: Page): Promise<void> {
 export async function setSize(window: Page, cols: number, rows: number): Promise<void> {
   await window.evaluate(
     ({ cols, rows }) =>
-      (window as unknown as { __vibingDebug: { setSize(c: number, r: number): void } }).__vibingDebug.setSize(cols, rows),
+      (window as unknown as { __hrackDebug: { setSize(c: number, r: number): void } }).__hrackDebug.setSize(cols, rows),
     { cols, rows }
   )
 }
@@ -399,13 +399,13 @@ export async function setSize(window: Page, cols: number, rows: number): Promise
 /** 读清屏序列日志（pty 是否在 resize 时发 ED2/ED3） */
 export async function clearSeqLog(window: Page): Promise<{ ed2: number; ed3: number; events: Array<{ at: number; kind: string; chunkLen: number }> }> {
   return window.evaluate(() =>
-    (window as unknown as { __vibingDebug: { clearSeqLog(): { ed2: number; ed3: number; events: Array<{ at: number; kind: string; chunkLen: number }> } } }).__vibingDebug.clearSeqLog()
+    (window as unknown as { __hrackDebug: { clearSeqLog(): { ed2: number; ed3: number; events: Array<{ at: number; kind: string; chunkLen: number }> } } }).__hrackDebug.clearSeqLog()
   )
 }
 
 export async function resetClearSeqLog(window: Page): Promise<void> {
   await window.evaluate(() =>
-    (window as unknown as { __vibingDebug: { resetClearSeqLog(): void } }).__vibingDebug.resetClearSeqLog()
+    (window as unknown as { __hrackDebug: { resetClearSeqLog(): void } }).__hrackDebug.resetClearSeqLog()
   )
 }
 

@@ -31,7 +31,7 @@ try {
   Invoke-Checked 'npm.cmd' @('run', 'release:win')
 
   $artifactDir = Join-Path $workspace 'artifacts'
-  $installerName = "Vibing-Setup-$version.exe"
+  $installerName = "HRack-Setup-$version.exe"
   $installerPath = Join-Path $artifactDir $installerName
   $blockmapPath = "$installerPath.blockmap"
   foreach ($required in @($installerPath, $blockmapPath)) {

@@ -36,9 +36,9 @@ function safeNumber(value) {
     : undefined
 }
 
-export default function vibingPiObserver(pi) {
-  const dropDir = process.env.VIBING_PI_DROP_DIR
-  const sessionId = safeText(process.env.VIBING_PI_SESSION_ID)
+export default function hrackPiObserver(pi) {
+  const dropDir = process.env.HRACK_PI_DROP_DIR
+  const sessionId = safeText(process.env.HRACK_PI_SESSION_ID)
   if (!dropDir || !sessionId) return
   try {
     mkdirSync(dropDir, { recursive: true, mode: 0o700 })

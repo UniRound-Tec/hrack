@@ -36,7 +36,7 @@ export const ja = {
     closeSessionPrompt: (name: string) =>
       `「${name}」を閉じますか？CLI プロセスと子ターミナルも終了します。`,
     closeDshSessionPrompt: (name: string) =>
-      `Vibing で「${name}」の追跡をやめますか？DSH のセッションと履歴は変更されません。`,
+      `HRack で「${name}」の追跡をやめますか？DSH のセッションと履歴は変更されません。`,
     sessionActions: 'セッション操作',
     createChildTerminal: '子ターミナルを作成',
     cloneSession: 'セッションを複製',
@@ -54,7 +54,7 @@ export const ja = {
     homeLabel: 'DSH_HOME',
     homeIsolated: '隔離（推奨）',
     homeShared: '共有 ~/.dsh',
-    homeEnvOverride: 'VIBING_DSH_HOME がパスを上書きしています。',
+    homeEnvOverride: 'HRACK_DSH_HOME がパスを上書きしています。',
     homeSwitchConfirm:
       'DSH_HOME を切り替えると host が再起動し、ウィンドウが再読み込みされます。既存セッションは移行されません。続けますか？',
     retentionLabel: 'セッション保持',
@@ -79,11 +79,11 @@ export const ja = {
     enterTitle: '実行中の Enter',
     enterHint: 'エージェント実行中のみ。Cmd/Ctrl+Enter は別動作です。',
     surfaceScale: 'セッション画面の拡大率',
-    surfaceScaleHint: 'Vibing 内の DSH ページだけに適用され、DSH 設定は変更しません。',
+    surfaceScaleHint: 'HRack 内の DSH ページだけに適用され、DSH 設定は変更しません。',
     runtimeLabel: 'DSH ランタイム',
-    runtimeHint: 'ホストと各 WSL ディストリビューションを検索します。自動では互換性のあるローカル版を優先し、内蔵版へフォールバックします。',
+    runtimeHint: 'ホストと各 WSL ディストリビューションを検索します。自動では互換性のあるローカル版を優先し、同梱版をフォールバックとして使います。',
     runtimeAuto: '自動（ローカル優先）',
-    runtimeBundled: (version: string) => `内蔵 · ${version}`,
+    runtimeBundled: (version: string) => `同梱フォールバック · ${version}`,
     runtimeLocal: (location: string, version?: string) =>
       `${location}${version ? ` · ${version}` : ''}`,
     runtimeScanning: 'DSH を検索中…',
@@ -172,7 +172,7 @@ export const ja = {
     bootHostInit: '初回の host 起動では profile の初期化が必要です',
     bootFailed: 'DSH の起動に失敗しました',
     bootReload: 'ウィンドウを再読み込み',
-    homeHint: '内蔵エージェントランタイム'
+    homeHint: '自動選択 · ローカル優先'
   },
   sessionStatus: {
     working: 'タスクを処理中',
@@ -269,7 +269,7 @@ export const ja = {
     disabled: '表示しない',
     scanFailed: 'スキャンを完了できませんでした',
     scanFound: (clis: number, installations: number) => `${clis} 個の CLI、${installations} 件のインストールを検出`,
-    continue: 'Vibing を始める'
+    continue: 'HRack を始める'
   },
   settings: {
     title: '設定',

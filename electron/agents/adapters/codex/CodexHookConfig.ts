@@ -12,9 +12,9 @@ const EVENTS = [
   'Stop'
 ] as const
 
-const POSIX_COMMAND = '/bin/sh "$VIBING_CODEX_HOOK_BRIDGE"'
+const POSIX_COMMAND = '/bin/sh "$HRACK_CODEX_HOOK_BRIDGE"'
 const WINDOWS_COMMAND =
-  'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& $env:VIBING_CODEX_HOOK_BRIDGE_WINDOWS"'
+  'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& $env:HRACK_CODEX_HOOK_BRIDGE_WINDOWS"'
 
 function tomlString(value: string): string {
   return JSON.stringify(value)
@@ -32,9 +32,9 @@ export function codexPosixBridgeScript(): string {
   return `#!/bin/sh
 set -eu
 umask 077
-drop="\${VIBING_CODEX_HOOK_DROP:-}"
+drop="\${HRACK_CODEX_HOOK_DROP:-}"
 [ -n "$drop" ] && [ -d "$drop" ] || exit 0
-tmp="$(mktemp "$drop/.vibing-codex.XXXXXX.partial")" || exit 0
+tmp="$(mktemp "$drop/.hrack-codex.XXXXXX.partial")" || exit 0
 trap 'rm -f "$tmp"' EXIT HUP INT TERM
 dd bs=1048577 count=1 of="$tmp" 2>/dev/null || true
 size="$(wc -c < "$tmp" | tr -d ' ')"
@@ -49,7 +49,7 @@ trap - EXIT HUP INT TERM
 export function codexWindowsBridgeScript(): string {
   return `$ErrorActionPreference = 'Stop'
 try {
-  $drop = $env:VIBING_CODEX_HOOK_DROP
+  $drop = $env:HRACK_CODEX_HOOK_DROP
   if ([string]::IsNullOrWhiteSpace($drop) -or -not [IO.Directory]::Exists($drop)) { exit 0 }
   $inputStream = [Console]::OpenStandardInput()
   $memory = [IO.MemoryStream]::new()

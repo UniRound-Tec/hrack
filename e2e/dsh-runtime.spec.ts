@@ -74,7 +74,7 @@ test('external launch preserves native and WSL runtime boundaries', () => {
   const windows = buildDshExternalSpawnSpec({
     candidate: windowsCandidate,
     port: 43123,
-    dshHome: 'C:\\Vibing Data\\dsh-home',
+    dshHome: 'C:\\HRack Data\\dsh-home',
     commandInterpreter: 'C:\\Windows\\System32\\cmd.exe',
     inheritedEnv: { SystemRoot: 'C:\\Windows' }
   })
@@ -82,7 +82,7 @@ test('external launch preserves native and WSL runtime boundaries', () => {
   expect(windows.args.slice(0, 3)).toEqual(['/d', '/v:off', '/c'])
   expect(windows.args[3]).toContain('dsh.cmd')
   expect(windows.args[3]).toContain('"--port" "43123"')
-  expect(windows.env.DSH_HOME).toBe('C:\\Vibing Data\\dsh-home')
+  expect(windows.env.DSH_HOME).toBe('C:\\HRack Data\\dsh-home')
 
   const wsl = buildDshExternalSpawnSpec({
     candidate: wslCandidate,
@@ -109,7 +109,7 @@ test('settings scans DSH runtimes and persists an explicit bundled choice', asyn
   const first = await launchApp({ createDefaultTerminal: false })
   try {
     await first.window.evaluate(() => {
-      window.__vibingDebugShell?.navigate('settings')
+      window.__hrackDebugShell?.navigate('settings')
     })
     const select = first.window.getByTestId('dsh-runtime-select')
     await expect(select).toBeEnabled({ timeout: 20_000 })
@@ -157,7 +157,7 @@ test('Home exposes a discovered local DSH runtime', async () => {
       : 'Linux'
   const appState = await launchApp({
     createDefaultTerminal: false,
-    env: { VIBING_E2E_DSH_INSTALLATION: executable }
+    env: { HRACK_E2E_DSH_INSTALLATION: executable }
   })
   try {
     const report = await appState.window.evaluate(() =>
@@ -187,7 +187,7 @@ test('auto starts a discovered Windows DSH installation through its real shim', 
   expect(existsSync(executable)).toBe(true)
   const appState = await launchApp({
     createDefaultTerminal: false,
-    env: { VIBING_E2E_DSH_INSTALLATION: executable }
+    env: { HRACK_E2E_DSH_INSTALLATION: executable }
   })
   try {
     await expect.poll(
@@ -219,7 +219,7 @@ test('auto falls back to the bundled runtime when a cached local install is stal
   )
   const appState = await launchApp({
     createDefaultTerminal: false,
-    env: { VIBING_E2E_DSH_INSTALLATION: missingExecutable }
+    env: { HRACK_E2E_DSH_INSTALLATION: missingExecutable }
   })
   try {
     await expect.poll(
@@ -239,10 +239,10 @@ test('auto falls back to the bundled runtime when a cached local install is stal
 })
 
 test('a real WSL launch receives Linux PATH/HOME and is reaped on stop', async () => {
-  const distro = process.env['VIBING_E2E_REAL_DSH_WSL']
+  const distro = process.env['HRACK_E2E_REAL_DSH_WSL']
   test.skip(
     process.platform !== 'win32' || !distro,
-    'Set VIBING_E2E_REAL_DSH_WSL to an installed distro for the real gate'
+    'Set HRACK_E2E_REAL_DSH_WSL to an installed distro for the real gate'
   )
   test.setTimeout(120_000)
   const windowsFixture = resolve(
@@ -266,10 +266,10 @@ test('a real WSL launch receives Linux PATH/HOME and is reaped on stop', async (
   const appState = await launchApp({
     createDefaultTerminal: false,
     env: {
-      VIBING_E2E_DSH_INSTALLATION: executable,
-      VIBING_E2E_DSH_WSL_DISTRO: distro!,
-      VIBING_E2E_DSH_WSL_HOME: home,
-      VIBING_E2E_DSH_WSL_PATH:
+      HRACK_E2E_DSH_INSTALLATION: executable,
+      HRACK_E2E_DSH_WSL_DISTRO: distro!,
+      HRACK_E2E_DSH_WSL_HOME: home,
+      HRACK_E2E_DSH_WSL_PATH:
         '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
     }
   })

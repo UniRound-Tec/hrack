@@ -50,11 +50,11 @@ test.describe('Kimi observer adapter', () => {
     if (!result.ok) return
     expect(result.changed).toBe(true)
     expect(result.content.startsWith(`${existing}\n\n`)).toBe(true)
-    expect(result.content.match(/# >>> vibing:kimi-observer:v1/g)).toHaveLength(1)
-    expect(result.content.match(/# <<< vibing:kimi-observer:v1/g)).toHaveLength(1)
+    expect(result.content.match(/# >>> hrack:kimi-observer:v1/g)).toHaveLength(1)
+    expect(result.content.match(/# <<< hrack:kimi-observer:v1/g)).toHaveLength(1)
     expect(result.content.match(/^\[\[hooks\]\]$/gm)).toHaveLength(14)
     expect(result.content).toContain('event = "Interrupt"')
-    expect(result.content).toContain('VIBING_KIMI_HOOK_BRIDGE_WINDOWS')
+    expect(result.content).toContain('HRACK_KIMI_HOOK_BRIDGE_WINDOWS')
   })
 
   test('is byte-stable when the managed Hook block is already current', () => {
@@ -75,11 +75,11 @@ test.describe('Kimi observer adapter', () => {
     const prefix = '# user prefix\ndefault_model = "custom"\n\n'
     const suffix = '\n\n# user suffix\n[providers.custom]\nbase_url = "https://example.test"\n'
     const oldBlock = [
-      '# >>> vibing:kimi-observer:v0',
+      '# >>> hrack:kimi-observer:v0',
       '[[hooks]]',
       'event = "Stop"',
       'command = "old-command"',
-      '# <<< vibing:kimi-observer:v0'
+      '# <<< hrack:kimi-observer:v0'
     ].join('\n')
 
     const result = mergeKimiManagedHooks(`${prefix}${oldBlock}${suffix}`, 'windows')
@@ -90,12 +90,30 @@ test.describe('Kimi observer adapter', () => {
     expect(result.content.startsWith(prefix)).toBe(true)
     expect(result.content.endsWith(suffix)).toBe(true)
     expect(result.content).not.toContain('kimi-observer:v0')
-    expect(result.content.match(/# >>> vibing:kimi-observer:v1/g)).toHaveLength(1)
+    expect(result.content.match(/# >>> hrack:kimi-observer:v1/g)).toHaveLength(1)
   })
 
-  test('is a silent no-op outside a Vibing-launched Windows session', async () => {
+  test('migrates the legacy Vibing managed block instead of installing duplicates', () => {
+    const legacyBlock = [
+      '# >>> vibing:kimi-observer:v1',
+      '[[hooks]]',
+      'event = "Stop"',
+      'command = "legacy-command"',
+      '# <<< vibing:kimi-observer:v1'
+    ].join('\n')
+
+    const result = mergeKimiManagedHooks(legacyBlock, 'windows')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.content).not.toContain('vibing:kimi-observer')
+    expect(result.content.match(/# >>> hrack:kimi-observer:v1/g)).toHaveLength(1)
+    expect(result.content.match(/^\[\[hooks\]\]$/gm)).toHaveLength(13)
+  })
+
+  test('is a silent no-op outside a HRack-launched Windows session', async () => {
     test.skip(process.platform !== 'win32')
-    const runDir = await mkdtemp(join(tmpdir(), 'vibing-kimi-noop-'))
+    const runDir = await mkdtemp(join(tmpdir(), 'hrack-kimi-noop-'))
     const sentinel = join(runDir, 'unexpected.txt')
     const bridge = join(runDir, 'should-not-run.ps1')
     try {
@@ -105,9 +123,9 @@ test.describe('Kimi observer adapter', () => {
         'utf8'
       )
       const env = { ...process.env }
-      delete env.VIBING_KIMI_HOOK_BRIDGE_WINDOWS
-      delete env.VIBING_KIMI_HOOK_BRIDGE
-      delete env.VIBING_KIMI_HOOK_DROP
+      delete env.HRACK_KIMI_HOOK_BRIDGE_WINDOWS
+      delete env.HRACK_KIMI_HOOK_BRIDGE
+      delete env.HRACK_KIMI_HOOK_DROP
       const child = spawn(windowsManagedCommand(), {
         shell: true,
         env,
@@ -135,7 +153,7 @@ test.describe('Kimi observer adapter', () => {
 
   test('preserves UTF-8 JSON through the real Windows bridge', async () => {
     test.skip(process.platform !== 'win32')
-    const runDir = await mkdtemp(join(tmpdir(), 'vibing-kimi-bytes-'))
+    const runDir = await mkdtemp(join(tmpdir(), 'hrack-kimi-bytes-'))
     const dropDir = join(runDir, 'drop')
     const bridge = join(runDir, 'bridge.ps1')
     const payload = JSON.stringify({
@@ -150,8 +168,8 @@ test.describe('Kimi observer adapter', () => {
         shell: true,
         env: {
           ...process.env,
-          VIBING_KIMI_HOOK_DROP: dropDir,
-          VIBING_KIMI_HOOK_BRIDGE_WINDOWS: bridge
+          HRACK_KIMI_HOOK_DROP: dropDir,
+          HRACK_KIMI_HOOK_BRIDGE_WINDOWS: bridge
         },
         stdio: ['pipe', 'ignore', 'ignore'],
         windowsHide: true
@@ -173,7 +191,7 @@ test.describe('Kimi observer adapter', () => {
   })
 
   test('leaves the user config unchanged when Kimi rejects the candidate', async () => {
-    const configDir = await mkdtemp(join(tmpdir(), 'vibing-kimi-config-'))
+    const configDir = await mkdtemp(join(tmpdir(), 'hrack-kimi-config-'))
     const configPath = join(configDir, 'config.toml')
     const original = '# 用户配置\ndefault_model = "kimi-for-coding"\n'
     let candidate = ''
@@ -193,7 +211,7 @@ test.describe('Kimi observer adapter', () => {
         ok: false,
         reason: 'kimi-config-validation-failed'
       })
-      expect(candidate).toContain('# >>> vibing:kimi-observer:v1')
+      expect(candidate).toContain('# >>> hrack:kimi-observer:v1')
       expect(await readFile(configPath, 'utf8')).toBe(original)
       expect(await readdir(configDir)).toEqual(['config.toml'])
     } finally {
@@ -202,8 +220,8 @@ test.describe('Kimi observer adapter', () => {
   })
 
   test('accepts the generated block with an installed Kimi config doctor', async () => {
-    test.skip(process.env.VIBING_E2E_REAL_KIMI !== '1')
-    const configDir = await mkdtemp(join(tmpdir(), 'vibing-kimi-real-doctor-'))
+    test.skip(process.env.HRACK_E2E_REAL_KIMI !== '1')
+    const configDir = await mkdtemp(join(tmpdir(), 'hrack-kimi-real-doctor-'))
     const configPath = join(configDir, 'config.toml')
     try {
       const result = await ensureKimiManagedHooks({
@@ -227,7 +245,7 @@ test.describe('Kimi observer adapter', () => {
   })
 
   test('serializes concurrent ensures and validates the managed block once', async () => {
-    const configDir = await mkdtemp(join(tmpdir(), 'vibing-kimi-concurrent-'))
+    const configDir = await mkdtemp(join(tmpdir(), 'hrack-kimi-concurrent-'))
     const configPath = join(configDir, 'config.toml')
     let validationCalls = 0
     let allowFirstValidation!: () => void
@@ -267,17 +285,17 @@ test.describe('Kimi observer adapter', () => {
       ])
       expect(validationCalls).toBe(1)
       const installed = await readFile(configPath, 'utf8')
-      expect(installed.match(/# >>> vibing:kimi-observer:v1/g)).toHaveLength(1)
+      expect(installed.match(/# >>> hrack:kimi-observer:v1/g)).toHaveLength(1)
     } finally {
       await rm(configDir, { recursive: true, force: true })
     }
   })
 
   test('retries from the user-edited config when it changes during validation', async () => {
-    const configDir = await mkdtemp(join(tmpdir(), 'vibing-kimi-user-edit-'))
+    const configDir = await mkdtemp(join(tmpdir(), 'hrack-kimi-user-edit-'))
     const configPath = join(configDir, 'config.toml')
     const original = 'default_model = "kimi-for-coding"\n'
-    const edited = '# edited while Vibing validated\n' + original
+    const edited = '# edited while HRack validated\n' + original
     let validationCalls = 0
     try {
       await writeFile(configPath, original, 'utf8')
@@ -295,14 +313,14 @@ test.describe('Kimi observer adapter', () => {
       expect(validationCalls).toBe(2)
       const installed = await readFile(configPath, 'utf8')
       expect(installed.startsWith(edited)).toBe(true)
-      expect(installed.match(/# >>> vibing:kimi-observer:v1/g)).toHaveLength(1)
+      expect(installed.match(/# >>> hrack:kimi-observer:v1/g)).toHaveLength(1)
     } finally {
       await rm(configDir, { recursive: true, force: true })
     }
   })
 
   test('times out on a live config lock without touching user config', async () => {
-    const configDir = await mkdtemp(join(tmpdir(), 'vibing-kimi-lock-'))
+    const configDir = await mkdtemp(join(tmpdir(), 'hrack-kimi-lock-'))
     const configPath = join(configDir, 'config.toml')
     const lockPath = `${configPath}.vibing.lock`
     const original = '# keep this byte-for-byte\n'
@@ -913,7 +931,7 @@ test.describe('Kimi observer adapter', () => {
   })
 
   test('prepares a temporary route and delivers Hooks through the adapter seam', async () => {
-    const runDir = await mkdtemp(join(tmpdir(), 'vibing-kimi-adapter-'))
+    const runDir = await mkdtemp(join(tmpdir(), 'hrack-kimi-adapter-'))
     const kimiHome = join(runDir, 'kimi-home')
     const adapter = new KimiObserverAdapter({
       pollIntervalMs: 20,
@@ -951,7 +969,7 @@ test.describe('Kimi observer adapter', () => {
         approvals: 'structured'
       })
       const config = await readFile(join(kimiHome, 'config.toml'), 'utf8')
-      expect(config).toContain('# >>> vibing:kimi-observer:v1')
+      expect(config).toContain('# >>> hrack:kimi-observer:v1')
 
       const events: AdapterEvent[] = []
       const handle = await prepared.attach(
@@ -966,7 +984,7 @@ test.describe('Kimi observer adapter', () => {
         },
         (event) => events.push(event)
       )
-      const dropDir = prepared.launch.env?.VIBING_KIMI_HOOK_DROP
+      const dropDir = prepared.launch.env?.HRACK_KIMI_HOOK_DROP
       expect(dropDir).toBeTruthy()
       await writeFile(
         join(dropDir!, '0001.json'),
@@ -1022,7 +1040,7 @@ test.describe('Kimi observer adapter', () => {
   })
 
   test('reports a distinct timeout when another WSL process owns the config lock', async () => {
-    const runDir = await mkdtemp(join(tmpdir(), 'vibing-kimi-wsl-lock-'))
+    const runDir = await mkdtemp(join(tmpdir(), 'hrack-kimi-wsl-lock-'))
     try {
       const result = await ensureWslKimiManagedHooks(
         {
@@ -1042,15 +1060,15 @@ test.describe('Kimi observer adapter', () => {
             verification: 'verified'
           }
         },
-        '/mnt/c/vibing-kimi-wsl-lock',
+        '/mnt/c/hrack-kimi-wsl-lock',
         async (_file, args) => {
-          if (args.includes('vibing-kimi-config-shell')) {
+          if (args.includes('hrack-kimi-config-shell')) {
             return { code: 0, stdout: '/bin/bash\n' }
           }
-          if (args.includes('vibing-kimi-config-home')) {
+          if (args.includes('hrack-kimi-config-home')) {
             return { code: 0, stdout: 'HOME=/home/test\0' }
           }
-          if (args.includes('vibing-kimi-config-lock')) {
+          if (args.includes('hrack-kimi-config-lock')) {
             return { code: 73, stdout: '' }
           }
           return { code: 1, stdout: '' }
@@ -1064,7 +1082,7 @@ test.describe('Kimi observer adapter', () => {
   })
 
   test('retries a WSL install after a concurrent user config edit', async () => {
-    const runDir = await mkdtemp(join(tmpdir(), 'vibing-kimi-wsl-edit-'))
+    const runDir = await mkdtemp(join(tmpdir(), 'hrack-kimi-wsl-edit-'))
     let reads = 0
     let installs = 0
     try {
@@ -1086,18 +1104,18 @@ test.describe('Kimi observer adapter', () => {
             verification: 'verified'
           }
         },
-        '/mnt/c/vibing-kimi-wsl-edit',
+        '/mnt/c/hrack-kimi-wsl-edit',
         async (_file, args) => {
-          if (args.includes('vibing-kimi-config-shell')) {
+          if (args.includes('hrack-kimi-config-shell')) {
             return { code: 0, stdout: '/bin/bash\n' }
           }
-          if (args.includes('vibing-kimi-config-home')) {
+          if (args.includes('hrack-kimi-config-home')) {
             return { code: 0, stdout: 'HOME=/home/test\0' }
           }
-          if (args.includes('vibing-kimi-config-lock')) {
+          if (args.includes('hrack-kimi-config-lock')) {
             return { code: 0, stdout: '' }
           }
-          if (args.includes('vibing-kimi-config-read')) {
+          if (args.includes('hrack-kimi-config-read')) {
             reads += 1
             return {
               code: 0,
@@ -1110,11 +1128,11 @@ test.describe('Kimi observer adapter', () => {
           if (args.includes('doctor') && args.includes('config')) {
             return { code: 0, stdout: '' }
           }
-          if (args.includes('vibing-kimi-config-install')) {
+          if (args.includes('hrack-kimi-config-install')) {
             installs += 1
             return { code: installs === 1 ? 42 : 0, stdout: '' }
           }
-          if (args.includes('vibing-kimi-config-unlock')) {
+          if (args.includes('hrack-kimi-config-unlock')) {
             return { code: 0, stdout: '' }
           }
           return { code: 1, stdout: '' }
@@ -1130,7 +1148,7 @@ test.describe('Kimi observer adapter', () => {
   })
 
   test('serializes two WSL ensures before acquiring the distro config lock', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibing-kimi-wsl-concurrent-'))
+    const root = await mkdtemp(join(tmpdir(), 'hrack-kimi-wsl-concurrent-'))
     const firstRunDir = join(root, 'first')
     const secondRunDir = join(root, 'second')
     await mkdir(firstRunDir)
@@ -1152,18 +1170,18 @@ test.describe('Kimi observer adapter', () => {
       (resolve) => (allowFirstDoctor = resolve)
     )
     const runner = async (_file: string, args: readonly string[]) => {
-      if (args.includes('vibing-kimi-config-shell')) {
+      if (args.includes('hrack-kimi-config-shell')) {
         return { code: 0, stdout: '/bin/bash\n' }
       }
-      if (args.includes('vibing-kimi-config-home')) {
+      if (args.includes('hrack-kimi-config-home')) {
         return { code: 0, stdout: 'HOME=/home/test\0' }
       }
-      if (args.includes('vibing-kimi-config-lock')) {
+      if (args.includes('hrack-kimi-config-lock')) {
         activeLocks += 1
         maximumLocks = Math.max(maximumLocks, activeLocks)
         return { code: 0, stdout: '' }
       }
-      if (args.includes('vibing-kimi-config-read')) {
+      if (args.includes('hrack-kimi-config-read')) {
         return installed
           ? { code: 0, stdout: installedContent.content }
           : { code: 3, stdout: '' }
@@ -1176,12 +1194,12 @@ test.describe('Kimi observer adapter', () => {
         }
         return { code: 0, stdout: '' }
       }
-      if (args.includes('vibing-kimi-config-install')) {
+      if (args.includes('hrack-kimi-config-install')) {
         installs += 1
         installed = true
         return { code: 0, stdout: '' }
       }
-      if (args.includes('vibing-kimi-config-unlock')) {
+      if (args.includes('hrack-kimi-config-unlock')) {
         activeLocks -= 1
         return { code: 0, stdout: '' }
       }
@@ -1207,13 +1225,13 @@ test.describe('Kimi observer adapter', () => {
     try {
       const first = ensureWslKimiManagedHooks(
         context('first', firstRunDir),
-        '/mnt/c/vibing-kimi-wsl-concurrent/first',
+        '/mnt/c/hrack-kimi-wsl-concurrent/first',
         runner
       )
       await firstDoctorStarted
       const second = ensureWslKimiManagedHooks(
         context('second', secondRunDir),
-        '/mnt/c/vibing-kimi-wsl-concurrent/second',
+        '/mnt/c/hrack-kimi-wsl-concurrent/second',
         runner
       )
       await new Promise((resolve) => setTimeout(resolve, 20))
@@ -1231,7 +1249,7 @@ test.describe('Kimi observer adapter', () => {
   })
 
   test('installs Hooks and round-trips the drop inside the selected WSL distro', async () => {
-    const runDir = await mkdtemp(join(tmpdir(), 'vibing-kimi-wsl-'))
+    const runDir = await mkdtemp(join(tmpdir(), 'hrack-kimi-wsl-'))
     const calls: Array<{ file: string; args: readonly string[] }> = []
     let installed = false
     const adapter = new KimiObserverAdapter({
@@ -1240,36 +1258,36 @@ test.describe('Kimi observer adapter', () => {
         if (args.includes('--version')) {
           return { code: 0, stdout: 'kimi-code 0.30.0\n' }
         }
-        if (args.includes('vibing-kimi-config-shell')) {
+        if (args.includes('hrack-kimi-config-shell')) {
           return { code: 0, stdout: '/bin/bash\n' }
         }
-        if (args.includes('vibing-kimi-config-home')) {
+        if (args.includes('hrack-kimi-config-home')) {
           return {
             code: 0,
             stdout: 'HOME=/home/test\0KIMI_CODE_HOME=/srv/custom-kimi\0'
           }
         }
-        if (args.includes('vibing-kimi-config-lock')) {
+        if (args.includes('hrack-kimi-config-lock')) {
           return { code: 0, stdout: '' }
         }
-        if (args.includes('vibing-kimi-config-read')) {
+        if (args.includes('hrack-kimi-config-read')) {
           return { code: 3, stdout: '' }
         }
         if (args.includes('wslpath')) {
-          return { code: 0, stdout: '/mnt/c/vibing-kimi-run\n' }
+          return { code: 0, stdout: '/mnt/c/hrack-kimi-run\n' }
         }
         if (args.includes('doctor') && args.includes('config')) {
           return { code: 0, stdout: 'Configuration is valid.\n' }
         }
-        if (args.includes('vibing-kimi-config-install')) {
+        if (args.includes('hrack-kimi-config-install')) {
           installed = true
           return { code: 0, stdout: '' }
         }
-        if (args.includes('vibing-kimi-config-unlock')) {
+        if (args.includes('hrack-kimi-config-unlock')) {
           return { code: 0, stdout: '' }
         }
         const nonce = args.at(-1)
-        if (args.includes('vibing-kimi-drop-probe') && nonce) {
+        if (args.includes('hrack-kimi-drop-probe') && nonce) {
           await writeFile(join(runDir, 'kimi-drop', `${nonce}.probe`), nonce)
           return { code: 0, stdout: '' }
         }
@@ -1298,20 +1316,20 @@ test.describe('Kimi observer adapter', () => {
       })
 
       expect(prepared.capabilities).toMatchObject({ tools: 'lifecycle' })
-      expect(prepared.launch.env?.VIBING_KIMI_HOOK_DROP).toBe(
-        '/mnt/c/vibing-kimi-run/kimi-drop'
+      expect(prepared.launch.env?.HRACK_KIMI_HOOK_DROP).toBe(
+        '/mnt/c/hrack-kimi-run/kimi-drop'
       )
-      expect(prepared.launch.env?.VIBING_KIMI_HOOK_BRIDGE).toBe(
-        '/mnt/c/vibing-kimi-run/kimi-hook-bridge.sh'
+      expect(prepared.launch.env?.HRACK_KIMI_HOOK_BRIDGE).toBe(
+        '/mnt/c/hrack-kimi-run/kimi-hook-bridge.sh'
       )
       expect(installed).toBe(true)
       expect(
-        calls.some(({ args }) => args.includes('vibing-kimi-config-shell'))
+        calls.some(({ args }) => args.includes('hrack-kimi-config-shell'))
       ).toBe(true)
       expect(
         calls.some(
           ({ args }) =>
-            args.includes('vibing-kimi-config-home') && args.includes('/bin/bash')
+            args.includes('hrack-kimi-config-home') && args.includes('/bin/bash')
         )
       ).toBe(true)
       expect(

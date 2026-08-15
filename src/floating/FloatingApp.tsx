@@ -86,7 +86,7 @@ export default function FloatingApp() {
       >
         <header className="app-drag-region flex h-8 shrink-0 items-center gap-2 px-2.5">
           <span className="font-brand text-[13px] leading-none text-brand-logo-muted">
-            vibing
+            hrack
           </span>
           {attentionCount > 0 && (
             <span className="font-pingfang text-[9px] text-status-needs-you">

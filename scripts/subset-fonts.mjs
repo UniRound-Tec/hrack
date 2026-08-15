@@ -9,13 +9,13 @@ const fontRoot = join(sourceRoot, 'assets', 'fonts')
 const outputRoot = join(fontRoot, '.subset')
 const MAX_PINGFANG_BYTES = 1024 * 1024
 const brandFont = {
-  label: 'Ultramarines Condensed Italic',
+  label: 'Ammonite',
   source: join(
     fontRoot,
-    'ultramarines-condensed-italic',
-    'ultramarinescondital-9.ttf'
+    'ammonite',
+    'Ammonite-2.otf'
   ),
-  subset: join(outputRoot, 'Vibing-brand.woff2')
+  subset: join(outputRoot, 'HRack-brand.woff2')
 }
 const PRINTABLE_ASCII = Array.from(
   { length: 95 },
@@ -79,9 +79,9 @@ async function subset(input, output, text) {
   return buffer.byteLength
 }
 
-// The subset directory is generated-only. Recreate it so renamed or removed
-// fonts cannot linger locally and accidentally mask a migration error.
-await rm(outputRoot, { recursive: true, force: true })
+// Keep the current generated files available while their replacements are
+// prepared. Deleting the directory first makes a running dev renderer cache a
+// failed webfont request and fall back to the system font until it restarts.
 await mkdir(outputRoot, { recursive: true })
 const characters = await uiText()
 const pingfangFiles = [
@@ -100,8 +100,20 @@ for (const filename of pingfangFiles) {
 const brandBytes = await subset(
   brandFont.source,
   brandFont.subset,
-  'vibing'
+  'hrack'
 )
+
+// Remove obsolete generated artifacts only after every expected replacement is
+// ready, so renames cannot leave stale fonts behind without creating a gap.
+const expectedFiles = new Set([...pingfangFiles, 'HRack-brand.woff2'])
+for (const entry of await readdir(outputRoot, { withFileTypes: true })) {
+  if (!expectedFiles.has(entry.name)) {
+    await rm(join(outputRoot, entry.name), {
+      recursive: entry.isDirectory(),
+      force: true
+    })
+  }
+}
 
 if (pingfangBytes >= MAX_PINGFANG_BYTES) {
   throw new Error(

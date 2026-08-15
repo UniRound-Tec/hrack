@@ -10,7 +10,7 @@ export interface TerminalThemeDefinition {
 export const terminalThemes = {
   dark: {
     id: 'dark',
-    name: 'Vibing Dark',
+    name: 'HRack Dark',
     type: 'dark',
     terminal: {
       background: '#1f1f1f', foreground: '#c8d3e0', cursor: '#c8d3e0', cursorAccent: '#1f1f1f', selectionBackground: '#3d4f6b',
@@ -20,7 +20,7 @@ export const terminalThemes = {
   },
   light: {
     id: 'light',
-    name: 'Vibing Light',
+    name: 'HRack Light',
     type: 'light',
     terminal: {
       background: '#f6f8fa', foreground: '#24292f', cursor: '#24292f', cursorAccent: '#f6f8fa', selectionBackground: '#b6d7ff',

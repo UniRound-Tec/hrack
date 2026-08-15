@@ -3,7 +3,7 @@ import type { CliRuntime, CliRuntimeError } from './ipc-contract'
 /**
  * DSH host IPC 契约 —— 主进程 / preload / renderer 三方共享。
  *
- * vibing 把 deepseek-harness（dsh）作为内置 agent 运行时：主进程用
+ * hrack 把 deepseek-harness（dsh）作为内置 agent 运行时：主进程用
  * utilityProcess 启动 dsh 的 web profile（HTTP 上行 / WebSocket 下行），
  * renderer 通过这里暴露的 baseUrl 直连 host。本文件只描述 host 生命周期，
  * 不描述 dsh wire 协议本身（那是 @deepseek-ai/dsh-client-* 的领域）。
@@ -32,7 +32,7 @@ export enum DshInvokeChannel {
   SurfaceShow = 'dsh:surface-show',
   SurfaceSetBounds = 'dsh:surface-set-bounds',
   SurfaceHide = 'dsh:surface-hide',
-  /** 只移除 Vibing 的当前投影，不修改或归档 DSH 会话。 */
+  /** 只移除 HRack 的当前投影，不修改或归档 DSH 会话。 */
   SurfaceUnfollow = 'dsh:surface-unfollow'
 }
 
@@ -174,7 +174,7 @@ export interface DshApi {
   onStatusChanged(cb: (status: DshHostStatus) => void): () => void
   /**
    * host serve 的 index.html 里注入的 window.__DSH_BOOT__ 原始值。
-   * 形状由 @deepseek-ai/dsh-client-modules 定义（WebBootGraph）；vibing 不重复
+   * 形状由 @deepseek-ai/dsh-client-modules 定义（WebBootGraph）；hrack 不重复
    * 声明该类型，renderer 侧交给 dsh-client-web 的 parseBootManifest 校验。
    */
   getBootManifest(): Promise<unknown>
@@ -189,7 +189,7 @@ export interface DshSurfaceBounds {
   height: number
 }
 
-/** Renderer 已从通过校验的 Vibing 主题解析出的 DSH token 覆盖。 */
+/** Renderer 已从通过校验的 HRack 主题解析出的 DSH token 覆盖。 */
 export interface DshSurfaceAppearance {
   colorScheme: 'light' | 'dark'
   locale: 'zh' | 'en'
@@ -200,7 +200,7 @@ export interface DshSurfaceAppearance {
 }
 
 export interface DshSurfaceShowRequest {
-  /** Home 创建的稳定 Vibing 跟踪位；官方页内切换不会改变它。 */
+  /** Home 创建的稳定 HRack 跟踪位；官方页内切换不会改变它。 */
   slotId: string
   /** Home 新建必须回到官方默认页；已有 slot 才恢复绑定会话。 */
   intent: 'new' | 'resume'
@@ -225,14 +225,14 @@ export interface DshSurfaceSnapshot {
 }
 
 /**
- * Vibing renderer 的唯一 DSH presentation seam。官方页面的装配、DOM 与
+ * HRack renderer 的唯一 DSH presentation seam。官方页面的装配、DOM 与
  * Cordis runtime 全部留在主进程 Adapter 后面。
  */
 export interface DshSurfaceApi {
   show(request: DshSurfaceShowRequest): Promise<DshSurfaceSnapshot>
   setBounds(bounds: DshSurfaceBounds): Promise<void>
   hide(): Promise<void>
-  /** Stop projecting one Vibing slot locally; official DSH state is untouched. */
+  /** Stop projecting one HRack slot locally; official DSH state is untouched. */
   unfollow(slotId: string): Promise<void>
 }
 

@@ -16,8 +16,8 @@ async function waitHostReady(window: Page): Promise<void> {
 async function navigate(window: Page, page: string): Promise<void> {
   await window.evaluate((next) => {
     ;(
-      window as unknown as { __vibingDebugShell: { navigate(page: string): void } }
-    ).__vibingDebugShell.navigate(next)
+      window as unknown as { __hrackDebugShell: { navigate(page: string): void } }
+    ).__hrackDebugShell.navigate(next)
   }, page)
 }
 
@@ -30,7 +30,7 @@ async function dshBindings(window: Page): Promise<DshBinding[]> {
   return window.evaluate(() =>
     (
       window as unknown as {
-        __vibingDebugShell: {
+        __hrackDebugShell: {
           agentSessions(): Array<{
             sessionId: string
             adapterSessionId?: string
@@ -38,7 +38,7 @@ async function dshBindings(window: Page): Promise<DshBinding[]> {
           }>
         }
       }
-    ).__vibingDebugShell
+    ).__hrackDebugShell
       .agentSessions()
       .filter((session) => session.kind === 'dsh')
       .map((session) => ({
@@ -121,24 +121,24 @@ async function inspectSurface(
 ): Promise<SurfaceInspection | null> {
   return app.evaluate(() =>
     (globalThis as unknown as {
-      __vibingMainDebug: {
+      __hrackMainDebug: {
         dshSurfaceInspect(): Promise<SurfaceInspection> | null
         dshSurfaceDismissOnboarding(): Promise<boolean> | false
       }
-    }).__vibingMainDebug.dshSurfaceInspect()
+    }).__hrackMainDebug.dshSurfaceInspect()
   )
 }
 
-test('the collapsed Vibing rail has no separate DSH Home launcher', async () => {
+test('the collapsed HRack rail has no separate DSH Home launcher', async () => {
   const { app, window } = await launchApp({ createDefaultTerminal: false })
   try {
     await expect(window.getByTestId('home-page')).toBeVisible({ timeout: 20_000 })
     await window.evaluate(() => {
       ;(
         window as unknown as {
-          __vibingDebugShell: { setNavMode(mode: 'rail'): void }
+          __hrackDebugShell: { setNavMode(mode: 'rail'): void }
         }
-      ).__vibingDebugShell.setNavMode('rail')
+      ).__hrackDebugShell.setNavMode('rail')
     })
     await expect(window.getByTestId('icon-rail')).toBeVisible()
     await expect(window.getByTestId('rail-dsh')).toHaveCount(0)
@@ -156,7 +156,7 @@ test('Home-created DSH slots independently follow the session selected inside ea
   })
   try {
     await expect(window.getByTestId('home-page')).toBeVisible({ timeout: 20_000 })
-    // Scale is a Vibing-owned host concern, so it lives in general settings;
+    // Scale is a HRack-owned host concern, so it lives in general settings;
     // all DSH business settings stay in the complete official page.
     await navigate(window, 'settings')
     await expect(window.getByTestId('settings-page')).toBeVisible()
@@ -200,10 +200,10 @@ test('Home-created DSH slots independently follow the session selected inside ea
 
     await app.evaluate(() =>
       (globalThis as unknown as {
-        __vibingMainDebug: {
+        __hrackMainDebug: {
           dshSurfaceDismissOnboarding(): Promise<boolean> | false
         }
-      }).__vibingMainDebug.dshSurfaceDismissOnboarding()
+      }).__hrackMainDebug.dshSurfaceDismissOnboarding()
     )
     await expect
       .poll(async () => (await inspectSurface(app))?.page?.sidebarClosed, {
@@ -256,10 +256,10 @@ test('Home-created DSH slots independently follow the session selected inside ea
     await app.evaluate(
       (_electron, { sessionId }) =>
         (globalThis as unknown as {
-          __vibingMainDebug: {
+          __hrackMainDebug: {
             dshSurfaceSelectSession(sessionId: string): Promise<boolean> | false
           }
-        }).__vibingMainDebug.dshSurfaceSelectSession(sessionId),
+        }).__hrackMainDebug.dshSurfaceSelectSession(sessionId),
       { sessionId: sessionA.sessionId }
     )
     await expect
@@ -291,10 +291,10 @@ test('Home-created DSH slots independently follow the session selected inside ea
     await app.evaluate(
       (_electron, { sessionId }) =>
         (globalThis as unknown as {
-          __vibingMainDebug: {
+          __hrackMainDebug: {
             dshSurfaceSelectSession(sessionId: string): Promise<boolean> | false
           }
-        }).__vibingMainDebug.dshSurfaceSelectSession(sessionId),
+        }).__hrackMainDebug.dshSurfaceSelectSession(sessionId),
       { sessionId: sessionB.sessionId }
     )
     await expect
@@ -307,7 +307,7 @@ test('Home-created DSH slots independently follow the session selected inside ea
       hideCountBeforeOfficialSwitch
     )
 
-    // Only Home creates a second Vibing tracking slot.
+    // Only Home creates a second HRack tracking slot.
     await navigate(window, 'home')
     await window.getByTestId('home-quick-dsh').click()
     await expect
@@ -330,10 +330,10 @@ test('Home-created DSH slots independently follow the session selected inside ea
     await app.evaluate(
       (_electron, { sessionId }) =>
         (globalThis as unknown as {
-          __vibingMainDebug: {
+          __hrackMainDebug: {
             dshSurfaceSelectSession(sessionId: string): Promise<boolean> | false
           }
-        }).__vibingMainDebug.dshSurfaceSelectSession(sessionId),
+        }).__hrackMainDebug.dshSurfaceSelectSession(sessionId),
       { sessionId: sessionC.sessionId }
     )
     await expect
@@ -357,10 +357,10 @@ test('Home-created DSH slots independently follow the session selected inside ea
     await app.evaluate(
       (_electron, { sessionId }) =>
         (globalThis as unknown as {
-          __vibingMainDebug: {
+          __hrackMainDebug: {
             dshSurfaceSelectSession(sessionId: string): Promise<boolean> | false
           }
-        }).__vibingMainDebug.dshSurfaceSelectSession(sessionId),
+        }).__hrackMainDebug.dshSurfaceSelectSession(sessionId),
       { sessionId: sessionD.sessionId }
     )
     await expect
@@ -413,8 +413,8 @@ test('Home-created DSH slots independently follow the session selected inside ea
     // Renderer portals must not sit underneath the native child view.
     await app.evaluate(() => {
       ;(globalThis as unknown as {
-        __vibingMainDebug: { openNewSession(): void }
-      }).__vibingMainDebug.openNewSession()
+        __hrackMainDebug: { openNewSession(): void }
+      }).__hrackMainDebug.openNewSession()
     })
     await expect(window.getByTestId('new-session-overlay')).toBeVisible()
     await expect

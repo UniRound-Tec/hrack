@@ -25,7 +25,7 @@ export interface TerminalSnapshot {
   lastNonEmptyLine: number
 }
 
-export interface VibingDebugApi {
+export interface HRackDebugApi {
   snapshot(): TerminalSnapshot | null
   dumpBuffer(): string[]
   dumpLogicalBuffer(): string[]
@@ -63,9 +63,9 @@ export interface VibingDebugApi {
   }
 }
 
-export interface VibingDebugTabsApi {
+export interface HRackDebugTabsApi {
   list(): string[]
-  forTab(tabId: string): VibingDebugApi
+  forTab(tabId: string): HRackDebugApi
 }
 
 export interface ClearSeqLog {
@@ -132,7 +132,7 @@ function scrollImmediately(term: Terminal, action: () => void): void {
 
 function createApi(
   getRegistration: () => TerminalRegistration | undefined
-): VibingDebugApi {
+): HRackDebugApi {
   return {
     snapshot() {
       const registration = getRegistration()
@@ -289,7 +289,7 @@ const activeApi = createApi(() =>
   activeTabId ? registrations.get(activeTabId) : undefined
 )
 
-const tabsApi: VibingDebugTabsApi = {
+const tabsApi: HRackDebugTabsApi = {
   list: () => [...registrations.keys()],
   forTab: (tabId) => {
     const registration = registrations.get(tabId)
@@ -302,7 +302,7 @@ function shouldEnable(): boolean {
     return (
       Boolean(import.meta.env?.DEV) ||
       Boolean(
-        (globalThis as Record<string, unknown>)['__VIBING_E2E__']
+        (globalThis as Record<string, unknown>)['__HRACK_E2E__']
       )
     )
   } catch {
@@ -312,14 +312,14 @@ function shouldEnable(): boolean {
 
 function exposeDebugApis(): void {
   const debugWindow = window as unknown as Record<string, unknown>
-  debugWindow['__vibingDebug'] = activeApi
-  debugWindow['__vibingDebugTabs'] = tabsApi
+  debugWindow['__hrackDebug'] = activeApi
+  debugWindow['__hrackDebugTabs'] = tabsApi
 }
 
 function hideDebugApis(): void {
   const debugWindow = window as unknown as Record<string, unknown>
-  delete debugWindow['__vibingDebug']
-  delete debugWindow['__vibingDebugTabs']
+  delete debugWindow['__hrackDebug']
+  delete debugWindow['__hrackDebugTabs']
 }
 
 export function recordPtyData(tabId: string, data: Uint8Array): void {

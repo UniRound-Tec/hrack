@@ -45,7 +45,7 @@ export default function SidebarTint() {
       style={{
         zIndex: -1,
         backgroundImage:
-          'radial-gradient(85% 70% at 12% 6%, var(--vib-sidebar-tint-a), transparent 72%), radial-gradient(95% 85% at 88% 94%, var(--vib-sidebar-tint-b), transparent 72%)',
+          'radial-gradient(85% 70% at 12% 6%, var(--hrack-sidebar-tint-a), transparent 72%), radial-gradient(95% 85% at 88% 94%, var(--hrack-sidebar-tint-b), transparent 72%)',
         backgroundRepeat: 'no-repeat',
         // 首个位置包到达前保持隐形，避免错位闪一下
         opacity: 0,

@@ -16,7 +16,7 @@ import { projectAdapterEvents } from './helpers/agent-projection-contract'
 
 test.describe('Pi observer adapter', () => {
   test('accepts a scoped wire fact and rejects malformed or cross-session input', () => {
-    const expectedSessionId = 'vibing-session-1'
+    const expectedSessionId = 'hrack-session-1'
     expect(
       parsePiHook(
         {
@@ -73,7 +73,7 @@ test.describe('Pi observer adapter', () => {
   test('keeps tool, thinking, and usage facts low-sensitivity', () => {
     const base = {
       schema: 1,
-      sessionId: 'vibing-session-1',
+      sessionId: 'hrack-session-1',
       generation: 'generation-1',
       emittedAt: 1_755_000_000_000
     }
@@ -157,7 +157,7 @@ test.describe('Pi observer adapter', () => {
   test('uses agent_settled as the 0.82 completion boundary', () => {
     const projector = new PiEventProjector({ supportsAgentSettled: true })
     const base = {
-      sessionId: 'vibing-session-1',
+      sessionId: 'hrack-session-1',
       generation: 'generation-1',
       emittedAt: 1_755_000_000_000
     }
@@ -226,7 +226,7 @@ test.describe('Pi observer adapter', () => {
   test('uses run settled as a parent terminal without fabricating child results', () => {
     const projector = new PiEventProjector({ supportsAgentSettled: true })
     const base = {
-      sessionId: 'vibing-session-parent-terminal',
+      sessionId: 'hrack-session-parent-terminal',
       generation: 'generation-parent-terminal',
       emittedAt: 1_755_000_000_000
     }
@@ -305,7 +305,7 @@ test.describe('Pi observer adapter', () => {
       value: Record<string, unknown>
     ): PiNativeFact =>
       ({
-        sessionId: 'vibing-session-1',
+        sessionId: 'hrack-session-1',
         generation,
         seq,
         emittedAt: 1_755_000_000_000 + seq,
@@ -364,7 +364,7 @@ test.describe('Pi observer adapter', () => {
   test('parses the complete read-only Pi fact vocabulary', () => {
     const base = {
       schema: 1,
-      sessionId: 'vibing-session-1',
+      sessionId: 'hrack-session-1',
       generation: 'generation-1',
       emittedAt: 1_755_000_000_000
     }
@@ -409,19 +409,19 @@ test.describe('Pi observer adapter', () => {
   })
 
   test('generated extension emits low-sensitivity facts without mutation hooks', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibing-pi-source-'))
+    const root = await mkdtemp(join(tmpdir(), 'hrack-pi-source-'))
     const dropDir = join(root, 'drop')
     const extensionPath = join(root, 'observer.ts')
-    const previousDrop = process.env.VIBING_PI_DROP_DIR
-    const previousSession = process.env.VIBING_PI_SESSION_ID
+    const previousDrop = process.env.HRACK_PI_DROP_DIR
+    const previousSession = process.env.HRACK_PI_SESSION_ID
     try {
       await writeFile(
         extensionPath,
         buildPiExtensionSource({ supportsAgentSettled: true }),
         'utf8'
       )
-      process.env.VIBING_PI_DROP_DIR = dropDir
-      process.env.VIBING_PI_SESSION_ID = 'vibing-session-1'
+      process.env.HRACK_PI_DROP_DIR = dropDir
+      process.env.HRACK_PI_SESSION_ID = 'hrack-session-1'
 
       type Handler = (
         event: Record<string, unknown>,
@@ -522,28 +522,28 @@ test.describe('Pi observer adapter', () => {
       expect(joined).not.toContain('PRIVATE_COMMAND')
       expect(joined).not.toContain('PRIVATE_OUTPUT')
     } finally {
-      if (previousDrop === undefined) delete process.env.VIBING_PI_DROP_DIR
-      else process.env.VIBING_PI_DROP_DIR = previousDrop
-      if (previousSession === undefined) delete process.env.VIBING_PI_SESSION_ID
-      else process.env.VIBING_PI_SESSION_ID = previousSession
+      if (previousDrop === undefined) delete process.env.HRACK_PI_DROP_DIR
+      else process.env.HRACK_PI_DROP_DIR = previousDrop
+      if (previousSession === undefined) delete process.env.HRACK_PI_SESSION_ID
+      else process.env.HRACK_PI_SESSION_ID = previousSession
       await rm(root, { recursive: true, force: true })
     }
   })
 
   test('0.80 compatibility mode keeps retries in one run and settles only after stable idle', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibing-pi-080-'))
+    const root = await mkdtemp(join(tmpdir(), 'hrack-pi-080-'))
     const dropDir = join(root, 'drop')
     const extensionPath = join(root, 'observer.ts')
-    const previousDrop = process.env.VIBING_PI_DROP_DIR
-    const previousSession = process.env.VIBING_PI_SESSION_ID
+    const previousDrop = process.env.HRACK_PI_DROP_DIR
+    const previousSession = process.env.HRACK_PI_SESSION_ID
     try {
       await writeFile(
         extensionPath,
         buildPiExtensionSource({ supportsAgentSettled: false }),
         'utf8'
       )
-      process.env.VIBING_PI_DROP_DIR = dropDir
-      process.env.VIBING_PI_SESSION_ID = 'vibing-session-080'
+      process.env.HRACK_PI_DROP_DIR = dropDir
+      process.env.HRACK_PI_SESSION_ID = 'hrack-session-080'
       type Handler = (
         event: Record<string, unknown>,
         context: Record<string, unknown>
@@ -589,16 +589,16 @@ test.describe('Pi observer adapter', () => {
         types.lastIndexOf('run-end')
       )
     } finally {
-      if (previousDrop === undefined) delete process.env.VIBING_PI_DROP_DIR
-      else process.env.VIBING_PI_DROP_DIR = previousDrop
-      if (previousSession === undefined) delete process.env.VIBING_PI_SESSION_ID
-      else process.env.VIBING_PI_SESSION_ID = previousSession
+      if (previousDrop === undefined) delete process.env.HRACK_PI_DROP_DIR
+      else process.env.HRACK_PI_DROP_DIR = previousDrop
+      if (previousSession === undefined) delete process.env.HRACK_PI_SESSION_ID
+      else process.env.HRACK_PI_SESSION_ID = previousSession
       await rm(root, { recursive: true, force: true })
     }
   })
 
   test('prepares, attaches, and disposes a host Pi observer through the adapter seam', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibing-pi-adapter-'))
+    const root = await mkdtemp(join(tmpdir(), 'hrack-pi-adapter-'))
     const runDir = join(root, 'run')
     await mkdir(runDir)
     const probeCalls: Array<{ file: string; args: readonly string[] }> = []
@@ -611,7 +611,7 @@ test.describe('Pi observer adapter', () => {
     })
     try {
       const prepared = await adapter.prepare({
-        sessionId: 'vibing-session-1',
+        sessionId: 'hrack-session-1',
         adapterId: 'pi',
         platform: 'win32',
         workspace: root,
@@ -638,7 +638,7 @@ test.describe('Pi observer adapter', () => {
       })
       expect(prepared.launch.prependArgs?.slice(0, 1)).toEqual(['--extension'])
       const extensionPath = prepared.launch.prependArgs?.[1]
-      const dropDir = prepared.launch.env?.VIBING_PI_DROP_DIR
+      const dropDir = prepared.launch.env?.HRACK_PI_DROP_DIR
       expect(extensionPath).toBeTruthy()
       expect(dropDir).toBeTruthy()
       await expect(stat(extensionPath!)).resolves.toMatchObject({})
@@ -647,7 +647,7 @@ test.describe('Pi observer adapter', () => {
       const events: AdapterEvent[] = []
       const handle = await prepared.attach(
         {
-          sessionId: 'vibing-session-1',
+          sessionId: 'hrack-session-1',
           installationId: 'pi:windows:test',
           adapterId: 'pi',
           ptyId: 'pty-1',
@@ -661,7 +661,7 @@ test.describe('Pi observer adapter', () => {
         join(dropDir!, '000000000001.fixture.json'),
         JSON.stringify({
           schema: 1,
-          sessionId: 'vibing-session-1',
+          sessionId: 'hrack-session-1',
           generation: 'generation-1',
           seq: 1,
           emittedAt: Date.now(),
@@ -682,7 +682,7 @@ test.describe('Pi observer adapter', () => {
   })
 
   test('uses the selected native WSL Pi and proves the atomic drop bridge before launch', async () => {
-    const runDir = await mkdtemp(join(tmpdir(), 'vibing-pi-wsl-'))
+    const runDir = await mkdtemp(join(tmpdir(), 'hrack-pi-wsl-'))
     const calls: Array<{ file: string; args: readonly string[] }> = []
     const adapter = new PiObserverAdapter({
       runCommand: async (file, args) => {
@@ -691,10 +691,10 @@ test.describe('Pi observer adapter', () => {
           return { code: 0, stdout: '0.80.3\n' }
         }
         if (args.includes('wslpath')) {
-          return { code: 0, stdout: '/mnt/c/vibing-pi-run\n' }
+          return { code: 0, stdout: '/mnt/c/hrack-pi-run\n' }
         }
         const nonce = args.at(-1)
-        if (args.includes('vibing-pi-probe') && nonce) {
+        if (args.includes('hrack-pi-probe') && nonce) {
           await writeFile(join(runDir, 'pi-drop', `${nonce}.probe`), nonce)
           return { code: 0, stdout: '' }
         }
@@ -735,15 +735,15 @@ test.describe('Pi observer adapter', () => {
           '--version'
         ]
       })
-      expect(calls.some((call) => call.args.includes('vibing-pi-probe'))).toBe(
+      expect(calls.some((call) => call.args.includes('hrack-pi-probe'))).toBe(
         true
       )
       expect(prepared.launch.prependArgs).toEqual([
         '--extension',
-        '/mnt/c/vibing-pi-run/pi-observer.ts'
+        '/mnt/c/hrack-pi-run/pi-observer.ts'
       ])
-      expect(prepared.launch.env?.VIBING_PI_DROP_DIR).toBe(
-        '/mnt/c/vibing-pi-run/pi-drop'
+      expect(prepared.launch.env?.HRACK_PI_DROP_DIR).toBe(
+        '/mnt/c/hrack-pi-run/pi-drop'
       )
       expect(
         await readdir(join(runDir, 'pi-drop'))
@@ -755,7 +755,7 @@ test.describe('Pi observer adapter', () => {
   })
 
   test('degrades honestly and removes prepared files when the WSL drop bridge is unavailable', async () => {
-    const runDir = await mkdtemp(join(tmpdir(), 'vibing-pi-wsl-degraded-'))
+    const runDir = await mkdtemp(join(tmpdir(), 'hrack-pi-wsl-degraded-'))
     const adapter = new PiObserverAdapter({
       runCommand: async (_file, args) =>
         args.some((arg) => arg.includes('--version'))
@@ -810,7 +810,7 @@ test.describe('Pi observer adapter', () => {
 
   test('uses the same direct host extension path on Linux and macOS code paths', async () => {
     for (const platform of ['linux', 'darwin'] as const) {
-      const runDir = await mkdtemp(join(tmpdir(), `vibing-pi-${platform}-`))
+      const runDir = await mkdtemp(join(tmpdir(), `hrack-pi-${platform}-`))
       const calls: Array<{ file: string; args: readonly string[] }> = []
       const adapter = new PiObserverAdapter({
         runCommand: async (file, args) => {

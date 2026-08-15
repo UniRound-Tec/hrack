@@ -44,7 +44,7 @@ export default function FloatWindow({
         className="flex cursor-grab items-center gap-2 px-2.5 pt-2 pb-1 select-none active:cursor-grabbing"
       >
         <span className="font-ammonite text-[13px] leading-none text-neutral-600">
-          vibing
+          hrack
         </span>
         {needYou > 0 && (
           <span className="font-maple text-[9px] text-pending">

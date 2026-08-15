@@ -10,7 +10,7 @@ import { useSettingsStore } from './settingsStore'
 export type SessionKind = 'pty' | 'dsh'
 
 export interface SessionEntry {
-  /** Vibing-owned stable identity used by navigation and presentation. */
+  /** HRack-owned stable identity used by navigation and presentation. */
   sessionId: string
   /** Adapter-owned session identity, e.g. the official DSH session id. */
   adapterSessionId?: string

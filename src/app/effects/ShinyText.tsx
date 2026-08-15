@@ -102,7 +102,12 @@ export default function ShinyText({
     backgroundSize: '200% auto',
     WebkitBackgroundClip: 'text',
     backgroundClip: 'text',
-    WebkitTextFillColor: 'transparent'
+    WebkitTextFillColor: 'transparent',
+    // Italic display fonts can paint outside their advance box. The gradient
+    // only exists inside this element, so reserve bleed for those pixels and
+    // cancel it with negative margins to keep surrounding layout unchanged.
+    padding: '0.22em',
+    margin: '-0.22em'
   }
 
   return (

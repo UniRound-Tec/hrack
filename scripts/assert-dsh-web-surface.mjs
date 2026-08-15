@@ -25,7 +25,7 @@ for (const path of await filesBelow(join(root, 'src'))) {
     source.includes("'./dsh/bootDsh'") ||
     source.includes('"./dsh/bootDsh"')
   ) {
-    throw new Error(`Official DSH UI leaked into the Vibing renderer: ${path}`)
+    throw new Error(`Official DSH UI leaked into the HRack renderer: ${path}`)
   }
 }
 
@@ -56,10 +56,10 @@ const [preloadSource, mainSource] = await Promise.all([
   readFile(surfacePreload, 'utf8'),
   readFile(mainBundle, 'utf8')
 ])
-if (!preloadSource.includes('__VIBING_DSH_EMBED__')) {
+if (!preloadSource.includes('__HRACK_DSH_EMBED__')) {
   throw new Error('Official DSH surface preload bridge is missing from the build')
 }
-if (!mainSource.includes('persist:vibing-dsh-surface')) {
+if (!mainSource.includes('persist:hrack-dsh-surface')) {
   throw new Error('Official DSH WebContentsView controller is missing from the build')
 }
 

@@ -104,7 +104,7 @@ function workspaceEditorTheme(theme: ResolvedUiTheme) {
         '&': {
           height: '100%',
           backgroundColor: 'transparent',
-          color: 'var(--vib-text-primary)',
+          color: 'var(--hrack-text-primary)',
           fontSize: '12px'
         },
         '.cm-scroller': {
@@ -113,13 +113,13 @@ function workspaceEditorTheme(theme: ResolvedUiTheme) {
         },
         '.cm-content': { minHeight: '100%', caretColor: 'transparent' },
         '.cm-gutters': {
-          backgroundColor: 'var(--vib-bg-surface)',
-          color: 'var(--vib-text-faint)',
-          borderRight: '1px solid var(--vib-border-subtle)'
+          backgroundColor: 'var(--hrack-bg-surface)',
+          color: 'var(--hrack-text-faint)',
+          borderRight: '1px solid var(--hrack-border-subtle)'
         },
-        '.cm-activeLine': { backgroundColor: 'var(--vib-bg-surface-hover)' },
+        '.cm-activeLine': { backgroundColor: 'var(--hrack-bg-surface-hover)' },
         '.cm-activeLineGutter': {
-          backgroundColor: 'var(--vib-bg-surface-hover)'
+          backgroundColor: 'var(--hrack-bg-surface-hover)'
         },
         '&.cm-focused': { outline: 'none' }
       },

@@ -158,7 +158,7 @@ export class PTYManager {
     const cols = opts.cols ?? 80
     const rows = opts.rows ?? 24
     console.log(
-      `[vibing] spawn ptyId=${ptyId} shell=${opts.shell ?? '(default)'}`
+      `[hrack] spawn ptyId=${ptyId} shell=${opts.shell ?? '(default)'}`
     )
 
     // Windows：裸命令名先解析成绝对路径，避免 CreateProcess 找不到可执行文件。
@@ -235,7 +235,7 @@ export class PTYManager {
         const accepted = dataQueue.push(new TextEncoder().encode(displayData))
         if (!accepted) {
           console.error(
-            `[vibing] ptyId=${ptyId} output exceeded the bounded delivery buffer; terminating PTY`
+            `[hrack] ptyId=${ptyId} output exceeded the bounded delivery buffer; terminating PTY`
           )
           try {
             spawnedPty.kill()
@@ -337,7 +337,7 @@ export class PTYManager {
       // ConPTY 可以在最后一次存活检查与 native resize 调用之间退出。
       // resize 是窗口同步的 best-effort 操作，迟到失败不能成为主进程未捕获异常。
       console.warn(
-        `[vibing] ignored stale PTY resize ${cols}x${rows}: ${String(error)}`
+        `[hrack] ignored stale PTY resize ${cols}x${rows}: ${String(error)}`
       )
     }
   }

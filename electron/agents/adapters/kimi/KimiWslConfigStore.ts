@@ -96,7 +96,7 @@ async function ensureWslKimiManagedHooksUnlocked(
     wslShellArgs(
       distro,
       'printf "%s\\n" "${SHELL:-/bin/sh}"',
-      'vibing-kimi-config-shell'
+      'hrack-kimi-config-shell'
     )
   )
   const shell = shellResult.stdout
@@ -116,7 +116,7 @@ async function ensureWslKimiManagedHooksUnlocked(
       shell,
       '-lic',
       'env -0',
-      'vibing-kimi-config-home'
+      'hrack-kimi-config-home'
     ]
   )
   const configuredHome = loginEnvironmentValue(
@@ -135,6 +135,7 @@ async function ensureWslKimiManagedHooksUnlocked(
   }
   const configPath = posix.join(kimiHome, 'config.toml')
 
+  // Stable across the rebrand so an older process cannot edit concurrently.
   const lockPath = `${configPath}.vibing.lock`
   const lockToken = randomBytes(16).toString('hex')
   const lock = await runCommand(
@@ -163,7 +164,7 @@ async function ensureWslKimiManagedHooksUnlocked(
         'chmod 600 "$p/owner"',
         'trap - EXIT HUP INT TERM'
       ].join('\n'),
-      'vibing-kimi-config-lock',
+      'hrack-kimi-config-lock',
       [lockPath, lockToken, '40', '30']
     )
   )
@@ -189,7 +190,7 @@ async function ensureWslKimiManagedHooksUnlocked(
           wslShellArgs(
             distro,
             'p="$1"; if [ -f "$p" ]; then cat -- "$p"; elif [ ! -e "$p" ]; then exit 3; else exit 4; fi',
-            'vibing-kimi-config-read',
+            'hrack-kimi-config-read',
             [configPath]
           )
         )
@@ -210,7 +211,7 @@ async function ensureWslKimiManagedHooksUnlocked(
         const doctor = wslRuntimeCommand(
           context,
           ['doctor', 'config', runtimeCandidate],
-          'vibing-kimi-config-doctor'
+          'hrack-kimi-config-doctor'
         )
         const validated = await runCommand(doctor.file, doctor.args)
         if (validated.code !== 0) {
@@ -231,14 +232,14 @@ async function ensureWslKimiManagedHooksUnlocked(
               'dir="$(dirname "$config")"',
               'mkdir -p "$dir"',
               'if [ "$existed" = 1 ]; then cmp -s "$config" "$expected" || exit 42; else [ ! -e "$config" ] || exit 42; fi',
-              'tmp="$dir/.config.toml.vibing.$nonce.tmp"',
+              'tmp="$dir/.config.toml.hrack.$nonce.tmp"',
               'trap \'rm -f "$tmp"\' EXIT HUP INT TERM',
               'cp -- "$candidate" "$tmp"',
               'chmod 600 "$tmp"',
               'mv -f -- "$tmp" "$config"',
               'trap - EXIT HUP INT TERM'
             ].join('; '),
-            'vibing-kimi-config-install',
+            'hrack-kimi-config-install',
             [
               configPath,
               runtimeCandidate,
@@ -271,7 +272,7 @@ async function ensureWslKimiManagedHooksUnlocked(
       wslShellArgs(
         distro,
         'p="$1"; token="$2"; if [ -f "$p/owner" ]; then read -r owner _created < "$p/owner" || exit 0; [ "$owner" = "$token" ] || exit 0; rm -f -- "$p/owner"; rmdir -- "$p" 2>/dev/null || true; fi',
-        'vibing-kimi-config-unlock',
+        'hrack-kimi-config-unlock',
         [lockPath, lockToken]
       )
     ).catch(() => {})

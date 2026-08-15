@@ -103,7 +103,7 @@ function emergencyLightTheme(value: unknown): ResolvedUiTheme {
   }
   return {
     id: 'light',
-    name: 'Vibing Light (safe mode)',
+    name: 'HRack Light (safe mode)',
     type: 'light',
     colors,
     terminal: null

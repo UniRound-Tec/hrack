@@ -5,12 +5,12 @@ set -euo pipefail
 workspace="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 package_path="$workspace/package.json"
 version="$(node -p "require('$package_path').version")"
-arch="${VIBING_MAC_ARCH:-arm64}"
+arch="${HRACK_MAC_ARCH:-${VIBING_MAC_ARCH:-arm64}}"
 artifact_dir="$workspace/artifacts"
-image_name="Vibing-${version}-macos-${arch}.dmg"
+image_name="HRack-${version}-macos-${arch}.dmg"
 release_root="${TMPDIR:-/tmp}"
 release_root="${release_root%/}"
-release_dir="$(mktemp -d "$release_root/vibing-release-mac.XXXXXX")"
+release_dir="$(mktemp -d "$release_root/hrack-release-mac.XXXXXX")"
 mount_dir="$release_dir/mount"
 mounted=false
 
@@ -18,7 +18,7 @@ cleanup() {
   if [[ "$mounted" == true ]]; then
     hdiutil detach "$mount_dir" -quiet || true
   fi
-  if [[ -d "$release_dir" && "$release_dir" == "$release_root"/vibing-release-mac.* ]]; then
+  if [[ -d "$release_dir" && "$release_dir" == "$release_root"/hrack-release-mac.* ]]; then
     rm -rf -- "$release_dir"
   fi
 }
@@ -49,8 +49,8 @@ CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder \
 
 image_path="$release_dir/$image_name"
 blockmap_path="$image_path.blockmap"
-app_path="$(find "$release_dir" -maxdepth 3 -type d -name 'Vibing.app' -print -quit)"
-executable_path="$app_path/Contents/MacOS/Vibing"
+app_path="$(find "$release_dir" -maxdepth 3 -type d -name 'HRack.app' -print -quit)"
+executable_path="$app_path/Contents/MacOS/HRack"
 info_plist="$app_path/Contents/Info.plist"
 
 for required in "$image_path" "$blockmap_path" "$executable_path" "$info_plist"; do
@@ -63,6 +63,7 @@ done
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$info_plist")"
 bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info_plist")"
 bundle_icon="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$info_plist")"
+# Bundle id remains stable across the rebrand so existing installations upgrade.
 if [[ "$bundle_id" != com.vibing.app ]]; then
   echo "Unexpected bundle identifier: $bundle_id" >&2
   exit 1
@@ -89,16 +90,16 @@ mkdir -p "$mount_dir"
 hdiutil attach "$image_path" -readonly -nobrowse -mountpoint "$mount_dir" >/dev/null
 mounted=true
 
-mounted_executable="$mount_dir/Vibing.app/Contents/MacOS/Vibing"
+mounted_executable="$mount_dir/HRack.app/Contents/MacOS/HRack"
 if [[ ! -x "$mounted_executable" ]]; then
-  echo 'Mounted DMG does not contain an executable Vibing.app.' >&2
+  echo 'Mounted DMG does not contain an executable HRack.app.' >&2
   exit 1
 fi
 node "$workspace/scripts/verify-packaged-tray.cjs" "$mounted_executable"
 
 # extraResources 传输链路（npm ci → electron-builder copyDir）不得丢失执行位；
 # 这是 dsh host 内 PTY spawn 的硬依赖。
-mounted_spawn_helper="$mount_dir/Vibing.app/Contents/Resources/dsh-runtime/node_modules/node-pty/prebuilds/darwin-$arch/spawn-helper"
+mounted_spawn_helper="$mount_dir/HRack.app/Contents/Resources/dsh-runtime/node_modules/node-pty/prebuilds/darwin-$arch/spawn-helper"
 if [[ ! -x "$mounted_spawn_helper" ]]; then
   echo "Packaged dsh runtime spawn-helper is missing or not executable: $mounted_spawn_helper" >&2
   exit 1

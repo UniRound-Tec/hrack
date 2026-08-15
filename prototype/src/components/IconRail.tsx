@@ -43,7 +43,7 @@ export default function IconRail({
   return (
     <aside className="flex w-12 shrink-0 flex-col items-center bg-white pt-3 pb-2">
       <span className="font-ammonite text-[20px] leading-none text-neutral-700 select-none">
-        v
+        h
       </span>
 
       <nav className="mt-3 flex flex-col gap-0.5">

@@ -36,7 +36,7 @@ export const en = {
     closeSessionPrompt: (name: string) =>
       `Close “${name}”? Its CLI process and child terminals will also stop.`,
     closeDshSessionPrompt: (name: string) =>
-      `Stop following “${name}” in Vibing? Its DSH session and history will be unchanged.`,
+      `Stop following “${name}” in HRack? Its DSH session and history will be unchanged.`,
     sessionActions: 'Session actions',
     createChildTerminal: 'New child terminal',
     cloneSession: 'Clone session',
@@ -54,7 +54,7 @@ export const en = {
     homeLabel: 'DSH_HOME',
     homeIsolated: 'Isolated (recommended)',
     homeShared: 'Share ~/.dsh',
-    homeEnvOverride: 'VIBING_DSH_HOME is overriding the path.',
+    homeEnvOverride: 'HRACK_DSH_HOME is overriding the path.',
     homeSwitchConfirm:
       'Switching DSH_HOME restarts the host and reloads the window. Existing sessions are not migrated. Continue?',
     retentionLabel: 'Session retention',
@@ -79,11 +79,11 @@ export const en = {
     enterTitle: 'Enter while busy',
     enterHint: 'Only while the agent is running. Cmd/Ctrl+Enter uses the other action.',
     surfaceScale: 'Session interface scale',
-    surfaceScaleHint: 'Only affects DSH inside Vibing and does not change DSH settings.',
+    surfaceScaleHint: 'Only affects DSH inside HRack and does not change DSH settings.',
     runtimeLabel: 'DSH runtime',
     runtimeHint: 'Scans the host and every WSL distribution. Auto prefers a compatible local install and falls back to the bundled runtime.',
     runtimeAuto: 'Auto (local first)',
-    runtimeBundled: (version: string) => `Bundled · ${version}`,
+    runtimeBundled: (version: string) => `Bundled fallback · ${version}`,
     runtimeLocal: (location: string, version?: string) =>
       `${location}${version ? ` · ${version}` : ''}`,
     runtimeScanning: 'Scanning for DSH…',
@@ -172,7 +172,7 @@ export const en = {
     bootHostInit: 'First host start needs to initialize the profile',
     bootFailed: 'DSH failed to start',
     bootReload: 'Reload window',
-    homeHint: 'Built-in agent runtime'
+    homeHint: 'Auto-select · local preferred'
   },
   sessionStatus: {
     working: 'Working on the task',
@@ -270,7 +270,7 @@ export const en = {
     disabled: 'Leave it off',
     scanFailed: 'The scan did not finish',
     scanFound: (clis: number, installations: number) => `${clis} CLIs found across ${installations} installations`,
-    continue: 'Enter Vibing'
+    continue: 'Enter HRack'
   },
   settings: {
     title: 'Settings',

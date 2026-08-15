@@ -1,5 +1,5 @@
 import { app, BrowserWindow } from 'electron'
-import { mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { createWindow } from './window'
 import { registerIpc, type IpcContext } from './ipc'
@@ -47,15 +47,24 @@ import { DshWebSurfaceController } from './dsh-surface/DshWebSurfaceController'
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
 // 必须在 app ready 之前调用。
-const userDataOverride = process.env['VIBING_USER_DATA_DIR']
+const userDataOverride =
+  process.env['HRACK_USER_DATA_DIR'] ?? process.env['VIBING_USER_DATA_DIR']
 if (userDataOverride) {
   app.setPath('userData', userDataOverride)
-} else if (!app.isPackaged) {
-  // 开发版与已安装的 Stable 版必须使用不同的进程锁和持久化目录，
-  // 否则本地调试可能唤醒 Stable，或读写它的设置与缓存。
-  const devUserDataDir = join(app.getPath('appData'), 'Vibing Dev')
-  mkdirSync(devUserDataDir, { recursive: true })
-  app.setPath('userData', devUserDataDir)
+} else {
+  // 已有安装继续使用旧目录以保留设置、事件和 Chromium localStorage；
+  // 全新安装使用 HRack 目录。开发版仍与 Stable 隔离。
+  const appDataDir = app.getPath('appData')
+  const preferredName = app.isPackaged ? 'HRack' : 'HRack Dev'
+  const legacyName = app.isPackaged ? 'Vibing' : 'Vibing Dev'
+  const preferredDir = join(appDataDir, preferredName)
+  const legacyDir = join(appDataDir, legacyName)
+  const userDataDir =
+    !existsSync(preferredDir) && existsSync(legacyDir)
+      ? legacyDir
+      : preferredDir
+  mkdirSync(userDataDir, { recursive: true })
+  app.setPath('userData', userDataDir)
 }
 
 const isPrimaryInstance = app.requestSingleInstanceLock()
@@ -100,7 +109,7 @@ const agentRuntime = new AgentSessionRuntime({
     }
   }
 })
-// DSH 内置 agent 运行时：懒启动（renderer 首次 ensureStarted），随 app 退出回收。
+// DSH host：优先使用兼容的本机安装，随包版本仅作兜底；懒启动并随 app 退出回收。
 const broadcastToAllWindows = (channel: string, payload: unknown): void => {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.webContents.isDestroyed()) {
@@ -158,7 +167,7 @@ if (!isPrimaryInstance) {
 
 if (isPrimaryInstance) app.whenReady().then(async () => {
   // M0 验收：抵达此行即证明 node-pty 已按 Electron ABI 成功加载
-  console.log('[vibing] app ready; node-pty loaded against Electron ABI OK')
+  console.log('[hrack] app ready; node-pty loaded against Electron ABI OK')
   // 诊断日志目录
   try {
     mkdirSync(join(process.cwd(), 'logs'), { recursive: true })
@@ -224,8 +233,8 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
   startThemeWatcher()
 
   // E2E：主进程调试钩子（托盘菜单点击 / 快捷键注册状态无法从 renderer 注入）。
-  if (process.env['VIBING_E2E']) {
-    ;(globalThis as Record<string, unknown>)['__vibingMainDebug'] = {
+  if (process.env['HRACK_E2E']) {
+    ;(globalThis as Record<string, unknown>)['__hrackMainDebug'] = {
       hasTray: () => Boolean(trayRef),
       isWindowVisible: () => Boolean(winRef && !winRef.isDestroyed() && winRef.isVisible()),
       isWindowDestroyed: () => Boolean(winRef?.isDestroyed()),

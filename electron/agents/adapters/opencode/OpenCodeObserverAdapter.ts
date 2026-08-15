@@ -171,7 +171,7 @@ async function wslPortFree(distro: string, port: number): Promise<boolean> {
   const result = await runWslCommand(distro, '/bin/sh', [
     '-c',
     script,
-    'vibing-port',
+    'hrack-port',
     hex
   ])
   return result.code === 0

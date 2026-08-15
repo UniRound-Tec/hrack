@@ -72,11 +72,11 @@ jobs:
       - name: Retain Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Vibing-${{ needs.prepare.outputs.tag }}-windows-x64
+          name: HRack-${{ needs.prepare.outputs.tag }}-windows-x64
           path: |
-            artifacts/Vibing-Setup-*.exe
-            artifacts/Vibing-Setup-*.exe.blockmap
-            artifacts/Vibing-Setup-*.exe.sha256
+            artifacts/HRack-Setup-*.exe
+            artifacts/HRack-Setup-*.exe.blockmap
+            artifacts/HRack-Setup-*.exe.sha256
           if-no-files-found: error
 
   build-macos:
@@ -108,11 +108,51 @@ jobs:
       - name: Retain macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Vibing-${{ needs.prepare.outputs.tag }}-macos-arm64-unsigned
+          name: HRack-${{ needs.prepare.outputs.tag }}-macos-arm64-unsigned
           path: |
-            artifacts/Vibing-*-macos-arm64.dmg
-            artifacts/Vibing-*-macos-arm64.dmg.blockmap
-            artifacts/Vibing-*-macos-arm64.dmg.sha256
+            artifacts/HRack-*-macos-arm64.dmg
+            artifacts/HRack-*-macos-arm64.dmg.blockmap
+            artifacts/HRack-*-macos-arm64.dmg.sha256
+          if-no-files-found: error
+
+  build-linux:
+    name: Build Linux x64 packages
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Linux verification runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes xvfb
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build verified Linux release packages
+        run: bash ./scripts/release-github-linux.sh '${{ needs.prepare.outputs.tag }}'
+
+      - name: Retain Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: HRack-${{ needs.prepare.outputs.tag }}-linux-x64
+          path: |
+            artifacts/HRack-*-linux-x64.AppImage
+            artifacts/HRack-*-linux-x64.AppImage.sha256
+            artifacts/HRack-*-linux-x64.deb
+            artifacts/HRack-*-linux-x64.deb.sha256
           if-no-files-found: error
 
   publish-release:
@@ -121,6 +161,7 @@ jobs:
       - prepare
       - build-windows
       - build-macos
+      - build-linux
     runs-on: ubuntu-latest
     steps:
       - name: Download verified artifacts
@@ -138,19 +179,23 @@ jobs:
         run: |
           shopt -s nullglob
           assets=(
-            release-assets/Vibing-Setup-*.exe
-            release-assets/Vibing-Setup-*.exe.blockmap
-            release-assets/Vibing-Setup-*.exe.sha256
-            release-assets/Vibing-*-macos-arm64.dmg
-            release-assets/Vibing-*-macos-arm64.dmg.blockmap
-            release-assets/Vibing-*-macos-arm64.dmg.sha256
+            release-assets/HRack-Setup-*.exe
+            release-assets/HRack-Setup-*.exe.blockmap
+            release-assets/HRack-Setup-*.exe.sha256
+            release-assets/HRack-*-macos-arm64.dmg
+            release-assets/HRack-*-macos-arm64.dmg.blockmap
+            release-assets/HRack-*-macos-arm64.dmg.sha256
+            release-assets/HRack-*-linux-x64.AppImage
+            release-assets/HRack-*-linux-x64.AppImage.sha256
+            release-assets/HRack-*-linux-x64.deb
+            release-assets/HRack-*-linux-x64.deb.sha256
           )
-          if [[ ${#assets[@]} -ne 6 ]]; then
-            echo "Expected exactly 6 release assets, found ${#assets[@]}." >&2
+          if [[ ${#assets[@]} -ne 10 ]]; then
+            echo "Expected exactly 10 release assets, found ${#assets[@]}." >&2
             printf '  %s\n' "${assets[@]}"
             exit 1
           fi
           gh release create "$RELEASE_TAG" "${assets[@]}" \
             --verify-tag \
-            --title "Vibing $RELEASE_TAG" \
+            --title "HRack $RELEASE_TAG" \
             --generate-notes

@@ -7,6 +7,7 @@ import {
 import { spawn } from 'child_process'
 import { writeFileSync } from 'fs'
 import { join, resolve } from 'path'
+import { PNG } from 'pngjs'
 import { UI_COLOR_TOKENS, uiTokenToCssVariable } from '../shared/theme-schema'
 import { launchApp } from './helpers'
 
@@ -40,13 +41,101 @@ test('renders platform-appropriate title-bar controls and applies every GUI toke
       missing: tokens.filter(
         (token) =>
           styles
-            .getPropertyValue(`--vib-${token.replaceAll('.', '-')}`)
+            .getPropertyValue(`--hrack-${token.replaceAll('.', '-')}`)
             .trim().length === 0
       )
     }
   }, UI_COLOR_TOKENS)
   expect(themeState).toEqual({ id: 'light', missing: [] })
-  expect(uiTokenToCssVariable('bg.app')).toBe('--vib-bg-app')
+  expect(uiTokenToCssVariable('bg.app')).toBe('--hrack-bg-app')
+})
+
+test('keeps the italic brand ink inside the shiny text paint box', async () => {
+  const paintBox = await page.evaluate(async () => {
+    await document.fonts.ready
+    const source = document.querySelector<HTMLElement>(
+      '[data-testid="sidebar"] .font-brand'
+    )
+    if (!source) throw new Error('Sidebar brand wordmark is unavailable')
+
+    const fixture = document.createElement('div')
+    fixture.dataset.brandClipFixture = 'true'
+    Object.assign(fixture.style, {
+      position: 'fixed',
+      inset: '0 auto auto 0',
+      zIndex: '99999',
+      display: 'flex',
+      padding: '16px',
+      background: '#fff'
+    })
+
+    const frame = document.createElement('div')
+    frame.dataset.brandClipMode = 'shiny'
+    Object.assign(frame.style, {
+      display: 'flex',
+      width: '180px',
+      height: '80px',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#fff'
+    })
+    const clone = source.cloneNode(true) as HTMLElement
+    clone.style.animation = 'none'
+    clone.style.backgroundImage = 'linear-gradient(#000, #000)'
+    clone.style.backgroundPosition = 'center'
+    clone.style.webkitTextFillColor = 'transparent'
+    clone.style.color = '#000'
+    frame.append(clone)
+    fixture.append(frame)
+    document.body.append(fixture)
+
+    const frameBounds = frame.getBoundingClientRect()
+    const paintBounds = clone.getBoundingClientRect()
+    return {
+      left: paintBounds.left - frameBounds.left,
+      top: paintBounds.top - frameBounds.top,
+      right: paintBounds.right - frameBounds.left - 1,
+      bottom: paintBounds.bottom - frameBounds.top - 1
+    }
+  })
+
+  const ink = (buffer: Buffer) => {
+    const image = PNG.sync.read(buffer)
+    const points: Array<[number, number]> = []
+    for (let y = 0; y < image.height; y++) {
+      for (let x = 0; x < image.width; x++) {
+        const offset = (y * image.width + x) * 4
+        if (
+          image.data[offset + 3] > 0 &&
+          image.data[offset] < 180 &&
+          image.data[offset + 1] < 180 &&
+          image.data[offset + 2] < 180
+        ) {
+          points.push([x, y])
+        }
+      }
+    }
+    return {
+      count: points.length,
+      left: Math.min(...points.map(([x]) => x)),
+      top: Math.min(...points.map(([, y]) => y)),
+      right: Math.max(...points.map(([x]) => x)),
+      bottom: Math.max(...points.map(([, y]) => y))
+    }
+  }
+
+  const shinyBuffer = await page
+    .locator('[data-brand-clip-mode="shiny"]')
+    .screenshot()
+  const shiny = ink(shinyBuffer)
+  await page.locator('[data-brand-clip-fixture="true"]').evaluate((fixture) =>
+    fixture.remove()
+  )
+
+  expect(shiny.left - paintBox.left).toBeGreaterThanOrEqual(3)
+  expect(shiny.top - paintBox.top).toBeGreaterThanOrEqual(3)
+  expect(paintBox.right - shiny.right).toBeGreaterThanOrEqual(3)
+  expect(paintBox.bottom - shiny.bottom).toBeGreaterThanOrEqual(3)
 })
 
 test('removes the macOS traffic-light inset while native fullscreen', async () => {
@@ -152,8 +241,8 @@ test('minimizes and hides to tray through the narrowed window API', async () => 
   await expect
     .poll(() =>
       page.evaluate(() =>
-        (window as unknown as { __vibingDebug: { snapshot(): unknown } })
-          .__vibingDebug.snapshot()
+        (window as unknown as { __hrackDebug: { snapshot(): unknown } })
+          .__hrackDebug.snapshot()
       )
     )
     .not.toBeNull()
@@ -180,9 +269,9 @@ test('reopens the hidden primary window instead of starting another instance', a
     {
       env: {
         ...process.env,
-        VIBING_E2E: '1',
-        VIBING_E2E_CLI_FIXTURE: '1',
-        VIBING_USER_DATA_DIR: userDataDir
+        HRACK_E2E: '1',
+        HRACK_E2E_CLI_FIXTURE: '1',
+        HRACK_USER_DATA_DIR: userDataDir
       },
       stdio: 'ignore'
     }
@@ -206,12 +295,12 @@ test('reopens the hidden primary window instead of starting another instance', a
 
 test('registers and unregisters the global shortcut with the settings toggle', async () => {
   // 默认 E2E 使用内存注册器，避免 Ctrl+Alt+V 被宿主机其他应用占用；
-  // VIBING_E2E_REAL_GLOBAL_SHORTCUT=1 可切换到真实 OS smoke。
+  // HRACK_E2E_REAL_GLOBAL_SHORTCUT=1 可切换到真实 OS smoke。
   const shortcut = () =>
     app.evaluate(() =>
       (globalThis as unknown as {
-        __vibingMainDebug: { isShortcutRegistered(): boolean }
-      }).__vibingMainDebug.isShortcutRegistered()
+        __hrackMainDebug: { isShortcutRegistered(): boolean }
+      }).__hrackMainDebug.isShortcutRegistered()
     )
   await expect.poll(shortcut).toBe(true)
 
@@ -229,14 +318,14 @@ test('tray menu items drive hide-toggle, new session, and quit callbacks', async
   const clickTrayItem = (index: number) =>
     app.evaluate((_electron, value) => {
       return (globalThis as unknown as {
-        __vibingMainDebug: {
+        __hrackMainDebug: {
           clickTrayItem(index: number): {
             invoked: boolean
             visible: boolean
             focused: boolean
           }
         }
-      }).__vibingMainDebug.clickTrayItem(value)
+      }).__hrackMainDebug.clickTrayItem(value)
     }, index)
 
   // 显示/隐藏：菜单项 0 在可见且聚焦时隐藏窗口（quake 语义）。
@@ -304,7 +393,7 @@ test('hot-reloads the theme registry and CSS variables when themes change on dis
     .poll(() =>
       page.evaluate(() =>
         getComputedStyle(document.documentElement)
-          .getPropertyValue('--vib-bg-app')
+          .getPropertyValue('--hrack-bg-app')
           .trim()
       )
     )
@@ -324,7 +413,7 @@ test('hot-reloads the theme registry and CSS variables when themes change on dis
     .poll(() =>
       page.evaluate(() =>
         getComputedStyle(document.documentElement)
-          .getPropertyValue('--vib-bg-app')
+          .getPropertyValue('--hrack-bg-app')
           .trim()
       )
     )

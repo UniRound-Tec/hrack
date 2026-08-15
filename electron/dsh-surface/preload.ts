@@ -11,11 +11,11 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { DSH_SURFACE_ACTIVE_SESSION_REPORT_CHANNEL } from '../../shared/dsh-ipc'
 
 const requestedLocale = process.argv
-  .find((arg) => arg.startsWith('--vibing-dsh-locale='))
-  ?.slice('--vibing-dsh-locale='.length)
+  .find((arg) => arg.startsWith('--hrack-dsh-locale='))
+  ?.slice('--hrack-dsh-locale='.length)
 const locale = requestedLocale === 'en' ? 'en' : 'zh'
 
-contextBridge.exposeInMainWorld('__VIBING_DSH_HOST_BRIDGE__', {
+contextBridge.exposeInMainWorld('__HRACK_DSH_HOST_BRIDGE__', {
   reportActiveSession: (value: unknown): void => {
     ipcRenderer.send(
       DSH_SURFACE_ACTIVE_SESSION_REPORT_CHANNEL,
@@ -42,7 +42,7 @@ function installMainWorldBridge(): void {
       } = {
         sidebarDefaultApplied: false
       }
-      Object.defineProperty(globalThis, '__VIBING_DSH_EMBED__', {
+      Object.defineProperty(globalThis, '__HRACK_DSH_EMBED__', {
         configurable: false,
         enumerable: false,
         value: state
@@ -85,8 +85,8 @@ function installMainWorldBridge(): void {
               throw new Error('Cordis Context.extend is unavailable')
             }
             if (
-              (original as unknown as { __vibingDshCapture?: boolean })
-                .__vibingDshCapture === true
+              (original as unknown as { __hrackDshCapture?: boolean })
+                .__hrackDshCapture === true
             ) {
               return
             }
@@ -97,7 +97,7 @@ function installMainWorldBridge(): void {
               state.ctx ??= this
               return original.apply(this, args)
             }
-            Object.defineProperty(capture, '__vibingDshCapture', {
+            Object.defineProperty(capture, '__hrackDshCapture', {
               value: true
             })
             proto!['extend'] = capture

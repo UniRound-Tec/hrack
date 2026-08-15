@@ -21,7 +21,7 @@ import {
 import { useStrings } from './i18n'
 
 interface DshPageProps {
-  /** Stable Vibing identity created only from Home. */
+  /** Stable HRack identity created only from Home. */
   slotId: string | null
   /** Official DSH session currently bound to this slot. */
   adapterSessionId?: string
@@ -121,9 +121,9 @@ function DshBootScreen({ label, detail }: DshBootScreenProps) {
           }
           style={{
             background:
-              'linear-gradient(90deg, var(--vib-brand-logoMuted), var(--vib-brand-logoShine) 72%, var(--vib-brand-logo))',
+              'linear-gradient(90deg, var(--hrack-brand-logoMuted), var(--hrack-brand-logoShine) 72%, var(--hrack-brand-logo))',
             boxShadow:
-              '0 0 12px color-mix(in srgb, var(--vib-brand-logoShine) 40%, transparent)'
+              '0 0 12px color-mix(in srgb, var(--hrack-brand-logoShine) 40%, transparent)'
           }}
         />
       </div>

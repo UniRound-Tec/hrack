@@ -1,8 +1,8 @@
 /**
  * 生成托盘图标静态资产（提交产物，本脚本仅用于再生成）。
- * Vibing 品牌 v 图形单色 PNG：黑/白 16px + 32px，以及 macOS Template。
+ * HRack 品牌 H 图形单色 PNG：黑/白 16px + 32px，以及 macOS Template。
  * macOS template image 走黑色 + alpha（系统按菜单栏深浅自动反色）。
- * vibing-master.png 是独立维护的 256px 透明 alpha 品牌母版；这里只做整数倍
+ * hrack-master.png 是独立维护的 256px 透明 alpha 品牌母版；这里只做整数倍
  * 面积缩采样，保证小尺寸稳定。
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -17,12 +17,12 @@ const outputRoot = join(
 )
 
 const master = PNG.sync.read(
-  await readFile(join(outputRoot, 'vibing-master.png'))
+  await readFile(join(outputRoot, 'hrack-master.png'))
 )
 
-function renderV(size, color) {
+function renderMark(size, color) {
   if (master.width % size !== 0 || master.height !== master.width) {
-    throw new Error('vibing-master.png must be a square integer multiple of the target size')
+    throw new Error('hrack-master.png must be a square integer multiple of the target size')
   }
   const png = new PNG({ width: size, height: size })
   const scale = master.width / size
@@ -47,12 +47,12 @@ function renderV(size, color) {
 
 await mkdir(outputRoot, { recursive: true })
 const outputs = [
-  ['vibing-16.png', renderV(16, 0)],
-  ['vibing-32.png', renderV(32, 0)],
-  ['vibing-white-16.png', renderV(16, 255)],
-  ['vibing-white-32.png', renderV(32, 255)],
-  ['vibingTemplate-16.png', renderV(16, 0)],
-  ['vibingTemplate-32.png', renderV(32, 0)]
+  ['hrack-16.png', renderMark(16, 0)],
+  ['hrack-32.png', renderMark(32, 0)],
+  ['hrack-white-16.png', renderMark(16, 255)],
+  ['hrack-white-32.png', renderMark(32, 255)],
+  ['hrackTemplate-16.png', renderMark(16, 0)],
+  ['hrackTemplate-32.png', renderMark(32, 0)]
 ]
 for (const [filename, buffer] of outputs) {
   await writeFile(join(outputRoot, filename), buffer)

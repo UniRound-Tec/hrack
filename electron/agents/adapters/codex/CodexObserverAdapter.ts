@@ -223,9 +223,9 @@ export class CodexObserverAdapter implements AgentObserverAdapter {
     return {
       launch: {
         env: {
-          VIBING_CODEX_HOOK_DROP: runtimePaths.dropDir,
-          VIBING_CODEX_HOOK_BRIDGE: runtimePaths.posixBridge,
-          VIBING_CODEX_HOOK_BRIDGE_WINDOWS: runtimePaths.windowsBridge
+          HRACK_CODEX_HOOK_DROP: runtimePaths.dropDir,
+          HRACK_CODEX_HOOK_BRIDGE: runtimePaths.posixBridge,
+          HRACK_CODEX_HOOK_BRIDGE_WINDOWS: runtimePaths.windowsBridge
         },
         // Keep key=value in one argv entry. ConPTY/node-pty can otherwise
         // detach a quote-heavy TOML value from `-c`, and Codex exits before
@@ -270,7 +270,7 @@ export class CodexObserverAdapter implements AgentObserverAdapter {
       const command = wslRuntimeCommand(
         context,
         ['features', 'list'],
-        'vibing-codex-features'
+        'hrack-codex-features'
       )
       return this.runCommand(command.file, command.args)
     }
@@ -320,7 +320,7 @@ export class CodexObserverAdapter implements AgentObserverAdapter {
       '/bin/sh',
       '-c',
       'set -eu; d="$1"; n="$2"; p="$d/.$n.partial"; printf "%s" "$n" > "$p"; mv "$p" "$d/$n.probe"',
-      'vibing-codex-probe',
+      'hrack-codex-probe',
       runtimeDropDir,
       nonce
     ])

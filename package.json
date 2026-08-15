@@ -1,7 +1,7 @@
 {
-  "name": "vibing",
+  "name": "hrack",
   "version": "0.3.0",
-  "description": "AI CLI 专用终端",
+  "description": "Harness Rack for AI CLI sessions",
   "private": true,
   "main": "out/main/index.js",
   "scripts": {
@@ -20,10 +20,13 @@
     "postinstall": "electron-rebuild -f -w node-pty && npm run ensure:dsh",
     "build:win": "npm run release:win",
     "build:mac": "npm run release:mac",
+    "build:linux": "npm run release:linux",
     "release:win": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/release-win.ps1",
     "release:github:win": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/release-github-win.ps1",
     "release:mac": "bash scripts/release-mac.sh",
     "release:github:mac": "bash scripts/release-github-mac.sh",
+    "release:linux": "bash scripts/release-linux.sh",
+    "release:github:linux": "bash scripts/release-github-linux.sh",
     "e2e": "npm run build && playwright test",
     "e2e:only": "playwright test"
   },
@@ -31,8 +34,8 @@
   "license": "Apache-2.0",
   "build": {
     "appId": "com.vibing.app",
-    "productName": "Vibing",
-    "artifactName": "Vibing-Setup-${version}.${ext}",
+    "productName": "HRack",
+    "artifactName": "HRack-Setup-${version}.${ext}",
     "afterPack": "scripts/assert-packaged-resources.cjs",
     "files": [
       "**/*",
@@ -80,7 +83,7 @@
           ]
         }
       ],
-      "icon": "resources/tray/vibing-master.png"
+      "icon": "resources/tray/hrack-master.png"
     },
     "mac": {
       "target": [
@@ -93,17 +96,40 @@
       ],
       "icon": "build/icon.png",
       "category": "public.app-category.developer-tools",
-      "artifactName": "Vibing-${version}-macos-${arch}.${ext}"
+      "artifactName": "HRack-${version}-macos-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "Development",
+      "executableName": "hrack",
+      "artifactName": "HRack-${version}-linux-${arch}.${ext}",
+      "maintainer": "UniRound-Tec",
+      "vendor": "UniRound-Tec",
+      "synopsis": "Harness Rack for AI CLI sessions"
     },
     "dmg": {
-      "title": "Vibing ${version}"
+      "title": "HRack ${version}"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Vibing"
+      "shortcutName": "HRack"
     }
   },
   "dependencies": {

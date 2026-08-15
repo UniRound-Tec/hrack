@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import type { AppLocale } from '../app/i18n'
 import { detectLocale } from '../app/i18n/locale'
 import { isTerminalThemeId, type ThemeId } from '../terminal/themes'
+import { migrateLegacyStorageKey } from './legacyStorage'
 
 const LEGACY_DEFAULT_FONT_FAMILY =
   'Consolas, "Cascadia Code", "Courier New", monospace'
@@ -267,9 +268,11 @@ export const createSettingsState: StateCreator<SettingsState> = (set) => ({
   reset: () => set(defaultSettings)
 })
 
+migrateLegacyStorageKey('hrack-terminal-settings', 'vibing-terminal-settings')
+
 export const useSettingsStore = create<SettingsState>()(
   persist(createSettingsState, {
-    name: 'vibing-terminal-settings',
+    name: 'hrack-terminal-settings',
     version: 10,
     migrate: migrateSettings,
     partialize: ({

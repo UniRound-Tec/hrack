@@ -8,7 +8,7 @@ import { _electron as electron } from '@playwright/test'
  * P1 验收：Home 新建 DSH 跟踪位后，官方页面能启动 host 并通过 wire 连通。
  */
 
-const userDataDir = mkdtempSync(resolve(tmpdir(), 'vibing-dsh-p0-'))
+const userDataDir = mkdtempSync(resolve(tmpdir(), 'hrack-dsh-p0-'))
 
 test('dsh surface boots end to end', async () => {
   test.setTimeout(180_000)
@@ -17,9 +17,9 @@ test('dsh surface boots end to end', async () => {
     args: [main],
     env: {
       ...process.env,
-      VIBING_E2E: '1',
-      VIBING_E2E_CLI_FIXTURE: '0',
-      VIBING_USER_DATA_DIR: userDataDir
+      HRACK_E2E: '1',
+      HRACK_E2E_CLI_FIXTURE: '0',
+      HRACK_USER_DATA_DIR: userDataDir
     }
   })
   try {

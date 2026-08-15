@@ -4,12 +4,12 @@ $workspace = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $packagePath = Join-Path $workspace 'package.json'
 $package = Get-Content -LiteralPath $packagePath -Raw | ConvertFrom-Json
 $version = [string]$package.version
-$releaseDir = Join-Path $env:TEMP ("vibing-release-$version-" + [guid]::NewGuid().ToString('N'))
+$releaseDir = Join-Path $env:TEMP ("hrack-release-$version-" + [guid]::NewGuid().ToString('N'))
 $artifactDir = Join-Path $workspace 'artifacts'
-$installerName = "Vibing-Setup-$version.exe"
+$installerName = "HRack-Setup-$version.exe"
 $installerPath = Join-Path $releaseDir $installerName
 $blockmapPath = "$installerPath.blockmap"
-$unpackedExe = Join-Path $releaseDir 'win-unpacked\Vibing.exe'
+$unpackedExe = Join-Path $releaseDir 'win-unpacked\HRack.exe'
 $succeeded = $false
 
 function Assert-ReleaseConfig {
@@ -159,7 +159,7 @@ try {
   if ($succeeded -and (Test-Path -LiteralPath $releaseDir -PathType Container)) {
     $resolvedRelease = [System.IO.Path]::GetFullPath($releaseDir)
     $resolvedTemp = [System.IO.Path]::GetFullPath($env:TEMP).TrimEnd('\') + '\'
-    if ($resolvedRelease.StartsWith($resolvedTemp) -and (Split-Path $resolvedRelease -Leaf) -like 'vibing-release-*') {
+    if ($resolvedRelease.StartsWith($resolvedTemp) -and (Split-Path $resolvedRelease -Leaf) -like 'hrack-release-*') {
       Remove-Item -LiteralPath $resolvedRelease -Recurse -Force
     }
   }

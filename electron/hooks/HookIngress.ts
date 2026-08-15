@@ -222,7 +222,7 @@ export class HookIngress {
     ) {
       if (!route.overflowReported) {
         route.overflowReported = true
-        route.queue.push({ value: { __vibing_degraded: 'hook-queue-overflow' }, bytes: 64 })
+        route.queue.push({ value: { __hrack_degraded: 'hook-queue-overflow' }, bytes: 64 })
         route.queuedBytes += 64
       }
       return

@@ -65,7 +65,7 @@ export interface DshExternalSpawnSpec {
   windowsVerbatimArguments?: boolean
 }
 
-export const DSH_WSL_PID_MARKER = '__VIBING_DSH_PID__='
+export const DSH_WSL_PID_MARKER = '__HRACK_DSH_PID__='
 
 function quoteCmdArg(value: string): string {
   return `"${value.replace(/"/g, '""')}"`
@@ -97,7 +97,7 @@ export function buildDshExternalSpawnSpec(options: {
         'sh',
         '-c',
         `printf '${DSH_WSL_PID_MARKER}%s\\n' "$$" >&2; exec env "$@"`,
-        'vibing-dsh',
+        'hrack-dsh',
         ...(options.environmentPath
           ? [`PATH=${options.environmentPath}`]
           : []),

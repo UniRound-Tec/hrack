@@ -46,6 +46,12 @@ const REQUIRED_CONTROL_PLANE_METHODS = [
   'workspace.list'
 ] as const
 
+function dshHomeOverride(): string | undefined {
+  return (
+    process.env['HRACK_DSH_HOME'] ?? process.env['VIBING_DSH_HOME']
+  )?.trim() || undefined
+}
+
 interface ManagedDshChild {
   readonly pid?: number
   readonly stdout: NodeJS.ReadableStream | null
@@ -133,7 +139,7 @@ const DSH_BIN_SEGMENTS = [
   'bin.js'
 ] as const
 
-/** 解析随 Vibing 发布的 DSH CLI 入口。 */
+/** 解析随 HRack 发布的 DSH CLI 入口。 */
 export function resolveDshBinPath(): string {
   const relative = join(...DSH_BIN_SEGMENTS)
   const candidates = app.isPackaged
@@ -185,8 +191,8 @@ export class DshHostManager {
 
   /** 内置版与 native 安装沿用现有 Windows/macOS/Linux DSH_HOME 语义。 */
   resolveHome(): string {
-    const override = process.env['VIBING_DSH_HOME']
-    if (override && override.trim().length > 0) return override.trim()
+    const override = dshHomeOverride()
+    if (override) return override
     const mode = getMainPrefs().dshHomeMode
     if (mode === 'shared') return join(app.getPath('home'), '.dsh')
     return this.options.defaultDshHome
@@ -199,7 +205,7 @@ export class DshHostManager {
       isolatedHome: this.options.defaultDshHome,
       sharedHome: join(app.getPath('home'), '.dsh'),
       activeHome: this.status.dshHome ?? this.resolveHome(),
-      envOverride: Boolean(process.env['VIBING_DSH_HOME']?.trim()),
+      envOverride: Boolean(dshHomeOverride()),
       retention: prefs.dshRetention,
       runtimePreference: prefs.dshRuntimePreference,
       activeRuntime: this.status.activeRuntime
@@ -338,11 +344,11 @@ export class DshHostManager {
     ) {
       return this.resolveHome()
     }
-    const override = process.env['VIBING_DSH_HOME']?.trim()
+    const override = dshHomeOverride()
     if (override) {
       if (!override.startsWith('/') || override.includes('\0')) {
         throw new Error(
-          'VIBING_DSH_HOME must be a Linux absolute path for a WSL DSH runtime'
+          'HRACK_DSH_HOME must be a Linux absolute path for a WSL DSH runtime'
         )
       }
       return override
@@ -359,6 +365,7 @@ export class DshHostManager {
     const root = trimPosixHome(home)
     return getMainPrefs().dshHomeMode === 'shared'
       ? `${root}/.dsh`
+      // Keep the pre-rebrand WSL data path so existing DSH history remains visible.
       : `${root}/.local/share/vibing/dsh-home`
   }
 

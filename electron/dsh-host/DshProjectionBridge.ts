@@ -1,5 +1,5 @@
 /**
- * 把 dsh host 的 session 状态投影进 vibing 既有 AgentSessionProjection 管道。
+ * 把 dsh host 的 session 状态投影进 hrack 既有 AgentSessionProjection 管道。
  * 悬浮窗 / 侧边栏 / Home 注意力列表都只订阅这条通道，DSH 不能另起一套。
  */
 

@@ -21,10 +21,10 @@
   left: 4px;
   height: 3px;
   border-radius: 999px;
-  background: var(--vib-accent-target);
+  background: var(--hrack-accent-target);
   box-shadow:
-    0 0 0 1px var(--vib-bg-surface),
-    0 0 9px color-mix(in srgb, var(--vib-accent-target) 70%, transparent);
+    0 0 0 1px var(--hrack-bg-surface),
+    0 0 9px color-mix(in srgb, var(--hrack-accent-target) 70%, transparent);
 }
 
 [data-session-drop-before='true']::before {
@@ -95,8 +95,8 @@
 }
 
 @font-face {
-  font-family: "Vibing Brand";
-  src: url("./assets/fonts/.subset/Vibing-brand.woff2") format("woff2");
+  font-family: "HRack Brand";
+  src: url("./assets/fonts/.subset/HRack-brand.woff2") format("woff2");
   font-style: normal;
   font-weight: 400;
   font-display: swap;
@@ -105,7 +105,7 @@
 @theme inline {
   --font-sans: var(--font-pingfang);
   --font-heading: var(--font-pingfang);
-  --font-brand: "Vibing Brand", sans-serif;
+  --font-brand: "HRack Brand", sans-serif;
   /* PingFang 无谚文/部分日文假名；ko/ja 界面字形回退平台系统栈（M5.c §4.6） */
   --font-pingfang: "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Microsoft YaHei",
     "Apple SD Gothic Neo", "Malgun Gothic", "Hiragino Kaku Gothic ProN", Meiryo,
@@ -114,66 +114,66 @@
      Maple Mono NF CN），不要落到 generic monospace（Windows 会命中宋体）。 */
   --font-maple: "Maple Mono", "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Microsoft YaHei", ui-monospace, monospace;
 
-  --color-app: var(--vib-bg-app);
-  --color-content: var(--vib-bg-content);
-  --color-surface: var(--vib-bg-surface);
-  --color-surface-hover: var(--vib-bg-surface-hover);
-  --color-surface-strong: var(--vib-bg-surface-strong);
-  --color-control: var(--vib-bg-control);
-  --color-control-active: var(--vib-bg-control-active);
-  --color-overlay: var(--vib-bg-overlay);
-  --color-backdrop: var(--vib-bg-backdrop);
-  --color-backdrop-strong: var(--vib-bg-backdrop-strong);
-  --color-text-primary: var(--vib-text-primary);
-  --color-text-secondary: var(--vib-text-secondary);
-  --color-text-strong: var(--vib-text-strong);
-  --color-text-muted: var(--vib-text-muted);
-  --color-text-faint: var(--vib-text-faint);
-  --color-text-disabled: var(--vib-text-disabled);
-  --color-text-inverse: var(--vib-text-inverse);
-  --color-border-default: var(--vib-border-default);
-  --color-border-subtle: var(--vib-border-subtle);
-  --color-border-faint: var(--vib-border-faint);
-  --color-border-strong: var(--vib-border-strong);
-  --color-border-control: var(--vib-border-control);
-  --color-flame: var(--vib-accent-flame);
-  --color-cursor-accent: var(--vib-accent-cursor);
-  --color-target-accent: var(--vib-accent-target);
-  --color-brand-logo: var(--vib-brand-logo);
-  --color-brand-logo-shine: var(--vib-brand-logoShine);
-  --color-brand-logo-muted: var(--vib-brand-logoMuted);
-  --color-status-working: var(--vib-status-working);
-  --color-status-working-dot: var(--vib-status-working-dot);
-  --color-status-needs-you: var(--vib-status-needsYou);
-  --color-status-needs-you-dot: var(--vib-status-needsYou-dot);
-  --color-status-done: var(--vib-status-done);
-  --color-status-done-dot: var(--vib-status-done-dot);
-  --color-status-error: var(--vib-status-error);
-  --color-status-error-dot: var(--vib-status-error-dot);
-  --color-status-idle: var(--vib-status-idle);
-  --color-status-idle-dot: var(--vib-status-idle-dot);
-  --color-status-exited: var(--vib-status-exited);
-  --color-status-exited-dot: var(--vib-status-exited-dot);
-  --color-button-primary: var(--vib-button-primary-bg);
-  --color-button-primary-hover: var(--vib-button-primary-bg-hover);
-  --color-button-primary-fg: var(--vib-button-primary-fg);
-  --color-button-secondary: var(--vib-button-secondary-bg);
-  --color-button-secondary-hover: var(--vib-button-secondary-bg-hover);
-  --color-button-secondary-fg: var(--vib-button-secondary-fg);
-  --color-input: var(--vib-input-bg);
-  --color-input-hover: var(--vib-input-bg-hover);
-  --color-input-focus: var(--vib-input-border-focus);
-  --color-focus-ring: var(--vib-focus-ring);
+  --color-app: var(--hrack-bg-app);
+  --color-content: var(--hrack-bg-content);
+  --color-surface: var(--hrack-bg-surface);
+  --color-surface-hover: var(--hrack-bg-surface-hover);
+  --color-surface-strong: var(--hrack-bg-surface-strong);
+  --color-control: var(--hrack-bg-control);
+  --color-control-active: var(--hrack-bg-control-active);
+  --color-overlay: var(--hrack-bg-overlay);
+  --color-backdrop: var(--hrack-bg-backdrop);
+  --color-backdrop-strong: var(--hrack-bg-backdrop-strong);
+  --color-text-primary: var(--hrack-text-primary);
+  --color-text-secondary: var(--hrack-text-secondary);
+  --color-text-strong: var(--hrack-text-strong);
+  --color-text-muted: var(--hrack-text-muted);
+  --color-text-faint: var(--hrack-text-faint);
+  --color-text-disabled: var(--hrack-text-disabled);
+  --color-text-inverse: var(--hrack-text-inverse);
+  --color-border-default: var(--hrack-border-default);
+  --color-border-subtle: var(--hrack-border-subtle);
+  --color-border-faint: var(--hrack-border-faint);
+  --color-border-strong: var(--hrack-border-strong);
+  --color-border-control: var(--hrack-border-control);
+  --color-flame: var(--hrack-accent-flame);
+  --color-cursor-accent: var(--hrack-accent-cursor);
+  --color-target-accent: var(--hrack-accent-target);
+  --color-brand-logo: var(--hrack-brand-logo);
+  --color-brand-logo-shine: var(--hrack-brand-logoShine);
+  --color-brand-logo-muted: var(--hrack-brand-logoMuted);
+  --color-status-working: var(--hrack-status-working);
+  --color-status-working-dot: var(--hrack-status-working-dot);
+  --color-status-needs-you: var(--hrack-status-needsYou);
+  --color-status-needs-you-dot: var(--hrack-status-needsYou-dot);
+  --color-status-done: var(--hrack-status-done);
+  --color-status-done-dot: var(--hrack-status-done-dot);
+  --color-status-error: var(--hrack-status-error);
+  --color-status-error-dot: var(--hrack-status-error-dot);
+  --color-status-idle: var(--hrack-status-idle);
+  --color-status-idle-dot: var(--hrack-status-idle-dot);
+  --color-status-exited: var(--hrack-status-exited);
+  --color-status-exited-dot: var(--hrack-status-exited-dot);
+  --color-button-primary: var(--hrack-button-primary-bg);
+  --color-button-primary-hover: var(--hrack-button-primary-bg-hover);
+  --color-button-primary-fg: var(--hrack-button-primary-fg);
+  --color-button-secondary: var(--hrack-button-secondary-bg);
+  --color-button-secondary-hover: var(--hrack-button-secondary-bg-hover);
+  --color-button-secondary-fg: var(--hrack-button-secondary-fg);
+  --color-input: var(--hrack-input-bg);
+  --color-input-hover: var(--hrack-input-bg-hover);
+  --color-input-focus: var(--hrack-input-border-focus);
+  --color-focus-ring: var(--hrack-focus-ring);
 }
 
 html,
 body,
-#vibing-root {
+#hrack-root {
   height: 100%;
   margin: 0;
 }
 
-#vibing-root {
+#hrack-root {
   display: flex;
   min-height: 100%;
   flex-direction: column;
@@ -190,14 +190,14 @@ html.workspace-splitting * {
 }
 
 body {
-  background-color: var(--vib-bg-app);
-  color: var(--vib-text-primary);
+  background-color: var(--hrack-bg-app);
+  color: var(--hrack-text-primary);
   overflow: hidden;
 }
 
 html[data-surface="floating"],
 html[data-surface="floating"] body,
-html[data-surface="floating"] #vibing-root {
+html[data-surface="floating"] #hrack-root {
   background: transparent;
 }
 
@@ -214,7 +214,7 @@ textarea,
    已在 @layer base 内做了同样的 reset）。 */
 
 .app-shell {
-  background: var(--vib-bg-app);
+  background: var(--hrack-bg-app);
 }
 
 .app-drag-region {
@@ -229,7 +229,7 @@ textarea,
 .titlebar {
   /* 透明：露出 app-shell 根上的底色与环境渐变层 */
   background: transparent;
-  color: var(--vib-titlebar-fg);
+  color: var(--hrack-titlebar-fg);
 }
 
 .titlebar-macos .titlebar-actions {
@@ -243,22 +243,22 @@ textarea,
 
 /* 原型：标题栏功能按钮 text-neutral-500 → hover neutral-800 / 激活 neutral-900 */
 .titlebar-action {
-  color: var(--vib-text-muted);
+  color: var(--hrack-text-muted);
 }
 
 .titlebar-action:hover:not(:disabled) {
-  background: var(--vib-titlebar-bg-hover);
-  color: var(--vib-text-secondary);
+  background: var(--hrack-titlebar-bg-hover);
+  color: var(--hrack-text-secondary);
 }
 
 .titlebar-action-active,
 .titlebar-action-active:hover:not(:disabled) {
-  background: var(--vib-titlebar-bg-hover);
-  color: var(--vib-text-primary);
+  background: var(--hrack-titlebar-bg-hover);
+  color: var(--hrack-text-primary);
 }
 
 .titlebar-action:disabled {
-  color: var(--vib-text-disabled);
+  color: var(--hrack-text-disabled);
   cursor: default;
 }
 
@@ -267,18 +267,18 @@ textarea,
   display: grid;
   width: 46px;
   place-items: center;
-  color: var(--vib-titlebar-fg);
+  color: var(--hrack-titlebar-fg);
   transition: background-color 100ms ease, color 100ms ease;
 }
 
 .window-control:hover {
-  background: var(--vib-titlebar-bg-hover);
-  color: var(--vib-titlebar-fg-hover);
+  background: var(--hrack-titlebar-bg-hover);
+  color: var(--hrack-titlebar-fg-hover);
 }
 
 .window-control-close:hover {
-  background: var(--vib-titlebar-close-bg-hover);
-  color: var(--vib-titlebar-close-fg-hover);
+  background: var(--hrack-titlebar-close-bg-hover);
+  color: var(--hrack-titlebar-close-fg-hover);
 }
 
 .window-control-minimize {
@@ -306,12 +306,12 @@ textarea,
   width: 9px;
   height: 9px;
   border: 1px solid currentColor;
-  background: var(--vib-bg-app);
+  background: var(--hrack-bg-app);
   content: "";
 }
 
 .window-control:hover .window-control-restore::before {
-  background: var(--vib-titlebar-bg-hover);
+  background: var(--hrack-titlebar-bg-hover);
 }
 
 /* 关闭按钮画一个 10×10 的 X：两条对角线分别绕自身中心旋转 ±45°。 */
@@ -340,7 +340,7 @@ textarea,
 }
 
 .sidebar-scroll {
-  scrollbar-color: var(--vib-scrollbar-thumb) transparent;
+  scrollbar-color: var(--hrack-scrollbar-thumb) transparent;
   scrollbar-width: thin;
 }
 
@@ -356,23 +356,23 @@ textarea,
 .sidebar-scroll::-webkit-scrollbar-thumb {
   border: 1px solid transparent;
   border-radius: 999px;
-  background: var(--vib-scrollbar-thumb);
+  background: var(--hrack-scrollbar-thumb);
   background-clip: content-box;
 }
 
 .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-  background: var(--vib-scrollbar-thumb-hover);
+  background: var(--hrack-scrollbar-thumb-hover);
   background-clip: content-box;
 }
 
 .sidebar-scroll::-webkit-scrollbar-thumb:active {
-  background: var(--vib-scrollbar-thumb-active);
+  background: var(--hrack-scrollbar-thumb-active);
   background-clip: content-box;
 }
 
 .workspace-reader-scrollbars,
 .workspace-reader-scrollbars * {
-  scrollbar-color: var(--vib-scrollbar-thumb) transparent;
+  scrollbar-color: var(--hrack-scrollbar-thumb) transparent;
   scrollbar-width: thin;
 }
 
@@ -387,11 +387,11 @@ textarea,
 
 .workspace-reader-scrollbars ::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: var(--vib-scrollbar-thumb);
+  background: var(--hrack-scrollbar-thumb);
 }
 
 .workspace-reader-scrollbars ::-webkit-scrollbar-thumb:hover {
-  background: var(--vib-scrollbar-thumb-hover);
+  background: var(--hrack-scrollbar-thumb-hover);
 }
 
 .top-tab-viewport {
@@ -415,7 +415,7 @@ textarea,
 }
 
 .shell-popover {
-  box-shadow: 0 20px 25px -5px var(--vib-shadow-popover);
+  box-shadow: 0 20px 25px -5px var(--hrack-shadow-popover);
 }
 
 /* 原型 hover 卡：transition-opacity delay-150，进入前先停 150ms 再淡入 */
@@ -434,7 +434,7 @@ textarea,
 }
 
 .shell-sheet {
-  box-shadow: 0 -18px 40px var(--vib-shadow-window);
+  box-shadow: 0 -18px 40px var(--hrack-shadow-window);
 }
 
 @keyframes copy-toast-in {
@@ -449,9 +449,9 @@ textarea,
 }
 
 .copy-toast {
-  border-color: var(--vib-border-default);
-  background: var(--vib-bg-overlay);
-  box-shadow: 0 10px 15px -3px var(--vib-shadow-popover);
-  color: var(--vib-text-primary);
+  border-color: var(--hrack-border-default);
+  background: var(--hrack-bg-overlay);
+  box-shadow: 0 10px 15px -3px var(--hrack-shadow-popover);
+  color: var(--hrack-text-primary);
   animation: copy-toast-in 140ms ease-out;
 }

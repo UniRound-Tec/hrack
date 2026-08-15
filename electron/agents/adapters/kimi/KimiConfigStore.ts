@@ -199,6 +199,7 @@ async function ensureWhileLocked(
   options: EnsureKimiManagedHooksOptions
 ): Promise<EnsureKimiManagedHooksResult> {
   const configDir = dirname(options.configPath)
+  // Stable across the rebrand so an older process cannot edit concurrently.
   const lockPath = `${options.configPath}.vibing.lock`
   try {
     await mkdir(configDir, { recursive: true, mode: 0o700 })
@@ -244,7 +245,7 @@ async function ensureWhileLocked(
 
       const candidatePath = join(
         configDir,
-        `.${basename(options.configPath)}.vibing-${randomBytes(8).toString('hex')}.tmp`
+        `.${basename(options.configPath)}.hrack-${randomBytes(8).toString('hex')}.tmp`
       )
       try {
         try {

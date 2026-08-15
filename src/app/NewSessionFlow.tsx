@@ -10,7 +10,8 @@ import {
 } from './launchOptions'
 import { useStrings } from './i18n'
 
-const LAST_WORKSPACE_KEY = 'vibing.lastWorkspace'
+const LAST_WORKSPACE_KEY = 'hrack.lastWorkspace'
+const LEGACY_LAST_WORKSPACE_KEY = 'vibing.lastWorkspace'
 
 interface NewSessionFlowProps {
   open: boolean
@@ -21,13 +22,18 @@ interface NewSessionFlowProps {
   initialTerminalPicker?: boolean
   initialWorkspace?: string
   onClose: () => void
+  onOpenDsh: () => void
   onLaunchTerminal: (shell: ShellOption, remember: boolean) => void
   onLaunchCli: (draft: CliLaunchDraft) => Promise<string | null>
 }
 
 function readLastWorkspace(): string {
   try {
-    return localStorage.getItem(LAST_WORKSPACE_KEY) ?? ''
+    const current = localStorage.getItem(LAST_WORKSPACE_KEY)
+    if (current !== null) return current
+    const legacy = localStorage.getItem(LEGACY_LAST_WORKSPACE_KEY) ?? ''
+    if (legacy) localStorage.setItem(LAST_WORKSPACE_KEY, legacy)
+    return legacy
   } catch {
     return ''
   }
@@ -50,6 +56,7 @@ export default function NewSessionFlow({
   initialTerminalPicker = false,
   initialWorkspace = '',
   onClose,
+  onOpenDsh,
   onLaunchTerminal,
   onLaunchCli
 }: NewSessionFlowProps) {
@@ -178,6 +185,26 @@ export default function NewSessionFlow({
                     <button type="button" data-testid="new-session-terminal-options" aria-label={strings.home.terminalOptions} title={strings.home.terminalOptions} onClick={() => setTerminalPickerOpen(true)} className="mr-1.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-text-faint opacity-70 transition-all hover:bg-control hover:text-text-secondary group-hover:opacity-100"><Settings2 className="size-3.5" strokeWidth={1.75} /></button>
                   </div>
                 </li>
+                <li className="shrink-0">
+                  <button
+                    type="button"
+                    data-testid="new-session-dsh"
+                    onClick={onOpenDsh}
+                    className="cursor-target flex h-12 w-full items-center gap-2.5 rounded-xl px-2.5 text-left font-pingfang transition-colors hover:bg-surface-hover"
+                  >
+                    <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-strong">
+                      <DshLaunchIcon />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[12px] font-semibold text-text-primary">
+                        {strings.navigation.dsh}
+                      </span>
+                      <span className="block truncate text-[11px] text-text-faint">
+                        {strings.dsh.homeHint}
+                      </span>
+                    </span>
+                  </button>
+                </li>
                 {clis.map((option) => {
                   const Icon = getAdapterIcon(option.definition.adapterId)
                   return <li key={option.definition.id} className="shrink-0"><button type="button" data-testid={`new-session-cli-${option.definition.id}`} onClick={() => openCli(option)} className="cursor-target flex h-12 w-full items-center gap-2.5 rounded-xl px-2.5 text-left font-pingfang transition-colors hover:bg-surface-hover"><span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-strong"><Icon size={16} className="size-4" /></span><span className="min-w-0 flex-1"><span className="block text-[12px] font-semibold text-text-primary">{option.definition.displayName}</span><span className="block truncate text-[11px] text-text-faint">{option.installations.map(installationLabel).join(' · ')}</span></span></button></li>
@@ -222,6 +249,11 @@ export default function NewSessionFlow({
       )}
     </AnimatePresence>
   )
+}
+
+function DshLaunchIcon(): React.ReactNode {
+  const Icon = getAdapterIcon('dsh')
+  return <Icon size={16} className="size-4" />
 }
 
 const fieldClass = 'w-full rounded-lg border border-border-default bg-input px-2.5 py-2 font-pingfang text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-faint focus:border-input-focus focus:bg-input-hover'

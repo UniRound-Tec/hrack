@@ -34,10 +34,10 @@ const TRAY_LABELS: Record<string, { toggle: string; newSession: string; quit: st
 function trayIcon(): NativeImage {
   const isMac = process.platform === 'darwin'
   const basename = isMac
-    ? 'vibingTemplate'
+    ? 'hrackTemplate'
     : nativeTheme.shouldUseDarkColors
-      ? 'vibing-white'
-      : 'vibing'
+      ? 'hrack-white'
+      : 'hrack'
   const trayAssetsDir = app.isPackaged
     ? join(process.resourcesPath, 'tray')
     : join(process.cwd(), 'resources', 'tray')
@@ -126,7 +126,7 @@ export function createTray(
   callbacks: TrayCallbacks
 ): Tray {
   const tray = new Tray(trayIcon())
-  tray.setToolTip('vibing')
+  tray.setToolTip('HRack')
   rebuildTrayMenu(tray, language, callbacks)
   // Windows/Linux：单击图标切换显示；macOS 点击交给系统弹出菜单。
   if (process.platform !== 'darwin') {

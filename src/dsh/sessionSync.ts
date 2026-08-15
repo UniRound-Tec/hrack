@@ -1,6 +1,6 @@
 /**
  * DSH presentation actions. Official DSH owns its full session catalog;
- * Vibing only renames through the official API or locally unfollows a
+ * HRack only renames through the official API or locally unfollows a
  * Home-created tracking slot. The official session itself remains untouched.
  */
 

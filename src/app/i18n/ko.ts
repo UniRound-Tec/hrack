@@ -36,7 +36,7 @@ export const ko = {
     closeSessionPrompt: (name: string) =>
       `“${name}” 세션을 닫을까요? CLI 프로세스와 하위 터미널도 함께 종료됩니다.`,
     closeDshSessionPrompt: (name: string) =>
-      `Vibing에서 “${name}” 세션 추적을 중지할까요? DSH 세션과 기록은 변경되지 않습니다.`,
+      `HRack에서 “${name}” 세션 추적을 중지할까요? DSH 세션과 기록은 변경되지 않습니다.`,
     sessionActions: '세션 작업',
     createChildTerminal: '하위 터미널 만들기',
     cloneSession: '세션 복제',
@@ -54,7 +54,7 @@ export const ko = {
     homeLabel: 'DSH_HOME',
     homeIsolated: '격리(권장)',
     homeShared: '공유 ~/.dsh',
-    homeEnvOverride: 'VIBING_DSH_HOME 이 경로를 덮어씁니다.',
+    homeEnvOverride: 'HRACK_DSH_HOME 이 경로를 덮어씁니다.',
     homeSwitchConfirm:
       'DSH_HOME 을 바꾸면 host 가 재시작되고 창이 새로고침됩니다. 기존 세션은 이전되지 않습니다. 계속할까요?',
     retentionLabel: '세션 보관',
@@ -79,11 +79,11 @@ export const ko = {
     enterTitle: '작업 중 Enter',
     enterHint: '에이전트 실행 중에만 적용됩니다. Cmd/Ctrl+Enter 는 다른 동작입니다.',
     surfaceScale: '세션 화면 배율',
-    surfaceScaleHint: 'Vibing 안의 DSH 페이지만 조정하며 DSH 설정은 변경하지 않습니다.',
+    surfaceScaleHint: 'HRack 안의 DSH 페이지만 조정하며 DSH 설정은 변경하지 않습니다.',
     runtimeLabel: 'DSH 런타임',
-    runtimeHint: '호스트와 각 WSL 배포판을 검색합니다. 자동 모드는 호환되는 로컬 설치를 우선하고 내장 런타임으로 대체합니다.',
+    runtimeHint: '호스트와 각 WSL 배포판을 검색합니다. 자동 모드는 호환되는 로컬 설치를 우선하고 번들 버전은 대체 수단으로만 사용합니다.',
     runtimeAuto: '자동(로컬 우선)',
-    runtimeBundled: (version: string) => `내장 · ${version}`,
+    runtimeBundled: (version: string) => `번들 대체 · ${version}`,
     runtimeLocal: (location: string, version?: string) =>
       `${location}${version ? ` · ${version}` : ''}`,
     runtimeScanning: 'DSH 검색 중…',
@@ -172,7 +172,7 @@ export const ko = {
     bootHostInit: '첫 host 시작 시 profile 초기화가 필요합니다',
     bootFailed: 'DSH 시작 실패',
     bootReload: '창 다시 로드',
-    homeHint: '내장 에이전트 런타임'
+    homeHint: '자동 선택 · 로컬 우선'
   },
   sessionStatus: {
     working: '작업 처리 중',
@@ -269,7 +269,7 @@ export const ko = {
     disabled: '지금은 끄기',
     scanFailed: '검색을 완료하지 못했습니다',
     scanFound: (clis: number, installations: number) => `CLI ${clis}개, 설치 ${installations}개 발견`,
-    continue: 'Vibing 시작'
+    continue: 'HRack 시작'
   },
   settings: {
     title: '설정',

@@ -1,5 +1,6 @@
 import { create, type StateCreator, type StoreApi, type UseBoundStore } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { migrateLegacyStorageKey } from '../state/legacyStorage'
 import {
   applySessionNavigationIntent,
   createEmptySessionNavigation,
@@ -87,9 +88,11 @@ export function createSessionNavigationStore(
   const stateCreator = createSessionNavigationState()
   if (options.persist === false) return create<SessionNavigationState>()(stateCreator)
 
+  migrateLegacyStorageKey('hrack-session-navigation', 'vibing-session-navigation')
+
   return create<SessionNavigationState>()(
     persist(stateCreator, {
-      name: 'vibing-session-navigation',
+      name: 'hrack-session-navigation',
       version: 1,
       partialize: (state) => ({ snapshot: state.snapshot }),
       merge: (persisted, current) => ({

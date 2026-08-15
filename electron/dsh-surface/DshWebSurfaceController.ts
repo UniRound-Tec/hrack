@@ -21,7 +21,7 @@ const WAIT_FOR_RUNTIME_SCRIPT = `
 (async () => {
   const deadline = Date.now() + ${RUNTIME_READY_TIMEOUT_MS};
   while (Date.now() < deadline) {
-    const state = globalThis.__VIBING_DSH_EMBED__;
+    const state = globalThis.__HRACK_DSH_EMBED__;
     const ctx = state?.ctx;
     if (ctx) {
       try {
@@ -40,7 +40,7 @@ const WAIT_FOR_RUNTIME_SCRIPT = `
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  const state = globalThis.__VIBING_DSH_EMBED__;
+  const state = globalThis.__HRACK_DSH_EMBED__;
   throw new Error(
     'official DSH runtime bridge was not captured' +
     (state?.captureError ? ': ' + state.captureError : '')
@@ -49,9 +49,9 @@ const WAIT_FOR_RUNTIME_SCRIPT = `
 
 const INSTALL_ACTIVE_SESSION_REPORTER_SCRIPT = `
 (() => {
-  const state = globalThis.__VIBING_DSH_EMBED__;
+  const state = globalThis.__HRACK_DSH_EMBED__;
   const sessions = state?.ctx?.get?.('sessions');
-  const bridge = globalThis.__VIBING_DSH_HOST_BRIDGE__;
+  const bridge = globalThis.__HRACK_DSH_HOST_BRIDGE__;
   if (!state || !sessions?.list || typeof bridge?.reportActiveSession !== 'function') {
     throw new Error('official DSH active-session bridge is unavailable');
   }
@@ -75,10 +75,10 @@ const INSTALL_ACTIVE_SESSION_REPORTER_SCRIPT = `
 function collapseOfficialSidebarScript(): string {
   return `
 (async () => {
-  const state = globalThis.__VIBING_DSH_EMBED__;
+  const state = globalThis.__HRACK_DSH_EMBED__;
   const ctx = state?.ctx;
   if (!ctx) throw new Error('official DSH runtime is unavailable');
-  document.documentElement.dataset.vibingEmbedded = 'true';
+  document.documentElement.dataset.hrackEmbedded = 'true';
 
   const frameDeadline = Date.now() + 5000;
   let frame;
@@ -90,7 +90,7 @@ function collapseOfficialSidebarScript(): string {
   if (!frame) throw new Error('official DSH layout frame is unavailable');
 
   // AppFrame derives its breakpoint from a ResizeObserver. Give that observer
-  // and React two paints to absorb the WebContents zoom set by Vibing before
+  // and React two paints to absorb the WebContents zoom set by HRack before
   // deciding whether the current frame is actually expanded.
   await new Promise((resolve) => {
     let frames = 0;
@@ -245,9 +245,9 @@ function errorMessage(error: unknown): string {
 }
 
 /**
- * Owns the isolated official DSH page. The Vibing renderer sees only the
+ * Owns the isolated official DSH page. The HRack renderer sees only the
  * semantic show / bounds / hide seam; official DOM, CSS, portals and Cordis
- * runtime never enter Vibing's document.
+ * runtime never enter HRack's document.
  */
 export class DshWebSurfaceController {
   private view: WebContentsView | null = null
@@ -373,7 +373,7 @@ export class DshWebSurfaceController {
     try {
       const page = await view.webContents.executeJavaScript(
         `(() => {
-          const state = globalThis.__VIBING_DSH_EMBED__;
+          const state = globalThis.__HRACK_DSH_EMBED__;
           const sessions = state?.ctx?.get?.('sessions');
           const frame = document.querySelector('[data-details-collapsed]');
           const frameStyle = frame ? getComputedStyle(frame) : null;
@@ -400,7 +400,7 @@ export class DshWebSurfaceController {
             frameColumns: frameStyle?.gridTemplateColumns,
             sidebarClosed: frame?.hasAttribute('data-sidebar-collapsed') === true,
             sidebarDefaultApplied: state?.sidebarDefaultApplied === true,
-            embedded: document.documentElement.dataset.vibingEmbedded === 'true'
+            embedded: document.documentElement.dataset.hrackEmbedded === 'true'
           };
         })()`,
         true
@@ -521,8 +521,8 @@ export class DshWebSurfaceController {
         nodeIntegration: false,
         sandbox: false,
         backgroundThrottling: false,
-        partition: 'persist:vibing-dsh-surface',
-        additionalArguments: [`--vibing-dsh-locale=${locale}`]
+        partition: 'persist:hrack-dsh-surface',
+        additionalArguments: [`--hrack-dsh-locale=${locale}`]
       }
     })
     this.view = view
@@ -599,7 +599,7 @@ export class DshWebSurfaceController {
     await this.requireView().webContents.executeJavaScript(
       `(() => {
         const appearance = ${payload};
-        const state = globalThis.__VIBING_DSH_EMBED__;
+        const state = globalThis.__HRACK_DSH_EMBED__;
         const ctx = state?.ctx;
         if (!ctx) throw new Error('official DSH runtime is unavailable');
         const tokenModes = Object.fromEntries(
@@ -609,7 +609,7 @@ export class DshWebSurfaceController {
           ])
         );
         state.themeDisposer = ctx.get('theme').overrideTokens(
-          'vibing-web-surface',
+          'hrack-web-surface',
           tokenModes
         );
         state.colorScheme = appearance.colorScheme;
@@ -639,7 +639,7 @@ export class DshWebSurfaceController {
     await this.requireView().webContents.executeJavaScript(
       `(async () => {
         const target = ${encoded};
-        const state = globalThis.__VIBING_DSH_EMBED__;
+        const state = globalThis.__HRACK_DSH_EMBED__;
         const sessions = state?.ctx?.get?.('sessions');
         if (!sessions) throw new Error('official DSH sessions service is unavailable');
         const deadline = Date.now() + ${SESSION_READY_TIMEOUT_MS};
@@ -664,7 +664,7 @@ export class DshWebSurfaceController {
   private async clearSession(): Promise<void> {
     await this.requireView().webContents.executeJavaScript(
       `(async () => {
-        const state = globalThis.__VIBING_DSH_EMBED__;
+        const state = globalThis.__HRACK_DSH_EMBED__;
         const sessions = state?.ctx?.get?.('sessions');
         if (!sessions || typeof sessions.clear !== 'function') {
           throw new Error('official DSH sessions.clear is unavailable');

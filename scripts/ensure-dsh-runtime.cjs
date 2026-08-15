@@ -30,9 +30,14 @@ if (existsSync(marker)) {
 
 console.log('[dsh-runtime] isolated dependency tree missing, installing (first run)...')
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+// node-pty does not ship Linux prebuilds in the DSH dependency tree. Its
+// install script must compile build/Release/pty.node and spawn-helper there.
+// Windows/macOS use the packaged prebuilds and keep lifecycle scripts disabled.
+const installArgs = ['ci', '--no-audit', '--no-fund']
+if (process.platform !== 'linux') installArgs.splice(1, 0, '--ignore-scripts')
 const result = spawnSync(
   npm,
-  ['ci', '--ignore-scripts', '--no-audit', '--no-fund'],
+  installArgs,
   {
     cwd: runtimeDir,
     stdio: 'inherit',

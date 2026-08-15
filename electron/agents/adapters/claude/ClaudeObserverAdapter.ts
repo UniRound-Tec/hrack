@@ -131,7 +131,7 @@ function bridgeScript(): string {
 set -eu
 umask 077
 drop="$1"
-tmp="$(mktemp "$drop/.vibing-hook.XXXXXX.partial")" || exit 0
+tmp="$(mktemp "$drop/.hrack-hook.XXXXXX.partial")" || exit 0
 trap 'rm -f "$tmp"' EXIT HUP INT TERM
 dd bs=1048577 count=1 of="$tmp" 2>/dev/null || true
 size="$(wc -c < "$tmp" | tr -d ' ')"
@@ -157,7 +157,7 @@ async function probeFileRoundTrip(
   const nonce = randomBytes(12).toString('hex')
   const hostResult = join(hostDropDir, `${nonce}.probe`)
   const script = 'set -eu; d="$1"; n="$2"; p="$d/.$n.partial"; printf "%s" "$n" > "$p"; mv "$p" "$d/$n.probe"'
-  const result = await runWsl(distro, '/bin/sh', ['-c', script, 'vibing-probe', runtimeDropDir, nonce])
+  const result = await runWsl(distro, '/bin/sh', ['-c', script, 'hrack-probe', runtimeDropDir, nonce])
   if (result.code !== 0) return false
   try {
     return (await readFile(hostResult, 'utf8')) === nonce
@@ -225,7 +225,7 @@ export class ClaudeObserverAdapter implements AgentObserverAdapter {
         let overflowReported = false
         const onPayload = (payload: unknown): void => {
           const sentinel = payload && typeof payload === 'object'
-            ? (payload as Record<string, unknown>).__vibing_degraded
+            ? (payload as Record<string, unknown>).__hrack_degraded
             : undefined
           if (sentinel === 'hook-queue-overflow') {
             if (!overflowReported) {

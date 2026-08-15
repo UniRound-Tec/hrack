@@ -30,8 +30,8 @@ function createMemoryShortcutBackend(): ShortcutBackend {
 // a developer/CI host. The default E2E gate verifies our registration lifecycle
 // against an in-memory backend; opt into the real OS smoke explicitly.
 const shortcutBackend =
-  process.env['VIBING_E2E'] === '1' &&
-  process.env['VIBING_E2E_REAL_GLOBAL_SHORTCUT'] !== '1'
+  process.env['HRACK_E2E'] === '1' &&
+  process.env['HRACK_E2E_REAL_GLOBAL_SHORTCUT'] !== '1'
     ? createMemoryShortcutBackend()
     : electronShortcutBackend
 

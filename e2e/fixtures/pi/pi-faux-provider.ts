@@ -8,15 +8,15 @@ import {
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
 /** Deterministic, offline provider used only by the opt-in real Pi E2E. */
-export default function registerVibingPiE2eProvider(pi: ExtensionAPI): void {
+export default function registerHRackPiE2eProvider(pi: ExtensionAPI): void {
   const faux = createFauxCore({
-    provider: 'vibing-e2e',
-    api: 'vibing-e2e',
+    provider: 'hrack-e2e',
+    api: 'hrack-e2e',
     tokensPerSecond: 24,
     models: [
       {
         id: 'trace',
-        name: 'Vibing E2E Trace',
+        name: 'HRack E2E Trace',
         reasoning: true,
         input: ['text'],
         contextWindow: 16_384,
@@ -58,8 +58,8 @@ export default function registerVibingPiE2eProvider(pi: ExtensionAPI): void {
     ])
   ])
   // Pi 0.80 cannot consume the newer Provider object from fauxProvider().
-  pi.registerProvider('vibing-e2e', {
-    name: 'Vibing E2E',
+  pi.registerProvider('hrack-e2e', {
+    name: 'HRack E2E',
     baseUrl: 'http://127.0.0.1:1',
     apiKey: 'offline-e2e',
     api: faux.api,

@@ -28,6 +28,17 @@ function assertDirectory(path, label) {
   }
 }
 
+function findNodePtyNativeDir(runtimeRoot, platform, archName) {
+  const nodePtyRoot = join(runtimeRoot, 'node_modules', 'node-pty')
+  const candidates = [
+    join(nodePtyRoot, 'build', 'Release'),
+    join(nodePtyRoot, 'prebuilds', `${platform}-${archName}`)
+  ]
+  return candidates.find((candidate) =>
+    existsSync(join(candidate, 'pty.node'))
+  )
+}
+
 function archNamesOf(context) {
   if (Array.isArray(context.archNames)) return context.archNames
   if (context.arch === undefined) return []
@@ -60,29 +71,33 @@ function assertDshRuntime(context) {
   //    只验当前打包平台，不要求跨平台 prebuilds 全数在场。
   const archNames = archNamesOf(context)
   for (const archName of archNames) {
-    assertDirectory(
-      join(runtimeRoot, 'node_modules', 'node-pty', 'prebuilds', `${context.electronPlatformName}-${archName}`),
-      `node-pty prebuilds ${context.electronPlatformName}-${archName}`
+    const nativeDir = findNodePtyNativeDir(
+      runtimeRoot,
+      context.electronPlatformName,
+      archName
     )
+    if (!nativeDir) {
+      throw new Error(
+        `Packaged node-pty native runtime is missing (${context.electronPlatformName}-${archName})`
+      )
+    }
   }
 
-  // 4. darwin：spawn-helper 必须带执行位（npm tarball 剥离 +x，靠
+  // 4. Unix：spawn-helper 必须带执行位（npm tarball 剥离 +x，靠
   //    ensure-spawn-helper.mjs 恢复；copyDir 必须把模式位带进包里）。
-  if (context.electronPlatformName === 'darwin') {
+  if (['darwin', 'linux'].includes(context.electronPlatformName)) {
     for (const archName of archNames) {
-      const helper = join(
+      const nativeDir = findNodePtyNativeDir(
         runtimeRoot,
-        'node_modules',
-        'node-pty',
-        'prebuilds',
-        `darwin-${archName}`,
-        'spawn-helper'
+        context.electronPlatformName,
+        archName
       )
+      const helper = nativeDir ? join(nativeDir, 'spawn-helper') : ''
       if (!existsSync(helper)) {
-        throw new Error(`Packaged darwin spawn-helper is missing: ${helper}`)
+        throw new Error(`Packaged ${context.electronPlatformName} spawn-helper is missing: ${helper}`)
       }
       if (process.platform !== 'win32' && (statSync(helper).mode & 0o111) === 0) {
-        throw new Error(`Packaged darwin spawn-helper is not executable: ${helper}`)
+        throw new Error(`Packaged ${context.electronPlatformName} spawn-helper is not executable: ${helper}`)
       }
     }
   }

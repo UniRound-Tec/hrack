@@ -22,7 +22,7 @@ interface DropdownProps {
   onChange: (value: string) => void
 }
 
-/** 自绘下拉框：原生 <select> 的弹出层无法使用 Vibing 主题 token。 */
+/** 自绘下拉框：原生 <select> 的弹出层无法使用 HRack 主题 token。 */
 export default function Dropdown({
   testId,
   value,

@@ -55,7 +55,7 @@ function pickHomeGreeting(exclude?: string) {
   return pool[Math.floor(Math.random() * pool.length)] ?? homeGreetings[0]
 }
 
-const DEFAULT_TERMINAL_KEY = 'vibing.defaultTerminal'
+const DEFAULT_TERMINAL_KEY = 'hrack.defaultTerminal'
 
 const terminalOptions = [
   { id: 'cmd', name: 'Command Prompt', hint: 'cmd.exe' },
@@ -652,7 +652,7 @@ function App() {
           <aside className="flex w-[280px] shrink-0 flex-col bg-white px-3 pt-3">
             <div className="flex justify-center">
               <ShinyText
-                text="vibing"
+                text="hrack"
                 color="#7a7a7a"
                 shineColor="#1a1a1a"
                 speed={3.2}
@@ -808,7 +808,7 @@ function App() {
                 </p>
                 <div className="mt-5">
                   <ShinyText
-                    text="vibing"
+                    text="hrack"
                     color="#7a7a7a"
                     shineColor="#1a1a1a"
                     speed={3.2}

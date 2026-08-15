@@ -25,7 +25,7 @@ export function isDshPage(pageId: PageId): boolean {
 }
 
 export function dshSlotIdFromPage(pageId: PageId): string | null {
-  // dsh:settings was the removed Vibing-owned settings route. Keep treating
+  // dsh:settings was the removed HRack-owned settings route. Keep treating
   // it as a non-session target so stale dev links can be normalized home.
   if (
     pageId === 'dsh:home' ||

@@ -119,9 +119,9 @@ export default function FirstRunOnboarding({
         >
           <header className="text-center">
             <ShinyText
-              text="vibing"
-              color="var(--vib-brand-logo)"
-              shineColor="var(--vib-brand-logoShine)"
+              text="hrack"
+              color="var(--hrack-brand-logo)"
+              shineColor="var(--hrack-brand-logoShine)"
               speed={3.2}
               spread={100}
               className="font-brand text-[52px] leading-none tracking-[0.08em]"

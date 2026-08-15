@@ -41,8 +41,8 @@ test.describe('new session flow', () => {
   test.beforeEach(async () => {
     ;({ app, window: page } = await launchApp())
     await page.evaluate(() => {
-      window.__vibingDebugShell?.setNavMode('sidebar')
-      window.__vibingDebugShell?.navigate('home')
+      window.__hrackDebugShell?.setNavMode('sidebar')
+      window.__hrackDebugShell?.navigate('home')
     })
   })
 
@@ -58,6 +58,22 @@ test.describe('new session flow', () => {
     await choices.first().click()
     await expect(terminals).toHaveCount(2)
     await expect(page.locator('.xterm:visible')).toHaveCount(1)
+  })
+
+  test('opens a new DeepSeek Harness slot from the quick launcher', async () => {
+    await page.getByTestId('titlebar-new').click()
+    const dshLauncher = page.getByTestId('new-session-dsh')
+    await expect(dshLauncher).toBeVisible()
+    await expect(dshLauncher).toContainText(
+      /本机优先|本機優先|local preferred|ローカル優先|로컬 우선/
+    )
+    await dshLauncher.click()
+
+    await expect(page.getByTestId('new-session-overlay')).toHaveCount(0)
+    await expect(page.getByTestId('dsh-page')).toHaveAttribute(
+      'data-dsh-mode',
+      'slot'
+    )
   })
 
   test('opens CLI configuration from Home and binds all draft fields', async () => {

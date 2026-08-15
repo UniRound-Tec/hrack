@@ -13,7 +13,7 @@ import type {
 /**
  * S1 验证夹具（PLAN-S1 §1.1, §3.3, §11 P4）。
  *
- * 仅在 `VIBING_FIXTURE_OBSERVER=1` 时启用；生产/开发默认走 lifecycle。
+ * 仅在 `HRACK_FIXTURE_OBSERVER=1` 时启用；生产/开发默认走 lifecycle。
  * attach 后按固定节奏重放完整事件序列，覆盖
  * `working → needs-you → working → done → exited` 的六态走查，
  * 并证明临时目录（`<userData>/observer-runs/<sessionId>/`）的隔离与清理。
@@ -97,7 +97,7 @@ export class FixtureObserverAdapter implements AgentObserverAdapter {
   }
 
   supports(): boolean {
-    return process.env['VIBING_FIXTURE_OBSERVER'] === '1'
+    return process.env['HRACK_FIXTURE_OBSERVER'] === '1'
   }
 
   async prepare(
@@ -126,7 +126,7 @@ export class FixtureObserverAdapter implements AgentObserverAdapter {
       ): Promise<ObserverHandle> => {
         // 多会话 UI 门禁需要 Session 稳定存活；仍走真实 Runtime/PTY，
         // 仅暂停 fixture 的自动退出脚本。
-        if (process.env['VIBING_FIXTURE_OBSERVER_HOLD'] === '1') {
+        if (process.env['HRACK_FIXTURE_OBSERVER_HOLD'] === '1') {
           return {
             capabilities: this.capabilities,
             dispose: async (): Promise<void> => {}

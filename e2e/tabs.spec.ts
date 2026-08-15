@@ -21,9 +21,9 @@ async function tabIds(): Promise<string[]> {
     () =>
       (
         window as unknown as {
-          __vibingDebugTabs: { list(): string[] }
+          __hrackDebugTabs: { list(): string[] }
         }
-      ).__vibingDebugTabs.list()
+      ).__hrackDebugTabs.list()
   )
 }
 
@@ -32,11 +32,11 @@ async function tabBuffer(tabId: string): Promise<string[]> {
     (id) =>
       (
         window as unknown as {
-          __vibingDebugTabs: {
+          __hrackDebugTabs: {
             forTab(tabId: string): { dumpBuffer(): string[] }
           }
         }
-      ).__vibingDebugTabs.forTab(id).dumpBuffer(),
+      ).__hrackDebugTabs.forTab(id).dumpBuffer(),
     tabId
   )
 }
@@ -46,11 +46,11 @@ async function tabLogicalBuffer(tabId: string): Promise<string[]> {
     (id) =>
       (
         window as unknown as {
-          __vibingDebugTabs: {
+          __hrackDebugTabs: {
             forTab(tabId: string): { dumpLogicalBuffer(): string[] }
           }
         }
-      ).__vibingDebugTabs.forTab(id).dumpLogicalBuffer(),
+      ).__hrackDebugTabs.forTab(id).dumpLogicalBuffer(),
     tabId
   )
 }
@@ -66,7 +66,7 @@ async function tabSnapshot(tabId: string): Promise<{
     (id) =>
       (
         window as unknown as {
-          __vibingDebugTabs: {
+          __hrackDebugTabs: {
             forTab(tabId: string): {
               snapshot(): {
                 cols: number
@@ -78,7 +78,7 @@ async function tabSnapshot(tabId: string): Promise<{
             }
           }
         }
-      ).__vibingDebugTabs.forTab(id).snapshot(),
+      ).__hrackDebugTabs.forTab(id).snapshot(),
     tabId
   )
 }
@@ -90,13 +90,13 @@ async function tabHistory(
     (id) =>
       (
         window as unknown as {
-          __vibingDebugTabs: {
+          __hrackDebugTabs: {
             forTab(tabId: string): {
               dumpAuthoritativeHistory(): Promise<PtyHistorySnapshot | null>
             }
           }
         }
-      ).__vibingDebugTabs.forTab(id).dumpAuthoritativeHistory(),
+      ).__hrackDebugTabs.forTab(id).dumpAuthoritativeHistory(),
     tabId
   )
 }
@@ -108,13 +108,13 @@ async function tabFlowControl(
     (id) =>
       (
         window as unknown as {
-          __vibingDebugTabs: {
+          __hrackDebugTabs: {
             forTab(tabId: string): {
               flowControl(): Promise<PtyFlowControlSnapshot | null>
             }
           }
         }
-      ).__vibingDebugTabs.forTab(id).flowControl(),
+      ).__hrackDebugTabs.forTab(id).flowControl(),
     tabId
   )
 }
@@ -127,13 +127,13 @@ async function setTabAckDelay(
     ({ id, delay }) =>
       (
         window as unknown as {
-          __vibingDebugTabs: {
+          __hrackDebugTabs: {
             forTab(tabId: string): {
               setPtyAckDelay(milliseconds: number): void
             }
           }
         }
-      ).__vibingDebugTabs.forTab(id).setPtyAckDelay(delay),
+      ).__hrackDebugTabs.forTab(id).setPtyAckDelay(delay),
     { id: tabId, delay: milliseconds }
   )
 }
@@ -143,13 +143,13 @@ async function tabRendererKind(tabId: string): Promise<'webgl' | 'dom'> {
     (id) =>
       (
         window as unknown as {
-          __vibingDebugTabs: {
+          __hrackDebugTabs: {
             forTab(tabId: string): {
               rendererKind(): 'webgl' | 'dom'
             }
           }
         }
-      ).__vibingDebugTabs.forTab(id).rendererKind(),
+      ).__hrackDebugTabs.forTab(id).rendererKind(),
     tabId
   )
 }
@@ -199,9 +199,9 @@ test('keeps terminal output and authoritative history isolated per tab', async (
         () =>
           (
             window as unknown as {
-              __vibingDebugTabs?: { list(): string[] }
+              __hrackDebugTabs?: { list(): string[] }
             }
-          ).__vibingDebugTabs?.list().length ?? 0
+          ).__hrackDebugTabs?.list().length ?? 0
       )
     })
     .toBe(2)
@@ -220,7 +220,7 @@ test('keeps terminal output and authoritative history isolated per tab', async (
   const evidence = await page.evaluate(async () => {
     const tabs = (
       window as unknown as {
-        __vibingDebugTabs: {
+        __hrackDebugTabs: {
           list(): string[]
           forTab(id: string): {
             dumpBuffer(): string[]
@@ -230,7 +230,7 @@ test('keeps terminal output and authoritative history isolated per tab', async (
           }
         }
       }
-    ).__vibingDebugTabs
+    ).__hrackDebugTabs
     const [firstId, secondId] = tabs.list()
     const collect = async (id: string) => {
       const api = tabs.forTab(id)
@@ -266,16 +266,16 @@ test('closing a tab releases its terminal session and activates its neighbor', a
 
   await page.evaluate(() => {
     const debugWindow = window as unknown as Record<string, unknown> & {
-      __vibingDebugTabs: {
+      __hrackDebugTabs: {
         list(): string[]
         forTab(id: string): {
           dumpAuthoritativeHistory(): Promise<unknown>
         }
       }
     }
-    const closingId = debugWindow.__vibingDebugTabs.list()[1]
+    const closingId = debugWindow.__hrackDebugTabs.list()[1]
     debugWindow['__closingTabDebug'] =
-      debugWindow.__vibingDebugTabs.forTab(closingId)
+      debugWindow.__hrackDebugTabs.forTab(closingId)
   })
 
   await closeTerminalAt(page, 1)
@@ -352,11 +352,11 @@ test('keeps an exited session visible until the user closes its tab', async () =
       page.evaluate(() =>
         (
           window as unknown as {
-            __vibingDebug: {
+            __hrackDebug: {
               dumpAuthoritativeHistory(): Promise<unknown>
             }
           }
-        ).__vibingDebug.dumpAuthoritativeHistory()
+        ).__hrackDebug.dumpAuthoritativeHistory()
       )
     )
     .not.toBeNull()
@@ -408,11 +408,11 @@ test('preserves normal scrollback and viewport when switching tabs', async () =>
   await page.evaluate((id) => {
     ;(
       window as unknown as {
-        __vibingDebugTabs: {
+        __hrackDebugTabs: {
           forTab(tabId: string): { scrollToTop(): void }
         }
       }
-    ).__vibingDebugTabs.forTab(id).scrollToTop()
+    ).__hrackDebugTabs.forTab(id).scrollToTop()
   }, firstId)
 
   const before = await tabSnapshot(firstId)

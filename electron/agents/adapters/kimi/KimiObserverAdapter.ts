@@ -276,10 +276,10 @@ export class KimiObserverAdapter implements AgentObserverAdapter {
     return {
       launch: {
         env: {
-          VIBING_KIMI_HOOK_DROP: runtimePaths.dropDir,
-          VIBING_KIMI_HOOK_BRIDGE: runtimePaths.posixBridge,
-          VIBING_KIMI_HOOK_BRIDGE_WINDOWS: runtimePaths.windowsBridge,
-          VIBING_KIMI_HOOK_SCHEMA: '1'
+          HRACK_KIMI_HOOK_DROP: runtimePaths.dropDir,
+          HRACK_KIMI_HOOK_BRIDGE: runtimePaths.posixBridge,
+          HRACK_KIMI_HOOK_BRIDGE_WINDOWS: runtimePaths.windowsBridge,
+          HRACK_KIMI_HOOK_SCHEMA: '1'
         }
       },
       capabilities: KIMI_HOOK_CAPABILITIES,
@@ -342,7 +342,7 @@ export class KimiObserverAdapter implements AgentObserverAdapter {
       const command = wslRuntimeCommand(
         context,
         ['--version'],
-        'vibing-kimi-version'
+        'hrack-kimi-version'
       )
       return this.runCommand(command.file, command.args)
     }
@@ -396,7 +396,7 @@ export class KimiObserverAdapter implements AgentObserverAdapter {
       '/bin/sh',
       '-c',
       'set -eu; d="$1"; n="$2"; p="$d/.$n.partial"; printf "%s" "$n" > "$p"; mv "$p" "$d/$n.probe"',
-      'vibing-kimi-drop-probe',
+      'hrack-kimi-drop-probe',
       runtimeDropDir,
       nonce
     ])

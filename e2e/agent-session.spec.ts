@@ -1150,7 +1150,7 @@ function createRuntimeHarness(options: {
   const scripted = options.scripted ?? new ScriptedAdapter()
   registry.register(scripted)
 
-  const runDirRoot = mkdtempSync(join(tmpdir(), 'vibing-agent-run-'))
+  const runDirRoot = mkdtempSync(join(tmpdir(), 'hrack-agent-run-'))
   const runtime = new AgentSessionRuntime({
     pty,
     discovery,
@@ -1211,7 +1211,7 @@ class ScriptedAdapter implements AgentObserverAdapter {
     this.prepared = true
     return {
       launch: {
-        env: { VIBING_FIXTURE: '1' },
+        env: { HRACK_FIXTURE: '1' },
         prependArgs: ['--non-interactive']
       },
       capabilities: this.capabilities,
@@ -1303,7 +1303,7 @@ test.describe('AgentSessionRuntime (interface gates)', () => {
       shell: 'codex.exe',
       cols: 100,
       rows: 30,
-      env: { VIBING_FIXTURE: '1' },
+      env: { HRACK_FIXTURE: '1' },
       args: ['--non-interactive']
     })
     expect(harness.scripted.prepared).toBe(true)

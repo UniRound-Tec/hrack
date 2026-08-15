@@ -1,6 +1,6 @@
 # Bundled theme palette notices
 
-Vibing includes color mappings derived from these upstream theme projects:
+HRack includes color mappings derived from these upstream theme projects:
 
 - Catppuccin Mocha — Catppuccin contributors, MIT License: https://github.com/catppuccin/catppuccin
 - Catppuccin Latte — Catppuccin contributors, MIT License: https://github.com/catppuccin/catppuccin
@@ -11,5 +11,5 @@ Vibing includes color mappings derived from these upstream theme projects:
 - Solarized Light — Ethan Schoonover, MIT License: https://github.com/altercation/solarized
 
 The original palette values remain attributed to their respective projects.
-Vibing-specific semantic GUI token mappings are documented in
+HRack-specific semantic GUI token mappings are documented in
 `docs/RESEARCH-THEME-PALETTES.md`.

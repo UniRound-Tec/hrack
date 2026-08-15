@@ -14,7 +14,7 @@ import type {
   ThemeApi,
   WindowApi
 } from '../shared/ipc-contract'
-import type { VibingDebugShellApi } from './app/AppShell'
+import type { HRackDebugShellApi } from './app/AppShell'
 import type { WorkspaceReaderApi } from '../shared/workspace-reader'
 import type { DshApi, DshSurfaceApi, DshWireApi } from '../shared/dsh-ipc'
 
@@ -37,8 +37,8 @@ declare global {
     dshApi: DshApi
     dshWireApi: DshWireApi
     dshSurfaceApi: DshSurfaceApi
-    __VIBING_E2E__?: true
-    __vibingDebugShell?: VibingDebugShellApi
+    __HRACK_E2E__?: true
+    __hrackDebugShell?: HRackDebugShellApi
   }
 }
 

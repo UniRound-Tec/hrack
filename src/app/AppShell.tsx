@@ -49,7 +49,7 @@ import { planChildTerminal } from './childTerminal'
 import { projectSessionNavigation } from '../session-navigation/sessionNavigation'
 import { useSessionNavigationStore } from '../session-navigation/sessionNavigationStore'
 
-export interface VibingDebugShellApi {
+export interface HRackDebugShellApi {
   navigate(pageId: PageId): void
   openNewSession(): void
   setNavMode(mode: NavMode): void
@@ -208,6 +208,12 @@ export default function AppShell() {
   const openDshSlot = useCallback((): void => {
     navigate(dshSlotPage(crypto.randomUUID()))
   }, [navigate])
+
+  const openDshFromNewSession = useCallback((): void => {
+    setNewSessionOpen(false)
+    setNewSessionIntent('sheet')
+    openDshSlot()
+  }, [openDshSlot])
 
   // 托盘「新建会话」菜单：与 Ctrl+Shift+T 同路径。
   useEffect(() => {
@@ -662,8 +668,8 @@ export default function AppShell() {
   }, [closeTerminalAndRoute, navigate, openNewSession, pageId, terminalIds])
 
   useEffect(() => {
-    if (!import.meta.env.DEV && !window.__VIBING_E2E__) return
-    const api: VibingDebugShellApi = {
+    if (!import.meta.env.DEV && !window.__HRACK_E2E__) return
+    const api: HRackDebugShellApi = {
       navigate: (nextPage) => {
         if (isPageId(nextPage)) navigate(nextPage)
       },
@@ -672,10 +678,10 @@ export default function AppShell() {
       agentEvents: () => [...useAgentEventsStore.getState().events],
       agentSessions: () => [...useSessionsStore.getState().sessions]
     }
-    window.__vibingDebugShell = api
+    window.__hrackDebugShell = api
     return () => {
-      if (window.__vibingDebugShell === api) {
-        delete window.__vibingDebugShell
+      if (window.__hrackDebugShell === api) {
+        delete window.__hrackDebugShell
       }
     }
   }, [navigate, openNewSession, setNavMode])
@@ -852,8 +858,8 @@ export default function AppShell() {
           spinDuration={2}
           parallaxOn
           hoverDuration={0.2}
-          cursorColor="var(--vib-accent-cursor)"
-          cursorColorOnTarget="var(--vib-accent-target)"
+          cursorColor="var(--hrack-accent-cursor)"
+          cursorColorOnTarget="var(--hrack-accent-target)"
         />
       )}
 
@@ -870,6 +876,7 @@ export default function AppShell() {
           setNewSessionOpen(false)
           setNewSessionIntent('sheet')
         }}
+        onOpenDsh={openDshFromNewSession}
         onLaunchTerminal={launchTerminal}
         onLaunchCli={launchCli}
       />

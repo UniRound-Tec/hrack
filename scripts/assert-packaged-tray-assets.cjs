@@ -2,12 +2,12 @@ const { existsSync, readdirSync } = require('node:fs')
 const { join } = require('node:path')
 
 const REQUIRED_TRAY_ASSETS = [
-  'vibing-16.png',
-  'vibing-32.png',
-  'vibing-white-16.png',
-  'vibing-white-32.png',
-  'vibingTemplate-16.png',
-  'vibingTemplate-32.png'
+  'hrack-16.png',
+  'hrack-32.png',
+  'hrack-white-16.png',
+  'hrack-white-32.png',
+  'hrackTemplate-16.png',
+  'hrackTemplate-32.png'
 ]
 
 function packagedResourcesDir(context) {

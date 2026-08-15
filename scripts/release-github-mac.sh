@@ -20,7 +20,7 @@ cd "$workspace"
 npm run typecheck
 npm run release:mac
 
-image_name="Vibing-${version}-macos-arm64.dmg"
+image_name="HRack-${version}-macos-arm64.dmg"
 for required in \
   "$workspace/artifacts/$image_name" \
   "$workspace/artifacts/$image_name.blockmap" \

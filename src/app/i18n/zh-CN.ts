@@ -39,7 +39,7 @@ export const zhCN = {
     closeSessionPrompt: (name: string) =>
       `确定要关闭“${name}”吗？CLI 进程及其子终端会一并结束。`,
     closeDshSessionPrompt: (name: string) =>
-      `确定要让 Vibing 不再关注“${name}”吗？DSH 中的会话和历史不会受影响。`,
+      `确定要让 HRack 不再关注“${name}”吗？DSH 中的会话和历史不会受影响。`,
     sessionActions: '会话操作',
     createChildTerminal: '新建子终端',
     cloneSession: '克隆会话',
@@ -57,7 +57,7 @@ export const zhCN = {
     homeLabel: 'DSH_HOME',
     homeIsolated: '隔离（推荐）',
     homeShared: '共享 ~/.dsh',
-    homeEnvOverride: '当前由 VIBING_DSH_HOME 覆盖，设置不会改路径。',
+    homeEnvOverride: '当前由 HRACK_DSH_HOME 覆盖，设置不会改路径。',
     homeSwitchConfirm:
       '切换 DSH_HOME 会重启 host 并刷新窗口，不会迁移已有会话。确定继续？',
     retentionLabel: '会话保留',
@@ -82,11 +82,11 @@ export const zhCN = {
     enterTitle: '繁忙时 Enter 键行为',
     enterHint: '仅在智能体运行时生效；Cmd/Ctrl+Enter 使用另一行为',
     surfaceScale: '会话界面缩放',
-    surfaceScaleHint: '只影响 Vibing 内的 DSH 页面，不修改 DSH 配置',
+    surfaceScaleHint: '只影响 HRack 内的 DSH 页面，不修改 DSH 配置',
     runtimeLabel: 'DSH 运行时',
-    runtimeHint: '扫描 Windows 主机和每个 WSL 发行版；自动模式优先使用本机兼容版本，失败时回退内置版。',
+    runtimeHint: '扫描 Windows 主机和每个 WSL 发行版；自动模式优先使用本机兼容版本，失败时使用随包兜底版。',
     runtimeAuto: '自动（本机优先）',
-    runtimeBundled: (version: string) => `内置 · ${version}`,
+    runtimeBundled: (version: string) => `随包兜底 · ${version}`,
     runtimeLocal: (location: string, version?: string) =>
       `${location}${version ? ` · ${version}` : ''}`,
     runtimeScanning: '正在扫描 DSH…',
@@ -175,7 +175,7 @@ export const zhCN = {
     bootHostInit: 'dsh host 首次启动需要初始化 profile',
     bootFailed: 'DSH 启动失败',
     bootReload: '重新加载窗口',
-    homeHint: '内置 agent 运行时'
+    homeHint: '自动选择 · 本机优先'
   },
   sessionStatus: {
     working: '正在处理任务',
@@ -272,7 +272,7 @@ export const zhCN = {
     disabled: '暂不开启',
     scanFailed: '扫描没有完成',
     scanFound: (clis: number, installations: number) => `发现 ${clis} 个 CLI，共 ${installations} 个安装`,
-    continue: '进入 Vibing'
+    continue: '进入 HRack'
   },
   settings: {
     title: '设置',

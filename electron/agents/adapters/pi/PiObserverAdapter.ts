@@ -245,9 +245,9 @@ export class PiObserverAdapter implements AgentObserverAdapter {
       launch: {
         prependArgs: ['--extension', runtimePaths.extensionPath],
         env: {
-          VIBING_PI_DROP_DIR: runtimePaths.dropDir,
-          VIBING_PI_SESSION_ID: context.sessionId,
-          VIBING_PI_SCHEMA: '1'
+          HRACK_PI_DROP_DIR: runtimePaths.dropDir,
+          HRACK_PI_SESSION_ID: context.sessionId,
+          HRACK_PI_SCHEMA: '1'
         }
       },
       capabilities: PI_OBSERVER_CAPABILITIES,
@@ -310,7 +310,7 @@ export class PiObserverAdapter implements AgentObserverAdapter {
       const command = wslRuntimeCommand(
         context,
         ['--version'],
-        'vibing-pi-version'
+        'hrack-pi-version'
       )
       return this.runCommand(command.file, command.args)
     }
@@ -349,7 +349,7 @@ export class PiObserverAdapter implements AgentObserverAdapter {
       '/bin/sh',
       '-c',
       'set -eu; d="$1"; n="$2"; p="$d/.$n.partial"; printf "%s" "$n" > "$p"; mv "$p" "$d/$n.probe"',
-      'vibing-pi-probe',
+      'hrack-pi-probe',
       runtimeDropDir,
       nonce
     ])

@@ -4,8 +4,8 @@ export type KimiManagedHookMerge =
   | { ok: true; changed: boolean; content: string }
   | { ok: false; reason: 'kimi-config-marker-conflict' }
 
-const MANAGED_START = '# >>> vibing:kimi-observer:v1'
-const MANAGED_END = '# <<< vibing:kimi-observer:v1'
+const MANAGED_START = '# >>> hrack:kimi-observer:v1'
+const MANAGED_END = '# <<< hrack:kimi-observer:v1'
 
 const EVENTS = [
   'SessionStart',
@@ -24,9 +24,9 @@ const EVENTS = [
 ] as const
 
 const POSIX_COMMAND =
-  'if [ -n "${VIBING_KIMI_HOOK_BRIDGE:-}" ] && [ -f "$VIBING_KIMI_HOOK_BRIDGE" ]; then /bin/sh "$VIBING_KIMI_HOOK_BRIDGE" >/dev/null 2>&1 || :; fi'
+  'if [ -n "${HRACK_KIMI_HOOK_BRIDGE:-}" ] && [ -f "$HRACK_KIMI_HOOK_BRIDGE" ]; then /bin/sh "$HRACK_KIMI_HOOK_BRIDGE" >/dev/null 2>&1 || :; fi'
 const WINDOWS_COMMAND =
-  'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "if ($env:VIBING_KIMI_HOOK_BRIDGE_WINDOWS -and (Test-Path -LiteralPath $env:VIBING_KIMI_HOOK_BRIDGE_WINDOWS -PathType Leaf)) { & $env:VIBING_KIMI_HOOK_BRIDGE_WINDOWS }; exit 0"'
+  'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "if ($env:HRACK_KIMI_HOOK_BRIDGE_WINDOWS -and (Test-Path -LiteralPath $env:HRACK_KIMI_HOOK_BRIDGE_WINDOWS -PathType Leaf)) { & $env:HRACK_KIMI_HOOK_BRIDGE_WINDOWS }; exit 0"'
 
 function lineEnding(source: string): '\r\n' | '\n' {
   return source.includes('\r\n') ? '\r\n' : '\n'
@@ -39,6 +39,7 @@ function tomlString(value: string): string {
 interface ManagedMarker {
   offset: number
   length: number
+  owner: 'hrack' | 'vibing'
   version: string
 }
 
@@ -48,14 +49,15 @@ function managedMarkers(
 ): ManagedMarker[] {
   const pattern =
     boundary === 'start'
-      ? /(^|\n)(# >>> vibing:kimi-observer:v([0-9]+))(?=\r?\n|$)/g
-      : /(^|\n)(# <<< vibing:kimi-observer:v([0-9]+))(?=\r?\n|$)/g
+      ? /(^|\n)(# >>> (hrack|vibing):kimi-observer:v([0-9]+))(?=\r?\n|$)/g
+      : /(^|\n)(# <<< (hrack|vibing):kimi-observer:v([0-9]+))(?=\r?\n|$)/g
   const markers: ManagedMarker[] = []
   for (const match of source.matchAll(pattern)) {
     markers.push({
       offset: match.index + match[1].length,
       length: match[2].length,
-      version: match[3]
+      owner: match[3] as ManagedMarker['owner'],
+      version: match[4]
     })
   }
   return markers
@@ -80,7 +82,7 @@ export function buildKimiManagedHookBlock(
 export function kimiWindowsBridgeScript(): string {
   return `$ErrorActionPreference = 'Stop'
 try {
-  $drop = $env:VIBING_KIMI_HOOK_DROP
+  $drop = $env:HRACK_KIMI_HOOK_DROP
   if ([string]::IsNullOrWhiteSpace($drop) -or -not [IO.Directory]::Exists($drop)) { exit 0 }
   $inputStream = [Console]::OpenStandardInput()
   $memory = [IO.MemoryStream]::new()
@@ -106,9 +108,9 @@ export function kimiPosixBridgeScript(): string {
   return `#!/bin/sh
 set -eu
 umask 077
-drop="\${VIBING_KIMI_HOOK_DROP:-}"
+drop="\${HRACK_KIMI_HOOK_DROP:-}"
 [ -n "$drop" ] && [ -d "$drop" ] || exit 0
-tmp="$(mktemp "$drop/.vibing-kimi.XXXXXX.partial")" || exit 0
+tmp="$(mktemp "$drop/.hrack-kimi.XXXXXX.partial")" || exit 0
 trap 'rm -f "$tmp"' EXIT HUP INT TERM
 dd bs=1048577 count=1 of="$tmp" 2>/dev/null || true
 size="$(wc -c < "$tmp" | tr -d ' ')"
@@ -133,6 +135,7 @@ export function mergeKimiManagedHooks(
     if (
       starts.length !== 1 ||
       ends.length !== 1 ||
+      starts[0].owner !== ends[0].owner ||
       starts[0].version !== ends[0].version ||
       starts[0].offset >= ends[0].offset
     ) {
