@@ -21,10 +21,15 @@ npm run typecheck
 npm run release:mac
 
 image_name="HRack-${version}-macos-arm64.dmg"
+archive_name="HRack-${version}-macos-arm64.zip"
 for required in \
   "$workspace/artifacts/$image_name" \
   "$workspace/artifacts/$image_name.blockmap" \
-  "$workspace/artifacts/$image_name.sha256"; do
+  "$workspace/artifacts/$image_name.sha256" \
+  "$workspace/artifacts/$archive_name" \
+  "$workspace/artifacts/$archive_name.blockmap" \
+  "$workspace/artifacts/$archive_name.sha256" \
+  "$workspace/artifacts/latest-mac.yml"; do
   if [[ ! -f "$required" ]]; then
     echo "Release output is missing: $required" >&2
     exit 1
@@ -35,3 +40,7 @@ printf 'GitHub macOS release assets ready for %s:\n' "$tag_name"
 printf '  %s\n' "$workspace/artifacts/$image_name"
 printf '  %s\n' "$workspace/artifacts/$image_name.blockmap"
 printf '  %s\n' "$workspace/artifacts/$image_name.sha256"
+printf '  %s\n' "$workspace/artifacts/$archive_name"
+printf '  %s\n' "$workspace/artifacts/$archive_name.blockmap"
+printf '  %s\n' "$workspace/artifacts/$archive_name.sha256"
+printf '  %s\n' "$workspace/artifacts/latest-mac.yml"

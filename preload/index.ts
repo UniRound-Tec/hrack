@@ -13,6 +13,8 @@ import {
   StatsInvokeChannel,
   ThemeEventChannel,
   ThemeInvokeChannel,
+  UpdateEventChannel,
+  UpdateInvokeChannel,
   WindowEventChannel,
   WindowInvokeChannel,
   ptyDataChannel,
@@ -40,6 +42,9 @@ import {
   type SpawnOptions,
   type StatsApi,
   type ThemeApi,
+  type UpdateApi,
+  type UpdatePhase,
+  type UpdateSnapshot,
   type WindowApi,
   type WindowPositionPayload
 } from '../shared/ipc-contract'
@@ -205,10 +210,16 @@ const floatingWindowApi: FloatingWindowApi = {
   getState: () => ipcRenderer.invoke(FloatingWindowInvokeChannel.GetState),
   setEnabled: (enabled) =>
     ipcRenderer.invoke(FloatingWindowInvokeChannel.SetEnabled, enabled),
-  resizeToContent: (height) =>
-    ipcRenderer.invoke(FloatingWindowInvokeChannel.ResizeToContent, height),
-  focusSession: (sessionId) =>
-    ipcRenderer.invoke(FloatingWindowInvokeChannel.FocusSession, sessionId),
+  setRenderer: (rendererId) =>
+    ipcRenderer.invoke(FloatingWindowInvokeChannel.SetRenderer, rendererId),
+  setAttentionEffectEnabled: (enabled) =>
+    ipcRenderer.invoke(FloatingWindowInvokeChannel.SetAttentionEffect, enabled),
+  setScale: (scale) =>
+    ipcRenderer.invoke(FloatingWindowInvokeChannel.SetScale, scale),
+  openRenderersDirectory: () =>
+    ipcRenderer.invoke(FloatingWindowInvokeChannel.OpenRenderersDirectory),
+  refreshRenderers: () =>
+    ipcRenderer.invoke(FloatingWindowInvokeChannel.RefreshRenderers),
   onStateChanged: (cb) => {
     const handler = (
       _event: IpcRendererEvent,
@@ -359,6 +370,54 @@ const appApi: AppApi = {
   }
 }
 
+const updatePhases = new Set<UpdatePhase>([
+  'disabled',
+  'idle',
+  'checking',
+  'available',
+  'downloading',
+  'downloaded',
+  'up-to-date',
+  'error'
+])
+
+function isUpdateSnapshot(value: unknown): value is UpdateSnapshot {
+  if (!value || typeof value !== 'object') return false
+  const snapshot = value as Partial<UpdateSnapshot>
+  const progress = snapshot.progress
+  return (
+    typeof snapshot.phase === 'string' &&
+    updatePhases.has(snapshot.phase as UpdatePhase) &&
+    typeof snapshot.currentVersion === 'string' &&
+    (snapshot.availableVersion === null ||
+      typeof snapshot.availableVersion === 'string') &&
+    (snapshot.releaseDate === null || typeof snapshot.releaseDate === 'string') &&
+    (snapshot.checkedAt === null || typeof snapshot.checkedAt === 'number') &&
+    (snapshot.error === null || typeof snapshot.error === 'string') &&
+    (progress === null ||
+      (typeof progress === 'object' &&
+        typeof progress.percent === 'number' &&
+        typeof progress.transferred === 'number' &&
+        typeof progress.total === 'number' &&
+        typeof progress.bytesPerSecond === 'number'))
+  )
+}
+
+const updateApi: UpdateApi = {
+  getState: () => ipcRenderer.invoke(UpdateInvokeChannel.GetState),
+  check: () => ipcRenderer.invoke(UpdateInvokeChannel.Check),
+  download: () => ipcRenderer.invoke(UpdateInvokeChannel.Download),
+  install: () => ipcRenderer.invoke(UpdateInvokeChannel.Install),
+  onStateChanged: (cb) => {
+    const handler = (_event: IpcRendererEvent, snapshot: unknown): void => {
+      if (isUpdateSnapshot(snapshot)) cb(snapshot)
+    }
+    ipcRenderer.on(UpdateEventChannel.StateChanged, handler)
+    return () =>
+      ipcRenderer.removeListener(UpdateEventChannel.StateChanged, handler)
+  }
+}
+
 const appThemeApi: AppThemeApi = {
   onUserThemesChanged: (cb) => {
     const handler = (_event: IpcRendererEvent): void => cb()
@@ -469,6 +528,7 @@ try {
   contextBridge.exposeInMainWorld('agentApi', agentApi)
   contextBridge.exposeInMainWorld('workspaceReader', workspaceReader)
   contextBridge.exposeInMainWorld('appApi', appApi)
+  contextBridge.exposeInMainWorld('updateApi', updateApi)
   contextBridge.exposeInMainWorld('appThemeApi', appThemeApi)
   contextBridge.exposeInMainWorld('dshApi', dshApi)
   contextBridge.exposeInMainWorld('dshWireApi', dshWireApi)

@@ -34,7 +34,8 @@ try {
   $installerName = "HRack-Setup-$version.exe"
   $installerPath = Join-Path $artifactDir $installerName
   $blockmapPath = "$installerPath.blockmap"
-  foreach ($required in @($installerPath, $blockmapPath)) {
+  $metadataPath = Join-Path $artifactDir 'latest.yml'
+  foreach ($required in @($installerPath, $blockmapPath, $metadataPath)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
       throw "Release output is missing: $required"
     }
@@ -48,6 +49,7 @@ try {
     Tag = $TagName
     Installer = $installerPath
     Blockmap = $blockmapPath
+    UpdateMetadata = $metadataPath
     Checksum = $checksumPath
     SHA256 = $digest
   } | Format-List

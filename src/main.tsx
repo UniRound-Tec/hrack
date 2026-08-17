@@ -11,6 +11,7 @@ import {
 } from './app/themeRuntime'
 import { appLocales, type AppLocale } from './app/i18n'
 import { useSettingsStore } from './state/settingsStore'
+import { applyFloatingAppearance } from './floating/appearance'
 
 const licenseLink = document.createElement('link')
 licenseLink.rel = 'license'
@@ -26,6 +27,14 @@ async function bootstrap(): Promise<void> {
   document.documentElement.dataset.surface = floatingSurface
     ? 'floating'
     : 'main'
+  if (floatingSurface) {
+    const initialSnapshot = await window.hrackFloating.getSnapshot()
+    applyFloatingAppearance(initialSnapshot.appearance)
+    createRoot(document.getElementById('hrack-root')!).render(
+      <FloatingApp initialSnapshot={initialSnapshot} />
+    )
+    return
+  }
   let themeRegistry = await loadUiThemeRegistry()
   setUiThemeRegistry(themeRegistry)
   for (const error of themeRegistry.errors) {
@@ -37,13 +46,22 @@ async function bootstrap(): Promise<void> {
     // 首帧底色进主进程偏好文件：下次启动建窗前即可用，消除深色主题启动白闪。
     void window.appApi.setMainPrefs({
       backgroundColor: theme.colors['bg.app'],
-      uiThemeId: theme.id
+      uiThemeId: theme.id,
+      floatingAppearance: {
+        themeId: theme.id,
+        themeType: theme.type,
+        colors: theme.colors,
+        locale: useSettingsStore.getState().language
+      }
     })
   }
   applySelectedUiTheme(useSettingsStore.getState().uiThemeId)
   const unsubscribeTheme = useSettingsStore.subscribe(
     (settings, previous) => {
-      if (settings.uiThemeId !== previous.uiThemeId) {
+      if (
+        settings.uiThemeId !== previous.uiThemeId ||
+        settings.language !== previous.language
+      ) {
         applySelectedUiTheme(settings.uiThemeId)
       }
     }
@@ -110,7 +128,7 @@ async function bootstrap(): Promise<void> {
   // 注意：不使用 <React.StrictMode>。StrictMode 会在 dev 下双触发 effect，
   // 导致 xterm 被 mount→dispose→mount 且 pty 重复 spawn，违背 SPEC §5.1「只挂载一次」。
   createRoot(document.getElementById('hrack-root')!).render(
-    floatingSurface ? <FloatingApp /> : <App />
+    <App />
   )
 }
 

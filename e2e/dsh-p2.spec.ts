@@ -7,7 +7,13 @@ async function waitHostReady(window: Page): Promise<void> {
   await expect
     .poll(
       async () =>
-        window.evaluate(async () => (await window.dshApi.getStatus()).state),
+        window.evaluate(async () => {
+          const status = await window.dshApi.getStatus()
+          if (status.state === 'failed') {
+            throw new Error(status.error ?? 'DSH host failed without an error')
+          }
+          return status.state
+        }),
       { timeout: 120_000, intervals: [500, 1000, 2000] }
     )
     .toBe('ready')
@@ -95,6 +101,7 @@ interface SurfaceInspection {
   phase: string
   visible: boolean
   hideTransitionCount?: number
+  sidebarCollapseInvocationCount?: number
   slotId?: string
   sessionId?: string
   bounds?: { x: number; y: number; width: number; height: number }
@@ -144,6 +151,43 @@ test('the collapsed HRack rail has no separate DSH Home launcher', async () => {
     await expect(window.getByTestId('rail-dsh')).toHaveCount(0)
     await navigate(window, 'home')
     await expect(window.getByTestId('home-dsh-brand-icon')).toBeVisible()
+  } finally {
+    await app.close()
+  }
+})
+
+test('the official DSH sidebar retries a transient first collapse failure without a reload', async () => {
+  test.setTimeout(150_000)
+  const { app, window } = await launchApp({
+    createDefaultTerminal: false,
+    env: { HRACK_E2E_DSH_COLLAPSE_FAIL_ONCE: '1' }
+  })
+  try {
+    await expect(window.getByTestId('home-page')).toBeVisible({ timeout: 20_000 })
+    await app.evaluate(({ BrowserWindow }) => {
+      const owner = BrowserWindow.getAllWindows()[0]
+      owner?.setSize(1600, 1000)
+      owner?.center()
+    })
+    await expect.poll(() => window.evaluate(() => window.innerWidth)).toBeGreaterThan(1500)
+    await window.getByTestId('home-quick-dsh').click()
+    await expect(window.getByTestId('dsh-page')).toBeVisible({ timeout: 20_000 })
+    await waitHostReady(window)
+    await expect
+      .poll(
+        async () => {
+          const inspection = await inspectSurface(app)
+          return `${inspection?.phase}:${inspection?.visible}:${inspection?.error ?? ''}`
+        },
+        { timeout: 20_000, intervals: [25, 50, 100] }
+      )
+      .toBe('ready:true:')
+
+    const firstReadyPage = await inspectSurface(app)
+    expect(firstReadyPage?.page?.viewportWidth).toBeGreaterThan(1024)
+    expect(firstReadyPage?.sidebarCollapseInvocationCount).toBe(2)
+    expect(firstReadyPage?.page?.sidebarDefaultApplied).toBe(true)
+    expect(firstReadyPage?.page?.sidebarClosed).toBe(true)
   } finally {
     await app.close()
   }

@@ -71,6 +71,29 @@ function looksLikePath(shell: string): boolean {
   return shell.includes('\\') || shell.includes('/')
 }
 
+/**
+ * PTY child capabilities are independent from the renderer's visual theme.
+ * Codex Desktop launches HRack with TERM=dumb, which is correct for its own
+ * non-interactive command runner but not for the ConPTY/xterm surface we create.
+ */
+export function ptyEnvironment(
+  inherited: Readonly<Record<string, string | undefined>>
+): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const [key, value] of Object.entries(inherited)) {
+    if (typeof value === 'string') env[key] = value
+  }
+  const termKey = Object.keys(env).find(
+    (key) => key.toUpperCase() === 'TERM'
+  )
+  const term = termKey ? env[termKey] : undefined
+  if (!term || term.trim().toLowerCase() === 'dumb') {
+    if (termKey && termKey !== 'TERM') delete env[termKey]
+    env.TERM = 'xterm-256color'
+  }
+  return env
+}
+
 async function resolveWindowsExecutable(shell: string): Promise<string | null> {
   if (!looksLikePath(shell)) {
     try {
@@ -177,7 +200,7 @@ export class PTYManager {
           cols,
           rows,
           cwd: opts.cwd ?? process.cwd(),
-          env: opts.env ?? (process.env as Record<string, string>)
+          env: ptyEnvironment(opts.env ?? process.env)
         })
         break
       } catch (err) {

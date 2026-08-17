@@ -1,0 +1,4 @@
+interface:
+  display_name: "HRack Floating Renderer Creator"
+  short_description: "Build state-driven HRack floating windows and Live2D companions"
+  default_prompt: "Use $create-hrack-floating-renderer to build or update a sandboxed HRack floating renderer driven by real CLI turn state."

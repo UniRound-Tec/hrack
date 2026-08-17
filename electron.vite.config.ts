@@ -18,6 +18,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'preload/index.ts'),
+          floating: resolve(__dirname, 'preload/floating.ts'),
           'dsh-surface': resolve(
             __dirname,
             'electron/dsh-surface/preload.ts'

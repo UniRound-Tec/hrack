@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HRack Live2D · Mao</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+      html, body {
+        width: 420px;
+        height: 620px;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+        overscroll-behavior: none;
+        touch-action: none;
+      }
+
+      body > canvas {
+        position: fixed;
+        z-index: 0;
+        inset: 0;
+        width: 420px !important;
+        height: 620px !important;
+        transform-origin: 50% 78%;
+        transition: filter 220ms ease;
+      }
+
+      body[data-turn-state="working"] > canvas { animation: working-float 1.8s ease-in-out infinite; }
+      body[data-turn-state="needs-you"] > canvas { animation: need-you-bounce .72s ease-in-out infinite; }
+      body[data-turn-state="done"] > canvas { animation: done-pop .7s cubic-bezier(.2,.9,.25,1.25) 1; }
+      body[data-turn-state="error"] > canvas { animation: error-shake .38s ease-in-out 2; filter: saturate(.78); }
+
+      @keyframes working-float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-5px); }
+      }
+      @keyframes need-you-bounce {
+        0%, 100% { transform: translateY(0) scale(1); }
+        45% { transform: translateY(-9px) scale(1.012); }
+      }
+      @keyframes done-pop {
+        0% { transform: scale(.96); }
+        55% { transform: scale(1.035); }
+        100% { transform: scale(1); }
+      }
+      @keyframes error-shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-7px) rotate(-1deg); }
+        75% { transform: translateX(7px) rotate(1deg); }
+      }
+
+      .turn-card {
+        position: fixed;
+        z-index: 3;
+        top: 12px;
+        left: 12px;
+        display: flex;
+        width: 396px;
+        min-height: 62px;
+        padding: 10px 11px 10px 12px;
+        align-items: center;
+        gap: 9px;
+        color: #3b2b52;
+        background: rgb(255 255 255 / 88%);
+        border: 1px solid rgb(80 51 120 / 14%);
+        border-radius: 18px;
+        box-shadow: 0 12px 30px rgb(55 33 83 / 18%);
+        backdrop-filter: blur(14px);
+        -webkit-app-region: drag;
+      }
+
+      .dot {
+        width: 9px;
+        height: 9px;
+        flex: none;
+        background: #b9adc7;
+        border-radius: 50%;
+        box-shadow: 0 0 0 4px rgb(150 121 188 / 12%);
+      }
+      .dot.idle, .dot.done { background: #54b96f; }
+      .dot.working { background: #2c9bd2; }
+      .dot.needs-you { background: #f0a829; }
+      .dot.error { background: #d95f5f; }
+      body[data-effects="on"][data-turn-state="needs-you"] .dot,
+      body[data-effects="on"][data-turn-state="error"] .dot {
+        animation: dot-pulse .8s ease-in-out infinite alternate;
+      }
+      @keyframes dot-pulse { to { box-shadow: 0 0 0 9px rgb(240 168 41 / 20%); } }
+
+      .copy { min-width: 0; flex: 1; }
+      .title { margin: 0; overflow: hidden; font-size: 12px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+      .detail { margin: 3px 0 0; overflow: hidden; color: #806f96; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+
+      button {
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        color: #725f88;
+        background: rgb(245 240 250 / 86%);
+        border: 0;
+        border-radius: 50%;
+        cursor: pointer;
+        -webkit-app-region: no-drag;
+      }
+      button:hover { background: #eee5f5; }
+
+      .credit {
+        position: fixed;
+        z-index: 2;
+        right: 12px;
+        bottom: 10px;
+        margin: 0;
+        padding: 5px 9px;
+        color: rgb(68 45 92 / 72%);
+        background: rgb(255 255 255 / 68%);
+        border-radius: 999px;
+        font-size: 8px;
+        pointer-events: none;
+        backdrop-filter: blur(8px);
+      }
+    </style>
+    <script src="./Core/live2dcubismcore.js"></script>
+    <script type="module" crossorigin src="./assets/cubism-mao.js"></script>
+  </head>
+  <body data-turn-state="idle" data-effects="on">
+    <header class="turn-card" title="双击回到当前会话">
+      <span id="state-dot" class="dot idle"></span>
+      <div class="copy">
+        <p id="live2d-turn-status" class="title">正在加载 Live2D Mao…</p>
+        <p id="session-detail" class="detail">正在连接 HRack 回合状态</p>
+      </div>
+      <button id="close" type="button" aria-label="关闭悬浮窗">×</button>
+    </header>
+    <p class="credit">Mao © Live2D Inc.</p>
+    <script>
+      (() => {
+        const api = window.hrackFloating
+        const statusNode = document.querySelector('#live2d-turn-status')
+        const detailNode = document.querySelector('#session-detail')
+        const dot = document.querySelector('#state-dot')
+        const card = document.querySelector('.turn-card')
+        let modelReady = false
+        let activeSession = null
+        let previousStatus = 'idle'
+        let previousAttentionSequence = 0
+
+        const labels = {
+          idle: '等待下一回合',
+          working: '正在处理当前回合',
+          'needs-you': '需要你的确认',
+          done: '回合已完成',
+          error: '回合出现异常'
+        }
+
+        function animateModel(kind) {
+          const canvas = document.querySelector('canvas')
+          if (!modelReady || !canvas) return
+          const frames = kind === 'error'
+            ? [{ transform: 'translateX(0)' }, { transform: 'translateX(-9px)' }, { transform: 'translateX(9px)' }, { transform: 'translateX(0)' }]
+            : kind === 'done'
+              ? [{ transform: 'scale(.96)' }, { transform: 'scale(1.045)' }, { transform: 'scale(1)' }]
+              : [{ transform: 'translateY(0)' }, { transform: 'translateY(-10px)' }, { transform: 'translateY(0)' }]
+          canvas.animate(frames, {
+            duration: kind === 'needs-you' ? 760 : 560,
+            iterations: kind === 'needs-you' ? 2 : 1,
+            easing: 'ease-in-out'
+          })
+        }
+
+        function render(snapshot) {
+          const session = snapshot.sessions[0] || null
+          const state = session?.status || 'idle'
+          activeSession = session
+          document.body.dataset.turnState = state
+          document.body.dataset.effects = snapshot.attentionEffectEnabled ? 'on' : 'off'
+          document.body.dataset.turnId = session?.activeTurnId || ''
+          document.body.dataset.lastSeq = String(session?.lastSeq || 0)
+          dot.className = `dot ${state}`
+
+          const title = session?.name || session?.adapterId
+          statusNode.textContent = modelReady
+            ? `${title ? `${title} · ` : ''}${labels[state] || state}`
+            : '正在加载 Live2D Mao…'
+          const turn = session?.activeTurnId ? `回合 ${session.activeTurnId.slice(0, 8)}` : ''
+          const tools = session?.activeToolCount ? `${session.activeToolCount} 个工具运行中` : ''
+          detailNode.textContent = session
+            ? [turn, tools, session.detail || session.lastTurnOutcome || state].filter(Boolean).join(' · ')
+            : '已连接真实回合接口 · 等待会话'
+
+          const newAttention = snapshot.attention && snapshot.attention.sequence !== previousAttentionSequence
+          const transitioned = state !== previousStatus
+          if (modelReady && (transitioned || newAttention)) animateModel(state)
+          previousStatus = state
+          previousAttentionSequence = snapshot.attention?.sequence || previousAttentionSequence
+        }
+
+        window.addEventListener('live2d-model-ready', () => {
+          modelReady = true
+          document.documentElement.dataset.live2dReady = 'true'
+          statusNode.textContent = labels[activeSession?.status || 'idle']
+          animateModel('done')
+        })
+
+        card.addEventListener('dblclick', () => {
+          if (activeSession) api?.focusSession(activeSession.sessionId)
+        })
+        document.querySelector('#close').addEventListener('click', () => api?.disable())
+        document.addEventListener('contextmenu', (event) => event.preventDefault())
+
+        if (api) {
+          const unsubscribe = api.onSnapshot(render)
+          api.getSnapshot().then(render)
+          api.resizeToContent(620)
+          api.setShape([{ x: 0, y: 0, width: 420, height: 620 }])
+          window.addEventListener('pagehide', unsubscribe, { once: true })
+        }
+      })()
+    </script>
+  </body>
+</html>

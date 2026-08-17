@@ -5,6 +5,14 @@
  */
 
 import type { UserThemeFile } from './theme-schema'
+import type { FloatingAppearance } from './floating-window'
+export {
+  FloatingWindowEventChannel,
+  FloatingWindowInvokeChannel,
+  type FloatingRendererApi,
+  type FloatingWindowApi,
+  type FloatingWindowState
+} from './floating-window'
 
 // ───── Renderer → Main（ipcMain.handle，请求-响应）─────────
 
@@ -226,21 +234,6 @@ export const WindowInvokeChannel = {
   GetPosition: 'window:get-position'
 } as const
 
-export interface FloatingWindowState {
-  enabled: boolean
-}
-
-export const FloatingWindowInvokeChannel = {
-  GetState: 'floating-window:get-state',
-  SetEnabled: 'floating-window:set-enabled',
-  ResizeToContent: 'floating-window:resize-to-content',
-  FocusSession: 'floating-window:focus-session'
-} as const
-
-export const FloatingWindowEventChannel = {
-  StateChanged: 'floating-window:state-changed'
-} as const
-
 /**
  * 窗口左上角相对"当前所在显示器"的位置与该显示器尺寸。
  * 侧栏环境渐变把一张显示器大小的虚拟渐变画布锚定在屏幕上，
@@ -297,12 +290,52 @@ export type MainPrefsUpdate = Partial<{
   uiThemeId: string
   globalShortcutEnabled: boolean
   language: string
+  floatingAppearance: FloatingAppearance
 }>
 
 export interface MainPrefsSnapshot {
   uiThemeId: string
   language: string
 }
+
+export type UpdatePhase =
+  | 'disabled'
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'up-to-date'
+  | 'error'
+
+export interface UpdateProgress {
+  percent: number
+  transferred: number
+  total: number
+  bytesPerSecond: number
+}
+
+/** 主进程持有的应用更新权威快照；每个 updater 事件直接覆盖当前阶段。 */
+export interface UpdateSnapshot {
+  phase: UpdatePhase
+  currentVersion: string
+  availableVersion: string | null
+  releaseDate: string | null
+  progress: UpdateProgress | null
+  checkedAt: number | null
+  error: string | null
+}
+
+export const UpdateInvokeChannel = {
+  GetState: 'update:get-state',
+  Check: 'update:check',
+  Download: 'update:download',
+  Install: 'update:install'
+} as const
+
+export const UpdateEventChannel = {
+  StateChanged: 'update:state-changed'
+} as const
 
 export const AppInvokeChannel = {
   SetMainPrefs: 'app:set-main-prefs'
@@ -386,16 +419,6 @@ export interface WindowApi {
   ) => () => void
 }
 
-export interface FloatingWindowApi {
-  getState: () => Promise<FloatingWindowState>
-  setEnabled: (enabled: boolean) => Promise<FloatingWindowState>
-  resizeToContent: (height: number) => Promise<void>
-  focusSession: (sessionId: string) => Promise<boolean>
-  onStateChanged: (
-    cb: (state: FloatingWindowState) => void
-  ) => () => void
-}
-
 export interface ThemeApi {
   /** Main only reads files; renderer owns schema and CSS color validation. */
   listUser: () => Promise<UserThemeFile[]>
@@ -433,6 +456,14 @@ export interface AppApi {
   /** 悬浮窗条目 → 主窗口恢复并进入既有 Session terminal。 */
   onFocusSession: (cb: (payload: FocusSessionPayload) => void) => () => void
   onMainPrefsChanged: (cb: (prefs: MainPrefsSnapshot) => void) => () => void
+}
+
+export interface UpdateApi {
+  getState: () => Promise<UpdateSnapshot>
+  check: () => Promise<UpdateSnapshot>
+  download: () => Promise<UpdateSnapshot>
+  install: () => Promise<void>
+  onStateChanged: (cb: (snapshot: UpdateSnapshot) => void) => () => void
 }
 
 export interface AppThemeApi {

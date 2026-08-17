@@ -119,6 +119,10 @@ HRack is still in preview, so small, well-scoped changes are easier to review th
 
 HRack is licensed under the [Apache License 2.0](./LICENSE).
 
+## 友情链接
+
+- [LINUX DO](https://linux.do/)
+
 ---
 
 <div align="center">

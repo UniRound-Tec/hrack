@@ -555,7 +555,7 @@ test.describe('OpenCode observer adapter', () => {
       capabilities: OPENCODE_CAPABILITIES
     })
     expect(late.filter((item) => item.kind === 'turn.started')).toHaveLength(0)
-    expect(projection.status).toBe('idle')
+    expect(projection.status).toBe('done')
     expect(projection.pendingAttentionCount).toBe(0)
   })
 
@@ -626,5 +626,33 @@ test.describe('OpenCode observer adapter', () => {
       102
     )
     expect(idleChild.some((item) => item.kind === 'turn.completed')).toBe(true)
+  })
+
+  test('reconciliation treats sessions omitted from the status snapshot as idle', () => {
+    const projector = new OpenCodeEventProjector()
+    project(projector, [
+      {
+        type: 'session-status',
+        nativeType: 'session.status',
+        sessionId: 's1',
+        status: 'busy'
+      },
+      {
+        type: 'message-assistant-completed',
+        nativeType: 'message.updated',
+        sessionId: 's1',
+        messageId: 'm1'
+      }
+    ])
+
+    const events = projector.reconcile(
+      {
+        sessions: [{ id: 's1', directory: 'C:/work' }],
+        statuses: new Map()
+      },
+      2_000
+    )
+
+    expect(events.at(-1)?.kind).toBe('turn.completed')
   })
 })
