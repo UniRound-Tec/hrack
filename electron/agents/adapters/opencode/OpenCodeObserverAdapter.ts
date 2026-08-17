@@ -35,6 +35,7 @@ const HEALTH_BUDGET_MS = 5_000
 const CONNECTED_BUDGET_MS = 1_500
 const CONNECT_RETRY_BUDGET_MS = 15_000
 const RECONCILE_BUDGET_MS = 3_000
+const TERMINAL_RECONCILE_DELAY_MS = 150
 const MAX_BUFFERED_EVENTS = 512
 const MAX_BUFFERED_BYTES = 1024 * 1024
 const reservedPorts = new Set<string>()
@@ -388,6 +389,34 @@ export class OpenCodeObserverAdapter implements AgentObserverAdapter {
       let thinkingStartedAt = 0
       let thinkingEpoch = 0
       let publishedThinkingSecond = -1
+      let terminalReconcileTimer: ReturnType<typeof setTimeout> | null = null
+
+      const cancelTerminalReconcile = (): void => {
+        if (terminalReconcileTimer) clearTimeout(terminalReconcileTimer)
+        terminalReconcileTimer = null
+      }
+
+      const reconcileStatus = async (): Promise<void> => {
+        try {
+          const snapshot = await withTimeout(
+            transport.snapshot(),
+            RECONCILE_BUDGET_MS,
+            'OpenCode status reconciliation timed out'
+          )
+          for (const projected of projector.reconcile(snapshot))
+            emitProjected(projected)
+        } catch {
+          // Live SSE remains authoritative when this opportunistic check fails.
+        }
+      }
+
+      const scheduleTerminalReconcile = (): void => {
+        cancelTerminalReconcile()
+        terminalReconcileTimer = setTimeout(() => {
+          terminalReconcileTimer = null
+          void reconcileStatus()
+        }, TERMINAL_RECONCILE_DELAY_MS)
+      }
 
       const stopThinkingCaption = (): void => {
         if (thinkingTimer) clearInterval(thinkingTimer)
@@ -453,8 +482,20 @@ export class OpenCodeObserverAdapter implements AgentObserverAdapter {
           }
           return
         }
+        if (
+          fact.type === 'session-status' &&
+          (fact.status === 'busy' || fact.status === 'retry')
+        ) {
+          cancelTerminalReconcile()
+        }
         for (const projected of projector.project(fact))
           emitProjected(projected)
+        if (
+          fact.type === 'message-assistant-completed' ||
+          fact.type === 'step-finished'
+        ) {
+          scheduleTerminalReconcile()
+        }
       }
 
       const onRaw = (raw: unknown): void => {
@@ -568,6 +609,7 @@ export class OpenCodeObserverAdapter implements AgentObserverAdapter {
           return () => disconnectListeners.delete(listener)
         },
         reconnect: async () => {
+          cancelTerminalReconcile()
           stopThinkingCaption()
           await connection.dispose()
           if (activeConnection === connection) activeConnection = null
@@ -576,6 +618,7 @@ export class OpenCodeObserverAdapter implements AgentObserverAdapter {
         dispose: async () => {
           if (handleDisposed) return
           handleDisposed = true
+          cancelTerminalReconcile()
           stopThinkingCaption()
           disconnectListeners.clear()
           await connection.dispose()

@@ -7,12 +7,34 @@ import { CodexObserverAdapter } from '../electron/agents/adapters/codex/CodexObs
 import { wslRuntimeCommand } from '../electron/agents/adapters/wslRuntimeCommand'
 import { parseCodexHook } from '../electron/agents/adapters/codex/CodexHookParser'
 import { CodexHookProjector } from '../electron/agents/adapters/codex/CodexHookProjector'
+import {
+  buildCodexInlineHookConfig,
+  codexWindowsHookCommand
+} from '../electron/agents/adapters/codex/CodexHookConfig'
 import { CODEX_HOOK_CAPABILITIES } from '../electron/agents/adapters/codex/types'
 import type { AdapterEvent } from '../electron/agents/adapters/types'
 import { wslLaunchOptions } from '../electron/ai-cli-discovery'
 import { projectAdapterEvents } from './helpers/agent-projection-contract'
 
 test.describe('Codex observer adapter', () => {
+  test('uses only guarded HRack hook transport names', () => {
+    const entries = buildCodexInlineHookConfig()
+    expect(entries).toHaveLength(11)
+    expect(entries.every((entry) => entry.includes('-EncodedCommand'))).toBe(
+      true
+    )
+    const encoded = codexWindowsHookCommand().match(
+      /-EncodedCommand ([A-Za-z0-9+/=]+)$/
+    )?.[1]
+    expect(encoded).toBeTruthy()
+    const windowsScript = Buffer.from(encoded!, 'base64').toString('utf16le')
+    expect(windowsScript).toContain('HRACK_CODEX_HOOK_BRIDGE_WINDOWS')
+    expect(windowsScript).toContain('Test-Path -LiteralPath')
+    expect(windowsScript).not.toContain('VIBING_CODEX_')
+    const config = entries.join('\n')
+    expect(config).not.toContain('VIBING_CODEX_')
+  })
+
   test('falls back to the wrapper directory when cached WSL PATH is unavailable', () => {
     const command = wslRuntimeCommand(
       {
@@ -469,7 +491,7 @@ test.describe('Codex observer adapter', () => {
         }
       })
 
-      expect(prepared.launch.prependArgs).toHaveLength(11)
+      expect(prepared.launch.prependArgs).toHaveLength(14)
       expect(prepared.launch.prependArgs?.[0]).toContain(
         '--config=hooks.SessionStart=[{matcher=".*"'
       )
@@ -478,6 +500,12 @@ test.describe('Codex observer adapter', () => {
       )
       const dropDir = prepared.launch.env?.HRACK_CODEX_HOOK_DROP
       expect(dropDir).toBeTruthy()
+      expect(prepared.launch.prependArgs).toContain(
+        `--config=shell_environment_policy.set.HRACK_CODEX_HOOK_DROP=${JSON.stringify(dropDir)}`
+      )
+      expect(prepared.launch.prependArgs).toContain(
+        `--config=shell_environment_policy.set.HRACK_CODEX_HOOK_BRIDGE_WINDOWS=${JSON.stringify(prepared.launch.env?.HRACK_CODEX_HOOK_BRIDGE_WINDOWS)}`
+      )
 
       const events: AdapterEvent[] = []
       const handle = await prepared.attach(
@@ -549,38 +577,51 @@ test.describe('Codex observer adapter', () => {
         (event) => events.push(event)
       )
       const env = { ...process.env, ...prepared.launch.env }
-      const child = spawn(
-        'powershell.exe',
-        [
-          '-NoProfile',
-          '-NonInteractive',
-          '-ExecutionPolicy',
-          'Bypass',
-          '-Command',
-          '& $env:HRACK_CODEX_HOOK_BRIDGE_WINDOWS'
-        ],
-        { env, stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true }
-      )
-      child.stdin.end(
-        Buffer.from(
-          JSON.stringify({
-            session_id: '原生会话',
-            hook_event_name: 'SessionStart',
-            source: 'startup',
-            cwd: 'C:/工作区/中文'
-          }),
-          'utf8'
+      const command = codexWindowsHookCommand()
+      for (const [index, outer] of [
+        { file: 'cmd.exe', args: ['/D', '/S', '/C', command] },
+        { file: 'pwsh.exe', args: ['-NoProfile', '-Command', command] }
+      ].entries()) {
+        const child = spawn(outer.file, outer.args, {
+          env,
+          stdio: ['pipe', 'ignore', 'pipe'],
+          windowsHide: true
+        })
+        let stderr = ''
+        child.stderr.setEncoding('utf8')
+        child.stderr.on('data', (chunk: string) => {
+          stderr += chunk
+        })
+        child.stdin.end(
+          Buffer.from(
+            JSON.stringify({
+              session_id: `原生会话-${index}`,
+              hook_event_name: 'SessionStart',
+              source: 'startup',
+              cwd: 'C:/工作区/中文'
+            }),
+            'utf8'
+          )
         )
-      )
-      await new Promise<void>((resolve, reject) => {
-        child.once('error', reject)
-        child.once('close', (code) =>
-          code === 0 ? resolve() : reject(new Error(`bridge exited ${code}`))
-        )
-      })
-      await expect.poll(() => events.map((event) => event.kind)).toContain(
-        'session.idle'
-      )
+        await new Promise<void>((resolve, reject) => {
+          child.once('error', reject)
+          child.once('close', (code) =>
+            code === 0
+              ? resolve()
+              : reject(
+                  new Error(
+                    `${outer.file} bridge exited ${code}: ${stderr.trim()}`
+                  )
+                )
+          )
+        })
+        await expect
+          .poll(
+            () => events.filter((event) => event.kind === 'session.idle').length,
+            { message: `${outer.file} should deliver hook JSON: ${stderr}` }
+          )
+          .toBe(index + 1)
+      }
       expect(JSON.stringify(events)).not.toContain('工作区')
       await handle.dispose()
       await prepared.dispose()

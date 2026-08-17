@@ -220,19 +220,27 @@ export class CodexObserverAdapter implements AgentObserverAdapter {
       ])
     }
 
+    const hookEnvironment = {
+      HRACK_CODEX_HOOK_DROP: runtimePaths.dropDir,
+      HRACK_CODEX_HOOK_BRIDGE: runtimePaths.posixBridge,
+      HRACK_CODEX_HOOK_BRIDGE_WINDOWS: runtimePaths.windowsBridge
+    }
+
     return {
       launch: {
-        env: {
-          HRACK_CODEX_HOOK_DROP: runtimePaths.dropDir,
-          HRACK_CODEX_HOOK_BRIDGE: runtimePaths.posixBridge,
-          HRACK_CODEX_HOOK_BRIDGE_WINDOWS: runtimePaths.windowsBridge
-        },
+        env: hookEnvironment,
         // Keep key=value in one argv entry. ConPTY/node-pty can otherwise
         // detach a quote-heavy TOML value from `-c`, and Codex exits before
         // the TUI starts with "a value is required for --config".
-        prependArgs: buildCodexInlineHookConfig().map(
-          (config) => `--config=${config}`
-        )
+        prependArgs: [
+          ...buildCodexInlineHookConfig().map(
+            (config) => `--config=${config}`
+          ),
+          ...Object.entries(hookEnvironment).map(
+            ([key, value]) =>
+              `--config=shell_environment_policy.set.${key}=${JSON.stringify(value)}`
+          )
+        ]
       },
       capabilities: CODEX_HOOK_CAPABILITIES,
       attach: async (_running, emit): Promise<ObserverHandle> => {

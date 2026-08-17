@@ -310,8 +310,20 @@ export function reduceAgentSession(
         correlation.highConfidenceIdle = false
         observerHealth = 'stale'
       } else {
+        const terminalTurnId = correlation.lastTurnId
+        const terminalOutcome = correlation.lastTurnOutcome
+        const terminalFailure = correlation.turnFailedMessage
         clearScopedActivity(correlation)
-        correlation.highConfidenceIdle = true
+        // A duplicate/late protocol-idle confirms that activity is closed; it
+        // must not erase the visible result of the turn that just completed.
+        if (terminalTurnId && terminalOutcome !== undefined) {
+          correlation.lastTurnId = terminalTurnId
+          correlation.lastTurnOutcome = terminalOutcome
+          correlation.turnFailedMessage = terminalFailure
+          correlation.highConfidenceIdle = false
+        } else {
+          correlation.highConfidenceIdle = true
+        }
         correlation.lowConfidenceIdle = false
         observerHealth = 'healthy'
       }

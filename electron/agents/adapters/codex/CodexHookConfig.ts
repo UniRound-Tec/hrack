@@ -1,3 +1,5 @@
+import { Buffer } from 'node:buffer'
+
 const EVENTS = [
   'SessionStart',
   'SessionEnd',
@@ -12,9 +14,11 @@ const EVENTS = [
   'Stop'
 ] as const
 
-const POSIX_COMMAND = '/bin/sh "$HRACK_CODEX_HOOK_BRIDGE"'
-const WINDOWS_COMMAND =
-  'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& $env:HRACK_CODEX_HOOK_BRIDGE_WINDOWS"'
+const POSIX_COMMAND =
+  'if [ -n "${HRACK_CODEX_HOOK_BRIDGE:-}" ] && [ -f "$HRACK_CODEX_HOOK_BRIDGE" ]; then /bin/sh "$HRACK_CODEX_HOOK_BRIDGE" >/dev/null 2>&1 || :; fi'
+const WINDOWS_SCRIPT =
+  "$p=[Environment]::GetEnvironmentVariable('HRACK_CODEX_HOOK_BRIDGE_WINDOWS'); if ($p -and (Test-Path -LiteralPath $p -PathType Leaf)) { & $p }; exit 0"
+const WINDOWS_COMMAND = `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${Buffer.from(WINDOWS_SCRIPT, 'utf16le').toString('base64')}`
 
 function tomlString(value: string): string {
   return JSON.stringify(value)
@@ -26,6 +30,10 @@ export function buildCodexInlineHookConfig(): readonly string[] {
   return EVENTS.map(
     (event) => `hooks.${event}=[{matcher=".*",hooks=[${handler}]}]`
   )
+}
+
+export function codexWindowsHookCommand(): string {
+  return WINDOWS_COMMAND
 }
 
 export function codexPosixBridgeScript(): string {

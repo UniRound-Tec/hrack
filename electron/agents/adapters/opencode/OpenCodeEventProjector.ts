@@ -91,7 +91,9 @@ export class OpenCodeEventProjector {
       const previous = this.sessions.get(info.id)
       this.sessions.set(info.id, {
         info: { ...previous?.info, ...info },
-        status: snapshot.statuses.get(info.id) ?? previous?.status ?? 'idle',
+        // OpenCode's /session/status endpoint only lists active sessions.
+        // A known session omitted from the snapshot is authoritatively idle.
+        status: snapshot.statuses.get(info.id) ?? 'idle',
         fatalError: previous?.fatalError
       })
     }

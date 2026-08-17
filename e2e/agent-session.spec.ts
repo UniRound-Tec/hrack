@@ -720,7 +720,7 @@ test.describe('AgentEventReducer', () => {
     expect(projection.status).toBe('needs-you')
   })
 
-  test('explicit high-confidence idle follows turn.completed', () => {
+  test('explicit high-confidence idle preserves the completed turn result', () => {
     let projection = initialProjection()
     projection = reduceAgentSession(
       projection,
@@ -739,8 +739,9 @@ test.describe('AgentEventReducer', () => {
         confidence: 'high'
       })
     )
-    expect(projection.status).toBe('idle')
+    expect(projection.status).toBe('done')
     expect(projection.statusConfidence).toBe('high')
+    expect(projection.detail).toBe('@agent:completed')
   })
 
   test('high-confidence idle overwrites an open turn and its attention facts', () => {
