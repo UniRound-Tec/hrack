@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "sunny-buddy",
+  "name": "Sunny Buddy",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "width": 340,
+  "minHeight": 430,
+  "maxHeight": 430
+}

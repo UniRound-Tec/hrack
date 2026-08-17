@@ -9,7 +9,10 @@ $artifactDir = Join-Path $workspace 'artifacts'
 $installerName = "HRack-Setup-$version.exe"
 $installerPath = Join-Path $releaseDir $installerName
 $blockmapPath = "$installerPath.blockmap"
+$metadataName = 'latest.yml'
+$metadataPath = Join-Path $releaseDir $metadataName
 $unpackedExe = Join-Path $releaseDir 'win-unpacked\HRack.exe'
+$packagedUpdateConfig = Join-Path $releaseDir 'win-unpacked\resources\app-update.yml'
 $succeeded = $false
 
 function Assert-ReleaseConfig {
@@ -89,11 +92,16 @@ try {
     Pop-Location
   }
 
-  foreach ($required in @($installerPath, $blockmapPath, $unpackedExe)) {
+  foreach ($required in @($installerPath, $blockmapPath, $metadataPath, $unpackedExe, $packagedUpdateConfig)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
       throw "Release output is missing: $required"
     }
   }
+
+  & node (Join-Path $workspace 'scripts\assert-update-metadata.cjs') $metadataPath $releaseDir $version $installerName
+  if ($LASTEXITCODE -ne 0) { throw 'Windows update metadata verification failed.' }
+  & node (Join-Path $workspace 'scripts\assert-packaged-update-config.cjs') $packagedUpdateConfig
+  if ($LASTEXITCODE -ne 0) { throw 'Packaged Windows update provider verification failed.' }
 
   $dshBin = Join-Path $releaseDir 'win-unpacked\resources\dsh-runtime\node_modules\@deepseek-ai\dsh\lib\bin.js'
   if (-not (Test-Path -LiteralPath $dshBin -PathType Leaf)) {
@@ -127,6 +135,7 @@ try {
   New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
   Copy-Item -LiteralPath $installerPath -Destination (Join-Path $artifactDir $installerName) -Force
   Copy-Item -LiteralPath $blockmapPath -Destination (Join-Path $artifactDir "$installerName.blockmap") -Force
+  Copy-Item -LiteralPath $metadataPath -Destination (Join-Path $artifactDir $metadataName) -Force
 
   $finalInstaller = Join-Path $artifactDir $installerName
   $finalFile = Get-Item -LiteralPath $finalInstaller
@@ -150,6 +159,7 @@ try {
     InstallationDirectoryChoice = $true
     TrayRuntimeVerified = $true
     CustomIconVerified = $true
+    UpdateMetadata = (Join-Path $artifactDir $metadataName)
   } | Format-List
   if ($signature -ne 'Present') {
     Write-Warning 'Installer is not code-signed; Windows may show a security warning.'

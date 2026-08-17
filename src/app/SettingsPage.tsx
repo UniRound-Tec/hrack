@@ -1,17 +1,23 @@
-import { Minus, Plus, RefreshCw } from 'lucide-react'
+import { Check, Copy, Minus, Plus, RefreshCw } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
-import type { CliRuntimeError, ShellOption } from '../../shared/ipc-contract'
+import type {
+  CliRuntimeError,
+  ShellOption,
+  UpdateSnapshot
+} from '../../shared/ipc-contract'
 import type {
   DshRuntimeConfig,
   DshRuntimePreference,
   DshRuntimeScanReport
 } from '../../shared/dsh-ipc'
+import type { FloatingWindowState } from '../../shared/floating-window'
 import { appLocales, useStrings } from './i18n'
 import { getUiThemeRegistry, useThemeRegistryVersion } from './themeRuntime'
 import { terminalThemeIds, terminalThemes } from '../terminal/themes'
 import { useSettingsStore, defaultSettings, type NavMode } from '../state/settingsStore'
 import ClickSpark from './effects/ClickSpark'
 import Dropdown, { type DropdownOption } from './Dropdown'
+import floatingRendererSkill from '../../resources/skills/create-hrack-floating-renderer/SKILL.md?raw'
 
 const defaultFontFamily = defaultSettings.fontFamily
 
@@ -59,6 +65,13 @@ export default function SettingsPage({
   const [dshRuntimeChanging, setDshRuntimeChanging] = useState(false)
   const [dshRuntimeActionError, setDshRuntimeActionError] =
     useState<string | null>(null)
+  const [updateSnapshot, setUpdateSnapshot] =
+    useState<UpdateSnapshot | null>(null)
+  const [floatingState, setFloatingState] =
+    useState<FloatingWindowState | null>(null)
+  const [floatingActionError, setFloatingActionError] =
+    useState<string | null>(null)
+  const [floatingSkillCopied, setFloatingSkillCopied] = useState(false)
   const dshRuntimeBusy = dshRuntimeScanning || dshRuntimeChanging
   const dshRuntimeError = dshRuntimeActionError ?? dshRuntimeScanError
   // 主题热重载后注册表版本自增，订阅以重新读取当前注册表。
@@ -143,16 +156,32 @@ export default function SettingsPage({
   useEffect(() => {
     let cancelled = false
     const unsubscribe = window.floatingWindowApi.onStateChanged((state) => {
+      setFloatingState(state)
       settings.setFloatEnabled(state.enabled)
     })
     void window.floatingWindowApi.getState().then((state) => {
-      if (!cancelled) settings.setFloatEnabled(state.enabled)
+      if (!cancelled) {
+        setFloatingState(state)
+        settings.setFloatEnabled(state.enabled)
+      }
     })
     return () => {
       cancelled = true
       unsubscribe()
     }
   }, [settings.setFloatEnabled])
+
+  useEffect(() => {
+    let cancelled = false
+    const unsubscribe = window.updateApi.onStateChanged(setUpdateSnapshot)
+    void window.updateApi.getState().then((snapshot) => {
+      if (!cancelled) setUpdateSnapshot(snapshot)
+    })
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [])
 
   const changeLanguage = (value: string): void => {
     const locale = value as (typeof settings.language)
@@ -167,9 +196,79 @@ export default function SettingsPage({
   }
 
   const changeFloatingWindow = (enabled: boolean): void => {
-    void window.floatingWindowApi.setEnabled(enabled).then((state) => {
-      settings.setFloatEnabled(state.enabled)
-    })
+    setFloatingActionError(null)
+    void window.floatingWindowApi
+      .setEnabled(enabled)
+      .then((state) => {
+        setFloatingState(state)
+        settings.setFloatEnabled(state.enabled)
+      })
+      .catch((error) => {
+        setFloatingActionError(
+          error instanceof Error ? error.message : String(error)
+        )
+      })
+  }
+
+  const changeFloatingRenderer = (rendererId: string): void => {
+    setFloatingActionError(null)
+    void window.floatingWindowApi
+      .setRenderer(rendererId)
+      .then(setFloatingState)
+      .catch((error) => {
+        setFloatingActionError(
+          error instanceof Error ? error.message : String(error)
+        )
+      })
+  }
+
+  const changeFloatingAttentionEffect = (enabled: boolean): void => {
+    setFloatingActionError(null)
+    void window.floatingWindowApi
+      .setAttentionEffectEnabled(enabled)
+      .then(setFloatingState)
+      .catch((error) => {
+        setFloatingActionError(
+          error instanceof Error ? error.message : String(error)
+        )
+      })
+  }
+
+  const changeFloatingScale = (value: string): void => {
+    setFloatingActionError(null)
+    void window.floatingWindowApi
+      .setScale(Number(value))
+      .then(setFloatingState)
+      .catch((error) => {
+        setFloatingActionError(
+          error instanceof Error ? error.message : String(error)
+        )
+      })
+  }
+
+  const refreshFloatingRenderers = (): void => {
+    setFloatingActionError(null)
+    void window.floatingWindowApi
+      .refreshRenderers()
+      .then(setFloatingState)
+      .catch((error) => {
+        setFloatingActionError(
+          error instanceof Error ? error.message : String(error)
+        )
+      })
+  }
+
+  const copyFloatingRendererSkill = (): void => {
+    setFloatingActionError(null)
+    void window.clipboardApi
+      .writeText(floatingRendererSkill.trim())
+      .then(() => setFloatingSkillCopied(true))
+      .catch((error) => {
+        setFloatingSkillCopied(false)
+        setFloatingActionError(
+          error instanceof Error ? error.message : String(error)
+        )
+      })
   }
 
   const changeDshRuntime = (value: string): void => {
@@ -192,6 +291,52 @@ export default function SettingsPage({
         setDshRuntimeActionError(error instanceof Error ? error.message : String(error))
       })
       .finally(() => setDshRuntimeChanging(false))
+  }
+
+  const updateStatus = (() => {
+    if (!updateSnapshot) return strings.settings.updateLoading
+    switch (updateSnapshot.phase) {
+      case 'disabled':
+        return strings.settings.updateDisabled
+      case 'idle':
+        return strings.settings.updateIdle
+      case 'checking':
+        return strings.settings.updateChecking
+      case 'available':
+        return strings.settings.updateAvailable(updateSnapshot.availableVersion ?? '')
+      case 'downloading':
+        return strings.settings.updateDownloading(
+          updateSnapshot.availableVersion ?? '',
+          Math.round(updateSnapshot.progress?.percent ?? 0)
+        )
+      case 'downloaded':
+        return strings.settings.updateDownloaded(updateSnapshot.availableVersion ?? '')
+      case 'up-to-date':
+        return strings.settings.updateUpToDate
+      case 'error':
+        return strings.settings.updateError(updateSnapshot.error ?? '')
+    }
+  })()
+  const updateBusy =
+    !updateSnapshot ||
+    updateSnapshot.phase === 'disabled' ||
+    updateSnapshot.phase === 'checking' ||
+    updateSnapshot.phase === 'downloading'
+  const updateActionLabel = updateSnapshot?.phase === 'downloaded'
+    ? strings.settings.updateRestart
+    : updateSnapshot?.phase === 'available' ||
+        (updateSnapshot?.phase === 'error' && updateSnapshot.availableVersion)
+      ? strings.settings.updateDownload
+      : strings.settings.updateCheck
+  const runUpdateAction = (): void => {
+    if (!updateSnapshot || updateBusy) return
+    const action = updateSnapshot.phase === 'downloaded'
+      ? window.updateApi.install()
+      : updateSnapshot.phase === 'available' ||
+          (updateSnapshot.phase === 'error' && updateSnapshot.availableVersion)
+        ? window.updateApi.download()
+        : window.updateApi.check()
+    void action.catch(() => {})
   }
 
   return (
@@ -239,6 +384,108 @@ export default function SettingsPage({
             </Row>
             <Row label={strings.settings.globalShortcut} hint={strings.settings.globalShortcutHint}><Toggle testId="settings-global-shortcut" checked={settings.globalShortcutEnabled} onChange={changeGlobalShortcut} /></Row>
             <Row label={strings.settings.floatingWindow} hint={strings.settings.floatingWindowHint}><Toggle testId="settings-floating-window" checked={settings.floatEnabled} onChange={changeFloatingWindow} /></Row>
+            <Row
+              label={strings.settings.floatingRenderer}
+              hint={floatingActionError ?? floatingState?.activeError ?? strings.settings.floatingRendererHint}
+            >
+              <div className="flex max-w-[390px] flex-wrap items-center justify-end gap-1.5">
+                <Dropdown
+                  testId="settings-floating-renderer"
+                  value={floatingState?.selectedRendererId ?? ''}
+                  options={floatingState?.renderers.map((renderer) => ({
+                    value: renderer.id,
+                    label: renderer.name
+                  })) ?? []}
+                  disabled={!floatingState || floatingState.renderers.length === 0}
+                  buttonClassName="max-w-[190px]"
+                  onChange={changeFloatingRenderer}
+                />
+                <button
+                  type="button"
+                  data-testid="settings-floating-renderer-refresh"
+                  title={strings.settings.floatingRendererRefresh}
+                  aria-label={strings.settings.floatingRendererRefresh}
+                  onClick={refreshFloatingRenderers}
+                  className="inline-flex size-[30px] items-center justify-center rounded-lg border border-border-default bg-input text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary"
+                >
+                  <RefreshCw className="size-3" strokeWidth={1.75} />
+                </button>
+                <button
+                  type="button"
+                  data-testid="settings-floating-renderer-folder"
+                  onClick={() => {
+                    setFloatingActionError(null)
+                    void window.floatingWindowApi.openRenderersDirectory().catch((error) => {
+                      setFloatingActionError(
+                        error instanceof Error ? error.message : String(error)
+                      )
+                    })
+                  }}
+                  className="inline-flex h-[30px] items-center rounded-lg border border-border-default bg-input px-2.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary"
+                >
+                  {strings.settings.floatingRendererFolder}
+                </button>
+                <button
+                  type="button"
+                  data-testid="settings-floating-renderer-copy-skill"
+                  title={strings.settings.floatingRendererSkillCopy}
+                  aria-label={strings.settings.floatingRendererSkillCopy}
+                  onClick={copyFloatingRendererSkill}
+                  className="inline-flex h-[30px] items-center gap-1.5 rounded-lg border border-border-default bg-input px-2.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary"
+                >
+                  {floatingSkillCopied
+                    ? <Check className="size-3 text-status-done" strokeWidth={1.75} />
+                    : <Copy className="size-3" strokeWidth={1.75} />}
+                  {floatingSkillCopied
+                    ? strings.settings.floatingRendererSkillCopied
+                    : strings.settings.floatingRendererSkillCopy}
+                </button>
+              </div>
+            </Row>
+            <Row
+              label={strings.settings.floatingScale}
+              hint={strings.settings.floatingScaleHint}
+            >
+              <Dropdown
+                testId="settings-floating-scale"
+                value={String(floatingState?.scale ?? 1)}
+                options={[
+                  { value: '0.6', label: '60%' },
+                  { value: '0.75', label: '75%' },
+                  { value: '0.9', label: '90%' },
+                  { value: '1', label: '100%' },
+                  { value: '1.2', label: '120%' },
+                  { value: '1.4', label: '140%' },
+                  { value: '1.6', label: '160%' }
+                ]}
+                buttonClassName="min-w-[100px]"
+                onChange={changeFloatingScale}
+              />
+            </Row>
+            <Row
+              label={strings.settings.floatingAttentionEffect}
+              hint={strings.settings.floatingAttentionEffectHint}
+            >
+              <Toggle
+                testId="settings-floating-attention-effect"
+                checked={floatingState?.attentionEffectEnabled ?? true}
+                onChange={changeFloatingAttentionEffect}
+              />
+            </Row>
+            {(floatingState?.rendererErrors.length ?? 0) > 0 && (
+              <details data-testid="floating-renderer-errors" className="border-b border-border-faint py-3 font-pingfang text-[11px]">
+                <summary className="cursor-pointer text-status-error">
+                  {strings.settings.floatingRendererErrors}
+                </summary>
+                <ul className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-border-default bg-surface-strong p-2 text-text-muted">
+                  {floatingState?.rendererErrors.map((error, index) => (
+                    <li key={`${error.filename}-${index}`} className="break-words py-1">
+                      {error.filename}: {error.message}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </Section>
 
           <Section label="terminal" title={strings.settings.sections.terminal}>
@@ -356,6 +603,42 @@ export default function SettingsPage({
                 </ul>
               </details>
             )}
+          </Section>
+
+          <Section label="update" title={strings.settings.sections.update}>
+            <div data-testid="settings-update" className="border-b border-border-faint py-3.5 last:border-b-0">
+              <div className="flex items-center justify-between gap-6">
+                <div className="min-w-0">
+                  <p data-testid="settings-update-version" className="font-pingfang text-[12px] font-medium text-text-secondary">
+                    {strings.settings.updateCurrentVersion(updateSnapshot?.currentVersion ?? '—')}
+                  </p>
+                  <p data-testid="settings-update-status" className={`mt-0.5 break-words font-pingfang text-[11px] ${updateSnapshot?.phase === 'error' ? 'text-status-error' : 'text-text-faint'}`}>
+                    {updateStatus}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  data-testid="settings-update-action"
+                  disabled={updateBusy}
+                  aria-busy={updateSnapshot?.phase === 'checking' || updateSnapshot?.phase === 'downloading'}
+                  onClick={runUpdateAction}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border-default bg-input px-2.5 py-1.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {(updateSnapshot?.phase === 'checking' || updateSnapshot?.phase === 'downloading') && (
+                    <RefreshCw className="size-3 animate-spin" strokeWidth={1.75} />
+                  )}
+                  {updateActionLabel}
+                </button>
+              </div>
+              {updateSnapshot?.phase === 'downloading' && (
+                <div data-testid="settings-update-progress" className="mt-2.5 h-1 overflow-hidden rounded-full bg-control">
+                  <div
+                    className="h-full rounded-full bg-button-primary transition-[width] duration-200"
+                    style={{ width: `${Math.min(100, Math.max(0, updateSnapshot.progress?.percent ?? 0))}%` }}
+                  />
+                </div>
+              )}
+            </div>
           </Section>
         </div>
       </section>

@@ -21,6 +21,7 @@ import {
   ShellInvokeChannel,
   StatsInvokeChannel,
   ThemeInvokeChannel,
+  UpdateInvokeChannel,
   WindowInvokeChannel,
   type CliRuntime,
   type DirectoryPickerRequest,
@@ -38,7 +39,12 @@ import { listAvailableShells } from './shells'
 import type { AiCliDiscoveryService } from './ai-cli-discovery'
 import { displayRelativePosition } from './window'
 import { EventLog } from './events/EventLog'
-import { persistMainPrefs } from './main-prefs'
+import { persistMainPrefs, sanitizeFloatingAppearance } from './main-prefs'
+import {
+  BUILTIN_FLOATING_RENDERER_ID,
+  type FloatingShapeRect,
+  type FloatingWindowState
+} from '../shared/floating-window'
 import {
   isGlobalShortcutRegistered,
   registerGlobalShortcut,
@@ -57,6 +63,7 @@ import type { DshHostManager } from './dsh-host/DshHostManager'
 import type { DshWireProxy } from './dsh-host/DshWireProxy'
 import type { DshProjectionBridge } from './dsh-host/DshProjectionBridge'
 import type { DshWebSurfaceController } from './dsh-surface/DshWebSurfaceController'
+import type { UpdateService } from './update/UpdateService'
 import {
   directoryPickerDefaultPath,
   normalizePickedDirectory
@@ -68,6 +75,48 @@ const MAX_USER_THEME_BYTES = 256 * 1024
 const MAX_EVENT_ADAPTER_ID_LENGTH = 128
 const MAX_EVENT_TITLE_LENGTH = 256
 const MAX_EVENT_DETAIL_LENGTH = 512
+
+function unavailableFloatingWindowState(): FloatingWindowState {
+  return {
+    enabled: false,
+    selectedRendererId: BUILTIN_FLOATING_RENDERER_ID,
+    activeRendererId: null,
+    renderers: [],
+    rendererErrors: [],
+    activeError: null,
+    attentionEffectEnabled: true,
+    scale: 1
+  }
+}
+
+function parseFloatingShape(value: unknown): FloatingShapeRect[] | null {
+  if (!Array.isArray(value) || value.length > 1_024) return null
+  const rects: FloatingShapeRect[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object') return null
+    const raw = item as Record<string, unknown>
+    const values = [raw.x, raw.y, raw.width, raw.height]
+    if (
+      values.some(
+        (entry) => typeof entry !== 'number' || !Number.isFinite(entry)
+      ) ||
+      (raw.x as number) < 0 ||
+      (raw.y as number) < 0 ||
+      (raw.width as number) <= 0 ||
+      (raw.height as number) <= 0 ||
+      values.some((entry) => (entry as number) > 8_192)
+    ) {
+      return null
+    }
+    rects.push({
+      x: Math.round(raw.x as number),
+      y: Math.round(raw.y as number),
+      width: Math.max(1, Math.round(raw.width as number)),
+      height: Math.max(1, Math.round(raw.height as number))
+    })
+  }
+  return rects
+}
 
 const EVENT_KIND_WHITELIST = new Set<HistoryEventKind>([
   'tool_call',
@@ -88,6 +137,7 @@ export interface IpcContext {
   dshHost: DshHostManager
   dshWire: DshWireProxy
   dshProjections: DshProjectionBridge
+  updateService: UpdateService
   getDshSurfaceController(): DshWebSurfaceController | null
   getWindow(): BrowserWindow | null
   getTray(): Tray | null
@@ -97,6 +147,12 @@ export interface IpcContext {
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   const win = BrowserWindow.fromWebContents(event.sender)
   return win && !win.isDestroyed() ? win : null
+}
+
+function requireMainWindow(event: IpcMainInvokeEvent, ctx: IpcContext): void {
+  if (senderWindow(event) !== ctx.getWindow()) {
+    throw new Error('This API is unavailable for this window')
+  }
 }
 
 function dshSurfaceController(
@@ -172,16 +228,6 @@ function parseDirectoryPickerRequest(value: unknown): DirectoryPickerRequest {
   return {
     defaultPath: request.defaultPath as string | undefined,
     runtime: parseDirectoryPickerRuntime(request.runtime)
-  }
-}
-
-function isFloatingWindowSender(event: IpcMainInvokeEvent): boolean {
-  const win = senderWindow(event)
-  if (!win) return false
-  try {
-    return new URL(win.webContents.getURL()).searchParams.get('surface') === 'floating'
-  } catch {
-    return false
   }
 }
 
@@ -353,41 +399,123 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     if (!win) return { x: 0, y: 0, screenWidth: 1, screenHeight: 1 }
     return displayRelativePosition(win)
   })
-  ipcMain.handle(FloatingWindowInvokeChannel.GetState, () =>
-    ctx.getFloatingWindowController()?.getState() ?? { enabled: false }
-  )
+  ipcMain.handle(FloatingWindowInvokeChannel.GetState, (event) => {
+    requireMainWindow(event, ctx)
+    return (
+      ctx.getFloatingWindowController()?.getState() ??
+      unavailableFloatingWindowState()
+    )
+  })
   ipcMain.handle(
     FloatingWindowInvokeChannel.SetEnabled,
-    (_event, enabled: unknown) => {
+    (event, enabled: unknown) => {
       const controller = ctx.getFloatingWindowController()
       if (!controller || typeof enabled !== 'boolean') {
-        return { enabled: false }
+        return unavailableFloatingWindowState()
+      }
+      const isMainSender = senderWindow(event) === ctx.getWindow()
+      const isOwnedRenderer = controller.isRendererSender(event.sender)
+      if (!isMainSender && !(isOwnedRenderer && enabled === false)) {
+        throw new Error('Floating window control is unavailable for this window')
       }
       return controller.setEnabled(enabled)
     }
   )
   ipcMain.handle(
+    FloatingWindowInvokeChannel.SetRenderer,
+    (event, rendererId: unknown) => {
+      requireMainWindow(event, ctx)
+      const controller = ctx.getFloatingWindowController()
+      if (
+        !controller ||
+        typeof rendererId !== 'string' ||
+        rendererId.length === 0 ||
+        rendererId.length > 128
+      ) {
+        return controller?.getState() ?? unavailableFloatingWindowState()
+      }
+      return controller.setRenderer(rendererId)
+    }
+  )
+  ipcMain.handle(
+    FloatingWindowInvokeChannel.SetAttentionEffect,
+    (event, enabled: unknown) => {
+      requireMainWindow(event, ctx)
+      const controller = ctx.getFloatingWindowController()
+      if (!controller || typeof enabled !== 'boolean') {
+        return controller?.getState() ?? unavailableFloatingWindowState()
+      }
+      return controller.setAttentionEffectEnabled(enabled)
+    }
+  )
+  ipcMain.handle(
+    FloatingWindowInvokeChannel.SetScale,
+    (event, scale: unknown) => {
+      requireMainWindow(event, ctx)
+      const controller = ctx.getFloatingWindowController()
+      if (!controller || typeof scale !== 'number' || !Number.isFinite(scale)) {
+        return controller?.getState() ?? unavailableFloatingWindowState()
+      }
+      return controller.setScale(scale)
+    }
+  )
+  ipcMain.handle(
+    FloatingWindowInvokeChannel.OpenRenderersDirectory,
+    (event) => {
+      requireMainWindow(event, ctx)
+      return ctx.getFloatingWindowController()?.openRenderersDirectory()
+    }
+  )
+  ipcMain.handle(
+    FloatingWindowInvokeChannel.RefreshRenderers,
+    (event) => {
+      requireMainWindow(event, ctx)
+      return (
+        ctx.getFloatingWindowController()?.refreshRenderers() ??
+        unavailableFloatingWindowState()
+      )
+    }
+  )
+  ipcMain.handle(FloatingWindowInvokeChannel.GetSnapshot, (event) => {
+    const controller = ctx.getFloatingWindowController()
+    if (!controller || !controller.isRendererSender(event.sender)) {
+      throw new Error('Floating renderer API is unavailable for this window')
+    }
+    return controller.getSnapshot()
+  })
+  ipcMain.handle(
     FloatingWindowInvokeChannel.ResizeToContent,
     (event, height: unknown) => {
+      const controller = ctx.getFloatingWindowController()
       if (
-        isFloatingWindowSender(event) &&
+        controller?.isRendererSender(event.sender) &&
         typeof height === 'number' &&
         Number.isFinite(height)
       ) {
-        ctx.getFloatingWindowController()?.resizeToContent(height)
+        controller.resizeToContent(height)
       }
     }
   )
   ipcMain.handle(
+    FloatingWindowInvokeChannel.SetShape,
+    (event, value: unknown) => {
+      const controller = ctx.getFloatingWindowController()
+      if (!controller?.isRendererSender(event.sender)) return
+      const rects = parseFloatingShape(value)
+      if (rects) controller.setShape(rects)
+    }
+  )
+  ipcMain.handle(
     FloatingWindowInvokeChannel.FocusSession,
-    (event, sessionId: unknown) =>
-      isFloatingWindowSender(event) &&
-      typeof sessionId === 'string' &&
-      sessionId.length <= 128
-        ? Boolean(
-            ctx.getFloatingWindowController()?.focusSession(sessionId)
-          )
-        : false
+    (event, sessionId: unknown) => {
+      const controller = ctx.getFloatingWindowController()
+      return Boolean(
+        controller?.isRendererSender(event.sender) &&
+          typeof sessionId === 'string' &&
+          sessionId.length <= 128 &&
+          controller.focusSession(sessionId)
+      )
+    }
   )
   ipcMain.handle(ThemeInvokeChannel.ListUser, listUserThemes)
   ipcMain.handle(
@@ -490,8 +618,24 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     }
   )
 
-  ipcMain.handle(AppInvokeChannel.SetMainPrefs, (_event, update: unknown) => {
+  ipcMain.handle(AppInvokeChannel.SetMainPrefs, (_event, update: unknown) =>
     applyMainPrefsUpdate(ctx, update)
+  )
+  ipcMain.handle(UpdateInvokeChannel.GetState, (event) => {
+    requireMainWindow(event, ctx)
+    return ctx.updateService.getState()
+  })
+  ipcMain.handle(UpdateInvokeChannel.Check, (event) => {
+    requireMainWindow(event, ctx)
+    return ctx.updateService.check()
+  })
+  ipcMain.handle(UpdateInvokeChannel.Download, (event) => {
+    requireMainWindow(event, ctx)
+    return ctx.updateService.download()
+  })
+  ipcMain.handle(UpdateInvokeChannel.Install, (event) => {
+    requireMainWindow(event, ctx)
+    return ctx.updateService.install()
   })
 
   // 诊断：渲染进程把 resize 前后的 buffer 快照写到 logs/resize-diag.log，供离线分析。
@@ -573,9 +717,19 @@ async function applyMainPrefsUpdate(
   if (typeof raw.language === 'string' && raw.language.length <= 16) {
     patch.language = raw.language
   }
+  if (raw.floatingAppearance !== undefined) {
+    patch.floatingAppearance = sanitizeFloatingAppearance(
+      raw.floatingAppearance
+    )
+  }
   if (Object.keys(patch).length === 0) return
 
   const merged = await persistMainPrefs(patch)
+  if (patch.floatingAppearance !== undefined) {
+    ctx
+      .getFloatingWindowController()
+      ?.setAppearance(merged.floatingAppearance)
+  }
   const win = ctx.getWindow()
   if (win) {
     const enabled = merged.globalShortcutEnabled

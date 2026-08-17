@@ -24,7 +24,8 @@ for required in \
   "$workspace/artifacts/HRack-${version}-linux-x64.AppImage" \
   "$workspace/artifacts/HRack-${version}-linux-x64.AppImage.sha256" \
   "$workspace/artifacts/HRack-${version}-linux-x64.deb" \
-  "$workspace/artifacts/HRack-${version}-linux-x64.deb.sha256"; do
+  "$workspace/artifacts/HRack-${version}-linux-x64.deb.sha256" \
+  "$workspace/artifacts/latest-linux.yml"; do
   if [[ ! -f "$required" ]]; then
     echo "Release output is missing: $required" >&2
     exit 1
@@ -36,3 +37,4 @@ printf '  %s\n' "$workspace/artifacts/HRack-${version}-linux-x64.AppImage"
 printf '  %s\n' "$workspace/artifacts/HRack-${version}-linux-x64.AppImage.sha256"
 printf '  %s\n' "$workspace/artifacts/HRack-${version}-linux-x64.deb"
 printf '  %s\n' "$workspace/artifacts/HRack-${version}-linux-x64.deb.sha256"
+printf '  %s\n' "$workspace/artifacts/latest-linux.yml"

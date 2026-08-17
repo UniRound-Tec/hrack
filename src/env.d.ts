@@ -12,8 +12,10 @@ import type {
   ShellApi,
   StatsApi,
   ThemeApi,
+  UpdateApi,
   WindowApi
 } from '../shared/ipc-contract'
+import type { FloatingRendererApi } from '../shared/floating-window'
 import type { HRackDebugShellApi } from './app/AppShell'
 import type { WorkspaceReaderApi } from '../shared/workspace-reader'
 import type { DshApi, DshSurfaceApi, DshWireApi } from '../shared/dsh-ipc'
@@ -25,6 +27,7 @@ declare global {
     clipboardApi: ClipboardApi
     windowApi: WindowApi
     floatingWindowApi: FloatingWindowApi
+    hrackFloating: FloatingRendererApi
     themeApi: ThemeApi
     dialogApi: DialogApi
     shellApi: ShellApi
@@ -33,6 +36,7 @@ declare global {
     agentApi: AgentApi
     workspaceReader: WorkspaceReaderApi
     appApi: AppApi
+    updateApi: UpdateApi
     appThemeApi: AppThemeApi
     dshApi: DshApi
     dshWireApi: DshWireApi

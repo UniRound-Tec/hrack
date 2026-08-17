@@ -53,6 +53,7 @@ CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder \
   --linux AppImage deb \
   "--$arch" \
   --publish never \
+  "--config.linux.artifactName=HRack-${version}-linux-${arch}.\${ext}" \
   "--config.directories.output=$release_dir"
 
 image_name="HRack-${version}-linux-${arch}.AppImage"
@@ -60,6 +61,7 @@ deb_name="HRack-${version}-linux-${arch}.deb"
 image_path="$(find "$release_dir" -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
 deb_path="$(find "$release_dir" -maxdepth 1 -type f -name '*.deb' -print -quit)"
 executable_path="$(find "$release_dir" -maxdepth 3 -type f -name hrack -path '*linux*unpacked*' -print -quit)"
+metadata_path="$release_dir/latest-linux.yml"
 
 if [[ -z "$image_path" || ! -f "$image_path" ]]; then
   echo 'Release output is missing: AppImage.' >&2
@@ -73,6 +75,17 @@ if [[ -z "$executable_path" || ! -f "$executable_path" ]]; then
   echo 'Release output is missing: unpacked HRack executable.' >&2
   exit 1
 fi
+if [[ ! -f "$metadata_path" ]]; then
+  echo "Release output is missing: $metadata_path" >&2
+  exit 1
+fi
+
+node "$workspace/scripts/assert-update-metadata.cjs" \
+  "$metadata_path" \
+  "$release_dir" \
+  "$version" \
+  "$image_name" \
+  "$deb_name"
 if [[ ! -x "$image_path" || ! -x "$executable_path" ]]; then
   echo 'Linux AppImage or unpacked application is not executable.' >&2
   exit 1
@@ -84,6 +97,7 @@ if ! file "$executable_path" | grep -Eq "$binary_arch_pattern"; then
 fi
 
 app_dir="$(dirname "$executable_path")"
+packaged_update_config="$app_dir/resources/app-update.yml"
 dsh_bin="$app_dir/resources/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js"
 node_pty_root="$app_dir/resources/dsh-runtime/node_modules/node-pty"
 node_pty_native=''
@@ -95,7 +109,7 @@ for candidate in \
     break
   fi
 done
-for required in "$dsh_bin"; do
+for required in "$dsh_bin" "$packaged_update_config"; do
   if [[ ! -f "$required" ]]; then
     echo "Packaged DSH runtime is missing: $required" >&2
     exit 1
@@ -146,10 +160,13 @@ for artifact in "$image_path:$image_name" "$deb_path:$deb_name"; do
   digest="$(sha256sum "$destination" | awk '{print $1}')"
   printf '%s  %s\n' "$digest" "$filename" > "$destination.sha256"
 done
+node "$workspace/scripts/assert-packaged-update-config.cjs" "$packaged_update_config"
+cp -f "$metadata_path" "$artifact_dir/latest-linux.yml"
 
 printf 'Linux release packages verified:\n'
 printf '  Version: %s\n' "$version"
 printf '  Architecture: %s\n' "$arch"
 printf '  AppImage: %s\n' "$artifact_dir/$image_name"
 printf '  Debian: %s\n' "$artifact_dir/$deb_name"
+printf '  Update metadata: %s\n' "$artifact_dir/latest-linux.yml"
 printf '  Packaged runtime/tray: verified\n'

@@ -35,16 +35,14 @@ export async function launchApp(options: {
   const main = resolve(__dirname, '../out/main/index.js')
   const userDataDir =
     options.userDataDir ?? mkdtempSync(resolve(tmpdir(), 'hrack-e2e-'))
-  const app = await electron.launch({
-    args: [main],
-    env: {
-      ...process.env,
-      HRACK_E2E: '1',
-      HRACK_E2E_CLI_FIXTURE: options.cliFixture === false ? '0' : '1',
-      HRACK_USER_DATA_DIR: userDataDir,
-      ...options.env
-    }
-  })
+  const env = {
+    ...process.env,
+    HRACK_E2E: '1',
+    HRACK_E2E_CLI_FIXTURE: options.cliFixture === false ? '0' : '1',
+    HRACK_USER_DATA_DIR: userDataDir,
+    ...options.env
+  }
+  const app = await electron.launch({ args: [main], env })
   try {
     const window = await app.firstWindow()
     await window.waitForFunction(

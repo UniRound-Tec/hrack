@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sunny Buddy</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <main id="buddy" class="buddy-canvas" data-mood="idle" data-effects="on">
+      <div class="character-zone drag-region" aria-hidden="true">
+        <img id="mascot" src="mascot-cutout.png" alt="" />
+      </div>
+
+      <span id="attention-badge" class="attention-badge shape-block" hidden>!</span>
+
+      <section id="speech" class="speech-bubble shape-block no-drag">
+        <button id="close" class="close-button" type="button" aria-label="关闭">×</button>
+        <p class="eyebrow">
+          <span class="mood-dot"></span>
+          <span id="mood-label">HRack</span>
+        </p>
+        <h1 id="headline">Sunny Buddy</h1>
+        <p id="summary" class="summary"></p>
+        <button id="focus-primary" class="focus-primary" type="button" hidden></button>
+      </section>
+
+      <ul id="session-list" class="session-orbit no-drag"></ul>
+      <button id="expand" class="more-button shape-block no-drag" type="button" hidden></button>
+
+      <canvas id="shape-canvas" hidden></canvas>
+    </main>
+  </body>
+</html>

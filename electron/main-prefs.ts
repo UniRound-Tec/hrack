@@ -6,6 +6,15 @@ import type {
   DshRetentionPolicy,
   DshRuntimePreference
 } from '../shared/dsh-ipc'
+import {
+  BUILTIN_FLOATING_RENDERER_ID,
+  type FloatingAppearance
+} from '../shared/floating-window'
+import {
+  UI_COLOR_TOKENS,
+  isCssColorLiteral,
+  type UiColorToken
+} from '../shared/theme-schema'
 
 /**
  * 主进程偏好文件 `<userData>/main-prefs.json`。
@@ -22,6 +31,11 @@ export interface MainPrefs {
   language: string
   /** 独立置顶悬浮窗由主进程建窗，偏好也由主进程持久化。 */
   floatingWindowEnabled: boolean
+  floatingRendererId: string
+  floatingAttentionEffectEnabled: boolean
+  floatingWindowScale: number
+  /** Last resolved main-window theme, replayed before the renderer is ready. */
+  floatingAppearance: FloatingAppearance
   floatingWindowPosition: {
     x: number
     y: number
@@ -41,6 +55,15 @@ export const defaultMainPrefs: MainPrefs = {
   globalShortcutEnabled: true,
   language: DEFAULT_LANGUAGE,
   floatingWindowEnabled: false,
+  floatingRendererId: BUILTIN_FLOATING_RENDERER_ID,
+  floatingAttentionEffectEnabled: true,
+  floatingWindowScale: 1,
+  floatingAppearance: {
+    themeId: 'light',
+    themeType: 'light',
+    colors: {},
+    locale: DEFAULT_LANGUAGE
+  },
   floatingWindowPosition: null,
   dshHomeMode: 'isolated',
   dshRetention: { kind: 'all' },
@@ -81,6 +104,20 @@ function sanitize(parsed: unknown): MainPrefs {
     prefs.floatingWindowEnabled = raw.floatingWindowEnabled
   }
   if (
+    typeof raw.floatingRendererId === 'string' &&
+    raw.floatingRendererId.trim().length > 0 &&
+    raw.floatingRendererId.trim().length <= 128
+  ) {
+    prefs.floatingRendererId = raw.floatingRendererId.trim()
+  }
+  if (typeof raw.floatingAttentionEffectEnabled === 'boolean') {
+    prefs.floatingAttentionEffectEnabled = raw.floatingAttentionEffectEnabled
+  }
+  if (typeof raw.floatingWindowScale === 'number' && Number.isFinite(raw.floatingWindowScale)) {
+    prefs.floatingWindowScale = Math.max(0.6, Math.min(1.6, raw.floatingWindowScale))
+  }
+  prefs.floatingAppearance = sanitizeFloatingAppearance(raw.floatingAppearance)
+  if (
     raw.floatingWindowPosition &&
     typeof raw.floatingWindowPosition === 'object'
   ) {
@@ -108,6 +145,33 @@ function sanitize(parsed: unknown): MainPrefs {
     raw.dshRuntimePreference
   )
   return prefs
+}
+
+export function sanitizeFloatingAppearance(value: unknown): FloatingAppearance {
+  if (!value || typeof value !== 'object') {
+    return { ...defaultMainPrefs.floatingAppearance }
+  }
+  const raw = value as Record<string, unknown>
+  const colors: Partial<Record<UiColorToken, string>> = {}
+  if (raw.colors && typeof raw.colors === 'object' && !Array.isArray(raw.colors)) {
+    const source = raw.colors as Record<string, unknown>
+    for (const token of UI_COLOR_TOKENS) {
+      const color = source[token]
+      if (isCssColorLiteral(color)) colors[token] = color.trim()
+    }
+  }
+  return {
+    themeId:
+      typeof raw.themeId === 'string' && raw.themeId.trim().length <= 128
+        ? raw.themeId.trim() || 'light'
+        : 'light',
+    themeType: raw.themeType === 'dark' ? 'dark' : 'light',
+    colors,
+    locale:
+      typeof raw.locale === 'string' && raw.locale.length > 0 && raw.locale.length <= 16
+        ? raw.locale
+        : DEFAULT_LANGUAGE
+  }
 }
 
 function sanitizeDshRuntimePreference(value: unknown): DshRuntimePreference {

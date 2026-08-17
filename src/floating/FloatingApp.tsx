@@ -1,43 +1,61 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, X } from 'lucide-react'
-import type { AgentSessionProjection } from '../../shared/agent-events'
+import type { FloatingRendererSnapshot } from '../../shared/floating-window'
 import { getAdapterIcon } from '../app/adapterIcons'
 import { renderAgentDetail } from '../app/agentDetail'
 import { statusDot, statusTone } from '../app/sessionStatus'
 import { useStrings } from '../app/i18n'
+import { applyFloatingAppearance } from './appearance'
 
 const COLLAPSED_COUNT = 3
 
-export default function FloatingApp() {
+export default function FloatingApp({
+  initialSnapshot
+}: {
+  initialSnapshot: FloatingRendererSnapshot
+}) {
   const strings = useStrings()
   const [expanded, setExpanded] = useState(false)
-  const [sessions, setSessions] = useState<AgentSessionProjection[]>([])
+  const [snapshot, setSnapshot] = useState(initialSnapshot)
+  const [completionPulse, setCompletionPulse] = useState(false)
   const rootRef = useRef<HTMLElement>(null)
-  const seenSeq = useRef(new Map<string, number>())
+  const seenAttentionSequence = useRef(
+    initialSnapshot.attention?.sequence ?? 0
+  )
 
   useEffect(() => {
     let cancelled = false
-    const applyProjection = (projection: AgentSessionProjection): void => {
+    let pulseFrame = 0
+    let pulseTimer = 0
+    const applySnapshot = (next: FloatingRendererSnapshot): void => {
       if (cancelled) return
-      const previousSeq = seenSeq.current.get(projection.sessionId) ?? -1
-      if (projection.lastSeq <= previousSeq) return
-      seenSeq.current.set(projection.sessionId, projection.lastSeq)
-      setSessions((current) => {
-        const withoutCurrent = current.filter(
-          (session) => session.sessionId !== projection.sessionId
-        )
-        if (projection.status === 'exited') return withoutCurrent
-        return [...withoutCurrent, projection]
-      })
+      applyFloatingAppearance(next.appearance)
+      const signal = next.attention
+      if (signal && signal.sequence > seenAttentionSequence.current) {
+        seenAttentionSequence.current = signal.sequence
+        if (next.attentionEffectEnabled && signal.kind === 'done') {
+          window.cancelAnimationFrame(pulseFrame)
+          window.clearTimeout(pulseTimer)
+          setCompletionPulse(false)
+          pulseFrame = window.requestAnimationFrame(() => {
+            setCompletionPulse(true)
+            pulseTimer = window.setTimeout(
+              () => setCompletionPulse(false),
+              2_600
+            )
+          })
+        }
+      }
+      if (!next.attentionEffectEnabled) setCompletionPulse(false)
+      setSnapshot(next)
     }
 
-    // 与主窗口相同：先订阅增量，再取快照；lastSeq 防止迟到快照回滚。
-    const unsubscribe = window.agentApi.onProjection(applyProjection)
-    void window.agentApi.listActive().then((active) => {
-      for (const projection of active) applyProjection(projection)
-    })
+    const unsubscribe = window.hrackFloating.onSnapshot(applySnapshot)
+    void window.hrackFloating.getSnapshot().then(applySnapshot)
     return () => {
       cancelled = true
+      window.cancelAnimationFrame(pulseFrame)
+      window.clearTimeout(pulseTimer)
       unsubscribe()
     }
   }, [])
@@ -53,7 +71,7 @@ export default function FloatingApp() {
         const height = Math.ceil(root.scrollHeight)
         if (height === lastHeight) return
         lastHeight = height
-        void window.floatingWindowApi.resizeToContent(height)
+        void window.hrackFloating.resizeToContent(height)
       })
     })
     observer.observe(root)
@@ -65,24 +83,38 @@ export default function FloatingApp() {
 
   const active = useMemo(
     () =>
-      [...sessions].sort(
+      [...snapshot.sessions].sort(
         (left, right) =>
           right.lastActivityAt - left.lastActivityAt ||
           left.sessionId.localeCompare(right.sessionId)
       ),
-    [sessions]
+    [snapshot.sessions]
   )
   const attentionCount = active.filter(
     (session) => session.status === 'needs-you' || session.status === 'error'
   ).length
   const visible = expanded ? active : active.slice(0, COLLAPSED_COUNT)
   const hasMore = active.length > COLLAPSED_COUNT
+  const persistentAttention =
+    snapshot.attentionEffectEnabled && attentionCount > 0
+  const attentionMode = persistentAttention
+    ? 'persistent'
+    : completionPulse && snapshot.attentionEffectEnabled
+      ? 'complete'
+      : 'none'
 
   return (
     <main ref={rootRef} className="box-border w-full p-2">
       <aside
         data-testid="floating-window"
-        className="w-full select-none overflow-hidden rounded-xl border border-border-default bg-overlay shadow-[0_3px_8px_-4px_rgba(0,0,0,0.28)]"
+        data-attention={attentionMode}
+        className={`w-full select-none overflow-hidden rounded-xl border border-border-default bg-overlay shadow-[0_3px_8px_-4px_rgba(0,0,0,0.28)] ${
+          attentionMode === 'persistent'
+            ? 'floating-attention-persistent'
+            : attentionMode === 'complete'
+              ? 'floating-attention-complete'
+              : ''
+        }`}
       >
         <header className="app-drag-region flex h-8 shrink-0 items-center gap-2 px-2.5">
           <span className="font-brand text-[13px] leading-none text-brand-logo-muted">
@@ -100,7 +132,7 @@ export default function FloatingApp() {
             type="button"
             data-testid="floating-close"
             aria-label={strings.common.close}
-            onClick={() => void window.floatingWindowApi.setEnabled(false)}
+            onClick={() => void window.hrackFloating.disable()}
             className="app-no-drag ml-auto flex size-5 items-center justify-center rounded-md text-text-faint transition-colors hover:bg-surface-hover hover:text-text-secondary"
           >
             <X className="size-3" strokeWidth={1.75} />
@@ -125,7 +157,7 @@ export default function FloatingApp() {
                     data-testid="floating-session-item"
                     data-session-id={session.sessionId}
                     onClick={() =>
-                      void window.floatingWindowApi.focusSession(
+                      void window.hrackFloating.focusSession(
                         session.sessionId
                       )
                     }

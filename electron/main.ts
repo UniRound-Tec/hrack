@@ -22,11 +22,13 @@ import {
   type TrayCallbacks
 } from './tray'
 import { startThemeWatcher, stopThemeWatcher } from './themes-watch'
-import { AppEventChannel } from '../shared/ipc-contract'
+import { AppEventChannel, UpdateEventChannel } from '../shared/ipc-contract'
 import {
   ElectronFloatingWindowController,
+  isAgentProjectionChannel,
   type FloatingWindowController
 } from './floating/FloatingWindowController'
+import { registerFloatingRendererScheme } from './floating/FloatingRendererProtocol'
 import { AiCliDiscoveryService } from './ai-cli-discovery'
 import { AgentSessionRuntime } from './agents/AgentSessionRuntime'
 import { ObserverRegistry } from './agents/ObserverRegistry'
@@ -44,6 +46,9 @@ import { DshWireProxy } from './dsh-host/DshWireProxy'
 import { DshProjectionBridge } from './dsh-host/DshProjectionBridge'
 import { DshSessionProjector } from './dsh-host/DshSessionProjector'
 import { DshWebSurfaceController } from './dsh-surface/DshWebSurfaceController'
+import { ElectronUpdaterDriver } from './update/UpdateDriver'
+import { UpdateService } from './update/UpdateService'
+import packageMetadata from '../package.json'
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
 // 必须在 app ready 之前调用。
@@ -66,6 +71,7 @@ if (userDataOverride) {
   mkdirSync(userDataDir, { recursive: true })
   app.setPath('userData', userDataDir)
 }
+registerFloatingRendererScheme()
 
 const isPrimaryInstance = app.requestSingleInstanceLock()
 
@@ -74,6 +80,20 @@ const cliDiscovery = new AiCliDiscoveryService(
   join(app.getPath('userData'), 'ai-cli-scan.json')
 )
 const eventLog = new EventLog()
+let floatingController: FloatingWindowController | null = null
+const broadcastToAllWindows = (channel: string, payload: unknown): void => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.send(channel, payload)
+    }
+  }
+}
+const broadcastAgentChannel = (channel: string, payload: unknown): void => {
+  if (isAgentProjectionChannel(channel, payload)) {
+    floatingController?.publishProjection(payload)
+  }
+  broadcastToAllWindows(channel, payload)
+}
 // S1：Agent Observer 基础设施。fixture adapter 仅在 E2E 环境变量下启用。
 const observerRegistry = new ObserverRegistry()
 const hookIngress = new HookIngress()
@@ -100,23 +120,10 @@ const agentRuntime = new AgentSessionRuntime({
   workspace: workspaceReader,
   options: {
     runDirRoot: join(app.getPath('userData'), 'observer-runs'),
-    broadcast: (channel, payload) => {
-      for (const win of BrowserWindow.getAllWindows()) {
-        if (!win.webContents.isDestroyed()) {
-          win.webContents.send(channel, payload)
-        }
-      }
-    }
+    broadcast: broadcastAgentChannel
   }
 })
 // DSH host：优先使用兼容的本机安装，随包版本仅作兜底；懒启动并随 app 退出回收。
-const broadcastToAllWindows = (channel: string, payload: unknown): void => {
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.webContents.isDestroyed()) {
-      win.webContents.send(channel, payload)
-    }
-  }
-}
 let dshSurfaceController: DshWebSurfaceController | null = null
 const dshHost = new DshHostManager({
   defaultDshHome: join(app.getPath('userData'), 'dsh-home'),
@@ -129,13 +136,45 @@ const dshHost = new DshHostManager({
   }
 })
 const dshProjections = new DshProjectionBridge({
-  broadcast: broadcastToAllWindows
+  broadcast: broadcastAgentChannel
 })
 const dshProjector = new DshSessionProjector(dshHost, dshProjections)
 const dshWire = new DshWireProxy(dshHost, broadcastToAllWindows)
 let shutdownStarted = false
-let floatingController: FloatingWindowController | null = null
 let winRef: BrowserWindow | null = null
+let shutdownPromise: Promise<void> | null = null
+
+const updateService = new UpdateService({
+  enabled: app.isPackaged && process.env['HRACK_DISABLE_UPDATES'] !== '1',
+  currentVersion: packageMetadata.version,
+  driver: new ElectronUpdaterDriver(),
+  broadcast: (snapshot) =>
+    broadcastToAllWindows(UpdateEventChannel.StateChanged, snapshot),
+  beforeInstall: () => prepareShutdown()
+})
+
+function prepareShutdown(): Promise<void> {
+  if (shutdownPromise) return shutdownPromise
+  shutdownStarted = true
+  markQuitting()
+  updateService.dispose()
+  shutdownPromise = (async () => {
+    // Agent Runtime 先写入退出事实并回收 observer；随后兜底关闭普通终端。
+    await agentRuntime.disposeAll()
+    await hookIngress.dispose()
+    dshProjector.stop()
+    dshWire.dispose()
+    dshSurfaceController?.dispose()
+    dshSurfaceController = null
+    await dshHost.dispose()
+    floatingController?.dispose()
+    workspaceReader.clear()
+    manager.killAll()
+    unregisterGlobalShortcut()
+    stopThemeWatcher()
+  })()
+  return shutdownPromise
+}
 
 const attachDshSurface = (window: BrowserWindow): void => {
   dshSurfaceController?.dispose()
@@ -204,6 +243,7 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
     dshHost,
     dshWire,
     dshProjections,
+    updateService,
     getDshSurfaceController: () => dshSurfaceController,
     getWindow: () => (winRef && !winRef.isDestroyed() ? winRef : null),
     getTray: () => trayRef,
@@ -219,11 +259,19 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
   floatingController = new ElectronFloatingWindowController({
     getMainWindow: () =>
       winRef && !winRef.isDestroyed() ? winRef : null,
-    findActiveSession: (sessionId) =>
-      agentRuntime
-        .listActive()
-        .find((projection) => projection.sessionId === sessionId) ??
-      dshProjections.find(sessionId)
+    listActiveSessions: () => [
+      ...agentRuntime.listActive(),
+      ...dshProjections.listActive()
+    ],
+    renderersDirectory: join(
+      app.getPath('userData'),
+      'floating-renderers'
+    ),
+    builtinRendererRoot: join(__dirname, '../renderer'),
+    builtinLive2dRoot: join(
+      __dirname,
+      '../../resources/floating-renderers/live2d-mao'
+    )
   })
   await floatingController.setEnabled(prefs.floatingWindowEnabled)
   trayRef = createTray(prefs.language, trayCallbacks)
@@ -231,6 +279,7 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
     registerGlobalShortcut(winRef)
   }
   startThemeWatcher()
+  updateService.startAutomaticChecks()
 
   // E2E：主进程调试钩子（托盘菜单点击 / 快捷键注册状态无法从 renderer 注入）。
   if (process.env['HRACK_E2E']) {
@@ -261,7 +310,33 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
       dshSurfaceDismissOnboarding: () =>
         dshSurfaceController?.dismissOnboardingForTest() ?? false,
       dshSurfaceSelectSession: (sessionId: unknown) =>
-        dshSurfaceController?.selectSessionForTest(sessionId) ?? false
+        dshSurfaceController?.selectSessionForTest(sessionId) ?? false,
+      floatingWindowInspect: () => floatingController?.inspect() ?? null,
+      floatingWindowSetEnabled: (enabled: unknown) =>
+        typeof enabled === 'boolean'
+          ? floatingController?.setEnabled(enabled) ?? null
+          : null,
+      floatingWindowSetRenderer: (rendererId: unknown) =>
+        typeof rendererId === 'string'
+          ? floatingController?.setRenderer(rendererId) ?? null
+          : null,
+      floatingWindowRefreshRenderers: () =>
+        floatingController?.refreshRenderers() ?? null,
+      floatingWindowPublishProjection: (projection: unknown) => {
+        if (
+          projection &&
+          typeof projection === 'object' &&
+          typeof (projection as { sessionId?: unknown }).sessionId === 'string'
+        ) {
+          floatingController?.publishProjection(
+            projection as Parameters<
+              FloatingWindowController['publishProjection']
+            >[0]
+          )
+          return true
+        }
+        return false
+      }
     }
   }
 
@@ -278,22 +353,5 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
 if (isPrimaryInstance) app.on('before-quit', (event) => {
   if (shutdownStarted) return
   event.preventDefault()
-  shutdownStarted = true
-  markQuitting()
-  void (async () => {
-    // Agent Runtime 先写入退出事实并回收 observer；随后兜底关闭普通终端。
-    await agentRuntime.disposeAll()
-    await hookIngress.dispose()
-    dshProjector.stop()
-    dshWire.dispose()
-    dshSurfaceController?.dispose()
-    dshSurfaceController = null
-    await dshHost.dispose()
-    floatingController?.dispose()
-    workspaceReader.clear()
-    manager.killAll()
-    unregisterGlobalShortcut()
-    stopThemeWatcher()
-    app.quit()
-  })()
+  void prepareShutdown().then(() => app.quit())
 })

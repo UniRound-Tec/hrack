@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "live2d-mao",
+  "name": "Live2D · Mao",
+  "version": "5-r.4",
+  "entry": "index.html",
+  "width": 420,
+  "minHeight": 620,
+  "maxHeight": 620
+}

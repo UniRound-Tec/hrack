@@ -12,6 +12,7 @@ import type { DshHostManager } from '../dsh-host/DshHostManager'
 
 const RUNTIME_READY_TIMEOUT_MS = 20_000
 const SESSION_READY_TIMEOUT_MS = 20_000
+const SIDEBAR_COLLAPSE_MAX_ATTEMPTS = 3
 const MAX_SESSION_ID_LENGTH = 256
 const MAX_TOKEN_COUNT = 64
 const MAX_CSS_VALUE_LENGTH = 256
@@ -72,7 +73,7 @@ const INSTALL_ACTIVE_SESSION_REPORTER_SCRIPT = `
   return true;
 })()`
 
-function collapseOfficialSidebarScript(): string {
+function collapseOfficialSidebarScript(forceTransientFailure = false): string {
   return `
 (async () => {
   const state = globalThis.__HRACK_DSH_EMBED__;
@@ -109,6 +110,9 @@ function collapseOfficialSidebarScript(): string {
   // toggleSidebar is intentionally a toggle-only API. Inspect the official
   // layout marker first so an already-collapsed surface is never expanded.
   if (!frame.hasAttribute('data-sidebar-collapsed')) {
+    if (${forceTransientFailure ? 'true' : 'false'}) {
+      throw new Error('official DSH sidebar did not collapse');
+    }
     ctx.get('layout').toggleSidebar();
     const collapseDeadline = Date.now() + 3000;
     while (Date.now() < collapseDeadline) {
@@ -244,6 +248,10 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+function isTransientSidebarCollapseError(error: unknown): boolean {
+  return errorMessage(error).includes('official DSH sidebar did not collapse')
+}
+
 /**
  * Owns the isolated official DSH page. The HRack renderer sees only the
  * semantic show / bounds / hide seam; official DOM, CSS, portals and Cordis
@@ -263,6 +271,7 @@ export class DshWebSurfaceController {
   private operation: Promise<void> = Promise.resolve()
   private sidebarDefaultApplied = false
   private sidebarDefaultOperation: Promise<void> | null = null
+  private sidebarCollapseInvocationCount = 0
   private activeSessionId: string | undefined
   private activeSessionReported = false
   private nativeViewVisible = false
@@ -408,6 +417,7 @@ export class DshWebSurfaceController {
       return {
         ...base,
         hideTransitionCount: this.hideTransitionCount,
+        sidebarCollapseInvocationCount: this.sidebarCollapseInvocationCount,
         zoomFactor: view.webContents.getZoomFactor(),
         page
       }
@@ -739,8 +749,30 @@ export class DshWebSurfaceController {
       return Promise.resolve()
     }
     if (this.sidebarDefaultOperation) return this.sidebarDefaultOperation
-    const operation = view.webContents
-      .executeJavaScript(collapseOfficialSidebarScript(), true)
+    const collapse = async (): Promise<void> => {
+      for (let attempt = 1; attempt <= SIDEBAR_COLLAPSE_MAX_ATTEMPTS; attempt++) {
+        const invocation = ++this.sidebarCollapseInvocationCount
+        const forceTransientFailure =
+          process.env['HRACK_E2E'] === '1' &&
+          process.env['HRACK_E2E_DSH_COLLAPSE_FAIL_ONCE'] === '1' &&
+          invocation === 1
+        try {
+          await view.webContents.executeJavaScript(
+            collapseOfficialSidebarScript(forceTransientFailure),
+            true
+          )
+          return
+        } catch (error) {
+          if (
+            attempt === SIDEBAR_COLLAPSE_MAX_ATTEMPTS ||
+            !isTransientSidebarCollapseError(error)
+          ) {
+            throw error
+          }
+        }
+      }
+    }
+    const operation = collapse()
       .then(() => {
         if (this.view === view) this.sidebarDefaultApplied = true
       })
@@ -768,6 +800,7 @@ export class DshWebSurfaceController {
     this.loadedLocale = null
     this.sidebarDefaultApplied = false
     this.sidebarDefaultOperation = null
+    this.sidebarCollapseInvocationCount = 0
     if (!view) return
     try {
       view.setVisible(false)

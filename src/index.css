@@ -201,6 +201,59 @@ html[data-surface="floating"] #hrack-root {
   background: transparent;
 }
 
+@keyframes floating-attention-persistent {
+  0%,
+  100% {
+    border-color: var(--hrack-border-default);
+    box-shadow: 0 3px 8px -4px rgb(0 0 0 / 28%);
+  }
+  50% {
+    border-color: var(--hrack-status-needsYou);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--hrack-status-needsYou) 28%, transparent),
+      0 0 18px color-mix(in srgb, var(--hrack-status-needsYou) 45%, transparent);
+  }
+}
+
+@keyframes floating-attention-complete {
+  0%,
+  100% {
+    border-color: var(--hrack-border-default);
+    box-shadow: 0 3px 8px -4px rgb(0 0 0 / 28%);
+  }
+  45% {
+    border-color: var(--hrack-status-done);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--hrack-status-done) 24%, transparent),
+      0 0 16px color-mix(in srgb, var(--hrack-status-done) 42%, transparent);
+  }
+}
+
+.floating-attention-persistent {
+  animation: floating-attention-persistent 1.6s ease-in-out infinite;
+}
+
+.floating-attention-complete {
+  animation: floating-attention-complete 0.8s ease-out 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-attention-persistent,
+  .floating-attention-complete {
+    animation: none;
+  }
+
+  .floating-attention-persistent {
+    border-color: var(--hrack-status-needsYou);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--hrack-status-needsYou) 28%, transparent);
+  }
+
+  .floating-attention-complete {
+    border-color: var(--hrack-status-done);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--hrack-status-done) 24%, transparent);
+  }
+}
+
 /* 应用壳层文案不可拖选；可编辑控件仍保留光标选区能力。终端页面在
    TerminalPage 上单独恢复 select-text，避免影响终端复制。 */
 input,
