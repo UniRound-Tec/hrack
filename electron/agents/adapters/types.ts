@@ -72,6 +72,20 @@ export interface LaunchAugmentation {
   appendArgs?: string[]
 }
 
+export interface ObserverControl {
+  submitPrompt(text: string, agent?: string): Promise<void>
+  snapshotMessages(): Promise<unknown>
+  setTitle?(title: string): Promise<void>
+  setAgent?(agent: 'plan' | 'build'): Promise<void>
+  respondPermission?(
+    nativePermissionId: string,
+    response: 'once' | 'always' | 'reject'
+  ): Promise<void>
+  listQuestions?(): Promise<unknown>
+  answerQuestion?(nativeQuestionId: string, answers: unknown): Promise<void>
+  rejectQuestion?(nativeQuestionId: string): Promise<void>
+}
+
 export interface ObserverHandle {
   /** attach/reconnect 后本会话实际可用的能力。 */
   readonly capabilities?: ObserverCapabilities
@@ -79,6 +93,8 @@ export interface ObserverHandle {
   onDisconnect?(listener: (reason: string) => void): () => void
   /** Adapter 自己掌握协议细节；Runtime 最多调用一次。 */
   reconnect?(): Promise<ObserverHandle>
+  /** OpenCode 控制面写/读；其它 Adapter 不提供。 */
+  control?: ObserverControl
   dispose(): Promise<void>
 }
 

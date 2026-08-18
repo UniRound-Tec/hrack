@@ -539,13 +539,14 @@ async function scanWindowsDefinition(
 async function runWsl(
   distro: string,
   executable: string,
-  args: readonly string[]
+  args: readonly string[],
+  timeout = 8_000
 ): Promise<CommandResult> {
   return runCommand('wsl.exe', [
     '--distribution', distro,
     '--exec', executable,
     ...args
-  ], 8_000)
+  ], timeout)
 }
 
 async function wslUserEnvironment(
@@ -1501,6 +1502,31 @@ export class AiCliDiscoveryService {
       }
     }
     return { shell: installation.resolvedExecutable, args, cwd }
+  }
+
+  /**
+   * 在该安装所属 runtime（host PATH 或 WSL distro）里执行一次短命令。
+   * 给 Bridge `models` 用，不启动 TUI。
+   */
+  async runInstallationCommand(
+    installation: CliInstallation,
+    args: readonly string[],
+    timeoutMs = 15_000
+  ): Promise<CommandResult> {
+    if (installation.runtime.kind === 'wsl') {
+      const environmentPath = this.runtimeEnvironment(installation).PATH
+      return runWsl(
+        installation.runtime.distro,
+        'env',
+        [
+          ...(environmentPath ? [`PATH=${environmentPath}`] : []),
+          installation.resolvedExecutable,
+          ...args
+        ],
+        timeoutMs
+      )
+    }
+    return runCommand(installation.resolvedExecutable, args, timeoutMs)
   }
 }
 

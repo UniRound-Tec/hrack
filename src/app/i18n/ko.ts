@@ -293,6 +293,10 @@ export const ko = {
     themeJsonCustomId: '사용자 테마의 id는 custom이어야 합니다',
     themeSkillCopy: 'Skill 복사',
     themeSkillCopied: '복사됨',
+    bridgeSkill: 'OpenCode Bridge Skill',
+    bridgeSkillHint: '다른 로컬 Harness용: 사용법 Skill 전체를 복사',
+    bridgeSkillCopy: 'Skill 복사',
+    bridgeSkillCopied: '복사됨',
     language: '표시 언어',
     languageHint: '전환 즉시 적용됩니다',
     languages: {

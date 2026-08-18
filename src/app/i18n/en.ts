@@ -294,6 +294,10 @@ export const en = {
     themeJsonCustomId: 'The custom theme id must be custom',
     themeSkillCopy: 'Copy Skill',
     themeSkillCopied: 'Copied',
+    bridgeSkill: 'OpenCode Bridge Skill',
+    bridgeSkillHint: 'For another local harness: copy the full usage Skill',
+    bridgeSkillCopy: 'Copy Skill',
+    bridgeSkillCopied: 'Copied',
     language: 'Language',
     languageHint: 'Applies immediately',
     languages: {

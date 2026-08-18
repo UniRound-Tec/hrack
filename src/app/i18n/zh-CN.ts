@@ -296,6 +296,10 @@ export const zhCN = {
     themeJsonCustomId: '自定义主题的 id 必须为 custom',
     themeSkillCopy: '复制 Skill',
     themeSkillCopied: '已复制',
+    bridgeSkill: 'OpenCode Bridge Skill',
+    bridgeSkillHint: '给另一个本机 Harness 用：复制整份用法后交给它',
+    bridgeSkillCopy: '复制 Skill',
+    bridgeSkillCopied: '已复制',
     language: '界面语言',
     languageHint: '切换后即时生效',
     languages: {

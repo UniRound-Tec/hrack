@@ -63,6 +63,11 @@ interface PendingCliLaunch {
   resolve: (error: string | null) => void
 }
 
+interface PendingBridgeLaunch {
+  requestId: string
+  previousPage: PageId
+}
+
 export default function AppShell() {
   const [pageId, setPageId] = useState<PageId>('home')
   const [newSessionOpen, setNewSessionOpen] = useState(false)
@@ -81,6 +86,7 @@ export default function AppShell() {
   const [dshRuntimeScanError, setDshRuntimeScanError] =
     useState<string | null>(null)
   const pendingCliLaunches = useRef(new Map<string, PendingCliLaunch>())
+  const pendingBridgeLaunches = useRef(new Map<string, PendingBridgeLaunch>())
   const navMode = useSettingsStore((state) => state.navMode)
   const setNavMode = useSettingsStore((state) => state.setNavMode)
   const terminalRounded = useSettingsStore((state) => state.terminalRounded)
@@ -219,6 +225,33 @@ export default function AppShell() {
   useEffect(() => {
     return window.appApi.onOpenNewSession(openNewSession)
   }, [openNewSession])
+
+  useEffect(() => {
+    return window.appApi.onBridgeLaunch((request) => {
+      pendingBridgeLaunches.current.set(request.terminalId, {
+        requestId: request.requestId,
+        previousPage: pageId
+      })
+      addTerminal({
+        id: request.terminalId,
+        name: request.name,
+        shellId: 'opencode',
+        cwd: request.workspace,
+        launch: request.ptyId
+          ? { kind: 'attach', ptyId: request.ptyId, agent: true }
+          : {
+              kind: 'agent',
+              selection: {
+                installationId: request.selection.installationId,
+                workspace: request.selection.workspace,
+                args: [...request.selection.args]
+              },
+              name: request.name
+            }
+      })
+      setPageId(terminalPage(request.terminalId))
+    })
+  }, [addTerminal, pageId])
 
   useEffect(() => {
     return window.appApi.onFocusSession(({ sessionId, terminalId }) => {
@@ -477,6 +510,19 @@ export default function AppShell() {
 
   const handleInitialTerminalSpawn = useCallback(
     (terminalId: string, error: string | null): void => {
+      const bridge = pendingBridgeLaunches.current.get(terminalId)
+      if (bridge) {
+        pendingBridgeLaunches.current.delete(terminalId)
+        void window.appApi.reportBridgeLaunch({
+          requestId: bridge.requestId,
+          error
+        })
+        if (error) {
+          closeTerminal(terminalId)
+          setPageId(bridge.previousPage)
+        }
+        return
+      }
       const pending = pendingCliLaunches.current.get(terminalId)
       if (!pending) return
       pendingCliLaunches.current.delete(terminalId)

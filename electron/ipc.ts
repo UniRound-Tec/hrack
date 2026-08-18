@@ -12,6 +12,7 @@ import { PTYManager } from './pty/PTYManager'
 import {
   AppInvokeChannel,
   AppEventChannel,
+  BridgeInvokeChannel,
   ClipboardInvokeChannel,
   CliInvokeChannel,
   DialogInvokeChannel,
@@ -25,6 +26,7 @@ import {
   type CliRuntime,
   type DirectoryPickerRequest,
   type HistoryEvent,
+  type BridgeLaunchAck,
   type CliLaunchSelection,
   type HistoryEventKind,
   type MainPrefsUpdate,
@@ -141,6 +143,7 @@ export interface IpcContext {
   getTray(): Tray | null
   getFloatingWindowController(): FloatingWindowController | null
   rebuildTrayMenu(): void
+  completeBridgeLaunch(ack: BridgeLaunchAck): void
 }
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   const win = BrowserWindow.fromWebContents(event.sender)
@@ -603,6 +606,20 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(AppInvokeChannel.SetMainPrefs, (_event, update: unknown) =>
     applyMainPrefsUpdate(ctx, update)
   )
+  ipcMain.handle(BridgeInvokeChannel.LaunchResult, (_event, payload: unknown) => {
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      typeof (payload as BridgeLaunchAck).requestId !== 'string'
+    ) {
+      return
+    }
+    const ack = payload as BridgeLaunchAck
+    ctx.completeBridgeLaunch({
+      requestId: ack.requestId,
+      error: typeof ack.error === 'string' ? ack.error : null
+    })
+  })
   ipcMain.handle(UpdateInvokeChannel.GetState, (event) => {
     requireMainWindow(event, ctx)
     return ctx.updateService.getState()

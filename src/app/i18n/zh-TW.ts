@@ -293,6 +293,10 @@ export const zhTW = {
     themeJsonCustomId: '自訂主題的 id 必須為 custom',
     themeSkillCopy: '複製 Skill',
     themeSkillCopied: '已複製',
+    bridgeSkill: 'OpenCode Bridge Skill',
+    bridgeSkillHint: '給另一個本機 Harness 用：複製整份用法後交給它',
+    bridgeSkillCopy: '複製 Skill',
+    bridgeSkillCopied: '已複製',
     language: '介面語言',
     languageHint: '切換後立即生效',
     languages: {

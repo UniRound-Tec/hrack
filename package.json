@@ -28,7 +28,8 @@
     "release:github:linux": "bash scripts/release-github-linux.sh",
     "record:cli-demo": "node scripts/recording/01-create-cli-sessions.cjs",
     "e2e": "npm run ensure:dsh && npm run build && playwright test",
-    "e2e:only": "playwright test"
+    "e2e:only": "playwright test",
+    "hrack": "electron ./out/main/index.js"
   },
   "author": "",
   "license": "Apache-2.0",

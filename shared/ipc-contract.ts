@@ -345,7 +345,12 @@ export const AppInvokeChannel = {
 export const AppEventChannel = {
   OpenNewSession: 'app:open-new-session',
   FocusSession: 'app:focus-session',
-  MainPrefsChanged: 'app:main-prefs-changed'
+  MainPrefsChanged: 'app:main-prefs-changed',
+  BridgeLaunch: 'bridge:launch'
+} as const
+
+export const BridgeInvokeChannel = {
+  LaunchResult: 'bridge:launch-result'
 } as const
 
 export interface FocusSessionPayload {
@@ -449,6 +454,21 @@ export interface StatsApi {
   recordEvent: (input: RecordEventInput) => Promise<void>
 }
 
+export interface BridgeLaunchRequest {
+  requestId: string
+  terminalId: string
+  name: string
+  workspace: string
+  selection: CliLaunchSelection
+  /** 主进程已 spawn 时带上，renderer 只 attach，不再等 xterm 才 start。 */
+  ptyId?: string
+}
+
+export interface BridgeLaunchAck {
+  requestId: string
+  error: string | null
+}
+
 export interface AppApi {
   /** 上报主进程偏好（backgroundColor / globalShortcutEnabled / language）。 */
   setMainPrefs: (update: MainPrefsUpdate) => Promise<void>
@@ -457,6 +477,9 @@ export interface AppApi {
   /** 悬浮窗条目 → 主窗口恢复并进入既有 Session terminal。 */
   onFocusSession: (cb: (payload: FocusSessionPayload) => void) => () => void
   onMainPrefsChanged: (cb: (prefs: MainPrefsSnapshot) => void) => () => void
+  /** Bridge create：主进程请 renderer 打开可见 OpenCode tab。 */
+  onBridgeLaunch: (cb: (request: BridgeLaunchRequest) => void) => () => void
+  reportBridgeLaunch: (ack: BridgeLaunchAck) => Promise<void>
 }
 
 export interface UpdateApi {

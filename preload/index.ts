@@ -3,6 +3,7 @@ import os from 'node:os'
 import {
   AppEventChannel,
   AppInvokeChannel,
+  BridgeInvokeChannel,
   ClipboardInvokeChannel,
   CliInvokeChannel,
   DialogInvokeChannel,
@@ -22,6 +23,8 @@ import {
   ptyResizeCursorSyncChannel,
   type AppApi,
   type AppThemeApi,
+  type BridgeLaunchAck,
+  type BridgeLaunchRequest,
   type ClipboardApi,
   type CliApi,
   type CliLaunchSelection,
@@ -353,6 +356,31 @@ const appApi: AppApi = {
     return () =>
       ipcRenderer.removeListener(AppEventChannel.FocusSession, handler)
   },
+  onBridgeLaunch: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      request: BridgeLaunchRequest
+    ): void => {
+      if (
+        request &&
+        typeof request.requestId === 'string' &&
+        typeof request.terminalId === 'string' &&
+        typeof request.workspace === 'string' &&
+        request.selection &&
+        typeof request.selection.installationId === 'string'
+      ) {
+        cb({
+          ...request,
+          ...(typeof request.ptyId === 'string' ? { ptyId: request.ptyId } : {})
+        })
+      }
+    }
+    ipcRenderer.on(AppEventChannel.BridgeLaunch, handler)
+    return () =>
+      ipcRenderer.removeListener(AppEventChannel.BridgeLaunch, handler)
+  },
+  reportBridgeLaunch: (ack: BridgeLaunchAck) =>
+    ipcRenderer.invoke(BridgeInvokeChannel.LaunchResult, ack),
   onMainPrefsChanged: (cb) => {
     const handler = (
       _event: IpcRendererEvent,

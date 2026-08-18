@@ -293,6 +293,10 @@ export const ja = {
     themeJsonCustomId: 'カスタムテーマの id は custom にしてください',
     themeSkillCopy: 'Skill をコピー',
     themeSkillCopied: 'コピー済み',
+    bridgeSkill: 'OpenCode Bridge Skill',
+    bridgeSkillHint: '別のローカル Harness 用。使い方 Skill をまとめてコピー',
+    bridgeSkillCopy: 'Skill をコピー',
+    bridgeSkillCopied: 'コピー済み',
     language: '表示言語',
     languageHint: '切り替え後すぐに反映されます',
     languages: {

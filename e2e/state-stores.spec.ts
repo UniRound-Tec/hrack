@@ -191,6 +191,20 @@ test.describe('terminalsStore', () => {
     expect(store.getState().activeTerminalId).toBeNull()
   })
 
+  test('accepts a predetermined terminal id and display name', () => {
+    const store = createTerminalsStore({ initialTerminal: false })
+    const named = store.getState().addTerminal({
+      id: 'fixed-id',
+      name: 'OpenCode',
+      shellId: 'opencode'
+    })
+    expect(named).toMatchObject({
+      id: 'fixed-id',
+      name: 'OpenCode',
+      shellId: 'opencode'
+    })
+  })
+
   test('restores stable terminal identities without creating a replacement', () => {
     const store = createTerminalsStore({ initialTerminal: false })
     expect(store.getState().terminals).toHaveLength(0)

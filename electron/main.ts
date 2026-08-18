@@ -22,7 +22,12 @@ import {
   type TrayCallbacks
 } from './tray'
 import { startThemeWatcher, stopThemeWatcher } from './themes-watch'
-import { AppEventChannel, UpdateEventChannel } from '../shared/ipc-contract'
+import {
+  AppEventChannel,
+  UpdateEventChannel,
+  type BridgeLaunchAck,
+  type BridgeLaunchRequest
+} from '../shared/ipc-contract'
 import {
   ElectronFloatingWindowController,
   isAgentProjectionChannel,
@@ -50,6 +55,12 @@ import { ElectronUpdaterDriver } from './update/UpdateDriver'
 import { UpdateService } from './update/UpdateService'
 import packageMetadata from '../package.json'
 import { resolveHrackUserDataDir } from './app-paths'
+import { extractHrackCliArgv, runHrackCli } from './cli/hrackCli'
+import { BridgeServer } from './bridge/BridgeServer'
+import { OpenCodeControlPlane } from './bridge/OpenCodeControlPlane'
+import { BridgeStateStore } from './bridge/state'
+import { BridgeError } from './bridge/errors'
+
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
 // 必须在 app ready 之前调用。
@@ -66,7 +77,16 @@ if (userDataOverride) {
 }
 registerFloatingRendererScheme()
 
-const isPrimaryInstance = app.requestSingleInstanceLock()
+const cliArgv = extractHrackCliArgv(process.argv)
+if (cliArgv) {
+  void runHrackCli(cliArgv, {
+    stdout: process.stdout,
+    stderr: process.stderr,
+    userDataDir: app.getPath('userData')
+  }).then((code) => app.exit(code))
+}
+
+const isPrimaryInstance = cliArgv ? false : app.requestSingleInstanceLock()
 
 const manager = new PTYManager()
 const cliDiscovery = new AiCliDiscoveryService(
@@ -136,6 +156,59 @@ const dshWire = new DshWireProxy(dshHost, broadcastToAllWindows)
 let shutdownStarted = false
 let winRef: BrowserWindow | null = null
 let shutdownPromise: Promise<void> | null = null
+const pendingBridgeLaunches = new Map<string, (error: string | null) => void>()
+const bridgeState = BridgeStateStore.inUserData(app.getPath('userData'))
+const controlPlane = new OpenCodeControlPlane({
+  discovery: cliDiscovery,
+  runtime: agentRuntime,
+  state: bridgeState,
+  requireForegroundWindow: () => {
+    const win = winRef && !winRef.isDestroyed() ? winRef : null
+    if (!win) {
+      throw BridgeError.unavailable('HRack window is not available')
+    }
+    if (!raiseMainWindow(win)) {
+      throw BridgeError.unavailable(
+        'Open the HRack window first (tray-only is not enough)'
+      )
+    }
+  },
+  launchVisible: async (request: BridgeLaunchRequest) => {
+    const win = winRef && !winRef.isDestroyed() ? winRef : null
+    if (!win || win.webContents.isDestroyed()) {
+      return 'HRack window is not available'
+    }
+    if (!raiseMainWindow(win)) {
+      return 'Open the HRack window first (tray-only is not enough)'
+    }
+    try {
+      const started = await agentRuntime.start({
+        terminalId: request.terminalId,
+        selection: request.selection,
+        name: request.name,
+        ...estimateTerminalSize(win)
+      })
+      win.webContents.send(AppEventChannel.BridgeLaunch, {
+        ...request,
+        ptyId: started.ptyId
+      })
+      return null
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error)
+    }
+  }
+})
+const bridgeServer = new BridgeServer({
+  userDataDir: app.getPath('userData'),
+  plane: controlPlane
+})
+
+function completeBridgeLaunch(ack: BridgeLaunchAck): void {
+  const pending = pendingBridgeLaunches.get(ack.requestId)
+  if (!pending) return
+  pendingBridgeLaunches.delete(ack.requestId)
+  pending(ack.error)
+}
 
 const updateService = new UpdateService({
   enabled: app.isPackaged && process.env['HRACK_DISABLE_UPDATES'] !== '1',
@@ -153,6 +226,8 @@ function prepareShutdown(): Promise<void> {
   updateService.dispose()
   shutdownPromise = (async () => {
     // Agent Runtime 先写入退出事实并回收 observer；随后兜底关闭普通终端。
+    controlPlane.dispose()
+    await bridgeServer.stop()
     await agentRuntime.disposeAll()
     await hookIngress.dispose()
     dshProjector.stop()
@@ -186,14 +261,43 @@ const attachDshSurface = (window: BrowserWindow): void => {
 
 const showWindow = (): void => {
   if (!winRef || winRef.isDestroyed()) return
-  if (winRef.isMinimized()) winRef.restore()
-  winRef.show()
-  winRef.focus()
+  raiseMainWindow(winRef)
 }
 
-if (!isPrimaryInstance) {
+function estimateTerminalSize(win: BrowserWindow): { cols: number; rows: number } {
+  const [width, height] = win.getContentSize()
+  const scale = win.webContents.getZoomFactor() || 1
+  const innerWidth = Math.max(480, width - 248)
+  const innerHeight = Math.max(320, height - 96)
+  return {
+    cols: Math.max(80, Math.min(320, Math.floor(innerWidth / (8.5 * scale)))),
+    rows: Math.max(24, Math.min(90, Math.floor(innerHeight / (17.5 * scale))))
+  }
+}
+
+function raiseMainWindow(win: BrowserWindow): boolean {
+  if (win.isDestroyed()) return false
+  if (win.isMinimized()) win.restore()
+  win.show()
+  if (process.platform === 'win32') {
+    try {
+      win.setAlwaysOnTop(true)
+      win.moveTop()
+      win.focus()
+      win.setAlwaysOnTop(false)
+    } catch {
+      win.focus()
+    }
+    app.focus({ steal: true })
+  } else {
+    win.focus()
+  }
+  return win.isVisible()
+}
+
+if (!cliArgv && !isPrimaryInstance) {
   app.quit()
-} else {
+} else if (isPrimaryInstance) {
   app.on('second-instance', showWindow)
 }
 
@@ -243,10 +347,12 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
     getFloatingWindowController: () => floatingController,
     rebuildTrayMenu: () => {
       if (trayRef) rebuildTrayMenu(trayRef, getMainPrefs().language, trayCallbacks)
-    }
+    },
+    completeBridgeLaunch
   }
 
   registerIpc(manager, ctx)
+  await bridgeServer.start()
   winRef = createWindow(prefs)
   attachDshSurface(winRef)
   floatingController = new ElectronFloatingWindowController({
