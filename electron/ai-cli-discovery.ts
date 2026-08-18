@@ -73,11 +73,6 @@ const versionProbe = (brand: RegExp): CliProbe => ({
   outputPattern: brandedOrVersion(brand)
 })
 
-function exactVersionPattern(version: string): RegExp {
-  const escaped = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`(?:^|\\s)${escaped}(?:\\s|$)`, 'i')
-}
-
 /** Product facts only. Installation state always comes from the scanner. */
 export const cliDefinitions: readonly CliDefinition[] = [
   {
@@ -92,9 +87,9 @@ export const cliDefinitions: readonly CliDefinition[] = [
     executables: { windows: ['dsh'], unix: ['dsh'] },
     probes: [{
       args: ['--version'],
-      // 官方 Web surface 会调用 rc.6 的 sessions/layout/theme seam；其它
-      // 版本必须先升级兼容层，不能仅凭命令名相同就加载进 Electron。
-      outputPattern: exactVersionPattern(DSH_COMPATIBLE_VERSION)
+      // 版本如实上报、发现阶段不设版本卡点：真正的兼容性由 host 启动后
+      // 的控制面能力门禁（session.list / workspace.list RPC）兜底。
+      outputPattern: versionLike
     }],
     knownPaths: {
       windows: ['%APPDATA%\\npm\\dsh.cmd'],
