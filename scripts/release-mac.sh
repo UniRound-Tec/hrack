@@ -5,7 +5,7 @@ set -euo pipefail
 workspace="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 package_path="$workspace/package.json"
 version="$(node -p "require('$package_path').version")"
-arch="${HRACK_MAC_ARCH:-${VIBING_MAC_ARCH:-arm64}}"
+arch="${HRACK_MAC_ARCH:-arm64}"
 artifact_dir="$workspace/artifacts"
 image_name="HRack-${version}-macos-${arch}.dmg"
 archive_name="HRack-${version}-macos-${arch}.zip"
@@ -84,8 +84,7 @@ node "$workspace/scripts/assert-packaged-update-config.cjs" "$packaged_update_co
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$info_plist")"
 bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info_plist")"
 bundle_icon="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$info_plist")"
-# Bundle id remains stable across the rebrand so existing installations upgrade.
-if [[ "$bundle_id" != com.vibing.app ]]; then
+if [[ "$bundle_id" != com.hrack.app ]]; then
   echo "Unexpected bundle identifier: $bundle_id" >&2
   exit 1
 fi

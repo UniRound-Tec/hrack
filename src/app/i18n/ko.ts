@@ -47,7 +47,7 @@ export const ko = {
   dsh: {
     lobbyLabel: 'dsh · lobby',
     lobbyTitle: 'DeepSeek Harness',
-    lobbyHint: '기록은 워크스페이스별로 묶입니다. 새 세션은 격리된 DSH_HOME 에 저장됩니다.',
+    lobbyHint: '기록은 워크스페이스별로 묶입니다. 새 세션은 현재 DSH_HOME 에 저장됩니다.',
     refresh: '새로고침',
     settings: '설정',
     backToLobby: '로비로 돌아가기',

@@ -47,7 +47,7 @@ export const zhTW = {
   dsh: {
     lobbyLabel: 'dsh · lobby',
     lobbyTitle: 'DeepSeek Harness',
-    lobbyHint: '歷史會話依工作區分組。新會話會寫入隔離的 DSH_HOME。',
+    lobbyHint: '歷史會話依工作區分組。新會話會寫入目前的 DSH_HOME。',
     refresh: '重新整理',
     settings: '設定',
     backToLobby: '返回大廳',

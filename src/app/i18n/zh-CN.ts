@@ -50,7 +50,7 @@ export const zhCN = {
   dsh: {
     lobbyLabel: 'dsh · lobby',
     lobbyTitle: 'DeepSeek Harness',
-    lobbyHint: '历史会话按工作区分组。新建会话会写入隔离的 DSH_HOME。',
+    lobbyHint: '历史会话按工作区分组。新建会话会写入当前 DSH_HOME。',
     refresh: '刷新',
     settings: '设置',
     backToLobby: '返回大厅',

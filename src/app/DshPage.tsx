@@ -155,6 +155,7 @@ export default function DshPage({
   const uiThemeId = useSettingsStore((state) => state.uiThemeId)
   const language = useSettingsStore((state) => state.language)
   const dshScale = useSettingsStore((state) => state.dshScale)
+  const rounded = useSettingsStore((state) => state.terminalRounded)
   const themeVersion = useThemeRegistryVersion((state) => state.version)
   const appearance = useMemo(() => {
     const theme = getUiThemeRegistry().get(uiThemeId) ?? builtInLightTheme
@@ -268,10 +269,18 @@ export default function DshPage({
       data-dsh-session={adapterSessionId ?? ''}
       data-dsh-mode={mode}
       data-dsh-surface-phase={snapshot.phase}
-      className="absolute inset-0 flex h-full flex-col overflow-hidden bg-content"
+      className={`absolute inset-0 flex h-full flex-col overflow-hidden bg-content ${
+        rounded ? 'rounded-tl-[20px]' : ''
+      }`}
       style={{ display: active ? 'flex' : 'none' }}
     >
-      <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden" />
+      <div
+        ref={containerRef}
+        data-testid="dsh-surface-frame"
+        className={`min-h-0 flex-1 overflow-hidden ${
+          rounded ? 'mt-2 mr-3.5 ml-3.5' : ''
+        }`}
+      />
       {shouldShow && snapshot.phase !== 'ready' && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-content">
           {snapshot.phase === 'failed' ? (

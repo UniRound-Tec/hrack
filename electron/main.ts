@@ -1,5 +1,5 @@
 import { app, BrowserWindow } from 'electron'
-import { existsSync, mkdirSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { createWindow } from './window'
 import { registerIpc, type IpcContext } from './ipc'
@@ -49,25 +49,18 @@ import { DshWebSurfaceController } from './dsh-surface/DshWebSurfaceController'
 import { ElectronUpdaterDriver } from './update/UpdateDriver'
 import { UpdateService } from './update/UpdateService'
 import packageMetadata from '../package.json'
+import { resolveHrackUserDataDir } from './app-paths'
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
 // 必须在 app ready 之前调用。
-const userDataOverride =
-  process.env['HRACK_USER_DATA_DIR'] ?? process.env['VIBING_USER_DATA_DIR']
+const userDataOverride = process.env['HRACK_USER_DATA_DIR']
 if (userDataOverride) {
   app.setPath('userData', userDataOverride)
 } else {
-  // 已有安装继续使用旧目录以保留设置、事件和 Chromium localStorage；
-  // 全新安装使用 HRack 目录。开发版仍与 Stable 隔离。
-  const appDataDir = app.getPath('appData')
-  const preferredName = app.isPackaged ? 'HRack' : 'HRack Dev'
-  const legacyName = app.isPackaged ? 'Vibing' : 'Vibing Dev'
-  const preferredDir = join(appDataDir, preferredName)
-  const legacyDir = join(appDataDir, legacyName)
-  const userDataDir =
-    !existsSync(preferredDir) && existsSync(legacyDir)
-      ? legacyDir
-      : preferredDir
+  const userDataDir = resolveHrackUserDataDir(
+    app.getPath('appData'),
+    app.isPackaged
+  )
   mkdirSync(userDataDir, { recursive: true })
   app.setPath('userData', userDataDir)
 }

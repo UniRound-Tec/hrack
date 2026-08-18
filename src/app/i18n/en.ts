@@ -47,7 +47,7 @@ export const en = {
   dsh: {
     lobbyLabel: 'dsh · lobby',
     lobbyTitle: 'DeepSeek Harness',
-    lobbyHint: 'History is grouped by workspace. New sessions stay in the isolated DSH_HOME.',
+    lobbyHint: 'History is grouped by workspace. New sessions use the active DSH_HOME.',
     refresh: 'Refresh',
     settings: 'Settings',
     backToLobby: 'Back to lobby',

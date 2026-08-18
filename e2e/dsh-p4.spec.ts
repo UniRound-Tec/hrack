@@ -9,7 +9,7 @@ const dshBin = resolve(
   'dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js'
 )
 
-test('dsh p4 packages the isolated runtime next to the host', async () => {
+test('dsh p4 packages the fallback runtime next to the host', async () => {
   test.setTimeout(180_000)
   expect(existsSync(dshBin)).toBe(true)
 
@@ -52,7 +52,7 @@ test('dsh p4 packages the isolated runtime next to the host', async () => {
       )
       .toBe('ready')
     const config = await window.evaluate(() => window.dshApi.getConfig())
-    expect(config.homeMode).toBe('isolated')
+    expect(config.homeMode).toBe('shared')
     expect(config.runtimePreference).toEqual({ kind: 'auto' })
     expect(config.activeRuntime).toMatchObject({
       id: 'bundled',

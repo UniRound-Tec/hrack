@@ -1,13 +1,5 @@
-import {
-  app,
-  BrowserWindow,
-  Menu,
-  Tray,
-  nativeImage,
-  nativeTheme,
-  type NativeImage
-} from 'electron'
-import { join } from 'node:path'
+import { BrowserWindow, Menu, Tray, nativeTheme } from 'electron'
+import { createThemedHrackIcon } from './app-icons'
 
 export type { Tray } from 'electron'
 
@@ -31,40 +23,12 @@ const TRAY_LABELS: Record<string, { toggle: string; newSession: string; quit: st
   ko: { toggle: '표시 / 숨기기', newSession: '새 세션', quit: '종료' }
 }
 
-function trayIcon(): NativeImage {
-  const isMac = process.platform === 'darwin'
-  const basename = isMac
-    ? 'hrackTemplate'
-    : nativeTheme.shouldUseDarkColors
-      ? 'hrack-white'
-      : 'hrack'
-  const trayAssetsDir = app.isPackaged
-    ? join(process.resourcesPath, 'tray')
-    : join(process.cwd(), 'resources', 'tray')
-  const image = nativeImage.createFromPath(
-    join(trayAssetsDir, `${basename}-16.png`)
-  )
-  const highDpiImage = nativeImage.createFromPath(
-    join(trayAssetsDir, `${basename}-32.png`)
-  )
-  if (!highDpiImage.isEmpty()) {
-    image.addRepresentation({
-      scaleFactor: 2,
-      width: 32,
-      height: 32,
-      buffer: highDpiImage.toPNG()
-    })
-  }
-  if (isMac) image.setTemplateImage(true)
-  return image
-}
-
 let activeTray: Tray | null = null
 let activeMenu: Menu | null = null
 
 nativeTheme.on('updated', () => {
   if (process.platform !== 'darwin' && activeTray && !activeTray.isDestroyed()) {
-    activeTray.setImage(trayIcon())
+    activeTray.setImage(createThemedHrackIcon())
   }
 })
 
@@ -125,7 +89,7 @@ export function createTray(
   language: string,
   callbacks: TrayCallbacks
 ): Tray {
-  const tray = new Tray(trayIcon())
+  const tray = new Tray(createThemedHrackIcon())
   tray.setToolTip('HRack')
   rebuildTrayMenu(tray, language, callbacks)
   // Windows/Linux：单击图标切换显示；macOS 点击交给系统弹出菜单。

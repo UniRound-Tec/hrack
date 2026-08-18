@@ -772,7 +772,9 @@ export default function AppShell() {
           data-testid="app-content"
           className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-content ${
             // 圆角开关关闭时，终端页贴边直角显示；其余页面保留内容区圆角
-            terminalRounded || !activeTerminalId ? 'rounded-tl-[20px]' : ''
+            terminalRounded || (!activeTerminalId && !activeDshSlotId)
+              ? 'rounded-tl-[20px]'
+              : ''
           }`}
         >
           {navMode === 'tabs' && (

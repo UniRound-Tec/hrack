@@ -47,7 +47,7 @@ export const ja = {
   dsh: {
     lobbyLabel: 'dsh · lobby',
     lobbyTitle: 'DeepSeek Harness',
-    lobbyHint: '履歴はワークスペースごとに分かれます。新規セッションは隔離された DSH_HOME に保存されます。',
+    lobbyHint: '履歴はワークスペースごとに分かれます。新規セッションは現在の DSH_HOME に保存されます。',
     refresh: '更新',
     settings: '設定',
     backToLobby: 'ロビーに戻る',
