@@ -42,5 +42,9 @@ function pngSize(image) {
   return image.readUInt32BE(16)
 }
 
-writeIco('hrack.ico', ['hrack-16.png', 'hrack-32.png'])
-writeIco('hrack-white.ico', ['hrack-white-16.png', 'hrack-white-32.png'])
+writeIco('hrack.ico', ['hrack-16.png', 'hrack-32.png', 'hrack-256.png'])
+writeIco('hrack-white.ico', [
+  'hrack-white-16.png',
+  'hrack-white-32.png',
+  'hrack-white-256.png'
+])

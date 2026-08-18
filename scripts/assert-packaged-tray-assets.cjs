@@ -4,8 +4,10 @@ const { join } = require('node:path')
 const REQUIRED_TRAY_ASSETS = [
   'hrack-16.png',
   'hrack-32.png',
+  'hrack-256.png',
   'hrack-white-16.png',
   'hrack-white-32.png',
+  'hrack-white-256.png',
   'hrackTemplate-16.png',
   'hrackTemplate-32.png',
   'hrack.ico',

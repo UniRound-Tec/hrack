@@ -1,6 +1,6 @@
 /**
  * 生成托盘图标静态资产（提交产物，本脚本仅用于再生成）。
- * HRack 品牌 H 图形单色 PNG：黑/白 16px + 32px，以及 macOS Template。
+ * HRack 品牌 H 图形单色 PNG：黑/白 16/32/256px，以及 macOS Template。
  * macOS template image 走黑色 + alpha（系统按菜单栏深浅自动反色）。
  * hrack-master.png 是独立维护的 256px 透明 alpha 品牌母版；这里只做整数倍
  * 面积缩采样，保证小尺寸稳定。
@@ -49,8 +49,10 @@ await mkdir(outputRoot, { recursive: true })
 const outputs = [
   ['hrack-16.png', renderMark(16, 0)],
   ['hrack-32.png', renderMark(32, 0)],
+  ['hrack-256.png', renderMark(256, 0)],
   ['hrack-white-16.png', renderMark(16, 255)],
   ['hrack-white-32.png', renderMark(32, 255)],
+  ['hrack-white-256.png', renderMark(256, 255)],
   ['hrackTemplate-16.png', renderMark(16, 0)],
   ['hrackTemplate-32.png', renderMark(32, 0)]
 ]

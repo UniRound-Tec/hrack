@@ -10,6 +10,17 @@ import {
 } from '../electron/icon-theme'
 import { launchApp } from './helpers'
 
+function icoContainsSize(path: string, size: number): boolean {
+  const buffer = readFileSync(path)
+  if (buffer.length < 6 || buffer.readUInt16LE(2) !== 1) return false
+  const count = buffer.readUInt16LE(4)
+  for (let index = 0; index < count; index++) {
+    const width = buffer.readUInt8(6 + index * 16)
+    if ((width === 0 ? 256 : width) === size) return true
+  }
+  return false
+}
+
 function averageVisibleLuminance(path: string): number {
   const png = PNG.sync.read(readFileSync(path))
   let luminance = 0
@@ -39,6 +50,14 @@ test('Windows uses a light window icon in dark mode', () => {
   expect(
     readFileSync(resolve(__dirname, '../resources/tray/hrack-white.ico')).length
   ).toBeGreaterThan(16)
+  expect(icoContainsSize(
+    resolve(__dirname, '../resources/tray/hrack-white.ico'),
+    256
+  )).toBe(true)
+  expect(icoContainsSize(
+    resolve(__dirname, '../resources/tray/hrack.ico'),
+    256
+  )).toBe(true)
   expect(
     windowsShortcutCandidates().some((path) => path.endsWith('HRack.lnk'))
   ).toBe(true)
