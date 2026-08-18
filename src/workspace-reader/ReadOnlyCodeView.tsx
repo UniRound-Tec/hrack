@@ -132,6 +132,8 @@ export default function ReadOnlyCodeView({ path, text }: ReadOnlyCodeViewProps) 
   const hostRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const themeCompartmentRef = useRef(new Compartment())
+  const textRef = useRef(text)
+  textRef.current = text
   const uiThemeId = useSettingsStore((state) => state.uiThemeId)
   useThemeRegistryVersion((state) => state.version)
   const uiTheme = getUiThemeRegistry().get(uiThemeId) ?? builtInLightTheme
@@ -144,7 +146,7 @@ export default function ReadOnlyCodeView({ path, text }: ReadOnlyCodeViewProps) 
     const view = new EditorView({
       parent: hostRef.current,
       state: EditorState.create({
-        doc: text,
+        doc: textRef.current,
         extensions: [
           EditorState.readOnly.of(true),
           EditorView.editable.of(false),
@@ -168,7 +170,17 @@ export default function ReadOnlyCodeView({ path, text }: ReadOnlyCodeViewProps) 
       if (viewRef.current === view) viewRef.current = null
       view.destroy()
     }
-  }, [path, text])
+  }, [path])
+
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view || view.state.doc.toString() === text) return
+    const scrollTop = view.scrollDOM.scrollTop
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: text }
+    })
+    view.scrollDOM.scrollTop = scrollTop
+  }, [text])
 
   useEffect(() => {
     const view = viewRef.current

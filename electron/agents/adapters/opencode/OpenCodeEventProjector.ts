@@ -85,6 +85,24 @@ export class OpenCodeEventProjector {
   private paneTurnId: string | undefined
   private paneTurnCounter = 0
   private thinkingActive = false
+  private currentRootId: string | undefined
+
+  currentRootSessionId(): string | null {
+    if (this.currentRootId && this.sessions.has(this.currentRootId)) {
+      return this.currentRootId
+    }
+    const roots = [...this.sessions.values()].filter(
+      (session) => !session.info.parentId
+    )
+    const pool = roots.length > 0 ? roots : [...this.sessions.values()]
+    if (pool.length === 0) return null
+    pool.sort(
+      (left, right) =>
+        (right.info.updatedAt ?? 0) - (left.info.updatedAt ?? 0) ||
+        (right.info.createdAt ?? 0) - (left.info.createdAt ?? 0)
+    )
+    return pool[0]?.info.id ?? null
+  }
 
   reconcile(snapshot: OpenCodeSnapshot, now = Date.now()): AdapterEvent[] {
     for (const info of snapshot.sessions) {
@@ -102,6 +120,10 @@ export class OpenCodeEventProjector {
       state.status = status
       if (status === 'busy' || status === 'retry') state.fatalError = undefined
     }
+    if (!this.currentRootId || !this.sessions.has(this.currentRootId)) {
+      const root = [...this.sessions.values()].find((session) => !session.info.parentId)
+      if (root) this.currentRootId = root.info.id
+    }
     if (this.hasWorkingSession()) {
       return this.beginPaneTurn('reconcile', now)
     }
@@ -116,6 +138,7 @@ export class OpenCodeEventProjector {
       case 'session-updated': {
         const current = this.ensureSession(fact.info.id)
         current.info = { ...current.info, ...fact.info }
+        if (!current.info.parentId) this.currentRootId = current.info.id
         return []
       }
       case 'session-deleted':

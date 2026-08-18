@@ -3,10 +3,10 @@ import type { CliRuntime, CliRuntimeError } from './ipc-contract'
 /**
  * DSH host IPC 契约 —— 主进程 / preload / renderer 三方共享。
  *
- * hrack 把 deepseek-harness（dsh）作为内置 agent 运行时：主进程用
- * utilityProcess 启动 dsh 的 web profile（HTTP 上行 / WebSocket 下行），
+ * hrack 把已发现的 deepseek-harness（dsh）作为 agent 运行时：主进程启动
+ * 本机或 WSL 上的 dsh web profile（HTTP 上行 / WebSocket 下行），
  * renderer 通过这里暴露的 baseUrl 直连 host。本文件只描述 host 生命周期，
- * 不描述 dsh wire 协议本身（那是 @deepseek-ai/dsh-client-* 的领域）。
+ * 不描述 dsh wire 协议本身。
  */
 
 // ───── Renderer → Main（ipcMain.handle，请求-响应）─────────
@@ -121,22 +121,15 @@ export type DshHomeMode = 'isolated' | 'shared'
 
 export type DshRuntimePreference =
   | { kind: 'auto' }
-  | { kind: 'bundled' }
   | { kind: 'installation'; installationId: string }
 
-export type DshRuntimeCandidate =
-  | {
-      id: 'bundled'
-      kind: 'bundled'
-      version: string
-    }
-  | {
-      id: string
-      kind: 'installation'
-      runtime: CliRuntime
-      resolvedExecutable: string
-      version?: string
-    }
+export type DshRuntimeCandidate = {
+  id: string
+  kind: 'installation'
+  runtime: CliRuntime
+  resolvedExecutable: string
+  version?: string
+}
 
 export interface DshRuntimeScanReport {
   startedAt: number

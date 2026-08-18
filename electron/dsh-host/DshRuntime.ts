@@ -4,17 +4,10 @@ import type {
   DshRuntimeCandidate,
   DshRuntimePreference
 } from '../../shared/dsh-ipc'
-import { DSH_COMPATIBLE_VERSION } from '../ai-cli-discovery'
-
-export const bundledDshRuntime: DshRuntimeCandidate = {
-  id: 'bundled',
-  kind: 'bundled',
-  version: DSH_COMPATIBLE_VERSION
-}
 
 export function dshCandidateFromInstallation(
   installation: CliInstallation
-): Extract<DshRuntimeCandidate, { kind: 'installation' }> {
+): DshRuntimeCandidate {
   return {
     id: installation.id,
     kind: 'installation',
@@ -25,17 +18,13 @@ export function dshCandidateFromInstallation(
 }
 
 /**
- * auto 的稳定优先级：当前主机 > WSL（发行版名排序）> 内置兜底。
- * 显式选择不静默回退，避免用户以为正在使用 WSL，实际却落到内置版。
+ * auto 的稳定优先级：当前主机 > WSL（发行版名排序）。
+ * 找不到安装时返回空列表；显式选择不静默改选其它安装。
  */
 export function selectDshRuntimeCandidates(
   preference: DshRuntimePreference,
-  localCandidates: readonly Extract<
-    DshRuntimeCandidate,
-    { kind: 'installation' }
-  >[]
+  localCandidates: readonly DshRuntimeCandidate[]
 ): DshRuntimeCandidate[] {
-  if (preference.kind === 'bundled') return [bundledDshRuntime]
   if (preference.kind === 'installation') {
     const selected = localCandidates.find(
       (candidate) => candidate.id === preference.installationId
@@ -47,7 +36,7 @@ export function selectDshRuntimeCandidates(
     }
     return [selected]
   }
-  const sorted = [...localCandidates].sort((left, right) => {
+  return [...localCandidates].sort((left, right) => {
     const leftRank = left.runtime.kind === 'host' ? 0 : 1
     const rightRank = right.runtime.kind === 'host' ? 0 : 1
     if (leftRank !== rightRank) return leftRank - rightRank
@@ -55,7 +44,6 @@ export function selectDshRuntimeCandidates(
     const rightName = right.runtime.kind === 'wsl' ? right.runtime.distro : ''
     return leftName.localeCompare(rightName) || left.id.localeCompare(right.id)
   })
-  return [...sorted, bundledDshRuntime]
 }
 
 export interface DshExternalSpawnSpec {
@@ -73,7 +61,7 @@ function quoteCmdArg(value: string): string {
 
 /** 只负责把已验证安装变成精确 argv；不做路径搜索或 shell 字符串插值。 */
 export function buildDshExternalSpawnSpec(options: {
-  candidate: Extract<DshRuntimeCandidate, { kind: 'installation' }>
+  candidate: DshRuntimeCandidate
   port: number
   dshHome: string
   environmentPath?: string

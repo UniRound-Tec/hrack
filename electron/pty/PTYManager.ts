@@ -1,6 +1,7 @@
 import type { IPty } from 'node-pty'
 import { spawn } from 'node-pty'
 import { execFile } from 'node:child_process'
+import { homedir } from 'node:os'
 import { promisify } from 'node:util'
 import { BrowserWindow } from 'electron'
 import {
@@ -92,6 +93,35 @@ export function ptyEnvironment(
     env.TERM = 'xterm-256color'
   }
   return env
+}
+
+/**
+ * ConPTY/CreateProcess 只接受 Windows 目录。WSL 工作区是 `/home/...`，
+ * 只能交给 `wsl.exe --cd`；拿它当进程 cwd 会变成 error 267。
+ */
+export function isUsableWin32ProcessCwd(path: string): boolean {
+  const value = path.trim()
+  if (!value) return false
+  if (/^[A-Za-z]:[\\/]/.test(value)) return true
+  return value.startsWith('\\\\') || value.startsWith('//')
+}
+
+/** 普通终端未指定工作区时进用户主目录，避免打包后落到安装目录。 */
+export function resolvePtyCwd(
+  opts: Pick<SpawnOptions, 'cwd'> & {
+    terminal?: Pick<PtyTerminalIdentity, 'cwd'>
+  },
+  home = homedir()
+): string {
+  for (const candidate of [opts.cwd, opts.terminal?.cwd]) {
+    const value = candidate?.trim()
+    if (!value) continue
+    if (process.platform === 'win32' && !isUsableWin32ProcessCwd(value)) {
+      continue
+    }
+    return value
+  }
+  return home
 }
 
 async function resolveWindowsExecutable(shell: string): Promise<string | null> {
@@ -191,6 +221,7 @@ export class PTYManager {
       if (resolved) resolvedShell = resolved
     }
 
+    const cwd = resolvePtyCwd(opts)
     let pty: IPty | undefined
     let lastErr: unknown
     for (const shell of defaultShellCandidates(resolvedShell ?? opts.shell)) {
@@ -199,7 +230,7 @@ export class PTYManager {
           name: 'xterm-256color',
           cols,
           rows,
-          cwd: opts.cwd ?? process.cwd(),
+          cwd,
           env: ptyEnvironment(opts.env ?? process.env)
         })
         break
@@ -234,6 +265,8 @@ export class PTYManager {
       resizeFilter,
       lastForwardedOutputAt: 0,
       terminal: opts.terminal
+        ? { ...opts.terminal, cwd: opts.terminal.cwd.trim() || cwd }
+        : opts.terminal
     }
     this.ptys.set(ptyId, managed)
 

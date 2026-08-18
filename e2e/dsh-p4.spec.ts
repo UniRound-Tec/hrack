@@ -9,10 +9,7 @@ const dshBin = resolve(
   'dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js'
 )
 
-test('dsh p4 packages the fallback runtime next to the host', async () => {
-  test.setTimeout(180_000)
-  expect(existsSync(dshBin)).toBe(true)
-
+test('dsh p4 does not package a bundled DSH runtime', () => {
   const pack = JSON.parse(
     readFileSync(resolve(repoRoot, 'package.json'), 'utf8')
   ) as {
@@ -25,21 +22,18 @@ test('dsh p4 packages the fallback runtime next to the host', async () => {
   expect(pack.build.files).toContain('!dsh-runtime{,/**/*}')
   expect(pack.build.afterPack).toBe('scripts/assert-packaged-resources.cjs')
   expect(
-    pack.build.extraResources.some(
-      (item) => item.from === 'dsh-runtime' && item.to === 'dsh-runtime'
-    )
-  ).toBe(true)
-  // node_modules 必须以独立 fileset 提供：electron-builder 会对 from 根下的
-  // 顶层 node_modules 目录硬性剪枝，`node_modules/**/*` include 无法覆盖。
-  expect(
-    pack.build.extraResources.some(
-      (item) =>
-        item.from === 'dsh-runtime/node_modules' &&
-        item.to === 'dsh-runtime/node_modules'
-    )
-  ).toBe(true)
+    pack.build.extraResources.some((item) => item.from.startsWith('dsh-runtime'))
+  ).toBe(false)
+})
 
-  const { app, window } = await launchApp({ createDefaultTerminal: false })
+test('dsh p4 official web surface starts from a discovered local DSH', async () => {
+  test.setTimeout(180_000)
+  expect(existsSync(dshBin)).toBe(true)
+
+  const { app, window } = await launchApp({
+    createDefaultTerminal: false,
+    localDsh: true
+  })
   try {
     await expect(window.getByTestId('home-page')).toBeVisible({ timeout: 20_000 })
     await window.getByTestId('home-quick-dsh').click()
@@ -55,8 +49,8 @@ test('dsh p4 packages the fallback runtime next to the host', async () => {
     expect(config.homeMode).toBe('shared')
     expect(config.runtimePreference).toEqual({ kind: 'auto' })
     expect(config.activeRuntime).toMatchObject({
-      id: 'bundled',
-      kind: 'bundled'
+      kind: 'installation',
+      resolvedExecutable: expect.stringContaining('dsh')
     })
     await expect(window.getByTestId('dsh-page')).toHaveAttribute(
       'data-dsh-surface-phase',

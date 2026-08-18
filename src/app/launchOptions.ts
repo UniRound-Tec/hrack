@@ -1,5 +1,6 @@
 import type {
   CliLaunchSelection,
+  CliSkipApprovalLaunch,
   LaunchableCli,
   ShellOption
 } from '../../shared/ipc-contract'
@@ -12,6 +13,7 @@ export interface CliLaunchDraft {
   name: string
   workspace: string
   args: string
+  skipApproval?: boolean
 }
 
 /** Shell-like argument splitting without invoking a command interpreter. */
@@ -58,13 +60,42 @@ export function parseCommandLine(source: string): string[] {
   return args
 }
 
+export function skipApprovalTokens(skip: CliSkipApprovalLaunch): string[] {
+  return [...skip.args, ...(skip.alreadyPresent ?? [])]
+}
+
+export function hasSkipApprovalArgs(
+  parsedArgs: readonly string[],
+  skip: CliSkipApprovalLaunch
+): boolean {
+  const tokens = new Set(
+    skipApprovalTokens(skip).map((token) => token.toLowerCase())
+  )
+  return parsedArgs.some((arg) => tokens.has(arg.toLowerCase()))
+}
+
+/** Skip-approval tokens go first so subcommands like Devin `bypass` stay positional. */
+export function mergeSkipApprovalArgs(
+  parsedArgs: readonly string[],
+  skip: CliSkipApprovalLaunch | undefined,
+  enabled: boolean
+): string[] {
+  if (!enabled || !skip || skip.args.length === 0) return [...parsedArgs]
+  if (hasSkipApprovalArgs(parsedArgs, skip)) return [...parsedArgs]
+  return [...skip.args, ...parsedArgs]
+}
+
 export function buildCliLaunchSelection(
   draft: CliLaunchDraft
 ): CliLaunchSelection {
   return {
     installationId: draft.installationId,
     workspace: draft.workspace.trim(),
-    args: parseCommandLine(draft.args)
+    args: mergeSkipApprovalArgs(
+      parseCommandLine(draft.args),
+      draft.option.definition.skipApproval,
+      draft.skipApproval === true
+    )
   }
 }
 

@@ -23,6 +23,7 @@ import ClickSpark from './effects/ClickSpark'
 import Dropdown, { type DropdownOption } from './Dropdown'
 import floatingRendererSkill from '../../resources/skills/create-hrack-floating-renderer/SKILL.md?raw'
 import themeSkill from '../../resources/skills/create-hrack-theme/SKILL.md?raw'
+import bridgeSkill from '../../resources/skills/hrack-opencode-bridge/SKILL.md?raw'
 
 const defaultFontFamily = defaultSettings.fontFamily
 
@@ -93,6 +94,7 @@ export default function SettingsPage({
   const [themeJsonSaved, setThemeJsonSaved] = useState(false)
   const [themeJsonError, setThemeJsonError] = useState<string | null>(null)
   const [themeSkillCopied, setThemeSkillCopied] = useState(false)
+  const [bridgeSkillCopied, setBridgeSkillCopied] = useState(false)
   const dshRuntimeBusy = dshRuntimeScanning || dshRuntimeChanging
   const dshRuntimeError = dshRuntimeActionError ?? dshRuntimeScanError
   const themeRegistryVersion = useThemeRegistryVersion((state) => state.version)
@@ -128,12 +130,6 @@ export default function SettingsPage({
   const dshRuntimeOptions: DropdownOption[] = [
     { value: 'auto', label: strings.dsh.runtimeAuto },
     ...(dshRuntimeReport?.candidates.map((candidate) => {
-      if (candidate.kind === 'bundled') {
-        return {
-          value: candidate.id,
-          label: strings.dsh.runtimeBundled(candidate.version)
-        }
-      }
       const location = candidate.runtime.kind === 'wsl'
         ? `WSL · ${candidate.runtime.distro}`
         : candidate.runtime.platform === 'windows'
@@ -332,6 +328,13 @@ export default function SettingsPage({
       })
   }
 
+  const copyBridgeSkill = (): void => {
+    void window.clipboardApi
+      .writeText(bridgeSkill.trim())
+      .then(() => setBridgeSkillCopied(true))
+      .catch(() => setBridgeSkillCopied(false))
+  }
+
   const saveThemeJson = (): void => {
     setThemeJsonSaving(true)
     setThemeJsonSaved(false)
@@ -374,9 +377,7 @@ export default function SettingsPage({
   const changeDshRuntime = (value: string): void => {
     const preference: DshRuntimePreference = value === 'auto'
       ? { kind: 'auto' }
-      : value === 'bundled'
-        ? { kind: 'bundled' }
-        : { kind: 'installation', installationId: value }
+      : { kind: 'installation', installationId: value }
     setDshRuntimeChanging(true)
     setDshRuntimeActionError(null)
     void window.dshApi.setRuntime(preference)
@@ -774,6 +775,26 @@ export default function SettingsPage({
                 </ul>
               </details>
             )}
+            <Row
+              label={strings.settings.bridgeSkill}
+              hint={strings.settings.bridgeSkillHint}
+            >
+              <button
+                type="button"
+                data-testid="settings-bridge-copy-skill"
+                title={strings.settings.bridgeSkillCopy}
+                aria-label={strings.settings.bridgeSkillCopy}
+                onClick={copyBridgeSkill}
+                className="inline-flex h-[30px] items-center gap-1.5 rounded-lg border border-border-default bg-input px-2.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary"
+              >
+                {bridgeSkillCopied
+                  ? <Check className="size-3 text-status-done" strokeWidth={1.75} />
+                  : <Copy className="size-3" strokeWidth={1.75} />}
+                {bridgeSkillCopied
+                  ? strings.settings.bridgeSkillCopied
+                  : strings.settings.bridgeSkillCopy}
+              </button>
+            </Row>
           </Section>
 
           <Section label="update" title={strings.settings.sections.update}>

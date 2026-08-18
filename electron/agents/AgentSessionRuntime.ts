@@ -33,6 +33,7 @@ import type {
   HistoryEvent,
   SpawnOptions
 } from '../../shared/ipc-contract'
+import type { BridgeAgent } from '../../shared/bridge-protocol'
 import { AgentEventQueue, type AgentQueueLimits } from './AgentEventQueue'
 import { normalizeAdapterEvent } from './AgentEventNormalizer'
 import { AgentEventProjector } from './AgentEventProjector'
@@ -44,9 +45,25 @@ import type { ObserverRegistry } from './ObserverRegistry'
 import type {
   AdapterEvent,
   LaunchAugmentation,
+  ObserverControl,
   ObserverHandle,
   PreparedObserver
 } from './adapters/types'
+
+export interface AgentSessionRecord {
+  sessionId: string
+  terminalId: string
+  installationId: string
+  adapterId: string
+  name: string
+  workspace: string
+  runtime: CliRuntime
+  model?: string
+  agent?: BridgeAgent
+  projection: AgentSessionProjection
+}
+
+export type AgentSessionPhase = 'updated' | 'finalized'
 
 const DEFAULT_SILENCE_AFTER_MS = 300_000
 const DEFAULT_IDLE_CHECK_MS = 60_000
@@ -128,6 +145,10 @@ interface ActiveAgentSession {
   installationId: string
   adapterId: string
   name: string
+  workspace: string
+  runtime: CliRuntime
+  model?: string
+  agent?: BridgeAgent
   source: AgentEventSource
   capabilities: ObserverCapabilities
   runDir: string
@@ -309,6 +330,44 @@ async function disposeResources(
   }
 }
 
+function readLaunchFlag(
+  args: readonly string[],
+  names: readonly string[]
+): string | undefined {
+  for (let index = 0; index < args.length; index++) {
+    const value = args[index]
+    for (const name of names) {
+      if (value === name) return args[index + 1]
+      if (value.startsWith(`${name}=`)) return value.slice(name.length + 1)
+    }
+  }
+  return undefined
+}
+
+function parseLaunchAgent(args: readonly string[]): BridgeAgent | undefined {
+  const value = readLaunchFlag(args, ['--agent'])?.trim().toLowerCase()
+  return value === 'plan' || value === 'build' ? value : undefined
+}
+
+function parseLaunchModel(args: readonly string[]): string | undefined {
+  return readLaunchFlag(args, ['-m', '--model'])?.trim() || undefined
+}
+
+function toSessionRecord(session: ActiveAgentSession): AgentSessionRecord {
+  return {
+    sessionId: session.sessionId,
+    terminalId: session.terminalId,
+    installationId: session.installationId,
+    adapterId: session.adapterId,
+    name: session.name || session.projection.name || '',
+    workspace: session.workspace,
+    runtime: session.runtime,
+    model: session.model,
+    agent: session.agent,
+    projection: session.projection
+  }
+}
+
 function validatePublishCaption(value: unknown): PublishAgentCaption | null {
   const raw = recordOf(value)
   if (!raw) return null
@@ -330,6 +389,9 @@ function validatePublishCaption(value: unknown): PublishAgentCaption | null {
 
 export class AgentSessionRuntime {
   private readonly sessions = new Map<string, ActiveAgentSession>()
+  private readonly listeners = new Set<
+    (record: AgentSessionRecord, phase: AgentSessionPhase) => void
+  >()
   private runRootReady: Promise<void> | null = null
   private readonly options: Required<
     Pick<
@@ -514,6 +576,10 @@ export class AgentSessionRuntime {
       installationId: installation.id,
       adapterId,
       name,
+      workspace,
+      runtime: installation.runtime,
+      model: parseLaunchModel(selection.args),
+      agent: parseLaunchAgent(selection.args),
       source: adapter.source,
       capabilities,
       runDir,
@@ -605,6 +671,7 @@ export class AgentSessionRuntime {
 
     // 先注册到权威表再开放事件，确保同步 flush/退出也能被 listActive 与 stop 看见。
     this.sessions.set(sessionId, session)
+    this.notify(session, 'updated')
 
     if (
       session.source === 'hook' &&
@@ -726,7 +793,14 @@ export class AgentSessionRuntime {
       AgentEventChannel.Projection,
       session.projection
     )
+    this.notify(session, 'updated')
     return session.projection
+  }
+
+  setAgent(sessionId: string, agent: BridgeAgent): void {
+    const session = this.sessions.get(sessionId)
+    if (!session || session.finalized) return
+    session.agent = agent
   }
 
   /**
@@ -753,12 +827,49 @@ export class AgentSessionRuntime {
   }
 
   listActive(): AgentSessionProjection[] {
+    return this.listRecords().map((record) => record.projection)
+  }
+
+  listRecords(): AgentSessionRecord[] {
     return [...this.sessions.values()]
       .filter(
         (session) =>
           !session.finalized && !session.projection.correlation.exited
       )
-      .map((session) => session.projection)
+      .map(toSessionRecord)
+  }
+
+  getRecord(sessionId: string): AgentSessionRecord | null {
+    const session = this.sessions.get(sessionId)
+    if (!session || session.finalized || session.projection.correlation.exited) {
+      return null
+    }
+    return toSessionRecord(session)
+  }
+
+  observerControl(sessionId: string): ObserverControl | undefined {
+    return this.sessions.get(sessionId)?.observerHandle?.control
+  }
+
+  subscribe(
+    listener: (record: AgentSessionRecord, phase: AgentSessionPhase) => void
+  ): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
+  private notify(
+    session: ActiveAgentSession,
+    phase: AgentSessionPhase
+  ): void {
+    const record = toSessionRecord(session)
+    for (const listener of this.listeners) {
+      try {
+        listener(record, phase)
+      } catch (error) {
+        console.error('[agent-runtime] session listener failed:', error)
+      }
+    }
   }
 
   /** 应用退出：对所有会话幂等清理，不遗留 hook server、socket 或 temp settings。 */
@@ -871,6 +982,7 @@ export class AgentSessionRuntime {
         session.projection
       )
       this.deps.options.broadcast(AgentEventChannel.Events, processed)
+      this.notify(session, 'updated')
     }
 
     if (exited) {
@@ -1071,6 +1183,7 @@ export class AgentSessionRuntime {
           console.error('[agent-runtime] run directory cleanup failed:', error)
         }
       )
+      this.notify(session, 'finalized')
       this.sessions.delete(session.sessionId)
     }
   }

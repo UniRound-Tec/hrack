@@ -12,6 +12,7 @@ import { PTYManager } from './pty/PTYManager'
 import {
   AppInvokeChannel,
   AppEventChannel,
+  BridgeInvokeChannel,
   ClipboardInvokeChannel,
   CliInvokeChannel,
   DialogInvokeChannel,
@@ -25,6 +26,7 @@ import {
   type CliRuntime,
   type DirectoryPickerRequest,
   type HistoryEvent,
+  type BridgeLaunchAck,
   type CliLaunchSelection,
   type HistoryEventKind,
   type MainPrefsUpdate,
@@ -141,6 +143,7 @@ export interface IpcContext {
   getTray(): Tray | null
   getFloatingWindowController(): FloatingWindowController | null
   rebuildTrayMenu(): void
+  completeBridgeLaunch(ack: BridgeLaunchAck): void
 }
 function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   const win = BrowserWindow.fromWebContents(event.sender)
@@ -196,8 +199,8 @@ function parseDshRuntimePreference(value: unknown): DshRuntimePreference {
     throw new Error('invalid dsh runtime preference')
   }
   const raw = value as Record<string, unknown>
-  if (raw.kind === 'auto' || raw.kind === 'bundled') {
-    return { kind: raw.kind }
+  if (raw.kind === 'auto') {
+    return { kind: 'auto' }
   }
   if (
     raw.kind === 'installation' &&
@@ -603,6 +606,20 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(AppInvokeChannel.SetMainPrefs, (_event, update: unknown) =>
     applyMainPrefsUpdate(ctx, update)
   )
+  ipcMain.handle(BridgeInvokeChannel.LaunchResult, (_event, payload: unknown) => {
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      typeof (payload as BridgeLaunchAck).requestId !== 'string'
+    ) {
+      return
+    }
+    const ack = payload as BridgeLaunchAck
+    ctx.completeBridgeLaunch({
+      requestId: ack.requestId,
+      error: typeof ack.error === 'string' ? ack.error : null
+    })
+  })
   ipcMain.handle(UpdateInvokeChannel.GetState, (event) => {
     requireMainWindow(event, ctx)
     return ctx.updateService.getState()
@@ -622,12 +639,12 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
 
   // 诊断：渲染进程把 resize 前后的 buffer 快照写到 logs/resize-diag.log，供离线分析。
   // 只在真实 dev 会话里抓证据用，定位后移除。
-  const diagPath = join(process.cwd(), 'logs', 'resize-diag.log')
+  const diagPath = join(app.getPath('userData'), 'logs', 'resize-diag.log')
   ipcMain.handle('diag:log', (_e, line: string) => {
     try {
       appendFileSync(diagPath, `${line}\n`)
     } catch {
-      /* logs/ 不存在时忽略；由渲染侧首次调用前主进程已 ensure */
+      /* logs 目录不可写时忽略 */
     }
   })
 }

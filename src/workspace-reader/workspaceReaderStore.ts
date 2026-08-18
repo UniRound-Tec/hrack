@@ -1,6 +1,25 @@
 import { create } from 'zustand'
 import type { WorkspaceEntry } from '../../shared/workspace-reader'
 
+function sameEntries(
+  left: WorkspaceEntry[] | undefined,
+  right: WorkspaceEntry[]
+): boolean {
+  if (!left || left.length !== right.length) return false
+  for (let index = 0; index < left.length; index += 1) {
+    const current = left[index]
+    const next = right[index]
+    if (
+      current.path !== next.path ||
+      current.name !== next.name ||
+      current.kind !== next.kind
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
 interface ReaderSessionState {
   open: boolean
   selectedPath: string | null
@@ -73,6 +92,7 @@ export const useWorkspaceReaderStore = create<WorkspaceReaderState>((set) => ({
   setDirectory: (terminalId, path, entries) =>
     set((state) => {
       const session = state.sessions[terminalId] ?? initialSession()
+      if (sameEntries(session.directories[path], entries)) return state
       return {
         sessions: {
           ...state.sessions,

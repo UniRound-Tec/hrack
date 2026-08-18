@@ -104,7 +104,7 @@ CLI ── PTY ─────────────────────�
 
 ### 主机、WSL，一个入口快速启动
 
-从 Home 或快速启动面板打开普通 Shell 和扫描到的 Coding CLI。HRack 支持主机安装和兼容的 WSL 发行版；如果本机没有兼容的 DeepSeek Harness，还会使用随包提供的兜底运行时。
+从 Home 或快速启动面板打开普通 Shell 和扫描到的 Coding CLI。HRack 支持主机安装和兼容的 WSL 发行版。DeepSeek Harness 只在扫描到本机或 WSL 安装后才显示。
 
 <div align="center">
   <img src="./assets/readme/quick-launch.png" width="950" alt="HRack 快速启动面板">
@@ -114,14 +114,15 @@ CLI ── PTY ─────────────────────�
 
 | Harness | 接入方式 | HRack 可获得的状态 | 运行环境 |
 | --- | --- | --- | --- |
-| DeepSeek Harness | 官方 Web 页面 + Runtime Bridge | 已关注会话与生命周期 | 主机、WSL、内置兜底 |
+| DeepSeek Harness | 官方 Web 页面 + Runtime Bridge | 已关注会话与生命周期 | 主机、WSL |
 | Claude Code | 官方 Hooks | 思考、工具、审批、完成状态 | 主机、WSL |
 | Codex CLI | Stable Hooks | 回合、工具、审批、上下文压缩 | 主机、WSL |
 | OpenCode | Server + SSE | 会话、思考、工具、问题、权限 | 主机、WSL |
 | Pi | Extension API | 思考、回复、工具、回合 | 主机、WSL |
 | Kimi Code | 官方 Hooks | 回合、思考、工具、审批 | 主机、WSL |
+| Grok Build | 官方 Hooks | 回合、思考、工具、审批 | 主机、WSL |
 
-HRack 还可以扫描并启动 Grok Build、Devin CLI、Cline、Qwen Code、Amp、Aider、Goose、Kiro CLI、GitHub Copilot CLI 等注册表入口。仅启动接入的 CLI 暂时不会提供同等级别的状态细节；后续会继续抽象 Adapter 接口，让新的 Harness 可以按需加载。
+HRack 还可以扫描并启动 Devin CLI、Cline、Qwen Code、Amp、Aider、Goose、Kiro CLI、GitHub Copilot CLI 等注册表入口。仅启动接入的 CLI 暂时不会提供同等级别的状态细节；后续会继续抽象 Adapter 接口，让新的 Harness 可以按需加载。
 
 ## 安装
 
@@ -140,7 +141,7 @@ HRack 还可以扫描并启动 Grok Build、Devin CLI、Cline、Qwen Code、Amp�
 3. 选择运行环境和工作区。
 4. 创建会话。原生 TUI 会显示在主区域，HRack 负责在外围同步状态。
 
-如果 Codex 提示需要审核 Hooks，请打开 `/hooks`，检查并信任 HRack 的 Hook 定义。对于 Kimi Code，HRack 会在当前生效的用户 `config.toml` 中维护一个带版本的托管块，并保留托管块之外的内容。
+如果 Codex 提示需要审核 Hooks，请打开 `/hooks`，检查并信任 HRack 的 Hook 定义。对于 Kimi Code，HRack 会在当前生效的用户 `config.toml` 中维护一个带版本的托管块，并保留托管块之外的内容。Grok Build 会在 `~/.grok/hooks/`（或 `$GROK_HOME/hooks` / 对应 WSL 家目录）写入专用的 `hrack-observer.json`，属于 Grok 始终信任的用户级 Hook。
 
 ## 本地开发
 
@@ -157,7 +158,7 @@ npm run build
 npm run e2e:only
 ```
 
-`npm install` 会同时准备隔离且不入库的 DSH 兜底运行时。Windows、macOS、Linux 安装包需要在对应系统上通过 `npm run release:win`、`npm run release:mac` 和 `npm run release:linux` 构建。
+Windows、macOS、Linux 安装包需要在对应系统上通过 `npm run release:win`、`npm run release:mac` 和 `npm run release:linux` 构建。DSH e2e 会通过 `npm run ensure:dsh` 安装隔离且不入库的 `dsh-runtime` 夹具，它不会打进发行包。
 
 ## 参与贡献
 

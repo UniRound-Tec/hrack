@@ -100,7 +100,7 @@ Choose independent application and terminal themes, adjust terminal fonts and si
 
 ### Fast launch across runtimes
 
-Start a shell or detected coding CLI from the Home screen or quick-launch panel. HRack supports host installations and compatible WSL distributions, plus a bundled DeepSeek Harness fallback when no compatible local DSH is available.
+Start a shell or detected coding CLI from the Home screen or quick-launch panel. HRack supports host installations and compatible WSL distributions. DeepSeek Harness appears only after a local or WSL install is found.
 
 <div align="center">
   <img src="./assets/readme/quick-launch.png" width="950" alt="HRack quick-launch panel">
@@ -110,14 +110,15 @@ Start a shell or detected coding CLI from the Home screen or quick-launch panel.
 
 | Harness | Integration | Status available to HRack | Runtimes |
 | --- | --- | --- | --- |
-| DeepSeek Harness | Official Web surface + runtime bridge | Followed session and lifecycle | Host, WSL, bundled fallback |
+| DeepSeek Harness | Official Web surface + runtime bridge | Followed session and lifecycle | Host, WSL |
 | Claude Code | Official Hooks | Thinking, tools, approvals, completion | Host, WSL |
 | Codex CLI | Stable Hooks | Turns, tools, approvals, compaction | Host, WSL |
 | OpenCode | Server + SSE | Sessions, thinking, tools, questions, permissions | Host, WSL |
 | Pi | Extension API | Thinking, responses, tools, turns | Host, WSL |
 | Kimi Code | Official Hooks | Turns, thinking, tools, approvals | Host, WSL |
+| Grok Build | Official Hooks | Turns, thinking, tools, approvals | Host, WSL |
 
-HRack can also discover and launch Grok Build, Devin CLI, Cline, Qwen Code, Amp, Aider, Goose, Kiro CLI, GitHub Copilot CLI, and other registered CLIs. Launch-only integrations do not expose the same level of status detail yet.
+HRack can also discover and launch Devin CLI, Cline, Qwen Code, Amp, Aider, Goose, Kiro CLI, GitHub Copilot CLI, and other registered CLIs. Launch-only integrations do not expose the same level of status detail yet.
 
 ## Install
 
@@ -136,7 +137,7 @@ The builds are not commercially code-signed yet, so the operating system may sho
 3. Choose its runtime and workspace.
 4. Start the session. HRack keeps the native TUI in the main pane and publishes its status around it.
 
-If Codex asks you to review Hooks, open `/hooks`, inspect the HRack definition, and trust it. For Kimi Code, HRack maintains a versioned managed block in the effective user `config.toml`; content outside that block is preserved.
+If Codex asks you to review Hooks, open `/hooks`, inspect the HRack definition, and trust it. For Kimi Code, HRack maintains a versioned managed block in the effective user `config.toml`; content outside that block is preserved. Grok Build installs a dedicated `hrack-observer.json` under `~/.grok/hooks/` (or `$GROK_HOME/hooks` / the matching WSL home), which Grok treats as a trusted user hook.
 
 ## Development
 
@@ -153,7 +154,7 @@ npm run build
 npm run e2e:only
 ```
 
-`npm install` also prepares the isolated, gitignored DSH fallback runtime. Windows, macOS, and Linux release packages must be built on their matching operating systems through `npm run release:win`, `npm run release:mac`, and `npm run release:linux`.
+Windows, macOS, and Linux release packages must be built on their matching operating systems through `npm run release:win`, `npm run release:mac`, and `npm run release:linux`. DSH e2e tests install an isolated, gitignored `dsh-runtime` fixture via `npm run ensure:dsh`; it is not packaged into releases.
 
 ## Contributing
 

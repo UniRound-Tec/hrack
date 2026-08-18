@@ -1,6 +1,5 @@
 import { app } from 'electron'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
 import type { CliInstallation } from '../../shared/ipc-contract'
@@ -23,19 +22,17 @@ import { resolveNativeDshHome, resolveWslDshHome } from '../app-paths'
 import {
   DSH_WSL_PID_MARKER,
   buildDshExternalSpawnSpec,
-  bundledDshRuntime,
   dshCandidateFromInstallation,
   selectDshRuntimeCandidates
 } from './DshRuntime'
 
 /**
- * DshHostManager —— 对外只暴露一个 DSH Web host，内部可由内置包、当前
- * 主机安装或指定 WSL 发行版提供。surface / wire / projector 不需要知道
- * 运行时来自哪里，始终只消费通过能力门禁的 loopback baseUrl。
+ * DshHostManager —— 对外只暴露一个 DSH Web host，内部由当前主机安装或
+ * 指定 WSL 发行版提供。未发现安装时不启动。surface / wire / projector
+ * 不需要知道运行时来自哪里，始终只消费通过能力门禁的 loopback baseUrl。
  */
 
-const HOST_STARTUP_TIMEOUT_MS = 60_000
-const EXTERNAL_HOST_STARTUP_TIMEOUT_MS = 30_000
+const HOST_STARTUP_TIMEOUT_MS = 30_000
 const HOST_READY_POLL_MS = 250
 const OUTPUT_TAIL_LIMIT = 32 * 1024
 const REQUIRED_CONTROL_PLANE_METHODS = [
@@ -111,37 +108,11 @@ function allocatePort(): Promise<number> {
   })
 }
 
-const DSH_BIN_SEGMENTS = [
-  'dsh-runtime',
-  'node_modules',
-  '@deepseek-ai',
-  'dsh',
-  'lib',
-  'bin.js'
-] as const
-
-/** 解析随 HRack 发布的 DSH CLI 入口。 */
-export function resolveDshBinPath(): string {
-  const relative = join(...DSH_BIN_SEGMENTS)
-  const candidates = app.isPackaged
-    ? [join(process.resourcesPath, relative)]
-    : [
-        join(__dirname, '..', '..', relative),
-        join(process.cwd(), relative)
-      ]
-  const found = candidates.find((candidate) => existsSync(candidate))
-  if (!found) {
-    throw new Error(`dsh bin not found. tried:\n${candidates.join('\n')}`)
-  }
-  return found
-}
-
 function isRuntimePreference(value: unknown): value is DshRuntimePreference {
   if (!value || typeof value !== 'object') return false
   const raw = value as { kind?: unknown; installationId?: unknown }
   return (
     raw.kind === 'auto' ||
-    raw.kind === 'bundled' ||
     (
       raw.kind === 'installation' &&
       typeof raw.installationId === 'string' &&
@@ -204,19 +175,13 @@ export class DshHostManager {
     const localCandidates = report.installations.map(
       dshCandidateFromInstallation
     )
-    const orderedLocals = selectDshRuntimeCandidates(
-      { kind: 'auto' },
-      localCandidates
-    ).filter(
-      (candidate): candidate is Extract<
-        DshRuntimeCandidate,
-        { kind: 'installation' }
-      > => candidate.kind === 'installation'
-    )
     return {
       startedAt: report.startedAt,
       finishedAt: report.finishedAt,
-      candidates: [bundledDshRuntime, ...orderedLocals],
+      candidates: selectDshRuntimeCandidates(
+        { kind: 'auto' },
+        localCandidates
+      ),
       runtimeErrors: report.runtimeErrors
     }
   }
@@ -300,9 +265,8 @@ export class DshHostManager {
         false
       )
     } catch (error) {
-      if (preference.kind !== 'auto') throw error
       this.appendOutput(`runtime scan failed: ${String(error)}\n`)
-      return [{ candidate: bundledDshRuntime }]
+      throw error
     }
     const installations = new Map(
       report.installations.map((installation) => [installation.id, installation])
@@ -310,15 +274,16 @@ export class DshHostManager {
     const localCandidates = report.installations.map(
       dshCandidateFromInstallation
     )
-    return selectDshRuntimeCandidates(preference, localCandidates).map(
-      (candidate) => ({
-        candidate,
-        installation:
-          candidate.kind === 'installation'
-            ? installations.get(candidate.id)
-            : undefined
-      })
-    )
+    const selected = selectDshRuntimeCandidates(preference, localCandidates)
+    if (selected.length === 0) {
+      throw new Error(
+        'No DeepSeek Harness installation was found; install dsh to use this surface'
+      )
+    }
+    return selected.map((candidate) => ({
+      candidate,
+      installation: installations.get(candidate.id)
+    }))
   }
 
   private resolveTargetHome(target: DshLaunchTarget): string {
@@ -457,12 +422,7 @@ export class DshHostManager {
       'home',
       dshHome
     )
-    await this.waitReady(
-      baseUrl,
-      target.candidate.kind === 'bundled'
-        ? HOST_STARTUP_TIMEOUT_MS
-        : EXTERNAL_HOST_STARTUP_TIMEOUT_MS
-    )
+    await this.waitReady(baseUrl, HOST_STARTUP_TIMEOUT_MS)
     if (this.child !== child) {
       throw new Error('dsh host exited before becoming ready')
     }
@@ -482,33 +442,6 @@ export class DshHostManager {
     port: number,
     dshHome: string
   ): ManagedDshChild {
-    if (target.candidate.kind === 'bundled') {
-      // DSH 的 HMR 需要访问 Node 内部 ESM loader（--expose-internals）。
-      // utilityProcess 的 execArgv 选项在 dev 的 electron.exe 里生效、在
-      // electron-builder 重打包后的产品二进制里只被记录进 process.execArgv
-      // 而不被应用（实测 0.3.2：require('internal/…') 抛 Cannot find module），
-      // 于是 HMR 判定失败、host 退出。改用 ELECTRON_RUN_AS_NODE 让同一
-      // 二进制以纯 Node 模式启动，由 Node 自己解析命令行里的
-      // --expose-internals —— dev 与打包版行为完全一致（已实测验证）。
-      const child = spawn(process.execPath, [
-        '--expose-internals',
-        resolveDshBinPath(),
-        'web',
-        '--host', '127.0.0.1',
-        '--port', String(port)
-      ], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-        env: {
-          ...process.env,
-          ELECTRON_RUN_AS_NODE: '1',
-          DSH_HOME: dshHome,
-          DSH_TELEMETRY_DISABLED:
-            process.env['DSH_TELEMETRY_DISABLED'] ?? '1'
-        }
-      })
-      return wrapSpawnedProcess(child)
-    }
     if (!target.installation) {
       throw new Error('selected DSH installation is missing')
     }

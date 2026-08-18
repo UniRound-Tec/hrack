@@ -140,3 +140,215 @@ test('DSH projector recovers when the control plane briefly returns 404', async 
     globalThis.WebSocket = OriginalWebSocket
   }
 })
+
+class ControllableWebSocket {
+  static instances: ControllableWebSocket[] = []
+  onmessage: ((event: { data: string }) => void) | null = null
+  onclose: (() => void) | null = null
+
+  constructor(readonly url: string) {
+    ControllableWebSocket.instances.push(this)
+  }
+
+  close(): void {}
+
+  emit(payload: Record<string, unknown>): void {
+    this.onmessage?.({ data: JSON.stringify({ payload }) })
+  }
+}
+
+function latestSocket(path: string): ControllableWebSocket {
+  const found = ControllableWebSocket.instances.filter((socket) =>
+    socket.url.endsWith(path)
+  )
+  const socket = found.at(-1)
+  if (!socket) throw new Error(`missing DSH socket ${path}`)
+  return socket
+}
+
+async function startLiveProjector(items: unknown[]): Promise<{
+  bridge: DshProjectionBridge
+  projector: DshSessionProjector
+  restore: () => void
+}> {
+  const originalFetch = globalThis.fetch
+  const OriginalWebSocket = globalThis.WebSocket
+  ControllableWebSocket.instances = []
+
+  globalThis.fetch = async (input) => {
+    const url = String(input)
+    if (url.endsWith('/api/session.list')) {
+      return rpcResponse({ items })
+    }
+    if (url.endsWith('/api/workspace.list')) {
+      return rpcResponse({ archivedSessionIds: [] })
+    }
+    throw new Error(`unexpected DSH request: ${url}`)
+  }
+  globalThis.WebSocket = ControllableWebSocket as unknown as typeof WebSocket
+
+  const bridge = new DshProjectionBridge({ broadcast: () => undefined })
+  const projector = new DshSessionProjector(
+    {
+      getStatus: () => ({
+        state: 'ready' as const,
+        baseUrl: 'http://dsh.test'
+      })
+    } as never,
+    bridge
+  )
+  projector.activateSlot('slot-1')
+  projector.setActiveSession('session-a')
+  projector.start()
+  await expect
+    .poll(() => bridge.find('slot-1')?.adapterSessionId, {
+      timeout: 1_000,
+      intervals: [25, 50, 100]
+    })
+    .toBe('session-a')
+  await expect
+    .poll(() => ControllableWebSocket.instances.length, {
+      timeout: 1_000,
+      intervals: [25, 50, 100]
+    })
+    .toBeGreaterThanOrEqual(2)
+
+  return {
+    bridge,
+    projector,
+    restore: () => {
+      projector.stop()
+      globalThis.fetch = originalFetch
+      globalThis.WebSocket = OriginalWebSocket
+      ControllableWebSocket.instances = []
+    }
+  }
+}
+
+function sessionEvent(
+  type: string,
+  data: Record<string, unknown>,
+  extras: Record<string, unknown> = {}
+): Record<string, unknown> {
+  return {
+    type: 'session/event',
+    sessionId: 'session-a',
+    event: {
+      type,
+      seq: 1,
+      time: 1,
+      data
+    },
+    ...extras
+  }
+}
+
+test('DSH projector listens to mux tool calls and marks a finished turn as done', async () => {
+  const { bridge, restore } = await startLiveProjector([
+    {
+      sessionId: 'session-a',
+      running: false,
+      cwd: 'C:\\workspace',
+      updatedAt: 123
+    }
+  ])
+
+  try {
+    expect(bridge.find('slot-1')).toMatchObject({
+      status: 'idle',
+      activeToolCount: 0,
+      detail: undefined
+    })
+
+    latestSocket('/api/events.host').emit({
+      type: 'host/session-status',
+      sessionId: 'session-a',
+      running: true
+    })
+    expect(bridge.find('slot-1')?.status).toBe('working')
+
+    latestSocket('/api/events.mux').emit(
+      sessionEvent(
+        'tool/call',
+        {
+          turn: 1,
+          step: 1,
+          callId: 'call-bash',
+          name: 'bash',
+          arguments: '{"command":"ls"}'
+        },
+        {
+          view: {
+            for: 'call',
+            view: { card: 'terminal', title: 'ls' }
+          }
+        }
+      )
+    )
+    expect(bridge.find('slot-1')).toMatchObject({
+      status: 'working',
+      detail: '@agent:running-tool:ls',
+      activeToolCount: 1,
+      capabilities: expect.objectContaining({ tools: 'lifecycle' })
+    })
+
+    latestSocket('/api/events.mux').emit(
+      sessionEvent('tool/result', {
+        turn: 1,
+        step: 1,
+        message: {
+          source: { kind: 'tool', callId: 'call-bash' },
+          content: [{ type: 'tool-result', toolCallId: 'call-bash' }]
+        }
+      })
+    )
+    expect(bridge.find('slot-1')).toMatchObject({
+      status: 'working',
+      activeToolCount: 0
+    })
+
+    latestSocket('/api/events.mux').emit(
+      sessionEvent('turn/end', {
+        turn: 1,
+        reason: { kind: 'completed' }
+      })
+    )
+    expect(bridge.find('slot-1')).toMatchObject({
+      status: 'done',
+      detail: '@agent:completed',
+      activeToolCount: 0
+    })
+  } finally {
+    restore()
+  }
+})
+
+test('DSH projector treats a watched running→idle flip as turn completion', async () => {
+  const { bridge, restore } = await startLiveProjector([
+    {
+      sessionId: 'session-a',
+      running: false,
+      cwd: 'C:\\workspace',
+      updatedAt: 123
+    }
+  ])
+
+  try {
+    latestSocket('/api/events.host').emit({
+      type: 'host/session-status',
+      sessionId: 'session-a',
+      running: true
+    })
+    latestSocket('/api/events.host').emit({
+      type: 'host/session-status',
+      sessionId: 'session-a',
+      running: false
+    })
+    expect(bridge.find('slot-1')).toMatchObject({
+      status: 'done',
+      detail: '@agent:completed'
+    })
+  } finally {
+    restore()
+  }
+})

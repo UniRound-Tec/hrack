@@ -10,7 +10,6 @@ import {
 import {
   DSH_WSL_PID_MARKER,
   buildDshExternalSpawnSpec,
-  bundledDshRuntime,
   selectDshRuntimeCandidates
 } from '../electron/dsh-host/DshRuntime'
 import type { DshRuntimeCandidate } from '../shared/dsh-ipc'
@@ -19,12 +18,9 @@ import {
   resolveNativeDshHome,
   resolveWslDshHome
 } from '../electron/app-paths'
-import { launchApp } from './helpers'
+import { e2eDshExecutable, launchApp } from './helpers'
 
-const windowsCandidate: Extract<
-  DshRuntimeCandidate,
-  { kind: 'installation' }
-> = {
+const windowsCandidate: DshRuntimeCandidate = {
   id: 'dsh:windows',
   kind: 'installation',
   runtime: { kind: 'host', platform: 'windows' },
@@ -32,10 +28,7 @@ const windowsCandidate: Extract<
   version: DSH_COMPATIBLE_VERSION
 }
 
-const wslCandidate: Extract<
-  DshRuntimeCandidate,
-  { kind: 'installation' }
-> = {
+const wslCandidate: DshRuntimeCandidate = {
   id: 'dsh:wsl-ubuntu',
   kind: 'installation',
   runtime: { kind: 'wsl', distro: 'Ubuntu-24.04' },
@@ -72,13 +65,14 @@ test('HRack paths use the new brand and share an existing DSH home', () => {
   )
 })
 
-test('auto prefers host then WSL then the bundled fallback', () => {
+test('auto prefers host then WSL and does not invent a bundled fallback', () => {
   expect(
     selectDshRuntimeCandidates(
       { kind: 'auto' },
       [wslCandidate, windowsCandidate]
     ).map((candidate) => candidate.id)
-  ).toEqual([windowsCandidate.id, wslCandidate.id, bundledDshRuntime.id])
+  ).toEqual([windowsCandidate.id, wslCandidate.id])
+  expect(selectDshRuntimeCandidates({ kind: 'auto' }, [])).toEqual([])
   expect(
     selectDshRuntimeCandidates(
       { kind: 'installation', installationId: wslCandidate.id },
@@ -128,8 +122,28 @@ test('external launch preserves native and WSL runtime boundaries', () => {
   expect(wsl.env.DSH_HOME).toBeUndefined()
 })
 
-test('settings scans DSH runtimes and persists an explicit bundled choice', async () => {
-  const first = await launchApp({ createDefaultTerminal: false })
+test('Home hides DSH when the scan finds no installation', async () => {
+  const appState = await launchApp({ createDefaultTerminal: false })
+  try {
+    await expect(appState.window.getByTestId('home-page')).toBeVisible({
+      timeout: 20_000
+    })
+    await expect(appState.window.getByTestId('home-quick-dsh')).toHaveCount(0)
+    const report = await appState.window.evaluate(() =>
+      window.dshApi.scanRuntimes(false)
+    )
+    expect(report.candidates).toEqual([])
+  } finally {
+    await appState.app.close()
+  }
+})
+
+test('settings scans DSH runtimes and persists an explicit local choice', async () => {
+  const executable = e2eDshExecutable()
+  const first = await launchApp({
+    createDefaultTerminal: false,
+    localDsh: true
+  })
   try {
     await first.window.evaluate(() => {
       window.__hrackDebugShell?.navigate('settings')
@@ -138,41 +152,44 @@ test('settings scans DSH runtimes and persists an explicit bundled choice', asyn
     await expect(select).toBeEnabled({ timeout: 20_000 })
     await expect(select).toHaveAttribute('data-value', 'auto')
     await select.click()
-    await first.window.getByTestId('dsh-runtime-select-option-bundled').click()
+    const localOption = first.window.locator(
+      '[data-testid^="dsh-runtime-select-option-"]:not([data-testid="dsh-runtime-select-option-auto"])'
+    ).first()
+    await expect(localOption).toBeVisible()
+    await localOption.click()
     await expect.poll(
       () => first.window.evaluate(async () =>
-        (await window.dshApi.getConfig()).runtimePreference.kind
+        (await window.dshApi.getConfig()).runtimePreference
       )
-    ).toBe('bundled')
+    ).toMatchObject({ kind: 'installation' })
   } finally {
     await first.app.close()
   }
 
   const second = await launchApp({
     createDefaultTerminal: false,
-    userDataDir: first.userDataDir
+    userDataDir: first.userDataDir,
+    localDsh: true
   })
   try {
     const config = await second.window.evaluate(() => window.dshApi.getConfig())
-    expect(config.runtimePreference).toEqual({ kind: 'bundled' })
+    expect(config.runtimePreference).toMatchObject({ kind: 'installation' })
     const report = await second.window.evaluate(() =>
       window.dshApi.scanRuntimes(false)
     )
-    expect(report.candidates[0]).toMatchObject({
-      id: 'bundled',
-      kind: 'bundled',
-      version: DSH_COMPATIBLE_VERSION
-    })
+    expect(report.candidates).toEqual([
+      expect.objectContaining({
+        kind: 'installation',
+        resolvedExecutable: executable
+      })
+    ])
   } finally {
     await second.app.close()
   }
 })
 
 test('Home exposes a discovered local DSH runtime', async () => {
-  const executable = resolve(
-    __dirname,
-    '../dsh-runtime/node_modules/.bin/dsh.cmd'
-  )
+  const executable = e2eDshExecutable()
   const expectedRuntime = process.platform === 'win32'
     ? 'Windows'
     : process.platform === 'darwin'
@@ -203,14 +220,11 @@ test('Home exposes a discovered local DSH runtime', async () => {
 test('auto starts a discovered Windows DSH installation through its real shim', async () => {
   test.skip(process.platform !== 'win32', 'Windows npm shim coverage')
   test.setTimeout(120_000)
-  const executable = resolve(
-    __dirname,
-    '../dsh-runtime/node_modules/.bin/dsh.cmd'
-  )
+  const executable = e2eDshExecutable()
   expect(existsSync(executable)).toBe(true)
   const appState = await launchApp({
     createDefaultTerminal: false,
-    env: { HRACK_E2E_DSH_INSTALLATION: executable }
+    localDsh: true
   })
   try {
     await expect.poll(
@@ -233,9 +247,8 @@ test('auto starts a discovered Windows DSH installation through its real shim', 
   }
 })
 
-test('auto falls back to the bundled runtime when a cached local install is stale', async () => {
-  test.skip(process.platform !== 'win32', 'Windows fallback coverage')
-  test.setTimeout(120_000)
+test('auto fails when a cached local install is stale and nothing else is found', async () => {
+  test.setTimeout(60_000)
   const missingExecutable = resolve(
     __dirname,
     'fixtures/does-not-exist/dsh.exe'
@@ -249,13 +262,10 @@ test('auto falls back to the bundled runtime when a cached local install is stal
       () => appState.window.evaluate(async () =>
         (await window.dshApi.ensureStarted()).state
       ),
-      { timeout: 90_000, intervals: [500, 1000, 2000] }
-    ).toBe('ready')
+      { timeout: 45_000, intervals: [500, 1000, 2000] }
+    ).toBe('failed')
     const status = await appState.window.evaluate(() => window.dshApi.getStatus())
-    expect(status.activeRuntime).toMatchObject({
-      id: 'bundled',
-      kind: 'bundled'
-    })
+    expect(status.error).toBeTruthy()
   } finally {
     await appState.app.close()
   }

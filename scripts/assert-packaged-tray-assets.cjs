@@ -7,7 +7,9 @@ const REQUIRED_TRAY_ASSETS = [
   'hrack-white-16.png',
   'hrack-white-32.png',
   'hrackTemplate-16.png',
-  'hrackTemplate-32.png'
+  'hrackTemplate-32.png',
+  'hrack.ico',
+  'hrack-white.ico'
 ]
 
 function packagedResourcesDir(context) {

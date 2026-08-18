@@ -3,7 +3,11 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { PNG } from 'pngjs'
-import { hrackIconBasename } from '../electron/icon-theme'
+import { windowsShortcutCandidates } from '../electron/app-icons'
+import {
+  hrackIconBasename,
+  hrackWindowsIconFile
+} from '../electron/icon-theme'
 import { launchApp } from './helpers'
 
 function averageVisibleLuminance(path: string): number {
@@ -25,11 +29,19 @@ test('Windows uses a light window icon in dark mode', () => {
   expect(hrackIconBasename('win32', true)).toBe('hrack-white')
   expect(hrackIconBasename('win32', false)).toBe('hrack')
   expect(hrackIconBasename('darwin', true)).toBe('hrackTemplate')
+  expect(hrackWindowsIconFile(true)).toBe('hrack-white.ico')
+  expect(hrackWindowsIconFile(false)).toBe('hrack.ico')
   expect(
     averageVisibleLuminance(
       resolve(__dirname, '../resources/tray/hrack-white-32.png')
     )
   ).toBeGreaterThan(200)
+  expect(
+    readFileSync(resolve(__dirname, '../resources/tray/hrack-white.ico')).length
+  ).toBeGreaterThan(16)
+  expect(
+    windowsShortcutCandidates().some((path) => path.endsWith('HRack.lnk'))
+  ).toBe(true)
 })
 
 const WINDOWS_ICON_LUMINANCE_SCRIPT = String.raw`

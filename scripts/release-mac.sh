@@ -35,11 +35,6 @@ if [[ "$arch" != arm64 && "$arch" != x64 ]]; then
 fi
 
 cd "$workspace"
-npm --prefix "$workspace/dsh-runtime" ci --ignore-scripts
-# --ignore-scripts 跳过了 node-pty 的 postinstall；npm tarball 会剥离 unix 执行位，
-# 这里显式恢复 prebuilds/<plat>-<arch>/spawn-helper 的 +x，否则打包后的 dsh host
-# 在 PTY spawn 时会失败（host ready-check 不涉及 PTY，e2e 抓不到）。
-node "$workspace/dsh-runtime/node_modules/@deepseek-ai/dsh-subprocess-local/scripts/ensure-spawn-helper.mjs"
 npm run build
 
 CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder \
@@ -117,11 +112,9 @@ if [[ ! -x "$mounted_executable" ]]; then
 fi
 node "$workspace/scripts/verify-packaged-tray.cjs" "$mounted_executable"
 
-# extraResources 传输链路（npm ci → electron-builder copyDir）不得丢失执行位；
-# 这是 dsh host 内 PTY spawn 的硬依赖。
-mounted_spawn_helper="$mount_dir/HRack.app/Contents/Resources/dsh-runtime/node_modules/node-pty/prebuilds/darwin-$arch/spawn-helper"
-if [[ ! -x "$mounted_spawn_helper" ]]; then
-  echo "Packaged dsh runtime spawn-helper is missing or not executable: $mounted_spawn_helper" >&2
+mounted_dsh="$mount_dir/HRack.app/Contents/Resources/dsh-runtime"
+if [[ -e "$mounted_dsh" ]]; then
+  echo "Packaged dsh runtime must be absent: $mounted_dsh" >&2
   exit 1
 fi
 

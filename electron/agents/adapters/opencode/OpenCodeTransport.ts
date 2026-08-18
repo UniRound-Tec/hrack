@@ -12,7 +12,8 @@ const SSE_FIRST_BYTE_TIMEOUT_MS = 3_000
 export class OpenCodeTransportError extends Error {
   constructor(
     readonly code: string,
-    message: string
+    message: string,
+    readonly status?: number
   ) {
     super(message)
     this.name = 'OpenCodeTransportError'
@@ -27,6 +28,11 @@ export interface OpenCodeTransport {
   readonly kind: 'host-direct' | 'wsl-stdio'
   health(): Promise<{ version: string }>
   snapshot(): Promise<OpenCodeSnapshot>
+  request(
+    method: 'GET' | 'POST' | 'PATCH',
+    path: string,
+    body?: unknown
+  ): Promise<unknown>
   connect(
     onEvent: (value: unknown) => void,
     onDisconnect: (reason: string) => void
@@ -34,7 +40,19 @@ export interface OpenCodeTransport {
   dispose(): Promise<void>
 }
 
+function looksLikeHtml(body: string): boolean {
+  const head = body.trimStart().slice(0, 32).toLowerCase()
+  return head.startsWith('<!doctype') || head.startsWith('<html')
+}
+
 function parseJsonBody(body: string): unknown {
+  if (looksLikeHtml(body)) {
+    throw new OpenCodeTransportError(
+      'not-api',
+      'OpenCode returned HTML instead of an API payload',
+      404
+    )
+  }
   try {
     return JSON.parse(body)
   } catch {
@@ -66,7 +84,8 @@ function collectResponse(
     reject(
       new OpenCodeTransportError(
         'auth-required',
-        'OpenCode server requires authentication'
+        'OpenCode server requires authentication',
+        response.statusCode
       )
     )
     return
@@ -80,7 +99,8 @@ function collectResponse(
     reject(
       new OpenCodeTransportError(
         'http-status',
-        `OpenCode HTTP ${response.statusCode ?? 0}`
+        `OpenCode HTTP ${response.statusCode ?? 0}`,
+        response.statusCode ?? 0
       )
     )
     return
@@ -106,20 +126,62 @@ function collectResponse(
 }
 
 function httpText(endpoint: string, path: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const request = http.get(`${endpoint}${path}`, {
-      headers: { Accept: 'application/json', Connection: 'close' }
+  return httpExchange(endpoint, 'GET', path).then((body) => body ?? '')
+}
+
+const WRITE_TIMEOUT_MS = 10_000
+
+async function httpExchange(
+  endpoint: string,
+  method: 'GET' | 'POST' | 'PATCH',
+  path: string,
+  body?: unknown,
+  timeout = method === 'GET' ? REQUEST_TIMEOUT_MS : WRITE_TIMEOUT_MS
+): Promise<string | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeout)
+  try {
+    const response = await fetch(`${endpoint}${path}`, {
+      method,
+      headers: {
+        Accept: 'application/json',
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {})
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller.signal
     })
-    request.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      request.destroy(
-        new OpenCodeTransportError('timeout', `OpenCode ${path} timed out`)
+    if (response.status === 204) return null
+    if (response.status === 401 || response.status === 403) {
+      throw new OpenCodeTransportError(
+        'auth-required',
+        'OpenCode server requires authentication',
+        response.status
       )
-    })
-    request.once('response', (response) =>
-      collectResponse(response, resolve, reject)
-    )
-    request.once('error', reject)
-  })
+    }
+    if (!response.ok) {
+      throw new OpenCodeTransportError(
+        'http-status',
+        `OpenCode HTTP ${response.status}`,
+        response.status
+      )
+    }
+    const text = await response.text()
+    if (Buffer.byteLength(text, 'utf8') > MAX_BODY) {
+      throw new OpenCodeTransportError(
+        'body-too-large',
+        'OpenCode response exceeds limit'
+      )
+    }
+    return text.length === 0 ? null : text
+  } catch (error) {
+    if (error instanceof OpenCodeTransportError) throw error
+    if (controller.signal.aborted) {
+      throw new OpenCodeTransportError('timeout', `OpenCode ${path} timed out`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export class HostOpenCodeTransport implements OpenCodeTransport {
@@ -152,6 +214,16 @@ export class HostOpenCodeTransport implements OpenCodeTransport {
         'Invalid OpenCode session snapshot'
       )
     return snapshot
+  }
+
+  async request(
+    method: 'GET' | 'POST' | 'PATCH',
+    path: string,
+    body?: unknown
+  ): Promise<unknown> {
+    const text = await httpExchange(this.endpoint, method, path, body)
+    if (text === null || text.length === 0) return null
+    return parseJsonBody(text)
   }
 
   connect(
@@ -293,6 +365,18 @@ function curlArgs(endpoint: string, path: string): string[] {
   ]
 }
 
+const WSL_STATUS_MARK = '__HRACK_STATUS__'
+
+function parseWslHttp(stdout: string): { status: number; body: string } {
+  const index = stdout.lastIndexOf(WSL_STATUS_MARK)
+  if (index < 0) return { status: 0, body: stdout }
+  const status = Number(stdout.slice(index + WSL_STATUS_MARK.length).trim())
+  return {
+    status: Number.isInteger(status) ? status : 0,
+    body: stdout.slice(0, index)
+  }
+}
+
 export class WslOpenCodeTransport implements OpenCodeTransport {
   readonly kind = 'wsl-stdio' as const
   private readonly children = new Set<
@@ -348,6 +432,71 @@ export class WslOpenCodeTransport implements OpenCodeTransport {
         'Invalid OpenCode session snapshot'
       )
     return snapshot
+  }
+
+  async request(
+    method: 'GET' | 'POST' | 'PATCH',
+    path: string,
+    body?: unknown
+  ): Promise<unknown> {
+    const args = [
+      '--silent',
+      '--show-error',
+      '--max-time',
+      method === 'GET' ? '5' : '10',
+      '--header',
+      'Accept: application/json',
+      '--write-out',
+      `\n${WSL_STATUS_MARK}%{http_code}`,
+      '--request',
+      method
+    ]
+    if (body !== undefined) {
+      args.push(
+        '--header',
+        'Content-Type: application/json',
+        '--data-binary',
+        JSON.stringify(body)
+      )
+    }
+    args.push(`${this.endpoint}${path}`)
+    const result = await runWslCommand(
+      this.distro,
+      this.curlPath,
+      args,
+      method === 'GET' ? 6_000 : 12_000
+    )
+    if (result.code !== 0 && !result.stdout.includes(WSL_STATUS_MARK)) {
+      throw new OpenCodeTransportError(
+        'curl-failed',
+        result.stderr || `WSL curl failed for ${path}`
+      )
+    }
+    const parsed = parseWslHttp(result.stdout)
+    if (parsed.status === 401 || parsed.status === 403) {
+      throw new OpenCodeTransportError(
+        'auth-required',
+        'OpenCode server requires authentication',
+        parsed.status
+      )
+    }
+    if (parsed.status === 204) return null
+    if (parsed.status < 200 || parsed.status >= 300) {
+      throw new OpenCodeTransportError(
+        'http-status',
+        `OpenCode HTTP ${parsed.status}`,
+        parsed.status
+      )
+    }
+    if (Buffer.byteLength(parsed.body, 'utf8') > MAX_BODY) {
+      throw new OpenCodeTransportError(
+        'body-too-large',
+        'OpenCode response exceeds limit'
+      )
+    }
+    const trimmed = parsed.body.trim()
+    if (!trimmed) return null
+    return parseJsonBody(trimmed)
   }
 
   connect(

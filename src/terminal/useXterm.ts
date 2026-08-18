@@ -233,6 +233,8 @@ export function useXterm(
       return !handleShellShortcut(event)
     })
     let initialSpawnFrame: number | null = null
+    let initialSpawnFallback: ReturnType<typeof setTimeout> | null = null
+    let attachResizeTimer: ReturnType<typeof setTimeout> | null = null
     let ptyAckDelayMs = 0
     let ptyRenderingSuspended = false
     let outputBatcher: PtyOutputBatcher | null = null
@@ -567,6 +569,16 @@ export function useXterm(
         pendingPtyResize = null
         const { cols, rows } = term
         sendPtyResize(cols, rows)
+        if (launch?.kind === 'attach') {
+          if (attachResizeTimer) clearTimeout(attachResizeTimer)
+          attachResizeTimer = setTimeout(() => {
+            attachResizeTimer = null
+            if (disposed || !proxy) return
+            lastSentCols = 0
+            lastSentRows = 0
+            sendPtyResize(term.cols, term.rows)
+          }, 400)
+        }
         if (activeRef.current) scheduleResize()
       }
 
@@ -701,9 +713,18 @@ export function useXterm(
     // 当前用户字体，并清掉 term.open/WebGL 初始化期间可能生成的 fallback atlas。
     void document.fonts.ready.then(() => {
       if (disposed) return
-      initialSpawnFrame = requestAnimationFrame(() => {
-        initialSpawnFrame = null
-        if (disposed) return
+      let started = false
+      const startAfterFit = (): void => {
+        if (disposed || started) return
+        started = true
+        if (initialSpawnFrame !== null) {
+          cancelAnimationFrame(initialSpawnFrame)
+          initialSpawnFrame = null
+        }
+        if (initialSpawnFallback) {
+          clearTimeout(initialSpawnFallback)
+          initialSpawnFallback = null
+        }
         if (fitFrame !== null) {
           cancelAnimationFrame(fitFrame)
           fitFrame = null
@@ -719,10 +740,21 @@ export function useXterm(
           ptyResizeTimer = null
         }
         pendingPtyResize = null
-        lastSentCols = term.cols
-        lastSentRows = term.rows
+        // attach 的 PTY 是主进程按另一组 cols/rows 开的。这里若把 lastSent
+        // 写成当前 fit 尺寸，finishBinding 会以为已经 resize 过，TUI 会按
+        // 启动时的 120x32 画，直到用户拖窗口才纠正。
+        if (launch?.kind === 'attach') {
+          lastSentCols = 0
+          lastSentRows = 0
+        } else {
+          lastSentCols = term.cols
+          lastSentRows = term.rows
+        }
         spawnShell()
-      })
+      }
+      initialSpawnFrame = requestAnimationFrame(startAfterFit)
+      // 窗口在后台时 Chromium 会节流 rAF，Bridge create 不能因此卡住。
+      initialSpawnFallback = setTimeout(startAfterFit, 80)
     })
 
     return () => {
@@ -730,6 +762,8 @@ export function useXterm(
       outputBatcher = null
       disposed = true
       if (initialSpawnFrame !== null) cancelAnimationFrame(initialSpawnFrame)
+      if (initialSpawnFallback) clearTimeout(initialSpawnFallback)
+      if (attachResizeTimer) clearTimeout(attachResizeTimer)
       if (captionTimer) clearInterval(captionTimer)
       if (scrollSmoothingRestoreTimer) clearTimeout(scrollSmoothingRestoreTimer)
       for (const timer of pendingAckTimers) clearTimeout(timer)

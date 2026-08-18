@@ -20,6 +20,8 @@ export interface TerminalEntry {
 }
 
 export interface AddTerminalOptions {
+  id?: string
+  name?: string
   shellId?: string
   cwd?: string
   launch?: TerminalLaunchOptions
@@ -51,9 +53,10 @@ export function createTerminalsStore(
   const fallbackNames = new Map<string, string>()
 
   const createTerminal = (options: AddTerminalOptions = {}): TerminalEntry => {
-    const fallbackName = `Terminal ${nextTerminalNumber++}`
+    const named = options.name?.trim()
+    const fallbackName = named || `Terminal ${nextTerminalNumber++}`
     const terminal = {
-      id: crypto.randomUUID(),
+      id: options.id?.trim() || crypto.randomUUID(),
       name: fallbackName,
       cwd: options.cwd?.trim() ?? '',
       shellId: options.shellId?.trim() || 'system',

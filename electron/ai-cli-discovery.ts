@@ -17,19 +17,20 @@ import type {
   CliRuntime,
   CliRuntimeError,
   CliScanReport,
+  CliSkipApprovalLaunch,
   LaunchableCli,
+  LaunchableCliDefinition,
   SpawnOptions
 } from '../shared/ipc-contract'
 import { parseWslUncPath } from './directory-picker'
-import dshRuntimePackage from '../dsh-runtime/package.json'
 
 const COMMAND_TIMEOUT_MS = 2_500
 const COMMAND_MAX_BUFFER = 64 * 1024
 const SCAN_CONCURRENCY = 4
 const CLI_SCAN_CACHE_VERSION = 6
 export const DSH_CLI_DEFINITION_ID = 'dsh'
-export const DSH_COMPATIBLE_VERSION =
-  dshRuntimePackage.dependencies['@deepseek-ai/dsh']
+/** Sample version-like string for probe tests; discovery does not pin DSH. */
+export const DSH_COMPATIBLE_VERSION = '0.1.0-rc.6'
 const SYSTEM_WSL_DISTROS = new Set([
   'docker-desktop',
   'docker-desktop-data',
@@ -58,6 +59,7 @@ export interface CliDefinition {
   probes: CliProbe[]
   knownPaths?: { windows?: string[]; unixHomeRelative?: string[] }
   launchArgs?: string[]
+  skipApproval?: CliSkipApprovalLaunch
   /** false 时参与发现与缓存，但不作为普通终端 CLI 卡片展示。 */
   exposeInLauncher?: boolean
   /** false 时不把 /mnt/<drive>/ 下的 Windows shim 当成 WSL 安装。 */
@@ -99,6 +101,11 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'claude', adapterId: 'claude-code', displayName: 'Claude Code',
     hint: 'Anthropic coding agent', iconId: 'claude-code',
+    skipApproval: {
+      args: ['--dangerously-skip-permissions'],
+      alreadyPresent: ['--permission-mode'],
+      label: 'Bypass'
+    },
     observerImplemented: true,
     executables: { windows: ['claude'], unix: ['claude'] },
     probes: [versionProbe(/claude(?: code)?/i)],
@@ -110,6 +117,16 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'codex', adapterId: 'codex', displayName: 'Codex',
     hint: 'OpenAI coding agent', iconId: 'codex',
+    skipApproval: {
+      args: ['--yolo'],
+      alreadyPresent: [
+        '--dangerously-bypass-approvals-and-sandbox',
+        '--full-auto',
+        '--ask-for-approval',
+        '-a'
+      ],
+      label: 'YOLO'
+    },
     observerImplemented: true,
     executables: { windows: ['codex'], unix: ['codex'] },
     probes: [versionProbe(/codex(?:-cli)?/i)],
@@ -124,6 +141,10 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'antigravity', adapterId: 'antigravity', displayName: 'Antigravity CLI',
     hint: 'Google agentic CLI', iconId: 'antigravity',
+    skipApproval: {
+      args: ['--dangerously-skip-permissions'],
+      label: 'Bypass'
+    },
     executables: { windows: ['agy'], unix: ['agy'] },
     probes: [versionProbe(/(?:antigravity|agy)/i)],
     knownPaths: {
@@ -134,6 +155,7 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'opencode', adapterId: 'opencode', displayName: 'OpenCode',
     hint: 'Open-source coding agent', iconId: 'opencode',
+    skipApproval: { args: ['--auto'], label: 'Auto' },
     observerImplemented: true,
     executables: { windows: ['opencode'], unix: ['opencode'] },
     probes: [versionProbe(/opencode/i)],
@@ -145,18 +167,33 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'cursor', adapterId: 'cursor-agent', displayName: 'Cursor Agent',
     hint: 'Cursor terminal agent', iconId: 'cursor-agent',
+    skipApproval: {
+      args: ['--force'],
+      alreadyPresent: ['--yolo', '-f'],
+      label: 'YOLO'
+    },
     executables: { windows: ['cursor-agent', 'agent'], unix: ['cursor-agent', 'agent'] },
     probes: [{ args: ['--version'], outputPattern: /cursor/i }]
   },
   {
     id: 'cline', adapterId: 'cline', displayName: 'Cline',
     hint: 'Cline terminal agent', iconId: 'cline',
+    skipApproval: {
+      args: ['--yolo'],
+      alreadyPresent: ['-y', '--auto-approve'],
+      label: 'YOLO'
+    },
     executables: { windows: ['cline'], unix: ['cline'] },
     probes: [versionProbe(/cline/i)]
   },
   {
     id: 'qwen', adapterId: 'qwen', displayName: 'Qwen Code',
     hint: 'Qwen coding agent', iconId: 'qwen',
+    skipApproval: {
+      args: ['--yolo'],
+      alreadyPresent: ['--approval-mode'],
+      label: 'YOLO'
+    },
     executables: { windows: ['qwen'], unix: ['qwen'] },
     probes: [versionProbe(/qwen/i)]
   },
@@ -169,6 +206,11 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'kimi', adapterId: 'kimi', displayName: 'Kimi Code',
     hint: 'Moonshot AI coding agent', iconId: 'kimi',
+    skipApproval: {
+      args: ['--yolo'],
+      alreadyPresent: ['-y', '--yes', '--auto-approve', '--auto'],
+      label: 'YOLO'
+    },
     observerImplemented: true,
     executables: { windows: ['kimi'], unix: ['kimi'] },
     probes: [versionProbe(/kimi/i)],
@@ -180,6 +222,16 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'grok', adapterId: 'grok', displayName: 'Grok Build',
     hint: 'xAI coding agent', iconId: 'grok',
+    skipApproval: {
+      args: ['--always-approve'],
+      alreadyPresent: [
+        '--yolo',
+        '--dangerously-skip-permissions',
+        '--permission-mode'
+      ],
+      label: 'YOLO'
+    },
+    observerImplemented: true,
     executables: { windows: ['grok'], unix: ['grok'] },
     probes: [{ args: ['--version'], outputPattern: /grok/i }],
     knownPaths: {
@@ -212,6 +264,11 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'copilot', adapterId: 'copilot', displayName: 'GitHub Copilot CLI',
     hint: 'GitHub terminal agent', iconId: 'copilot',
+    skipApproval: {
+      args: ['--yolo'],
+      alreadyPresent: ['--allow-all', '--allow-all-tools'],
+      label: 'YOLO'
+    },
     executables: { windows: ['copilot'], unix: ['copilot'] },
     probes: [versionProbe(/copilot/i)]
   },
@@ -224,6 +281,7 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'crush', adapterId: 'crush', displayName: 'Crush',
     hint: 'Charm coding agent', iconId: 'crush',
+    skipApproval: { args: ['--yolo'], label: 'YOLO' },
     executables: { windows: ['crush'], unix: ['crush'] },
     probes: [versionProbe(/crush/i)]
   },
@@ -236,24 +294,40 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'devin', adapterId: 'devin', displayName: 'Devin CLI',
     hint: 'Cognition terminal agent', iconId: 'devin',
+    skipApproval: {
+      args: ['bypass'],
+      alreadyPresent: ['--permission-mode', 'yolo', 'dangerous'],
+      label: 'Bypass'
+    },
     executables: { windows: ['devin'], unix: ['devin'] },
     probes: [versionProbe(/devin/i)]
   },
   {
     id: 'kiro', adapterId: 'kiro', displayName: 'Kiro CLI',
     hint: 'AWS terminal agent', iconId: 'kiro',
+    skipApproval: { args: ['--trust-all-tools'], label: 'Trust-all' },
     executables: { windows: ['kiro-cli'], unix: ['kiro-cli'] },
     probes: [versionProbe(/kiro/i)]
   },
   {
     id: 'aider', adapterId: 'aider', displayName: 'Aider',
     hint: 'Pair programming CLI', iconId: 'aider',
+    skipApproval: {
+      args: ['--yes-always'],
+      alreadyPresent: ['--yes'],
+      label: 'Always Yes'
+    },
     executables: { windows: ['aider'], unix: ['aider'] },
     probes: [versionProbe(/aider/i)]
   },
   {
     id: 'factory-droid', adapterId: 'factory-droid', displayName: 'Factory Droid',
     hint: 'Factory coding agent', iconId: 'factory-droid',
+    skipApproval: {
+      args: ['--skip-permissions-unsafe'],
+      alreadyPresent: ['--auto'],
+      label: 'Skip-permissions'
+    },
     executables: { windows: ['droid'], unix: ['droid'] },
     identityProbe: { args: ['--help'], outputPattern: /(?:factory|droid CLI)/i },
     probes: [{ args: ['-v'], outputPattern: brandedOrVersion(/(?:factory|droid)/i) }],
@@ -271,6 +345,11 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'mistral-vibe', adapterId: 'mistral-vibe', displayName: 'Mistral Vibe',
     hint: 'Mistral coding agent', iconId: 'mistral-vibe',
+    skipApproval: {
+      args: ['--yolo'],
+      alreadyPresent: ['--auto-approve'],
+      label: 'YOLO'
+    },
     executables: { windows: ['vibe'], unix: ['vibe'] },
     probes: [versionProbe(/(?:mistral|vibe)/i)],
     knownPaths: { unixHomeRelative: ['.local/bin/vibe'] }
@@ -285,6 +364,17 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'qoder', adapterId: 'qoder', displayName: 'Qoder CLI',
     hint: 'Qoder terminal agent', iconId: 'qoder',
+    skipApproval: {
+      args: ['--yolo'],
+      alreadyPresent: [
+        '--dangerously-skip-permissions',
+        '--permission-mode',
+        'yolo',
+        'bypass_permissions',
+        'bypassPermissions'
+      ],
+      label: 'YOLO'
+    },
     executables: { windows: ['qodercli'], unix: ['qodercli'] },
     probes: [versionProbe(/qoder/i)],
     knownPaths: { unixHomeRelative: ['.local/bin/qodercli'] }
@@ -292,6 +382,11 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'codebuddy-code', adapterId: 'codebuddy-code', displayName: 'CodeBuddy Code',
     hint: 'Tencent coding agent', iconId: 'codebuddy-code',
+    skipApproval: {
+      args: ['--dangerously-skip-permissions'],
+      alreadyPresent: ['-y', '--permission-mode'],
+      label: 'Bypass'
+    },
     executables: { windows: ['codebuddy', 'cbc'], unix: ['codebuddy', 'cbc'] },
     probes: [versionProbe(/(?:codebuddy|tencent)/i)],
     knownPaths: {
@@ -302,6 +397,7 @@ export const cliDefinitions: readonly CliDefinition[] = [
   {
     id: 'kilo', adapterId: 'kilo', displayName: 'Kilo Code',
     hint: 'Kilo coding agent', iconId: 'kilo',
+    skipApproval: { args: ['--auto'], label: 'Auto' },
     executables: { windows: ['kilo'], unix: ['kilo'] },
     probes: [versionProbe(/kilo/i)],
     knownPaths: { unixHomeRelative: ['.local/bin/kilo'] }
@@ -540,13 +636,14 @@ async function scanWindowsDefinition(
 async function runWsl(
   distro: string,
   executable: string,
-  args: readonly string[]
+  args: readonly string[],
+  timeout = 8_000
 ): Promise<CommandResult> {
   return runCommand('wsl.exe', [
     '--distribution', distro,
     '--exec', executable,
     ...args
-  ], 8_000)
+  ], timeout)
 }
 
 async function wslUserEnvironment(
@@ -928,6 +1025,29 @@ async function scanWslDistro(
   return found.filter((value): value is CliInstallation => Boolean(value))
 }
 
+function toLaunchableDefinition(
+  definition: CliDefinition
+): LaunchableCliDefinition {
+  return {
+    id: definition.id,
+    adapterId: definition.adapterId,
+    displayName: definition.displayName,
+    hint: definition.hint,
+    iconId: definition.iconId,
+    ...(definition.skipApproval
+      ? {
+          skipApproval: {
+            args: [...definition.skipApproval.args],
+            label: definition.skipApproval.label,
+            ...(definition.skipApproval.alreadyPresent
+              ? { alreadyPresent: [...definition.skipApproval.alreadyPresent] }
+              : {})
+          }
+        }
+      : {})
+  }
+}
+
 function groupLaunchable(installations: readonly CliInstallation[]): LaunchableCli[] {
   const prioritizedDefinitions = [
     ...cliDefinitions.filter(
@@ -943,13 +1063,7 @@ function groupLaunchable(installations: readonly CliInstallation[]): LaunchableC
     const matches = installations.filter((item) => item.definitionId === definition.id)
     if (matches.length === 0) return []
     return [{
-      definition: {
-        id: definition.id,
-        adapterId: definition.adapterId,
-        displayName: definition.displayName,
-        hint: definition.hint,
-        iconId: definition.iconId
-      },
+      definition: toLaunchableDefinition(definition),
       installations: matches
     }]
   })
@@ -1052,13 +1166,7 @@ function parsePersistedCliScan(value: unknown): {
       .filter((item): item is CliInstallation => Boolean(item))
     if (installations.length === 0) return []
     return [{
-      definition: {
-        id: definition.id,
-        adapterId: definition.adapterId,
-        displayName: definition.displayName,
-        hint: definition.hint,
-        iconId: definition.iconId
-      },
+      definition: toLaunchableDefinition(definition),
       installations
     }]
   })
@@ -1125,13 +1233,7 @@ function e2eFixtureReport(startedAt: number): CliScanReport {
     startedAt,
     finishedAt: Date.now(),
     launchable: [{
-      definition: {
-        id: definition.id,
-        adapterId: definition.adapterId,
-        displayName: definition.displayName,
-        hint: definition.hint,
-        iconId: definition.iconId
-      },
+      definition: toLaunchableDefinition(definition),
       installations: [
         {
           id: installationId('codex', windows, fixtureExecutable),
@@ -1503,6 +1605,31 @@ export class AiCliDiscoveryService {
     }
     return { shell: installation.resolvedExecutable, args, cwd }
   }
+
+  /**
+   * 在该安装所属 runtime（host PATH 或 WSL distro）里执行一次短命令。
+   * 给 Bridge `models` 用，不启动 TUI。
+   */
+  async runInstallationCommand(
+    installation: CliInstallation,
+    args: readonly string[],
+    timeoutMs = 15_000
+  ): Promise<CommandResult> {
+    if (installation.runtime.kind === 'wsl') {
+      const environmentPath = this.runtimeEnvironment(installation).PATH
+      return runWsl(
+        installation.runtime.distro,
+        'env',
+        [
+          ...(environmentPath ? [`PATH=${environmentPath}`] : []),
+          installation.resolvedExecutable,
+          ...args
+        ],
+        timeoutMs
+      )
+    }
+    return runCommand(installation.resolvedExecutable, args, timeoutMs)
+  }
 }
 
 /** 纯 argv 组装 seam：便于验证 env 确实进入 WSL 子进程而非只给 wsl.exe。 */
@@ -1532,6 +1659,8 @@ export function wslLaunchOptions(
     (augmentation.unsetEnv?.length ?? 0) > 0
   return {
     shell: 'wsl.exe',
+    // wsl.exe 仍是 Windows 进程；Linux 工作区只走 --cd。
+    cwd: homedir(),
     args: [
       '--distribution', installation.runtime.distro,
       '--cd', cwd,

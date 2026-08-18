@@ -10,6 +10,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { WorkspaceReader } from '../electron/workspace/WorkspaceReader'
+import { useWorkspaceReaderStore } from '../src/workspace-reader/workspaceReaderStore'
 
 test('decodes supported text while rejecting binary content', async () => {
   const root = mkdtempSync(join(tmpdir(), 'hrack-workspace-reader-'))
@@ -100,4 +101,28 @@ test('reads through a real WSL runtime using one-time wslpath translation', asyn
   await expect(
     reader.list({ terminalId: 'wsl-home', path: '' })
   ).resolves.toEqual(expect.any(Array))
+})
+
+test('directory listings keep cache identity when the watch refresh matches', () => {
+  const terminalId = `tree-refresh-${Date.now()}`
+  const entries = [
+    { name: 'src', path: 'src', kind: 'directory' as const },
+    { name: 'README.md', path: 'README.md', kind: 'file' as const }
+  ]
+  useWorkspaceReaderStore.getState().ensure(terminalId)
+  useWorkspaceReaderStore.getState().setDirectory(terminalId, '', entries)
+  const first = useWorkspaceReaderStore.getState().sessions[terminalId].directories
+  useWorkspaceReaderStore.getState().setDirectory(terminalId, '', [
+    { name: 'src', path: 'src', kind: 'directory' },
+    { name: 'README.md', path: 'README.md', kind: 'file' }
+  ])
+  expect(useWorkspaceReaderStore.getState().sessions[terminalId].directories).toBe(
+    first
+  )
+  useWorkspaceReaderStore.getState().setDirectory(terminalId, '', [
+    { name: 'src', path: 'src', kind: 'directory' }
+  ])
+  expect(
+    useWorkspaceReaderStore.getState().sessions[terminalId].directories
+  ).not.toBe(first)
 })

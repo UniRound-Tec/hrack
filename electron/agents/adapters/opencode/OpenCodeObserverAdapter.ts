@@ -4,6 +4,7 @@ import type { ObserverCapabilities } from '../../../../shared/agent-events'
 import type {
   AdapterEvent,
   AgentObserverAdapter,
+  ObserverControl,
   ObserverHandle,
   ObserverPreparationContext,
   PreparedObserver
@@ -18,6 +19,15 @@ import {
   type OpenCodeConnection,
   type OpenCodeTransport
 } from './OpenCodeTransport'
+import { submitOpenCodePrompt } from './OpenCodePrompt'
+import {
+  answerOpenCodeQuestion,
+  listOpenCodeQuestions,
+  rejectOpenCodeQuestion,
+  respondOpenCodePermission,
+  setOpenCodeAgent,
+  setOpenCodeTitle
+} from './OpenCodeControl'
 import {
   OPENCODE_CAPABILITIES,
   type OpenCodeObserverDegradedReason
@@ -359,6 +369,77 @@ export class OpenCodeObserverAdapter implements AgentObserverAdapter {
     let disposed = false
     let activeConnection: OpenCodeConnection | null = null
 
+    const workspaceKey = context.workspace.replace(/[\\/]+$/, '').toLowerCase()
+    const pickNativeSessionId = async (): Promise<string> => {
+      const snapshot = await transport.snapshot()
+      const matching = snapshot.sessions.filter((session) => {
+        const directory = session.directory?.replace(/[\\/]+$/, '').toLowerCase()
+        return Boolean(directory && directory === workspaceKey)
+      })
+      const locked = projector.currentRootSessionId()
+      if (locked && matching.some((session) => session.id === locked)) return locked
+      const roots = (matching.length > 0 ? matching : snapshot.sessions).filter(
+        (session) => !session.parentId
+      )
+      const pool = roots.length > 0 ? roots : matching
+      const nativeId = pool
+        .slice()
+        .sort(
+          (left, right) =>
+            (right.updatedAt ?? 0) - (left.updatedAt ?? 0) ||
+            (right.createdAt ?? 0) - (left.createdAt ?? 0)
+        )[0]?.id
+      if (!nativeId) {
+        throw new Error('OpenCode native session is not ready')
+      }
+      return nativeId
+    }
+
+    const control: ObserverControl = {
+      async submitPrompt(text, agent) {
+        await submitOpenCodePrompt(transport, pickNativeSessionId, text, agent)
+      },
+      async snapshotMessages() {
+        const nativeId = await pickNativeSessionId()
+        return transport.request(
+          'GET',
+          `/session/${encodeURIComponent(nativeId)}/message`
+        )
+      },
+      async setTitle(title) {
+        await setOpenCodeTitle(transport, pickNativeSessionId, title)
+      },
+      async setAgent(agent) {
+        await setOpenCodeAgent(transport, pickNativeSessionId, agent)
+      },
+      async respondPermission(nativePermissionId, response) {
+        await respondOpenCodePermission(
+          transport,
+          pickNativeSessionId,
+          nativePermissionId,
+          response
+        )
+      },
+      async listQuestions() {
+        return listOpenCodeQuestions(transport, pickNativeSessionId)
+      },
+      async answerQuestion(nativeQuestionId, answers) {
+        await answerOpenCodeQuestion(
+          transport,
+          pickNativeSessionId,
+          nativeQuestionId,
+          answers
+        )
+      },
+      async rejectQuestion(nativeQuestionId) {
+        await rejectOpenCodeQuestion(
+          transport,
+          pickNativeSessionId,
+          nativeQuestionId
+        )
+      }
+    }
+
     const dispose = async (): Promise<void> => {
       if (disposed) return
       disposed = true
@@ -604,6 +685,7 @@ export class OpenCodeObserverAdapter implements AgentObserverAdapter {
       let handleDisposed = false
       const handle: ObserverHandle = {
         capabilities: OPENCODE_CAPABILITIES,
+        control,
         onDisconnect(listener) {
           disconnectListeners.add(listener)
           return () => disconnectListeners.delete(listener)

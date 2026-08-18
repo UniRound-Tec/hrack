@@ -6,7 +6,7 @@ import {
 } from '../shared/ipc-contract'
 import { DEFAULT_BACKGROUND_COLOR, type MainPrefs } from './main-prefs'
 import { isQuitting } from './quitting'
-import { createThemedHrackIcon } from './app-icons'
+import { applyHrackWindowIcon, createThemedHrackIcon } from './app-icons'
 
 /** 窗口位置换算成"相对当前显示器"坐标（多显示器下渐变坐标系跟随窗口所在屏）。 */
 export function displayRelativePosition(
@@ -58,10 +58,9 @@ export function createWindow(prefs: MainPrefs): BrowserWindow {
   })
 
   const updateWindowIcon = (): void => {
-    if (process.platform !== 'darwin' && !win.isDestroyed()) {
-      win.setIcon(createThemedHrackIcon())
-    }
+    applyHrackWindowIcon(win)
   }
+  updateWindowIcon()
   nativeTheme.on('updated', updateWindowIcon)
 
   win.on('close', (event) => {
@@ -70,7 +69,10 @@ export function createWindow(prefs: MainPrefs): BrowserWindow {
     win.hide()
   })
 
-  win.on('ready-to-show', () => win.show())
+  win.on('ready-to-show', () => {
+    updateWindowIcon()
+    win.show()
+  })
   const sendMaximizedState = (): void => {
     if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
       win.webContents.send(
