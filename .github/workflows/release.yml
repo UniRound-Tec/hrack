@@ -170,6 +170,11 @@ jobs:
       - build-linux
     runs-on: ubuntu-latest
     steps:
+      - name: Check out release changelog
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
       - name: Download verified artifacts
         uses: actions/download-artifact@v4
         with:
@@ -217,8 +222,18 @@ jobs:
           if [[ "$RELEASE_TAG" == *-* ]]; then
             release_flags+=(--prerelease)
           fi
+          version="${RELEASE_TAG#v}"
+          prefix="## [${version}]"
+          notes="$(awk -v prefix="$prefix" '
+            index($0, prefix) == 1 { found=1 }
+            found && /^## \[/ && index($0, prefix) != 1 { exit }
+            found { print }
+          ' CHANGELOG.md)"
+          if [[ -z "$notes" ]]; then
+            notes="HRack ${RELEASE_TAG}"
+          fi
           gh release create "$RELEASE_TAG" "${assets[@]}" \
             "${release_flags[@]}" \
             --verify-tag \
             --title "HRack $RELEASE_TAG" \
-            --generate-notes
+            --notes "$notes"
