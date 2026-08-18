@@ -1,6 +1,7 @@
 import type { IPty } from 'node-pty'
 import { spawn } from 'node-pty'
 import { execFile } from 'node:child_process'
+import { homedir } from 'node:os'
 import { promisify } from 'node:util'
 import { BrowserWindow } from 'electron'
 import {
@@ -92,6 +93,16 @@ export function ptyEnvironment(
     env.TERM = 'xterm-256color'
   }
   return env
+}
+
+/** 普通终端未指定工作区时进用户主目录，避免打包后落到安装目录。 */
+export function resolvePtyCwd(
+  opts: Pick<SpawnOptions, 'cwd'> & {
+    terminal?: Pick<PtyTerminalIdentity, 'cwd'>
+  },
+  home = homedir()
+): string {
+  return opts.cwd?.trim() || opts.terminal?.cwd.trim() || home
 }
 
 async function resolveWindowsExecutable(shell: string): Promise<string | null> {
@@ -191,6 +202,7 @@ export class PTYManager {
       if (resolved) resolvedShell = resolved
     }
 
+    const cwd = resolvePtyCwd(opts)
     let pty: IPty | undefined
     let lastErr: unknown
     for (const shell of defaultShellCandidates(resolvedShell ?? opts.shell)) {
@@ -199,7 +211,7 @@ export class PTYManager {
           name: 'xterm-256color',
           cols,
           rows,
-          cwd: opts.cwd ?? process.cwd(),
+          cwd,
           env: ptyEnvironment(opts.env ?? process.env)
         })
         break
@@ -234,6 +246,8 @@ export class PTYManager {
       resizeFilter,
       lastForwardedOutputAt: 0,
       terminal: opts.terminal
+        ? { ...opts.terminal, cwd: opts.terminal.cwd.trim() || cwd }
+        : opts.terminal
     }
     this.ptys.set(ptyId, managed)
 

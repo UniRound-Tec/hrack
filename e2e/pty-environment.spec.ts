@@ -1,5 +1,6 @@
+import { homedir } from 'node:os'
 import { expect, test } from '@playwright/test'
-import { ptyEnvironment } from '../electron/pty/PTYManager'
+import { ptyEnvironment, resolvePtyCwd } from '../electron/pty/PTYManager'
 
 test.describe('PTY environment', () => {
   test('replaces a dumb terminal capability without changing renderer theme settings', () => {
@@ -18,5 +19,13 @@ test.describe('PTY environment', () => {
     expect(ptyEnvironment({ TERM: 'screen-256color' }).TERM).toBe(
       'screen-256color'
     )
+  })
+
+  test('starts ordinary terminals in the user home when no cwd is given', () => {
+    expect(resolvePtyCwd({})).toBe(homedir())
+    expect(resolvePtyCwd({ cwd: '   ' })).toBe(homedir())
+    expect(resolvePtyCwd({ cwd: '', terminal: { cwd: '' } })).toBe(homedir())
+    expect(resolvePtyCwd({ cwd: 'C:\\repo' })).toBe('C:\\repo')
+    expect(resolvePtyCwd({ terminal: { cwd: 'C:\\repo' } })).toBe('C:\\repo')
   })
 })
