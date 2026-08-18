@@ -1,16 +1,12 @@
 import { expect, test } from '@playwright/test'
 import { launchApp } from './helpers'
 
-test('DSH surface uses the same rounded content frame as CLI sessions', async () => {
+test('DSH surface keeps the top-left rounded corner without padding', async () => {
   const { app, window } = await launchApp()
   try {
     const content = window.getByTestId('app-content')
     const contentBounds = await content.boundingBox()
-    const cliBounds = await window
-      .locator('[data-testid="terminal-page"]:visible .xterm')
-      .boundingBox()
     expect(contentBounds).not.toBeNull()
-    expect(cliBounds).not.toBeNull()
     await window.evaluate(() => {
       window.__hrackDebugShell?.navigate('home')
     })
@@ -20,14 +16,8 @@ test('DSH surface uses the same rounded content frame as CLI sessions', async ()
     const nativeFrame = window.getByTestId('dsh-surface-frame')
     const nativeBounds = await nativeFrame.boundingBox()
     expect(nativeBounds).not.toBeNull()
-    expect(nativeBounds!.x - contentBounds!.x).toBeCloseTo(
-      cliBounds!.x - contentBounds!.x,
-      1
-    )
-    expect(nativeBounds!.y - contentBounds!.y).toBeCloseTo(
-      cliBounds!.y - contentBounds!.y,
-      1
-    )
+    expect(nativeBounds!.x - contentBounds!.x).toBeCloseTo(0, 1)
+    expect(nativeBounds!.y - contentBounds!.y).toBeCloseTo(0, 1)
     await expect.poll(
       () => app.evaluate(() => {
         const inspection = (

@@ -38,7 +38,8 @@ function sameBounds(
     left?.x === right.x &&
     left.y === right.y &&
     left.width === right.width &&
-    left.height === right.height
+    left.height === right.height &&
+    left.cornerRadius === right.cornerRadius
   )
 }
 
@@ -188,7 +189,8 @@ export default function DshPage({
           x: Math.max(0, rect.left),
           y: Math.max(0, rect.top),
           width: rect.width,
-          height: rect.height
+          height: rect.height,
+          cornerRadius: rounded ? 20 : 0
         }
         setBounds((current) => (sameBounds(current, next) ? current : next))
       })
@@ -202,7 +204,7 @@ export default function DshPage({
       window.removeEventListener('resize', measure)
       if (frame !== null) cancelAnimationFrame(frame)
     }
-  }, [active])
+  }, [active, rounded])
 
   // Semantic changes rebuild/show the official surface. Bounds changes use the
   // separate high-frequency channel below and intentionally do not retrigger it.
@@ -277,9 +279,7 @@ export default function DshPage({
       <div
         ref={containerRef}
         data-testid="dsh-surface-frame"
-        className={`min-h-0 flex-1 overflow-hidden ${
-          rounded ? 'mt-2 mr-3.5 ml-3.5' : ''
-        }`}
+        className="min-h-0 flex-1 overflow-hidden"
       />
       {shouldShow && snapshot.phase !== 'ready' && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-content">

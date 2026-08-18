@@ -145,11 +145,14 @@ export function sanitizeDshSurfaceBounds(value: unknown): DshSurfaceBounds {
   const y = finiteNumber(value['y'], 'y')
   const width = finiteNumber(value['width'], 'width')
   const height = finiteNumber(value['height'], 'height')
+  const cornerRadius = finiteNumber(value['cornerRadius'] ?? 0, 'cornerRadius')
   if (
     x < 0 ||
     y < 0 ||
     width < 1 ||
     height < 1 ||
+    cornerRadius < 0 ||
+    cornerRadius > 32 ||
     x > 100_000 ||
     y > 100_000 ||
     width > 100_000 ||
@@ -157,7 +160,7 @@ export function sanitizeDshSurfaceBounds(value: unknown): DshSurfaceBounds {
   ) {
     throw new Error('invalid DSH surface bounds range')
   }
-  return { x, y, width, height }
+  return { x, y, width, height, cornerRadius }
 }
 
 function sanitizeAppearance(value: unknown): DshSurfaceAppearance {
@@ -719,13 +722,20 @@ export class DshWebSurfaceController {
       x,
       y,
       width: Math.max(1, right - x),
-      height: Math.max(1, bottom - y)
+      height: Math.max(1, bottom - y),
+      cornerRadius: bounds.cornerRadius
     }
   }
 
   private applyBounds(): void {
     if (!this.bounds || !this.view || this.view.webContents.isDestroyed()) return
-    this.view.setBounds(this.bounds)
+    const { x, y, width, height, cornerRadius } = this.bounds
+    this.view.setBounds({ x, y, width, height })
+    try {
+      this.view.setBorderRadius(cornerRadius)
+    } catch {
+      // 平台不支持原生圆角时退回直角，避免影响 DSH 展示。
+    }
   }
 
   private applyViewBackground(appearance: DshSurfaceAppearance): void {
