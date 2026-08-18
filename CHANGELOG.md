@@ -2,6 +2,25 @@
 
 本文件记录 HRack 各公开版本的重要变化。版本号遵循 [Semantic Versioning](https://semver.org/)。
 
+## [0.3.2] - 2026-08-18
+
+### 新增
+
+- 设置页新增「主题 JSON」编辑器，可编辑并保存个人界面主题（固定 `custom.json`），保存后可在主题选择器中选用。
+- 新增主题创作 Skill（`create-hrack-theme`）及零依赖校验脚本（`validate-theme.cjs`），附带 WCAG 对比度检查。
+- 新增 CLI 会话录制脚本（`npm run record:cli-demo`）。
+
+### 改进
+
+- DSH 默认共享 `~/.dsh` 历史目录，与本机 DeepSeek Harness 复用会话历史。
+- DSH 界面圆角改用原生视图圆角（`setBorderRadius`），与侧栏环境色对齐；切换圆角开关不再重开会话。
+- 应用深色模式下，窗口与托盘图标自动切换为浅色变体。
+- 用户数据目录统一为 HRack / HRack Dev，安装包 appId 更新为 `com.hrack.app`。
+
+### 修复
+
+- 修复 DSH 圆角原先依赖内容留白、关闭后圆角消失的问题，改为原生圆角实现。
+
 ## [0.3.0] - 2026-08-16
 
 ### 新增
