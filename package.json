@@ -66,7 +66,8 @@
         "from": "resources/tray",
         "to": "tray",
         "filter": [
-          "*.png"
+          "*.png",
+          "*.ico"
         ]
       }
     ],
@@ -79,7 +80,7 @@
           ]
         }
       ],
-      "icon": "resources/tray/hrack-master.png"
+      "icon": "resources/tray/hrack-white.ico"
     },
     "mac": {
       "target": [

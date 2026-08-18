@@ -1,6 +1,17 @@
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
-import { buildCliLaunchSelection, parseCommandLine } from '../src/app/launchOptions'
+import { cliDefinitions } from '../electron/ai-cli-discovery'
+import {
+  buildCliLaunchSelection,
+  mergeSkipApprovalArgs,
+  parseCommandLine
+} from '../src/app/launchOptions'
 import type { LaunchableCli } from '../shared/ipc-contract'
+import {
+  parseSkipApprovalPrefs,
+  readSkipApprovalPref,
+  saveSkipApprovalPref,
+  SKIP_APPROVAL_PREFS_KEY
+} from '../src/app/skipApprovalPrefs'
 import {
   LAST_WORKSPACE_KEY,
   LEGACY_LAST_WORKSPACE_KEY,
@@ -54,6 +65,123 @@ test('splits quoted CLI arguments and builds an installation-bound selection', (
     args: ['--flag', 'two words'],
     workspace: 'C:\\repo'
   })
+})
+
+test('maps skip-approval launch flags for CLIs that accept them', () => {
+  const flags = Object.fromEntries(
+    cliDefinitions.flatMap((definition) =>
+      definition.skipApproval
+        ? [[definition.id, definition.skipApproval.args]]
+        : []
+    )
+  )
+  expect(flags).toEqual({
+    claude: ['--dangerously-skip-permissions'],
+    codex: ['--yolo'],
+    antigravity: ['--dangerously-skip-permissions'],
+    opencode: ['--auto'],
+    cursor: ['--force'],
+    cline: ['--yolo'],
+    qwen: ['--yolo'],
+    kimi: ['--yolo'],
+    grok: ['--always-approve'],
+    copilot: ['--yolo'],
+    crush: ['--yolo'],
+    devin: ['bypass'],
+    kiro: ['--trust-all-tools'],
+    aider: ['--yes-always'],
+    'factory-droid': ['--skip-permissions-unsafe'],
+    'mistral-vibe': ['--yolo'],
+    qoder: ['--yolo'],
+    'codebuddy-code': ['--dangerously-skip-permissions'],
+    kilo: ['--auto']
+  })
+  expect(cliDefinitions.find((item) => item.id === 'pi')?.skipApproval).toBeUndefined()
+  expect(cliDefinitions.find((item) => item.id === 'amp')?.skipApproval).toBeUndefined()
+})
+
+test('injects skip-approval args once, and skips when the user already passed them', () => {
+  const skip = {
+    args: ['--yolo'],
+    alreadyPresent: ['--dangerously-bypass-approvals-and-sandbox'],
+    label: 'YOLO'
+  }
+  expect(mergeSkipApprovalArgs(['--model', 'o3'], skip, true)).toEqual([
+    '--yolo',
+    '--model',
+    'o3'
+  ])
+  expect(mergeSkipApprovalArgs(['--model', 'o3'], skip, false)).toEqual([
+    '--model',
+    'o3'
+  ])
+  expect(mergeSkipApprovalArgs(['--yolo', '--model', 'o3'], skip, true)).toEqual([
+    '--yolo',
+    '--model',
+    'o3'
+  ])
+  expect(
+    mergeSkipApprovalArgs(
+      ['--dangerously-bypass-approvals-and-sandbox'],
+      skip,
+      true
+    )
+  ).toEqual(['--dangerously-bypass-approvals-and-sandbox'])
+  expect(mergeSkipApprovalArgs(['prompt text'], {
+    args: ['bypass'],
+    alreadyPresent: ['yolo'],
+    label: 'Bypass'
+  }, true)).toEqual(['bypass', 'prompt text'])
+})
+
+test('remembers skip-approval per CLI definition', () => {
+  const storage = new MemoryStorage()
+  expect(parseSkipApprovalPrefs('not-json')).toEqual({})
+  expect(readSkipApprovalPref('codex', storage)).toBe(false)
+  expect(saveSkipApprovalPref('codex', true, storage)).toEqual({ codex: true })
+  expect(readSkipApprovalPref('codex', storage)).toBe(true)
+  expect(readSkipApprovalPref('claude', storage)).toBe(false)
+  expect(saveSkipApprovalPref('codex', false, storage)).toEqual({ codex: false })
+  expect(readSkipApprovalPref('codex', storage)).toBe(false)
+  expect(JSON.parse(storage.getItem(SKIP_APPROVAL_PREFS_KEY) ?? '{}')).toEqual({
+    codex: false
+  })
+})
+
+test('buildCliLaunchSelection prepends skip-approval flags when checked', () => {
+  const option = {
+    definition: {
+      id: 'codex', adapterId: 'codex', displayName: 'Codex',
+      hint: 'OpenAI coding agent', iconId: 'codex',
+      skipApproval: {
+        args: ['--yolo'],
+        alreadyPresent: ['--dangerously-bypass-approvals-and-sandbox'],
+        label: 'YOLO'
+      }
+    },
+    installations: [{
+      id: 'codex:windows', definitionId: 'codex',
+      runtime: { kind: 'host', platform: 'windows' },
+      resolvedExecutable: 'C:\\bin\\codex.exe', detectedVia: 'path',
+      verification: 'verified'
+    }]
+  } satisfies LaunchableCli
+  expect(buildCliLaunchSelection({
+    option,
+    installationId: 'codex:windows',
+    name: 'Codex',
+    workspace: 'C:\\repo',
+    args: '--model o3',
+    skipApproval: true
+  }).args).toEqual(['--yolo', '--model', 'o3'])
+  expect(buildCliLaunchSelection({
+    option,
+    installationId: 'codex:windows',
+    name: 'Codex',
+    workspace: 'C:\\repo',
+    args: '--yolo --model o3',
+    skipApproval: true
+  }).args).toEqual(['--yolo', '--model', 'o3'])
 })
 
 test('keeps five recent workspaces in recency order', () => {
@@ -259,5 +387,22 @@ test.describe('new session flow', () => {
     await expect(page.getByTestId('cli-workspace-history-option-5')).toHaveCount(
       0
     )
+  })
+
+  test('shows the skip-approval checkbox for Codex and restores last preference', async () => {
+    await page.getByTestId('home-quick-codex').click()
+    const checkbox = page.getByTestId('cli-skip-approval')
+    await expect(checkbox).toBeVisible()
+    await expect(checkbox).not.toBeChecked()
+    await expect(page.getByTestId('cli-config')).toContainText(/YOLO/)
+    await checkbox.check()
+    await page.evaluate(() => {
+      document.querySelector<HTMLElement>('[data-testid="cli-config-backdrop"]')
+        ?.click()
+    })
+    await expect(page.getByTestId('cli-config')).toHaveCount(0)
+
+    await page.getByTestId('home-quick-codex').click()
+    await expect(page.getByTestId('cli-skip-approval')).toBeChecked()
   })
 })

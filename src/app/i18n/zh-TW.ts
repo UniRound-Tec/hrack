@@ -382,6 +382,7 @@ export const zhTW = {
     recentWorkspaces: '最近使用',
     workspaceHistoryEmpty: '尚無最近工作區',
     arguments: '啟動參數',
+    startMode: (name: string) => `開始 ${name} 模式`,
     runtime: '版本',
     windows: 'Windows',
     windowsHint: '本機 Windows 環境',

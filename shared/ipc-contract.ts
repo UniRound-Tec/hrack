@@ -157,12 +157,25 @@ export interface CliInstallation {
   verification: 'verified'
 }
 
+/** Interactive skip-approval launch. Injected only when the start-modal checkbox is on. */
+export interface CliSkipApprovalLaunch {
+  args: string[]
+  /**
+   * Equivalent or conflicting tokens already in the user's extra args.
+   * If any match, do not inject `args` again.
+   */
+  alreadyPresent?: string[]
+  /** Product mode name shown as "Start {label} mode". */
+  label: string
+}
+
 export interface LaunchableCliDefinition {
   id: string
   adapterId: string
   displayName: string
   hint: string
   iconId: string
+  skipApproval?: CliSkipApprovalLaunch
 }
 
 export interface LaunchableCli {

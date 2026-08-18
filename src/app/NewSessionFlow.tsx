@@ -15,6 +15,10 @@ import {
   readWorkspaceHistory,
   saveWorkspace
 } from './workspaceHistory'
+import {
+  readSkipApprovalPref,
+  saveSkipApprovalPref
+} from './skipApprovalPrefs'
 
 interface NewSessionFlowProps {
   open: boolean
@@ -98,7 +102,10 @@ export default function NewSessionFlow({
       installationId: installation.id,
       name: option.definition.displayName,
       workspace: initialWorkspace.trim() || lastWorkspace(),
-      args: ''
+      args: '',
+      skipApproval: option.definition.skipApproval
+        ? readSkipApprovalPref(option.definition.id)
+        : false
     })
     setLaunchError(null)
   }
@@ -120,6 +127,9 @@ export default function NewSessionFlow({
   const confirmCli = async (): Promise<void> => {
     if (!draft || launching) return
     if (draft.workspace.trim()) persistWorkspace(draft.workspace.trim())
+    if (draft.option.definition.skipApproval) {
+      saveSkipApprovalPref(draft.option.definition.id, draft.skipApproval === true)
+    }
     setLaunching(true)
     setLaunchError(null)
     const error = await onLaunchCli(draft)
@@ -239,6 +249,24 @@ export default function NewSessionFlow({
                     />
                   </div>
                   <Field label={strings.newSession.arguments}><input data-testid="cli-arguments" value={draft.args} placeholder={strings.newSession.argumentsPlaceholder} spellCheck={false} onChange={(event) => setDraft({ ...draft, args: event.target.value })} className={`${fieldClass} font-maple text-[11px]`} /></Field>
+                  {draft.option.definition.skipApproval && (
+                    <label className="flex cursor-pointer items-center gap-2 rounded-xl px-2.5 py-2 font-pingfang transition-colors hover:bg-surface-hover">
+                      <input
+                        type="checkbox"
+                        data-testid="cli-skip-approval"
+                        checked={draft.skipApproval === true}
+                        onChange={(event) => {
+                          const enabled = event.target.checked
+                          setDraft({ ...draft, skipApproval: enabled })
+                          saveSkipApprovalPref(draft.option.definition.id, enabled)
+                        }}
+                        className="size-3.5 accent-button-primary"
+                      />
+                      <span className="text-[12px] text-text-muted">
+                        {strings.newSession.startMode(draft.option.definition.skipApproval.label)}
+                      </span>
+                    </label>
+                  )}
                   <div className="flex flex-col gap-1.5"><span className="text-[11px] font-medium text-text-muted">{strings.newSession.installation}</span><div className="grid grid-cols-2 gap-1.5">{draft.option.installations.map((installation) => <InstallationButton key={installation.id} installation={installation} selected={draft.installationId === installation.id} onSelect={(installationId) => setDraft({ ...draft, installationId })} />)}</div></div>
                   {launchError && <p role="alert" data-testid="cli-launch-error" className="rounded-lg bg-status-error/10 px-2.5 py-2 font-pingfang text-[11px] text-status-error">{launchError}</p>}
                 </div>

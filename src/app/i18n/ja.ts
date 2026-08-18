@@ -382,6 +382,7 @@ export const ja = {
     recentWorkspaces: '最近',
     workspaceHistoryEmpty: '最近のワークスペースはありません',
     arguments: '起動引数',
+    startMode: (name: string) => `${name} モードで開始`,
     runtime: 'ランタイム',
     windows: 'Windows',
     windowsHint: 'この Windows 環境',

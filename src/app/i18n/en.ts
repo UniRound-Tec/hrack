@@ -384,6 +384,7 @@ export const en = {
     recentWorkspaces: 'Recent',
     workspaceHistoryEmpty: 'No recent workspaces',
     arguments: 'Arguments',
+    startMode: (name: string) => `Start ${name} mode`,
     runtime: 'Runtime',
     windows: 'Windows',
     windowsHint: 'Local Windows environment',

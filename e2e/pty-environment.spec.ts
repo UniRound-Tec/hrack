@@ -28,4 +28,25 @@ test.describe('PTY environment', () => {
     expect(resolvePtyCwd({ cwd: 'C:\\repo' })).toBe('C:\\repo')
     expect(resolvePtyCwd({ terminal: { cwd: 'C:\\repo' } })).toBe('C:\\repo')
   })
+
+  test('does not hand a Linux workspace to Windows CreateProcess', () => {
+    test.skip(process.platform !== 'win32')
+    expect(
+      resolvePtyCwd({
+        terminal: { cwd: '/home/jesse/project' }
+      })
+    ).toBe(homedir())
+    expect(
+      resolvePtyCwd({
+        cwd: '/mnt/c/Users/Jesse/Documents/hrack',
+        terminal: { cwd: '/home/jesse/project' }
+      })
+    ).toBe(homedir())
+    expect(
+      resolvePtyCwd({
+        cwd: 'C:\\Users\\Jesse\\Documents\\hrack',
+        terminal: { cwd: '/home/jesse/project' }
+      })
+    ).toBe('C:\\Users\\Jesse\\Documents\\hrack')
+  })
 })

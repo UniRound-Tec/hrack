@@ -120,8 +120,9 @@ CLI ── PTY ─────────────────────�
 | OpenCode | Server + SSE | 会话、思考、工具、问题、权限 | 主机、WSL |
 | Pi | Extension API | 思考、回复、工具、回合 | 主机、WSL |
 | Kimi Code | 官方 Hooks | 回合、思考、工具、审批 | 主机、WSL |
+| Grok Build | 官方 Hooks | 回合、思考、工具、审批 | 主机、WSL |
 
-HRack 还可以扫描并启动 Grok Build、Devin CLI、Cline、Qwen Code、Amp、Aider、Goose、Kiro CLI、GitHub Copilot CLI 等注册表入口。仅启动接入的 CLI 暂时不会提供同等级别的状态细节；后续会继续抽象 Adapter 接口，让新的 Harness 可以按需加载。
+HRack 还可以扫描并启动 Devin CLI、Cline、Qwen Code、Amp、Aider、Goose、Kiro CLI、GitHub Copilot CLI 等注册表入口。仅启动接入的 CLI 暂时不会提供同等级别的状态细节；后续会继续抽象 Adapter 接口，让新的 Harness 可以按需加载。
 
 ## 安装
 
@@ -140,7 +141,7 @@ HRack 还可以扫描并启动 Grok Build、Devin CLI、Cline、Qwen Code、Amp�
 3. 选择运行环境和工作区。
 4. 创建会话。原生 TUI 会显示在主区域，HRack 负责在外围同步状态。
 
-如果 Codex 提示需要审核 Hooks，请打开 `/hooks`，检查并信任 HRack 的 Hook 定义。对于 Kimi Code，HRack 会在当前生效的用户 `config.toml` 中维护一个带版本的托管块，并保留托管块之外的内容。
+如果 Codex 提示需要审核 Hooks，请打开 `/hooks`，检查并信任 HRack 的 Hook 定义。对于 Kimi Code，HRack 会在当前生效的用户 `config.toml` 中维护一个带版本的托管块，并保留托管块之外的内容。Grok Build 会在 `~/.grok/hooks/`（或 `$GROK_HOME/hooks` / 对应 WSL 家目录）写入专用的 `hrack-observer.json`，属于 Grok 始终信任的用户级 Hook。
 
 ## 本地开发
 

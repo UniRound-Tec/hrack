@@ -43,6 +43,7 @@ import { OpenCodeObserverAdapter } from './agents/adapters/opencode'
 import { CodexObserverAdapter } from './agents/adapters/codex'
 import { PiObserverAdapter } from './agents/adapters/pi'
 import { KimiObserverAdapter } from './agents/adapters/kimi'
+import { GrokObserverAdapter } from './agents/adapters/grok'
 import { HookIngress } from './hooks/HookIngress'
 import { WorkspaceReader } from './workspace/WorkspaceReader'
 import { WorkspaceReaderEventChannel } from '../shared/workspace-reader'
@@ -54,6 +55,7 @@ import { DshWebSurfaceController } from './dsh-surface/DshWebSurfaceController'
 import { ElectronUpdaterDriver } from './update/UpdateDriver'
 import { UpdateService } from './update/UpdateService'
 import packageMetadata from '../package.json'
+import { registerWindowsAppUserModelId } from './app-icons'
 import { resolveHrackUserDataDir } from './app-paths'
 import { extractHrackCliArgv, runHrackCli } from './cli/hrackCli'
 import { BridgeServer } from './bridge/BridgeServer'
@@ -64,6 +66,7 @@ import { BridgeError } from './bridge/errors'
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
 // 必须在 app ready 之前调用。
+registerWindowsAppUserModelId()
 const userDataOverride = process.env['HRACK_USER_DATA_DIR']
 if (userDataOverride) {
   app.setPath('userData', userDataOverride)
@@ -124,6 +127,7 @@ observerRegistry.register(new OpenCodeObserverAdapter())
 observerRegistry.register(new CodexObserverAdapter())
 observerRegistry.register(new PiObserverAdapter())
 observerRegistry.register(new KimiObserverAdapter())
+observerRegistry.register(new GrokObserverAdapter())
 observerRegistry.register(new FixtureObserverAdapter())
 const agentRuntime = new AgentSessionRuntime({
   pty: manager,
@@ -304,9 +308,8 @@ if (!cliArgv && !isPrimaryInstance) {
 if (isPrimaryInstance) app.whenReady().then(async () => {
   // M0 验收：抵达此行即证明 node-pty 已按 Electron ABI 成功加载
   console.log('[hrack] app ready; node-pty loaded against Electron ABI OK')
-  // 诊断日志目录
   try {
-    mkdirSync(join(process.cwd(), 'logs'), { recursive: true })
+    mkdirSync(join(app.getPath('userData'), 'logs'), { recursive: true })
   } catch {
     /* ignore */
   }
@@ -352,7 +355,13 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
   }
 
   registerIpc(manager, ctx)
-  await bridgeServer.start()
+  try {
+    await bridgeServer.start()
+  } catch (error) {
+    // Official and Dev share \\.\pipe\hrack-bridge-<user>. A busy pipe must
+    // not block the window — skip-approval / TUI still work without the bridge.
+    console.warn('[hrack] bridge listen failed; continuing without it', error)
+  }
   winRef = createWindow(prefs)
   attachDshSurface(winRef)
   floatingController = new ElectronFloatingWindowController({

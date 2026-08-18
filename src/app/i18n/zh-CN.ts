@@ -385,6 +385,7 @@ export const zhCN = {
     recentWorkspaces: '最近使用',
     workspaceHistoryEmpty: '暂无最近工作区',
     arguments: '启动参数',
+    startMode: (name: string) => `开始 ${name} 模式`,
     runtime: '版本',
     windows: 'Windows',
     windowsHint: '本机 Windows 环境',

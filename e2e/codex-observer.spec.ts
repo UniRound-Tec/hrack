@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { spawn } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CodexObserverAdapter } from '../electron/agents/adapters/codex/CodexObserverAdapter'
 import { wslRuntimeCommand } from '../electron/agents/adapters/wslRuntimeCommand'
@@ -722,6 +722,7 @@ test.describe('Codex observer adapter', () => {
     )
 
     expect(launch.shell).toBe('wsl.exe')
+    expect(launch.cwd).toBe(homedir())
     expect(launch.args).toEqual([
       '--distribution',
       'Ubuntu-Test',

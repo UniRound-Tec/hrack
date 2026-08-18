@@ -382,6 +382,7 @@ export const ko = {
     recentWorkspaces: '최근',
     workspaceHistoryEmpty: '최근 작업 공간이 없습니다',
     arguments: '시작 인수',
+    startMode: (name: string) => `${name} 모드로 시작`,
     runtime: '런타임',
     windows: 'Windows',
     windowsHint: '이 Windows 환경',

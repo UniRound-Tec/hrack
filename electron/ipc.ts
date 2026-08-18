@@ -639,12 +639,12 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
 
   // 诊断：渲染进程把 resize 前后的 buffer 快照写到 logs/resize-diag.log，供离线分析。
   // 只在真实 dev 会话里抓证据用，定位后移除。
-  const diagPath = join(process.cwd(), 'logs', 'resize-diag.log')
+  const diagPath = join(app.getPath('userData'), 'logs', 'resize-diag.log')
   ipcMain.handle('diag:log', (_e, line: string) => {
     try {
       appendFileSync(diagPath, `${line}\n`)
     } catch {
-      /* logs/ 不存在时忽略；由渲染侧首次调用前主进程已 ensure */
+      /* logs 目录不可写时忽略 */
     }
   })
 }
