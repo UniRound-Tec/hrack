@@ -43,7 +43,7 @@ const wslCandidate: Extract<
   version: DSH_COMPATIBLE_VERSION
 }
 
-test('DSH is discovered as an exact-version hidden runtime', () => {
+test('DSH is discovered as a hidden runtime with a version-reporting probe', () => {
   const definition = cliDefinitions.find(
     (item) => item.id === DSH_CLI_DEFINITION_ID
   )
@@ -51,7 +51,8 @@ test('DSH is discovered as an exact-version hidden runtime', () => {
   expect(definition?.exposeInLauncher).toBe(false)
   expect(definition).toMatchObject({ allowWslWindowsInterop: false })
   expect(definition?.probes[0].outputPattern.test(DSH_COMPATIBLE_VERSION)).toBe(true)
-  expect(definition?.probes[0].outputPattern.test('0.1.0-rc.7')).toBe(false)
+  expect(definition?.probes[0].outputPattern.test('0.1.0-rc.7')).toBe(true)
+  expect(definition?.probes[0].outputPattern.test('command not found')).toBe(false)
 })
 
 test('HRack paths use the new brand and share an existing DSH home', () => {

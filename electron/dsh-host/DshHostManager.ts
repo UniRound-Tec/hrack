@@ -1,8 +1,4 @@
-import {
-  app,
-  utilityProcess,
-  type UtilityProcess
-} from 'electron'
+import { app } from 'electron'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
@@ -62,20 +58,6 @@ interface ManagedDshChild {
 interface DshLaunchTarget {
   candidate: DshRuntimeCandidate
   installation?: CliInstallation
-}
-
-function wrapUtilityProcess(child: UtilityProcess): ManagedDshChild {
-  return {
-    pid: child.pid,
-    stdout: child.stdout,
-    stderr: child.stderr,
-    kill: () => {
-      child.kill()
-    },
-    onceExit: (listener) => {
-      child.once('exit', (code) => listener(code))
-    }
-  }
 }
 
 function wrapSpawnedProcess(child: ChildProcess): ManagedDshChild {
@@ -501,23 +483,31 @@ export class DshHostManager {
     dshHome: string
   ): ManagedDshChild {
     if (target.candidate.kind === 'bundled') {
-      const child = utilityProcess.fork(resolveDshBinPath(), [
+      // DSH 的 HMR 需要访问 Node 内部 ESM loader（--expose-internals）。
+      // utilityProcess 的 execArgv 选项在 dev 的 electron.exe 里生效、在
+      // electron-builder 重打包后的产品二进制里只被记录进 process.execArgv
+      // 而不被应用（实测 0.3.2：require('internal/…') 抛 Cannot find module），
+      // 于是 HMR 判定失败、host 退出。改用 ELECTRON_RUN_AS_NODE 让同一
+      // 二进制以纯 Node 模式启动，由 Node 自己解析命令行里的
+      // --expose-internals —— dev 与打包版行为完全一致（已实测验证）。
+      const child = spawn(process.execPath, [
+        '--expose-internals',
+        resolveDshBinPath(),
         'web',
         '--host', '127.0.0.1',
         '--port', String(port)
       ], {
-        serviceName: 'dsh-host',
         stdio: ['ignore', 'pipe', 'pipe'],
-        // Electron Node 需要显式暴露内部 ESM loader；系统安装走自己的 Node。
-        execArgv: ['--expose-internals'],
+        windowsHide: true,
         env: {
           ...process.env,
+          ELECTRON_RUN_AS_NODE: '1',
           DSH_HOME: dshHome,
           DSH_TELEMETRY_DISABLED:
             process.env['DSH_TELEMETRY_DISABLED'] ?? '1'
         }
       })
-      return wrapUtilityProcess(child)
+      return wrapSpawnedProcess(child)
     }
     if (!target.installation) {
       throw new Error('selected DSH installation is missing')
