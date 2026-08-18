@@ -2,6 +2,16 @@
 
 本文件记录 HRack 各公开版本的重要变化。版本号遵循 [Semantic Versioning](https://semver.org/)。
 
+## [0.3.3] - 2026-08-18
+
+### 修复
+
+- 修复打包版内置 DSH 启动失败（HMR 报 `--expose-internals is required`）：内置 host 改以 `ELECTRON_RUN_AS_NODE` 纯 Node 模式启动，`--expose-internals` 在打包产物中同样生效，开发与打包行为一致。
+
+### 改进
+
+- DSH 运行时发现不再锁定唯一兼容版本：扫描如实上报本机 / WSL 安装的实际版本，任意版本均可作为候选并被 auto 优先选中（随包内置版本仅作兜底）；实际兼容性由启动时的控制面能力门禁（`session.list` / `workspace.list`）兜底。
+
 ## [0.3.2] - 2026-08-18
 
 ### 新增
