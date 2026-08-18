@@ -177,7 +177,7 @@ export function sanitizeFloatingAppearance(value: unknown): FloatingAppearance {
 function sanitizeDshRuntimePreference(value: unknown): DshRuntimePreference {
   if (!value || typeof value !== 'object') return { kind: 'auto' }
   const raw = value as { kind?: unknown; installationId?: unknown }
-  if (raw.kind === 'bundled') return { kind: 'bundled' }
+  if (raw.kind === 'bundled') return { kind: 'auto' }
   if (
     raw.kind === 'installation' &&
     typeof raw.installationId === 'string' &&

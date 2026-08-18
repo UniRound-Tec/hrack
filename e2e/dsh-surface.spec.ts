@@ -3,6 +3,7 @@ import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { resolve } from 'path'
 import { _electron as electron } from '@playwright/test'
+import { e2eDshExecutable } from './helpers'
 
 /**
  * P1 验收：Home 新建 DSH 跟踪位后，官方页面能启动 host 并通过 wire 连通。
@@ -18,7 +19,8 @@ test('dsh surface boots end to end', async () => {
     env: {
       ...process.env,
       HRACK_E2E: '1',
-      HRACK_E2E_CLI_FIXTURE: '0',
+      HRACK_E2E_CLI_FIXTURE: '1',
+      HRACK_E2E_DSH_INSTALLATION: e2eDshExecutable(),
       HRACK_USER_DATA_DIR: userDataDir
     }
   })
@@ -45,6 +47,7 @@ test('dsh surface boots end to end', async () => {
       await complete.click()
     }
     await expect(window.getByTestId('home-page')).toBeVisible({ timeout: 20_000 })
+    await expect(window.getByTestId('home-quick-dsh')).toBeVisible({ timeout: 20_000 })
     await window.getByTestId('home-quick-dsh').click()
     await expect(window.getByTestId('dsh-page')).toBeVisible({ timeout: 10_000 })
     await expect(window.getByTestId('dsh-page')).toHaveAttribute(

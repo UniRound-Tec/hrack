@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { launchApp } from './helpers'
 
 test('DSH surface keeps the top-left rounded corner without padding', async () => {
-  const { app, window } = await launchApp()
+  const { app, window } = await launchApp({ localDsh: true })
   try {
     const content = window.getByTestId('app-content')
     const contentBounds = await content.boundingBox()

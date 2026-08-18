@@ -139,20 +139,23 @@ function dshRuntimeSummary(
   scanning: boolean,
   strings: ReturnType<typeof useStrings>
 ): string {
-  const locations = report?.candidates.flatMap((candidate): string[] => {
-    if (candidate.kind !== 'installation') return []
+  const locations = report?.candidates.map((candidate) => {
     if (candidate.runtime.kind === 'wsl') {
-      return [`WSL · ${candidate.runtime.distro}`]
+      return `WSL · ${candidate.runtime.distro}`
     }
-    return [candidate.runtime.platform === 'windows'
+    return candidate.runtime.platform === 'windows'
       ? 'Windows'
       : candidate.runtime.platform === 'macos'
         ? 'macOS'
-        : 'Linux']
+        : 'Linux'
   }) ?? []
   const uniqueLocations = [...new Set(locations)]
   if (uniqueLocations.length > 0) return uniqueLocations.join(' · ')
   return scanning ? strings.dsh.runtimeScanning : strings.dsh.homeHint
+}
+
+function hasDiscoveredDsh(report: DshRuntimeScanReport | null): boolean {
+  return (report?.candidates.length ?? 0) > 0
 }
 
 export default function HomePage({
@@ -175,6 +178,7 @@ export default function HomePage({
   const [realHistory, setRealHistory] = useState<readonly HistoryEvent[] | null>(null)
   const [realStats, setRealStats] = useState<AllTimeStats | null>(null)
   const strings = useStrings()
+  const dshAvailable = hasDiscoveredDsh(dshRuntimeReport)
   const dshSummary = dshRuntimeSummary(
     dshRuntimeReport,
     dshRuntimeScanning,
@@ -267,29 +271,31 @@ export default function HomePage({
         </>
       )
     },
-    {
-      key: 'dsh',
-      body: (
-        <button
-          type="button"
-          data-testid="home-quick-dsh"
-          onClick={onOpenDsh}
-          className={launchCardClass}
-        >
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-strong">
-            <DshLaunchIcon />
-          </span>
-          <span className="w-full min-w-0">
-            <span className="block text-[12px] font-semibold text-text-primary">
-              {strings.navigation.dsh}
-            </span>
-            <span className="block truncate text-[10px] text-text-faint">
-              {dshSummary}
-            </span>
-          </span>
-        </button>
-      )
-    },
+    ...(dshAvailable
+      ? [{
+          key: 'dsh',
+          body: (
+            <button
+              type="button"
+              data-testid="home-quick-dsh"
+              onClick={onOpenDsh}
+              className={launchCardClass}
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-strong">
+                <DshLaunchIcon />
+              </span>
+              <span className="w-full min-w-0">
+                <span className="block text-[12px] font-semibold text-text-primary">
+                  {strings.navigation.dsh}
+                </span>
+                <span className="block truncate text-[10px] text-text-faint">
+                  {dshSummary}
+                </span>
+              </span>
+            </button>
+          )
+        }]
+      : []),
     ...clis.map((option) => ({
       key: option.definition.id,
       body: (
@@ -351,19 +357,21 @@ export default function HomePage({
           <Settings2 className="size-3" strokeWidth={1.75} />
         </button>
       </div>
-      <button
-        type="button"
-        data-testid="home-quick-dsh"
-        onClick={onOpenDsh}
-        className="cursor-target flex shrink-0 items-center gap-2 rounded-full border border-border-default bg-surface py-1.5 pr-3 pl-1.5 font-pingfang transition-colors hover:border-border-strong hover:bg-surface-hover"
-      >
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-strong">
-          <DshLaunchIcon />
-        </span>
-        <span className="text-[12px] font-medium whitespace-nowrap text-text-secondary">
-          {strings.navigation.dsh}
-        </span>
-      </button>
+      {dshAvailable && (
+        <button
+          type="button"
+          data-testid="home-quick-dsh"
+          onClick={onOpenDsh}
+          className="cursor-target flex shrink-0 items-center gap-2 rounded-full border border-border-default bg-surface py-1.5 pr-3 pl-1.5 font-pingfang transition-colors hover:border-border-strong hover:bg-surface-hover"
+        >
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-strong">
+            <DshLaunchIcon />
+          </span>
+          <span className="text-[12px] font-medium whitespace-nowrap text-text-secondary">
+            {strings.navigation.dsh}
+          </span>
+        </button>
+      )}
       {clis.map((option) => (
         <button
           key={option.definition.id}

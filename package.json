@@ -5,19 +5,18 @@
   "private": true,
   "main": "out/main/index.js",
   "scripts": {
-    "predev": "npm run subset-fonts && npm run ensure:dsh",
+    "predev": "npm run subset-fonts",
     "dev": "electron-vite dev",
     "subset-fonts": "node scripts/subset-fonts.mjs",
     "assert-font-size": "node scripts/assert-font-size.mjs",
     "assert:dsh-surface": "node scripts/assert-dsh-web-surface.mjs",
     "ensure:dsh": "node scripts/ensure-dsh-runtime.cjs",
-    "build": "npm run ensure:dsh && npm run subset-fonts && electron-vite build && npm run assert:dsh-surface && npm run assert-font-size",
+    "build": "npm run subset-fonts && electron-vite build && npm run assert:dsh-surface && npm run assert-font-size",
     "preview": "electron-vite preview",
     "typecheck:node": "tsc -p tsconfig.node.json --noEmit",
     "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
-    "pretypecheck": "npm run ensure:dsh",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "postinstall": "electron-rebuild -f -w node-pty && npm run ensure:dsh",
+    "postinstall": "electron-rebuild -f -w node-pty",
     "build:win": "npm run release:win",
     "build:mac": "npm run release:mac",
     "build:linux": "npm run release:linux",
@@ -28,7 +27,7 @@
     "release:linux": "bash scripts/release-linux.sh",
     "release:github:linux": "bash scripts/release-github-linux.sh",
     "record:cli-demo": "node scripts/recording/01-create-cli-sessions.cjs",
-    "e2e": "npm run build && playwright test",
+    "e2e": "npm run ensure:dsh && npm run build && playwright test",
     "e2e:only": "playwright test"
   },
   "author": "",
@@ -45,6 +44,13 @@
       }
     ],
     "afterPack": "scripts/assert-packaged-resources.cjs",
+    "electronLanguages": [
+      "en-US",
+      "zh-CN",
+      "zh-TW",
+      "ja",
+      "ko"
+    ],
     "files": [
       "**/*",
       "!resources/tray{,/**/*}",
@@ -60,25 +66,6 @@
         "to": "tray",
         "filter": [
           "*.png"
-        ]
-      },
-      {
-        "from": "dsh-runtime",
-        "to": "dsh-runtime",
-        "filter": [
-          "package.json",
-          "package-lock.json"
-        ]
-      },
-      {
-        "from": "dsh-runtime/node_modules",
-        "to": "dsh-runtime/node_modules",
-        "filter": [
-          "**/*",
-          "!**/*.map",
-          "!**/*.d.ts",
-          "!**/.github/**",
-          "!**/.vscode/**"
         ]
       }
     ],

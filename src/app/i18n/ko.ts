@@ -81,9 +81,8 @@ export const ko = {
     surfaceScale: '세션 화면 배율',
     surfaceScaleHint: 'HRack 안의 DSH 페이지만 조정하며 DSH 설정은 변경하지 않습니다.',
     runtimeLabel: 'DSH 런타임',
-    runtimeHint: '호스트와 각 WSL 배포판을 검색합니다. 자동 모드는 호환되는 로컬 설치를 우선하고 번들 버전은 대체 수단으로만 사용합니다.',
+    runtimeHint: '호스트와 각 WSL 배포판을 검색합니다. 자동 모드는 로컬 설치를 우선하며, 없으면 항목을 표시하지 않습니다.',
     runtimeAuto: '자동(로컬 우선)',
-    runtimeBundled: (version: string) => `번들 대체 · ${version}`,
     runtimeLocal: (location: string, version?: string) =>
       `${location}${version ? ` · ${version}` : ''}`,
     runtimeScanning: 'DSH 검색 중…',

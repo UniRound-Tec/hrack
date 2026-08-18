@@ -2,6 +2,13 @@
 
 本文件记录 HRack 各公开版本的重要变化。版本号遵循 [Semantic Versioning](https://semver.org/)。
 
+## [Unreleased]
+
+### 改进
+
+- 不再随包内置 DeepSeek Harness 兜底运行时。DSH 与其它 CLI 一样先扫描本机 / WSL，没有安装就不展示入口。
+- Windows / macOS / Linux 安装包去掉约 250MB 的 `dsh-runtime`，并裁掉未使用的 Electron 语言包，安装包更小、安装更快。
+
 ## [0.3.3] - 2026-08-18
 
 ### 修复

@@ -137,7 +137,10 @@ async function inspectSurface(
 }
 
 test('the collapsed HRack rail has no separate DSH Home launcher', async () => {
-  const { app, window } = await launchApp({ createDefaultTerminal: false })
+  const { app, window } = await launchApp({
+    createDefaultTerminal: false,
+    localDsh: true
+  })
   try {
     await expect(window.getByTestId('home-page')).toBeVisible({ timeout: 20_000 })
     await window.evaluate(() => {
@@ -160,6 +163,7 @@ test('the official DSH sidebar retries a transient first collapse failure withou
   test.setTimeout(150_000)
   const { app, window } = await launchApp({
     createDefaultTerminal: false,
+    localDsh: true,
     env: { HRACK_E2E_DSH_COLLAPSE_FAIL_ONCE: '1' }
   })
   try {
@@ -196,7 +200,8 @@ test('the official DSH sidebar retries a transient first collapse failure withou
 test('Home-created DSH slots independently follow the session selected inside each slot', async () => {
   test.setTimeout(240_000)
   const { app, window, userDataDir } = await launchApp({
-    createDefaultTerminal: false
+    createDefaultTerminal: false,
+    localDsh: true
   })
   try {
     await expect(window.getByTestId('home-page')).toBeVisible({ timeout: 20_000 })

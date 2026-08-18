@@ -84,9 +84,8 @@ export const zhCN = {
     surfaceScale: '会话界面缩放',
     surfaceScaleHint: '只影响 HRack 内的 DSH 页面，不修改 DSH 配置',
     runtimeLabel: 'DSH 运行时',
-    runtimeHint: '扫描 Windows 主机和每个 WSL 发行版；自动模式优先使用本机兼容版本，失败时使用随包兜底版。',
+    runtimeHint: '扫描主机和每个 WSL 发行版；自动模式优先使用本机安装。未发现 DSH 时不展示入口。',
     runtimeAuto: '自动（本机优先）',
-    runtimeBundled: (version: string) => `随包兜底 · ${version}`,
     runtimeLocal: (location: string, version?: string) =>
       `${location}${version ? ` · ${version}` : ''}`,
     runtimeScanning: '正在扫描 DSH…',

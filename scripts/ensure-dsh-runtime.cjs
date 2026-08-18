@@ -1,12 +1,10 @@
 'use strict'
 
 /**
- * 确保 dsh-runtime/ 隔离依赖树存在（fresh clone 后首次构建/开发前自动安装）。
+ * 确保 dsh-runtime/ 隔离依赖树存在。
  *
- * electron.vite.config.ts 在 config 加载期就 resolve dsh-runtime/node_modules 里的
- * 包；tsconfig.web.json 的路径映射、主进程 unpackaged 的 bin.js 解析、e2e 断言
- * 也都依赖这棵树。它被 gitignore（254 MiB），因此根 postinstall / predev /
- * pretypecheck / build 都先跑本脚本；已存在时是毫秒级 no-op。
+ * 这棵树只给 e2e 当作「本机已安装的 DSH」夹具，不再打进发行包。
+ * 体积约 254 MiB 且被 gitignore；已存在时是毫秒级 no-op。
  */
 
 const { existsSync } = require('node:fs')

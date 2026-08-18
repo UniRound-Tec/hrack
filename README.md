@@ -100,7 +100,7 @@ Choose independent application and terminal themes, adjust terminal fonts and si
 
 ### Fast launch across runtimes
 
-Start a shell or detected coding CLI from the Home screen or quick-launch panel. HRack supports host installations and compatible WSL distributions, plus a bundled DeepSeek Harness fallback when no compatible local DSH is available.
+Start a shell or detected coding CLI from the Home screen or quick-launch panel. HRack supports host installations and compatible WSL distributions. DeepSeek Harness appears only after a local or WSL install is found.
 
 <div align="center">
   <img src="./assets/readme/quick-launch.png" width="950" alt="HRack quick-launch panel">
@@ -110,7 +110,7 @@ Start a shell or detected coding CLI from the Home screen or quick-launch panel.
 
 | Harness | Integration | Status available to HRack | Runtimes |
 | --- | --- | --- | --- |
-| DeepSeek Harness | Official Web surface + runtime bridge | Followed session and lifecycle | Host, WSL, bundled fallback |
+| DeepSeek Harness | Official Web surface + runtime bridge | Followed session and lifecycle | Host, WSL |
 | Claude Code | Official Hooks | Thinking, tools, approvals, completion | Host, WSL |
 | Codex CLI | Stable Hooks | Turns, tools, approvals, compaction | Host, WSL |
 | OpenCode | Server + SSE | Sessions, thinking, tools, questions, permissions | Host, WSL |
@@ -153,7 +153,7 @@ npm run build
 npm run e2e:only
 ```
 
-`npm install` also prepares the isolated, gitignored DSH fallback runtime. Windows, macOS, and Linux release packages must be built on their matching operating systems through `npm run release:win`, `npm run release:mac`, and `npm run release:linux`.
+Windows, macOS, and Linux release packages must be built on their matching operating systems through `npm run release:win`, `npm run release:mac`, and `npm run release:linux`. DSH e2e tests install an isolated, gitignored `dsh-runtime` fixture via `npm run ensure:dsh`; it is not packaged into releases.
 
 ## Contributing
 

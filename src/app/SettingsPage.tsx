@@ -128,12 +128,6 @@ export default function SettingsPage({
   const dshRuntimeOptions: DropdownOption[] = [
     { value: 'auto', label: strings.dsh.runtimeAuto },
     ...(dshRuntimeReport?.candidates.map((candidate) => {
-      if (candidate.kind === 'bundled') {
-        return {
-          value: candidate.id,
-          label: strings.dsh.runtimeBundled(candidate.version)
-        }
-      }
       const location = candidate.runtime.kind === 'wsl'
         ? `WSL · ${candidate.runtime.distro}`
         : candidate.runtime.platform === 'windows'
@@ -374,9 +368,7 @@ export default function SettingsPage({
   const changeDshRuntime = (value: string): void => {
     const preference: DshRuntimePreference = value === 'auto'
       ? { kind: 'auto' }
-      : value === 'bundled'
-        ? { kind: 'bundled' }
-        : { kind: 'installation', installationId: value }
+      : { kind: 'installation', installationId: value }
     setDshRuntimeChanging(true)
     setDshRuntimeActionError(null)
     void window.dshApi.setRuntime(preference)

@@ -196,8 +196,8 @@ function parseDshRuntimePreference(value: unknown): DshRuntimePreference {
     throw new Error('invalid dsh runtime preference')
   }
   const raw = value as Record<string, unknown>
-  if (raw.kind === 'auto' || raw.kind === 'bundled') {
-    return { kind: raw.kind }
+  if (raw.kind === 'auto') {
+    return { kind: 'auto' }
   }
   if (
     raw.kind === 'installation' &&

@@ -81,9 +81,8 @@ export const ja = {
     surfaceScale: 'セッション画面の拡大率',
     surfaceScaleHint: 'HRack 内の DSH ページだけに適用され、DSH 設定は変更しません。',
     runtimeLabel: 'DSH ランタイム',
-    runtimeHint: 'ホストと各 WSL ディストリビューションを検索します。自動では互換性のあるローカル版を優先し、同梱版をフォールバックとして使います。',
+    runtimeHint: 'ホストと各 WSL ディストリビューションを検索します。自動ではローカルインストールを優先し、見つからない場合は入口を出しません。',
     runtimeAuto: '自動（ローカル優先）',
-    runtimeBundled: (version: string) => `同梱フォールバック · ${version}`,
     runtimeLocal: (location: string, version?: string) =>
       `${location}${version ? ` · ${version}` : ''}`,
     runtimeScanning: 'DSH を検索中…',

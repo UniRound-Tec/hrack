@@ -81,9 +81,8 @@ export const en = {
     surfaceScale: 'Session interface scale',
     surfaceScaleHint: 'Only affects DSH inside HRack and does not change DSH settings.',
     runtimeLabel: 'DSH runtime',
-    runtimeHint: 'Scans the host and every WSL distribution. Auto prefers a compatible local install and falls back to the bundled runtime.',
+    runtimeHint: 'Scans the host and every WSL distribution. Auto prefers a local install; DeepSeek Harness is hidden until one is found.',
     runtimeAuto: 'Auto (local first)',
-    runtimeBundled: (version: string) => `Bundled fallback · ${version}`,
     runtimeLocal: (location: string, version?: string) =>
       `${location}${version ? ` · ${version}` : ''}`,
     runtimeScanning: 'Scanning for DSH…',

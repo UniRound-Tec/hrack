@@ -116,7 +116,7 @@ const agentRuntime = new AgentSessionRuntime({
     broadcast: broadcastAgentChannel
   }
 })
-// DSH host：优先使用兼容的本机安装，随包版本仅作兜底；懒启动并随 app 退出回收。
+// DSH host：只启动扫描到的本机 / WSL 安装；懒启动并随 app 退出回收。
 let dshSurfaceController: DshWebSurfaceController | null = null
 const dshHost = new DshHostManager({
   defaultDshHome: join(app.getPath('userData'), 'dsh-home'),

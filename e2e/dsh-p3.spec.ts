@@ -3,7 +3,10 @@ import { launchApp } from './helpers'
 
 test('dsh p3 delegates product settings to the official Web surface', async () => {
   test.setTimeout(240_000)
-  const { app, window } = await launchApp({ createDefaultTerminal: false })
+  const { app, window } = await launchApp({
+    createDefaultTerminal: false,
+    localDsh: true
+  })
   try {
     await expect(window.getByTestId('home-page')).toBeVisible({ timeout: 20_000 })
     await window.getByTestId('home-quick-dsh').click()

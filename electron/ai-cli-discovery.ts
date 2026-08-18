@@ -21,15 +21,14 @@ import type {
   SpawnOptions
 } from '../shared/ipc-contract'
 import { parseWslUncPath } from './directory-picker'
-import dshRuntimePackage from '../dsh-runtime/package.json'
 
 const COMMAND_TIMEOUT_MS = 2_500
 const COMMAND_MAX_BUFFER = 64 * 1024
 const SCAN_CONCURRENCY = 4
 const CLI_SCAN_CACHE_VERSION = 6
 export const DSH_CLI_DEFINITION_ID = 'dsh'
-export const DSH_COMPATIBLE_VERSION =
-  dshRuntimePackage.dependencies['@deepseek-ai/dsh']
+/** Sample version-like string for probe tests; discovery does not pin DSH. */
+export const DSH_COMPATIBLE_VERSION = '0.1.0-rc.6'
 const SYSTEM_WSL_DISTROS = new Set([
   'docker-desktop',
   'docker-desktop-data',

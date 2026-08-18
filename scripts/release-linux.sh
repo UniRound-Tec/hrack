@@ -46,7 +46,6 @@ for command in npm npx node file sha256sum dpkg-deb; do
 done
 
 cd "$workspace"
-npm --prefix "$workspace/dsh-runtime" ci --no-audit --no-fund
 npm run build
 
 CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder \
@@ -98,25 +97,13 @@ fi
 
 app_dir="$(dirname "$executable_path")"
 packaged_update_config="$app_dir/resources/app-update.yml"
-dsh_bin="$app_dir/resources/dsh-runtime/node_modules/@deepseek-ai/dsh/lib/bin.js"
-node_pty_root="$app_dir/resources/dsh-runtime/node_modules/node-pty"
-node_pty_native=''
-for candidate in \
-  "$node_pty_root/build/Release/pty.node" \
-  "$node_pty_root/prebuilds/linux-${arch}/pty.node"; do
-  if [[ -f "$candidate" ]]; then
-    node_pty_native="$candidate"
-    break
-  fi
-done
-for required in "$dsh_bin" "$packaged_update_config"; do
-  if [[ ! -f "$required" ]]; then
-    echo "Packaged DSH runtime is missing: $required" >&2
-    exit 1
-  fi
-done
-if [[ -z "$node_pty_native" ]]; then
-  echo 'Packaged DSH node-pty native runtime is missing.' >&2
+packaged_dsh="$app_dir/resources/dsh-runtime"
+if [[ ! -f "$packaged_update_config" ]]; then
+  echo "Packaged update config is missing: $packaged_update_config" >&2
+  exit 1
+fi
+if [[ -e "$packaged_dsh" ]]; then
+  echo "Packaged dsh runtime must be absent: $packaged_dsh" >&2
   exit 1
 fi
 

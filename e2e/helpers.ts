@@ -21,11 +21,19 @@ import type {
  * 保证 stats / 主题热重载 / 重启持久化等断言从干净状态出发。
  * 传入 userDataDir 可复用同一目录（重启持久化验证）。
  */
+export function e2eDshExecutable(): string {
+  return process.platform === 'win32'
+    ? resolve(__dirname, '../dsh-runtime/node_modules/.bin/dsh.cmd')
+    : resolve(__dirname, '../dsh-runtime/node_modules/.bin/dsh')
+}
+
 export async function launchApp(options: {
   userDataDir?: string
   cliFixture?: boolean
   /** 既有终端门禁默认显式启动一个终端；空态用例可关闭。 */
   createDefaultTerminal?: boolean
+  /** Inject the repo dsh-runtime tree as a discovered local DSH install. */
+  localDsh?: boolean
   env?: Record<string, string>
 } = {}): Promise<{
   app: ElectronApplication
@@ -41,6 +49,9 @@ export async function launchApp(options: {
     HRACK_E2E_CLI_FIXTURE: options.cliFixture === false ? '0' : '1',
     HRACK_USER_DATA_DIR: userDataDir,
     HRACK_DSH_HOME: resolve(userDataDir, 'dsh-home'),
+    ...(options.localDsh
+      ? { HRACK_E2E_DSH_INSTALLATION: e2eDshExecutable() }
+      : {}),
     ...options.env
   }
   const app = await electron.launch({ args: [main], env })
@@ -85,6 +96,12 @@ export async function launchApp(options: {
       debugWindow.__hrackDebugShell.setNavMode('sidebar')
       debugWindow.__hrackDebugShell.navigate('home')
     })
+
+    if (options.localDsh) {
+      await expect(window.getByTestId('home-quick-dsh')).toBeVisible({
+        timeout: 20_000
+      })
+    }
 
     if (options.createDefaultTerminal === false) {
       return { app, window, userDataDir }

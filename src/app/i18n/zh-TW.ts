@@ -81,9 +81,8 @@ export const zhTW = {
     surfaceScale: '工作階段介面縮放',
     surfaceScaleHint: '只影響 HRack 內的 DSH 頁面，不修改 DSH 設定',
     runtimeLabel: 'DSH 執行環境',
-    runtimeHint: '掃描 Windows 主機與每個 WSL 發行版；自動模式優先使用本機相容版本，失敗時使用隨附兜底版。',
+    runtimeHint: '掃描主機與每個 WSL 發行版；自動模式優先使用本機安裝。找不到 DSH 時不顯示入口。',
     runtimeAuto: '自動（本機優先）',
-    runtimeBundled: (version: string) => `隨附兜底 · ${version}`,
     runtimeLocal: (location: string, version?: string) =>
       `${location}${version ? ` · ${version}` : ''}`,
     runtimeScanning: '正在掃描 DSH…',
