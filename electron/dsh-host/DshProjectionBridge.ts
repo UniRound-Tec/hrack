@@ -17,6 +17,7 @@ export interface DshProjectionSnapshot {
   name: string
   status: AgentSessionProjection['status']
   detail?: string
+  activeToolCount?: number
   lastActivityAt: number
   lastSeq: number
 }
@@ -55,14 +56,15 @@ export class DshProjectionBridge {
       statusConfidence: 'high',
       observerHealth: 'healthy',
       detail: snapshot.detail,
-      activeToolCount: snapshot.status === 'working' ? 1 : 0,
+      activeToolCount: snapshot.activeToolCount ?? 0,
       pendingAttentionCount: snapshot.status === 'needs-you' ? 1 : 0,
       lastActivityAt: snapshot.lastActivityAt,
       capabilities: {
         ...NO_OBSERVER_CAPABILITIES,
         approvals: 'structured',
         inputRequests: 'structured',
-        thinking: 'phase'
+        thinking: 'phase',
+        tools: 'lifecycle'
       },
       lastSeq,
       correlation: emptyCorrelation()
