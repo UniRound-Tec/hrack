@@ -1,5 +1,5 @@
-import { Check, Copy, Minus, Plus, RefreshCw } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { Check, Copy, Minus, Plus, RefreshCw, Save } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type {
   CliRuntimeError,
   ShellOption,
@@ -11,6 +11,10 @@ import type {
   DshRuntimeScanReport
 } from '../../shared/dsh-ipc'
 import type { FloatingWindowState } from '../../shared/floating-window'
+import {
+  CUSTOM_UI_THEME_ID,
+  validateUiTheme
+} from '../../shared/theme-schema'
 import { appLocales, useStrings } from './i18n'
 import { getUiThemeRegistry, useThemeRegistryVersion } from './themeRuntime'
 import { terminalThemeIds, terminalThemes } from '../terminal/themes'
@@ -18,8 +22,17 @@ import { useSettingsStore, defaultSettings, type NavMode } from '../state/settin
 import ClickSpark from './effects/ClickSpark'
 import Dropdown, { type DropdownOption } from './Dropdown'
 import floatingRendererSkill from '../../resources/skills/create-hrack-floating-renderer/SKILL.md?raw'
+import themeSkill from '../../resources/skills/create-hrack-theme/SKILL.md?raw'
 
 const defaultFontFamily = defaultSettings.fontFamily
+
+const defaultCustomThemeSource = JSON.stringify({
+  id: CUSTOM_UI_THEME_ID,
+  name: 'HRack Custom',
+  type: 'dark',
+  colors: {},
+  terminal: null
+}, null, 2)
 
 const colorKeys = [
   'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
@@ -72,11 +85,19 @@ export default function SettingsPage({
   const [floatingActionError, setFloatingActionError] =
     useState<string | null>(null)
   const [floatingSkillCopied, setFloatingSkillCopied] = useState(false)
+  const [themeJson, setThemeJson] = useState('')
+  const themeJsonRef = useRef('')
+  const [themeJsonDirty, setThemeJsonDirty] = useState(false)
+  const themeJsonDirtyRef = useRef(false)
+  const [themeJsonSaving, setThemeJsonSaving] = useState(false)
+  const [themeJsonSaved, setThemeJsonSaved] = useState(false)
+  const [themeJsonError, setThemeJsonError] = useState<string | null>(null)
+  const [themeSkillCopied, setThemeSkillCopied] = useState(false)
   const dshRuntimeBusy = dshRuntimeScanning || dshRuntimeChanging
   const dshRuntimeError = dshRuntimeActionError ?? dshRuntimeScanError
-  // 主题热重载后注册表版本自增，订阅以重新读取当前注册表。
-  useThemeRegistryVersion((state) => state.version)
+  const themeRegistryVersion = useThemeRegistryVersion((state) => state.version)
   const registry = getUiThemeRegistry()
+  const customUiTheme = registry.get(CUSTOM_UI_THEME_ID)
   const terminalTheme = terminalThemes[settings.terminalThemeId].terminal
   const themeGroups = {
     light: { id: 'light', label: strings.settings.light },
@@ -138,6 +159,18 @@ export default function SettingsPage({
   }
 
   useEffect(() => {
+    const source = customUiTheme
+      ? JSON.stringify(customUiTheme, null, 2)
+      : defaultCustomThemeSource
+    themeJsonRef.current = source
+    setThemeJson(source)
+    themeJsonDirtyRef.current = false
+    setThemeJsonDirty(false)
+    setThemeJsonSaved(false)
+    setThemeJsonError(null)
+  }, [themeRegistryVersion])
+
+  useEffect(() => {
     let cancelled = false
     void window.dshApi.getConfig()
       .then((config) => {
@@ -182,6 +215,11 @@ export default function SettingsPage({
       unsubscribe()
     }
   }, [])
+
+  const changeUiTheme = (themeId: string): void => {
+    setThemeJsonError(null)
+    settings.setUiTheme(themeId)
+  }
 
   const changeLanguage = (value: string): void => {
     const locale = value as (typeof settings.language)
@@ -271,6 +309,68 @@ export default function SettingsPage({
       })
   }
 
+  const resetThemeJson = (): void => {
+    const source = customUiTheme
+      ? JSON.stringify(customUiTheme, null, 2)
+      : defaultCustomThemeSource
+    themeJsonRef.current = source
+    setThemeJson(source)
+    themeJsonDirtyRef.current = false
+    setThemeJsonDirty(false)
+    setThemeJsonSaved(false)
+    setThemeJsonError(null)
+  }
+
+  const copyThemeSkill = (): void => {
+    setThemeJsonError(null)
+    void window.clipboardApi
+      .writeText(themeSkill.trim())
+      .then(() => setThemeSkillCopied(true))
+      .catch((error) => {
+        setThemeSkillCopied(false)
+        setThemeJsonError(error instanceof Error ? error.message : String(error))
+      })
+  }
+
+  const saveThemeJson = (): void => {
+    setThemeJsonSaving(true)
+    setThemeJsonSaved(false)
+    setThemeJsonError(null)
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(themeJsonRef.current)
+    } catch {
+      setThemeJsonSaving(false)
+      setThemeJsonError(strings.settings.themeJsonInvalid)
+      return
+    }
+    const validation = validateUiTheme(parsed)
+    if (!validation.ok) {
+      setThemeJsonSaving(false)
+      setThemeJsonError(validation.errors.join('; '))
+      return
+    }
+    if (validation.theme.id !== CUSTOM_UI_THEME_ID) {
+      setThemeJsonSaving(false)
+      setThemeJsonError(strings.settings.themeJsonCustomId)
+      return
+    }
+    const source = JSON.stringify(validation.theme, null, 2)
+    void window.themeApi
+      .saveCustom(source)
+      .then(() => {
+        themeJsonRef.current = source
+        setThemeJson(source)
+        themeJsonDirtyRef.current = false
+        setThemeJsonDirty(false)
+        setThemeJsonSaved(true)
+      })
+      .catch((error) => {
+        setThemeJsonError(error instanceof Error ? error.message : String(error))
+      })
+      .finally(() => setThemeJsonSaving(false))
+  }
+
   const changeDshRuntime = (value: string): void => {
     const preference: DshRuntimePreference = value === 'auto'
       ? { kind: 'auto' }
@@ -350,9 +450,80 @@ export default function SettingsPage({
         <div className="flex max-w-[560px] flex-col gap-7 px-8 pb-10">
           <Section label="appearance" title={strings.settings.sections.appearance}>
             <Row label={strings.settings.uiTheme} hint={strings.settings.uiThemeHint}>
-              <Dropdown testId="settings-ui-theme" value={settings.uiThemeId} options={uiThemeOptions} onChange={settings.setUiTheme} />
+              <Dropdown testId="settings-ui-theme" value={settings.uiThemeId} options={uiThemeOptions} onChange={changeUiTheme} />
             </Row>
             {registry.errors.length > 0 && <div data-testid="theme-load-errors" className="border-b border-border-faint py-3 text-[11px] text-status-error"><p className="font-semibold">{strings.settings.themeErrors}</p>{registry.errors.map((error) => <p key={error.filename} className="mt-1 font-maple">{error.filename}: {error.message}</p>)}</div>}
+            <div data-testid="settings-theme-json" className="border-b border-border-faint py-3.5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-pingfang text-[12px] font-medium text-text-secondary">{strings.settings.themeJson}</p>
+                  <p className="mt-0.5 font-pingfang text-[11px] text-text-faint">{strings.settings.themeJsonHint}</p>
+                </div>                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    data-testid="settings-theme-json-reset"
+                    title={strings.settings.themeJsonReset}
+                    aria-label={strings.settings.themeJsonReset}
+                    disabled={!themeJsonDirty || themeJsonSaving}
+                    onClick={resetThemeJson}
+                    className="inline-flex size-[30px] items-center justify-center rounded-lg border border-border-default bg-input text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <RefreshCw className="size-3" strokeWidth={1.75} />
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="settings-theme-copy-skill"
+                    title={strings.settings.themeSkillCopy}
+                    aria-label={strings.settings.themeSkillCopy}
+                    onClick={copyThemeSkill}
+                    className="inline-flex h-[30px] items-center gap-1.5 rounded-lg border border-border-default bg-input px-2.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary"
+                  >
+                    {themeSkillCopied
+                      ? <Check className="size-3 text-status-done" strokeWidth={1.75} />
+                      : <Copy className="size-3" strokeWidth={1.75} />}
+                    {themeSkillCopied
+                      ? strings.settings.themeSkillCopied
+                      : strings.settings.themeSkillCopy}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="settings-theme-json-save"
+                    disabled={themeJsonSaving}
+                    aria-busy={themeJsonSaving}
+                    onClick={saveThemeJson}
+                    className="inline-flex h-[30px] items-center gap-1.5 rounded-lg bg-button-primary px-2.5 font-pingfang text-[11px] font-medium text-button-primary-fg transition-colors hover:bg-button-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Save className="size-3" strokeWidth={1.75} />
+                    {themeJsonSaving
+                      ? strings.settings.themeJsonSaving
+                      : strings.settings.themeJsonSave}
+                  </button>
+                </div>
+              </div>
+              <textarea
+                data-testid="settings-theme-json-input"
+                value={themeJson}
+                spellCheck={false}
+                aria-invalid={themeJsonError ? 'true' : 'false'}
+                onChange={(event) => {
+                  themeJsonRef.current = event.target.value
+                  setThemeJson(event.target.value)
+                  themeJsonDirtyRef.current = true
+                  setThemeJsonDirty(true)
+                  setThemeJsonSaved(false)
+                  setThemeJsonError(null)
+                }}
+                className="mt-3 h-56 w-full resize-y rounded-lg border border-border-default bg-input px-3 py-2 font-maple text-[11px] leading-5 text-text-secondary outline-none transition-colors focus:border-input-focus focus:bg-input-hover"
+              />
+              {(themeJsonError || themeJsonSaved) && (
+                <p
+                  data-testid="settings-theme-json-status"
+                  className={`mt-2 break-words font-pingfang text-[11px] ${themeJsonError ? 'text-status-error' : 'text-status-done'}`}
+                >
+                  {themeJsonError ?? strings.settings.themeJsonSaved}
+                </p>
+              )}
+            </div>
             <Row label={strings.settings.language} hint={strings.settings.languageHint}>
               <Dropdown testId="settings-language" value={settings.language} options={appLocales.map((locale) => ({ value: locale, label: strings.settings.languages[locale] }))} onChange={changeLanguage} />
             </Row>

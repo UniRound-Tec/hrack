@@ -73,6 +73,9 @@ export const UI_COLOR_TOKENS = [
 export type UiColorToken = (typeof UI_COLOR_TOKENS)[number]
 export type UiThemeType = 'light' | 'dark'
 
+export const CUSTOM_UI_THEME_ID = 'custom'
+export const CUSTOM_UI_THEME_FILENAME = 'custom.json'
+
 export interface UiThemeSource {
   id: string
   name: string
@@ -86,7 +89,7 @@ export interface ResolvedUiTheme extends Omit<UiThemeSource, 'colors'> {
   colors: Record<UiColorToken, string>
 }
 
-/** Main only reads files; renderer owns schema and CSS color validation. */
+/** Raw user theme file transferred across the main/renderer boundary. */
 export type UserThemeFile =
   | { filename: string; source: string; error?: never }
   | { filename: string; source?: never; error: string }

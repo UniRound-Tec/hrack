@@ -78,10 +78,11 @@ async function bootstrap(): Promise<void> {
           ...next.errors,
           {
             filename: '<userData>/themes',
-            message: '当前主题已被删除，已回退内置浅色'
+            message: '当前主题已被删除或失效，已回退内置浅色'
           }
         ]
       }
+      useSettingsStore.getState().setUiTheme('light')
     } else {
       themeRegistry = next
     }
