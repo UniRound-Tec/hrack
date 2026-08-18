@@ -45,7 +45,6 @@ export default function WorkspaceReaderLayout({
   const session = useWorkspaceReaderStore((state) => state.sessions[terminalId])
   const setOpen = useWorkspaceReaderStore((state) => state.setOpen)
   const select = useWorkspaceReaderStore((state) => state.select)
-  const clearCache = useWorkspaceReaderStore((state) => state.clearCache)
   const readerRatio = useSettingsStore((state) => state.readerWidthRatio)
   const treeWidth = useSettingsStore((state) => state.workspaceTreeWidth)
   const setReaderRatio = useSettingsStore((state) => state.setReaderWidthRatio)
@@ -56,7 +55,14 @@ export default function WorkspaceReaderLayout({
       setFileError(null)
       try {
         const next = await window.workspaceReader.read({ terminalId, path })
-        setFile(next)
+        setFile((current) =>
+          current &&
+          current.path === next.path &&
+          current.byteLength === next.byteLength &&
+          current.text === next.text
+            ? current
+            : next
+        )
         if (resetView) setMarkdownPreview(true)
       } catch (error) {
         setFile(null)
@@ -128,7 +134,6 @@ export default function WorkspaceReaderLayout({
       if (change.terminalId !== terminalId) return
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
-        clearCache(terminalId)
         setRefreshKey((value) => value + 1)
         const selectedPath = session?.selectedPath
         if (
@@ -143,15 +148,7 @@ export default function WorkspaceReaderLayout({
       if (timer) clearTimeout(timer)
       unsubscribe()
     }
-  }, [
-    active,
-    clearCache,
-    description,
-    loadFile,
-    open,
-    session?.selectedPath,
-    terminalId
-  ])
+  }, [active, description, loadFile, open, session?.selectedPath, terminalId])
 
   useEffect(() => {
     const selectedPath = session?.selectedPath

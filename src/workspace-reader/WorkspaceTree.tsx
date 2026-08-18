@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronRight,
   FileCode2,
@@ -43,11 +43,18 @@ export default function WorkspaceTree({ terminalId, refreshKey, onSelect }: Work
   const [loading, setLoading] = useState<Set<string>>(new Set())
   const [errors, setErrors] = useState<Record<string, string>>({})
   const scrollerRef = useRef<HTMLDivElement>(null)
+  const scrollTopRef = useRef(0)
+  const directoriesRef = useRef(session?.directories)
+  directoriesRef.current = session?.directories
   const [viewport, setViewport] = useState({ top: 0, height: 600 })
 
   const load = async (path: string, force = false): Promise<void> => {
-    if (!force && session?.directories[path]) return
-    setLoading((current) => new Set(current).add(path))
+    const cached = directoriesRef.current?.[path]
+    if (!force && cached) return
+    const showLoading = !cached
+    if (showLoading) {
+      setLoading((current) => new Set(current).add(path))
+    }
     setErrors((current) => {
       const next = { ...current }
       delete next[path]
@@ -58,11 +65,13 @@ export default function WorkspaceTree({ terminalId, refreshKey, onSelect }: Work
     } catch (error) {
       setErrors((current) => ({ ...current, [path]: String(error) }))
     } finally {
-      setLoading((current) => {
-        const next = new Set(current)
-        next.delete(path)
-        return next
-      })
+      if (showLoading) {
+        setLoading((current) => {
+          const next = new Set(current)
+          next.delete(path)
+          return next
+        })
+      }
     }
   }
 
@@ -72,6 +81,11 @@ export default function WorkspaceTree({ terminalId, refreshKey, onSelect }: Work
     // refreshKey is the explicit cache invalidation signal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terminalId, refreshKey])
+
+  useLayoutEffect(() => {
+    const node = scrollerRef.current
+    if (node) node.scrollTop = scrollTopRef.current
+  }, [refreshKey])
 
   const expanded = useMemo(
     () => new Set(session?.expandedPaths ?? []),
@@ -95,24 +109,28 @@ export default function WorkspaceTree({ terminalId, refreshKey, onSelect }: Work
     : visible.length
   const rendered = visible.slice(start, end)
 
-  if (loading.has('') && visible.length === 0) {
-    return <p className="px-3 py-2 text-[11px] text-text-faint">{strings.workspaceReader.loading}</p>
-  }
-  if (errors[''] && visible.length === 0) {
-    return <p className="px-3 py-2 text-[11px] text-status-error">{strings.workspaceReader.directoryError}</p>
-  }
+  const rootPending = loading.has('') && visible.length === 0
+  const rootFailed = Boolean(errors[''] && visible.length === 0)
 
   return (
     <div
       ref={scrollerRef}
+      data-testid="workspace-tree-scroller"
       className="h-full overflow-auto py-1 font-pingfang"
-      onScroll={(event) =>
+      onScroll={(event) => {
+        scrollTopRef.current = event.currentTarget.scrollTop
         setViewport({
           top: event.currentTarget.scrollTop,
           height: event.currentTarget.clientHeight
         })
-      }
+      }}
     >
+      {rootPending && (
+        <p className="px-3 py-2 text-[11px] text-text-faint">{strings.workspaceReader.loading}</p>
+      )}
+      {rootFailed && (
+        <p className="px-3 py-2 text-[11px] text-status-error">{strings.workspaceReader.directoryError}</p>
+      )}
       {virtualized && <div style={{ height: start * rowHeight }} />}
       {rendered.map((entry) => {
         const isDirectory = entry.kind === 'directory'
@@ -160,7 +178,7 @@ export default function WorkspaceTree({ terminalId, refreshKey, onSelect }: Work
         )
       })}
       {virtualized && <div style={{ height: (visible.length - end) * rowHeight }} />}
-      {!loading.has('') && visible.length === 0 && (
+      {!rootPending && !rootFailed && visible.length === 0 && (
         <p className="px-3 py-2 text-[11px] text-text-faint">{strings.workspaceReader.empty}</p>
       )}
     </div>
