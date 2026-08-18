@@ -377,6 +377,8 @@ export const en = {
     sessionNamePlaceholder: 'Session name',
     workspace: 'Workspace',
     chooseWorkspace: 'Choose a folder',
+    recentWorkspaces: 'Recent',
+    workspaceHistoryEmpty: 'No recent workspaces',
     arguments: 'Arguments',
     runtime: 'Runtime',
     windows: 'Windows',

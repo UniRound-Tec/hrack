@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { FolderOpen, Settings2, Terminal as TerminalIcon, X } from 'lucide-react'
+import { Settings2, Terminal as TerminalIcon, X } from 'lucide-react'
 import type { LaunchableCli, ShellOption } from '../../shared/ipc-contract'
 import { getAdapterIcon } from './adapterIcons'
 import {
@@ -9,9 +9,12 @@ import {
   type CliOption
 } from './launchOptions'
 import { useStrings } from './i18n'
-
-const LAST_WORKSPACE_KEY = 'hrack.lastWorkspace'
-const LEGACY_LAST_WORKSPACE_KEY = 'vibing.lastWorkspace'
+import WorkspacePicker from './WorkspacePicker'
+import {
+  lastWorkspace,
+  readWorkspaceHistory,
+  saveWorkspace
+} from './workspaceHistory'
 
 interface NewSessionFlowProps {
   open: boolean
@@ -25,26 +28,6 @@ interface NewSessionFlowProps {
   onOpenDsh: () => void
   onLaunchTerminal: (shell: ShellOption, remember: boolean) => void
   onLaunchCli: (draft: CliLaunchDraft) => Promise<string | null>
-}
-
-function readLastWorkspace(): string {
-  try {
-    const current = localStorage.getItem(LAST_WORKSPACE_KEY)
-    if (current !== null) return current
-    const legacy = localStorage.getItem(LEGACY_LAST_WORKSPACE_KEY) ?? ''
-    if (legacy) localStorage.setItem(LAST_WORKSPACE_KEY, legacy)
-    return legacy
-  } catch {
-    return ''
-  }
-}
-
-function saveLastWorkspace(workspace: string): void {
-  try {
-    localStorage.setItem(LAST_WORKSPACE_KEY, workspace)
-  } catch {
-    // Private browsing or a locked-down renderer may reject localStorage.
-  }
 }
 
 export default function NewSessionFlow({
@@ -67,7 +50,12 @@ export default function NewSessionFlow({
   const [launching, setLaunching] = useState(false)
   const [launchError, setLaunchError] = useState<string | null>(null)
   const [closeAfterDraftExit, setCloseAfterDraftExit] = useState(false)
+  const [workspaceHistory, setWorkspaceHistory] = useState(readWorkspaceHistory)
   const defaultShell = findDefaultShell(shells, defaultTerminal)
+
+  const persistWorkspace = (workspace: string): void => {
+    setWorkspaceHistory(saveWorkspace(workspace))
+  }
 
   useEffect(() => {
     if (!open) {
@@ -95,6 +83,7 @@ export default function NewSessionFlow({
 
   useEffect(() => {
     if (!open) return
+    setWorkspaceHistory(readWorkspaceHistory())
     if (initialTerminalPicker) setTerminalPickerOpen(true)
     if (initialCli) openCli(initialCli)
     // The intent is sampled when the flow opens; draft edits must not reset it.
@@ -108,7 +97,7 @@ export default function NewSessionFlow({
       option,
       installationId: installation.id,
       name: option.definition.displayName,
-      workspace: initialWorkspace.trim() || readLastWorkspace(),
+      workspace: initialWorkspace.trim() || lastWorkspace(),
       args: ''
     })
     setLaunchError(null)
@@ -124,13 +113,13 @@ export default function NewSessionFlow({
       runtime: installation.runtime
     })
     if (!workspace) return
-    saveLastWorkspace(workspace)
+    persistWorkspace(workspace)
     setDraft((current) => current ? { ...current, workspace } : current)
   }
 
   const confirmCli = async (): Promise<void> => {
     if (!draft || launching) return
-    if (draft.workspace.trim()) saveLastWorkspace(draft.workspace.trim())
+    if (draft.workspace.trim()) persistWorkspace(draft.workspace.trim())
     setLaunching(true)
     setLaunchError(null)
     const error = await onLaunchCli(draft)
@@ -236,7 +225,19 @@ export default function NewSessionFlow({
               <ModalShell testId="cli-config" width="420px" iconAdapterId={draft.option.definition.adapterId} title={strings.newSession.newCli(draft.option.definition.displayName)} hint={strings.newSession.configureThenLaunch} onClose={closeCliDraft}>
                 <div className="flex flex-col gap-3 px-4 pb-1">
                   <Field label={strings.newSession.sessionName}><input data-testid="cli-session-name" value={draft.name} placeholder={strings.newSession.sessionNamePlaceholder} onChange={(event) => setDraft({ ...draft, name: event.target.value })} className={fieldClass} /></Field>
-                  <Field label={strings.newSession.workspace}><div className="flex gap-1.5"><input data-testid="cli-workspace" value={draft.workspace} placeholder={strings.newSession.workspacePlaceholder} onChange={(event) => setDraft({ ...draft, workspace: event.target.value })} className={`${fieldClass} min-w-0 flex-1`} /><button type="button" data-testid="cli-pick-workspace" title={strings.newSession.chooseWorkspace} onClick={() => void pickWorkspace()} className="flex size-[34px] shrink-0 items-center justify-center rounded-lg border border-border-default bg-input text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary"><FolderOpen className="size-3.5" strokeWidth={1.75} /></button></div></Field>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[11px] font-medium text-text-muted">{strings.newSession.workspace}</span>
+                    <WorkspacePicker
+                      value={draft.workspace}
+                      history={workspaceHistory}
+                      placeholder={strings.newSession.workspacePlaceholder}
+                      recentLabel={strings.newSession.recentWorkspaces}
+                      emptyLabel={strings.newSession.workspaceHistoryEmpty}
+                      chooseLabel={strings.newSession.chooseWorkspace}
+                      onChange={(workspace) => setDraft({ ...draft, workspace })}
+                      onPick={() => void pickWorkspace()}
+                    />
+                  </div>
                   <Field label={strings.newSession.arguments}><input data-testid="cli-arguments" value={draft.args} placeholder={strings.newSession.argumentsPlaceholder} spellCheck={false} onChange={(event) => setDraft({ ...draft, args: event.target.value })} className={`${fieldClass} font-maple text-[11px]`} /></Field>
                   <div className="flex flex-col gap-1.5"><span className="text-[11px] font-medium text-text-muted">{strings.newSession.installation}</span><div className="grid grid-cols-2 gap-1.5">{draft.option.installations.map((installation) => <InstallationButton key={installation.id} installation={installation} selected={draft.installationId === installation.id} onSelect={(installationId) => setDraft({ ...draft, installationId })} />)}</div></div>
                   {launchError && <p role="alert" data-testid="cli-launch-error" className="rounded-lg bg-status-error/10 px-2.5 py-2 font-pingfang text-[11px] text-status-error">{launchError}</p>}
@@ -280,5 +281,5 @@ function InstallationButton({ installation, selected, onSelect }: { installation
 function ModalShell({ testId, width, iconAdapterId, title, hint, onClose, children }: { testId: string; width: string; iconAdapterId?: string; title: string; hint: string; onClose: () => void; children: React.ReactNode }) {
   const strings = useStrings()
   const Icon = iconAdapterId ? getAdapterIcon(iconAdapterId) : null
-  return <><motion.button type="button" data-testid={`${testId}-backdrop`} aria-label={strings.common.close} className="absolute inset-0 z-[60] bg-backdrop-strong backdrop-blur-[3px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }} onClick={onClose} /><motion.div className="pointer-events-none absolute inset-0 z-[70] flex items-center justify-center p-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}><motion.div data-testid={testId} role="dialog" aria-modal="true" className="pointer-events-auto w-full overflow-hidden rounded-2xl border border-border-default bg-surface shadow-2xl" style={{ maxWidth: width }} initial={{ opacity: 0, scale: 0.94, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 10 }} transition={{ type: 'spring', stiffness: 480, damping: 34, mass: 0.8 }}><div className="flex items-start justify-between px-4 pt-4 pb-3"><div className="flex items-center gap-2.5">{Icon && <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-strong"><Icon size={16} className="size-4" /></span>}<div><h2 className="font-pingfang text-[14px] font-semibold text-text-primary">{title}</h2><p className="mt-0.5 font-pingfang text-[11px] text-text-faint">{hint}</p></div></div><button type="button" onClick={onClose} className="flex size-7 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-surface-strong hover:text-text-secondary"><X className="size-3.5" strokeWidth={1.75} /></button></div>{children}</motion.div></motion.div></>
+  return <><motion.button type="button" data-testid={`${testId}-backdrop`} aria-label={strings.common.close} className="absolute inset-0 z-[60] bg-backdrop-strong backdrop-blur-[3px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }} onClick={onClose} /><motion.div className="pointer-events-none absolute inset-0 z-[70] flex items-center justify-center p-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}><motion.div data-testid={testId} role="dialog" aria-modal="true" className="pointer-events-auto w-full overflow-visible rounded-2xl border border-border-default bg-surface shadow-2xl" style={{ maxWidth: width }} initial={{ opacity: 0, scale: 0.94, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 10 }} transition={{ type: 'spring', stiffness: 480, damping: 34, mass: 0.8 }}><div className="flex items-start justify-between px-4 pt-4 pb-3"><div className="flex items-center gap-2.5">{Icon && <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-strong"><Icon size={16} className="size-4" /></span>}<div><h2 className="font-pingfang text-[14px] font-semibold text-text-primary">{title}</h2><p className="mt-0.5 font-pingfang text-[11px] text-text-faint">{hint}</p></div></div><button type="button" onClick={onClose} className="flex size-7 items-center justify-center rounded-lg text-text-faint transition-colors hover:bg-surface-strong hover:text-text-secondary"><X className="size-3.5" strokeWidth={1.75} /></button></div>{children}</motion.div></motion.div></>
 }

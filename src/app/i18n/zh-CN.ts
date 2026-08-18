@@ -378,6 +378,8 @@ export const zhCN = {
     sessionNamePlaceholder: '会话名称',
     workspace: '工作区',
     chooseWorkspace: '选择目录',
+    recentWorkspaces: '最近使用',
+    workspaceHistoryEmpty: '暂无最近工作区',
     arguments: '启动参数',
     runtime: '版本',
     windows: 'Windows',

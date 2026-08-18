@@ -375,6 +375,8 @@ export const ko = {
     sessionNamePlaceholder: '세션 이름',
     workspace: '작업 공간',
     chooseWorkspace: '폴더 선택',
+    recentWorkspaces: '최근',
+    workspaceHistoryEmpty: '최근 작업 공간이 없습니다',
     arguments: '시작 인수',
     runtime: '런타임',
     windows: 'Windows',

@@ -375,6 +375,8 @@ export const zhTW = {
     sessionNamePlaceholder: '工作階段名稱',
     workspace: '工作區',
     chooseWorkspace: '選擇目錄',
+    recentWorkspaces: '最近使用',
+    workspaceHistoryEmpty: '尚無最近工作區',
     arguments: '啟動參數',
     runtime: '版本',
     windows: 'Windows',

@@ -375,6 +375,8 @@ export const ja = {
     sessionNamePlaceholder: 'セッション名',
     workspace: 'ワークスペース',
     chooseWorkspace: 'フォルダを選択',
+    recentWorkspaces: '最近',
+    workspaceHistoryEmpty: '最近のワークスペースはありません',
     arguments: '起動引数',
     runtime: 'ランタイム',
     windows: 'Windows',
