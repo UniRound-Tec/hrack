@@ -38,7 +38,8 @@ function sameBounds(
     left?.x === right.x &&
     left.y === right.y &&
     left.width === right.width &&
-    left.height === right.height
+    left.height === right.height &&
+    left.cornerRadius === right.cornerRadius
   )
 }
 
@@ -155,6 +156,7 @@ export default function DshPage({
   const uiThemeId = useSettingsStore((state) => state.uiThemeId)
   const language = useSettingsStore((state) => state.language)
   const dshScale = useSettingsStore((state) => state.dshScale)
+  const rounded = useSettingsStore((state) => state.terminalRounded)
   const themeVersion = useThemeRegistryVersion((state) => state.version)
   const appearance = useMemo(() => {
     const theme = getUiThemeRegistry().get(uiThemeId) ?? builtInLightTheme
@@ -187,7 +189,8 @@ export default function DshPage({
           x: Math.max(0, rect.left),
           y: Math.max(0, rect.top),
           width: rect.width,
-          height: rect.height
+          height: rect.height,
+          cornerRadius: rounded ? 20 : 0
         }
         setBounds((current) => (sameBounds(current, next) ? current : next))
       })
@@ -201,7 +204,7 @@ export default function DshPage({
       window.removeEventListener('resize', measure)
       if (frame !== null) cancelAnimationFrame(frame)
     }
-  }, [active])
+  }, [active, rounded])
 
   // Semantic changes rebuild/show the official surface. Bounds changes use the
   // separate high-frequency channel below and intentionally do not retrigger it.
@@ -268,10 +271,16 @@ export default function DshPage({
       data-dsh-session={adapterSessionId ?? ''}
       data-dsh-mode={mode}
       data-dsh-surface-phase={snapshot.phase}
-      className="absolute inset-0 flex h-full flex-col overflow-hidden bg-content"
+      className={`absolute inset-0 flex h-full flex-col overflow-hidden bg-content ${
+        rounded ? 'rounded-tl-[20px]' : ''
+      }`}
       style={{ display: active ? 'flex' : 'none' }}
     >
-      <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden" />
+      <div
+        ref={containerRef}
+        data-testid="dsh-surface-frame"
+        className="min-h-0 flex-1 overflow-hidden"
+      />
       {shouldShow && snapshot.phase !== 'ready' && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-content">
           {snapshot.phase === 'failed' ? (

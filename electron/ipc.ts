@@ -7,7 +7,6 @@ import {
   type IpcMainInvokeEvent
 } from 'electron'
 import { appendFileSync } from 'node:fs'
-import { mkdir, readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { PTYManager } from './pty/PTYManager'
 import {
@@ -64,14 +63,13 @@ import type { DshWireProxy } from './dsh-host/DshWireProxy'
 import type { DshProjectionBridge } from './dsh-host/DshProjectionBridge'
 import type { DshWebSurfaceController } from './dsh-surface/DshWebSurfaceController'
 import type { UpdateService } from './update/UpdateService'
+import { UserThemeStore } from './user-themes'
 import {
   directoryPickerDefaultPath,
   normalizePickedDirectory
 } from './directory-picker'
 
 const MAX_CLIPBOARD_TEXT_LENGTH = 8 * 1024 * 1024
-const MAX_USER_THEME_FILES = 128
-const MAX_USER_THEME_BYTES = 256 * 1024
 const MAX_EVENT_ADAPTER_ID_LENGTH = 128
 const MAX_EVENT_TITLE_LENGTH = 256
 const MAX_EVENT_DETAIL_LENGTH = 512
@@ -231,34 +229,11 @@ function parseDirectoryPickerRequest(value: unknown): DirectoryPickerRequest {
   }
 }
 
-async function listUserThemes() {
-  const themesDirectory = join(app.getPath('userData'), 'themes')
-  await mkdir(themesDirectory, { recursive: true })
-  const entries = (await readdir(themesDirectory, { withFileTypes: true }))
-    .filter(
-      (entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json')
-    )
-    .sort((left, right) => left.name.localeCompare(right.name))
-    .slice(0, MAX_USER_THEME_FILES)
-
-  const files = await Promise.all(
-    entries.map(async (entry) => {
-      const path = join(themesDirectory, entry.name)
-      const metadata = await stat(path)
-      if (metadata.size > MAX_USER_THEME_BYTES) {
-        return {
-          filename: entry.name,
-          error: `文件大小 ${metadata.size} 字节，超过 256 KB 上限`
-        }
-      }
-      return { filename: entry.name, source: await readFile(path, 'utf8') }
-    })
-  )
-  return files
-}
-
 /** 注册所有 pty 相关的 invoke handler，委托 PTYManager。 */
 export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
+  const userThemes = new UserThemeStore(
+    join(app.getPath('userData'), 'themes')
+  )
   ipcMain.handle(WorkspaceReaderInvokeChannel.Describe, (_event, terminalId: unknown) =>
     ctx.workspaceReader.describe(terminalId)
   )
@@ -517,7 +492,14 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
       )
     }
   )
-  ipcMain.handle(ThemeInvokeChannel.ListUser, listUserThemes)
+  ipcMain.handle(ThemeInvokeChannel.ListUser, (event) => {
+    requireMainWindow(event, ctx)
+    return userThemes.list()
+  })
+  ipcMain.handle(ThemeInvokeChannel.SaveCustom, (event, source: unknown) => {
+    requireMainWindow(event, ctx)
+    return userThemes.saveCustom(source)
+  })
   ipcMain.handle(
     DialogInvokeChannel.PickDirectory,
     async (event, payload: unknown) => {

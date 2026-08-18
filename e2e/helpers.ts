@@ -40,6 +40,7 @@ export async function launchApp(options: {
     HRACK_E2E: '1',
     HRACK_E2E_CLI_FIXTURE: options.cliFixture === false ? '0' : '1',
     HRACK_USER_DATA_DIR: userDataDir,
+    HRACK_DSH_HOME: resolve(userDataDir, 'dsh-home'),
     ...options.env
   }
   const app = await electron.launch({ args: [main], env })

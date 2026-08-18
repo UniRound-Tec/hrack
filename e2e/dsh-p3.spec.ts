@@ -17,7 +17,8 @@ test('dsh p3 delegates product settings to the official Web surface', async () =
       .toBe('ready')
 
     const before = await window.evaluate(() => window.dshApi.getConfig())
-    expect(before.homeMode).toBe('isolated')
+    expect(before.homeMode).toBe('shared')
+    expect(before.envOverride).toBe(true)
     expect(before.activeHome.replace(/\\/g, '/')).toContain('dsh-home')
     expect(before.retention).toEqual({ kind: 'all' })
     await expect(window.getByTestId('dsh-page')).toHaveAttribute(

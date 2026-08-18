@@ -234,7 +234,9 @@ const floatingWindowApi: FloatingWindowApi = {
 }
 
 const themeApi: ThemeApi = {
-  listUser: () => ipcRenderer.invoke(ThemeInvokeChannel.ListUser)
+  listUser: () => ipcRenderer.invoke(ThemeInvokeChannel.ListUser),
+  saveCustom: (source) =>
+    ipcRenderer.invoke(ThemeInvokeChannel.SaveCustom, source)
 }
 
 const dialogApi: DialogApi = {

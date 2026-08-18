@@ -23,6 +23,7 @@ import {
   type AiCliDiscoveryService
 } from '../ai-cli-discovery'
 import { getMainPrefs, persistMainPrefs } from '../main-prefs'
+import { resolveNativeDshHome, resolveWslDshHome } from '../app-paths'
 import {
   DSH_WSL_PID_MARKER,
   buildDshExternalSpawnSpec,
@@ -47,9 +48,7 @@ const REQUIRED_CONTROL_PLANE_METHODS = [
 ] as const
 
 function dshHomeOverride(): string | undefined {
-  return (
-    process.env['HRACK_DSH_HOME'] ?? process.env['VIBING_DSH_HOME']
-  )?.trim() || undefined
+  return process.env['HRACK_DSH_HOME']?.trim() || undefined
 }
 
 interface ManagedDshChild {
@@ -194,8 +193,11 @@ export class DshHostManager {
     const override = dshHomeOverride()
     if (override) return override
     const mode = getMainPrefs().dshHomeMode
-    if (mode === 'shared') return join(app.getPath('home'), '.dsh')
-    return this.options.defaultDshHome
+    return resolveNativeDshHome(
+      mode,
+      app.getPath('home'),
+      this.options.defaultDshHome
+    )
   }
 
   getConfig(): DshRuntimeConfig {
@@ -362,11 +364,7 @@ export class DshHostManager {
         `cannot resolve HOME for ${target.candidate.runtime.distro}`
       )
     }
-    const root = trimPosixHome(home)
-    return getMainPrefs().dshHomeMode === 'shared'
-      ? `${root}/.dsh`
-      // Keep the pre-rebrand WSL data path so existing DSH history remains visible.
-      : `${root}/.local/share/vibing/dsh-home`
+    return resolveWslDshHome(getMainPrefs().dshHomeMode, trimPosixHome(home))
   }
 
   private async start(): Promise<DshHostStatus> {

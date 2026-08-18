@@ -27,13 +27,14 @@
     "release:github:mac": "bash scripts/release-github-mac.sh",
     "release:linux": "bash scripts/release-linux.sh",
     "release:github:linux": "bash scripts/release-github-linux.sh",
+    "record:cli-demo": "node scripts/recording/01-create-cli-sessions.cjs",
     "e2e": "npm run build && playwright test",
     "e2e:only": "playwright test"
   },
   "author": "",
   "license": "Apache-2.0",
   "build": {
-    "appId": "com.vibing.app",
+    "appId": "com.hrack.app",
     "productName": "HRack",
     "artifactName": "HRack-Setup-${version}.${ext}",
     "publish": [

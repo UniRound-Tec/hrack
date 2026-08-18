@@ -1,4 +1,4 @@
-import { BrowserWindow, screen, shell } from 'electron'
+import { BrowserWindow, nativeTheme, screen, shell } from 'electron'
 import { join } from 'path'
 import {
   WindowEventChannel,
@@ -6,6 +6,7 @@ import {
 } from '../shared/ipc-contract'
 import { DEFAULT_BACKGROUND_COLOR, type MainPrefs } from './main-prefs'
 import { isQuitting } from './quitting'
+import { createThemedHrackIcon } from './app-icons'
 
 /** 窗口位置换算成"相对当前显示器"坐标（多显示器下渐变坐标系跟随窗口所在屏）。 */
 export function displayRelativePosition(
@@ -41,6 +42,9 @@ export function createWindow(prefs: MainPrefs): BrowserWindow {
     height: Math.min(DESIGN_HEIGHT, workArea.height),
     show: false,
     autoHideMenuBar: true,
+    ...(process.platform === 'darwin'
+      ? {}
+      : { icon: createThemedHrackIcon() }),
     backgroundColor: prefs.backgroundColor || DEFAULT_BACKGROUND_COLOR,
     ...(process.platform === 'darwin'
       ? { titleBarStyle: 'hiddenInset' as const }
@@ -52,6 +56,13 @@ export function createWindow(prefs: MainPrefs): BrowserWindow {
       sandbox: false
     }
   })
+
+  const updateWindowIcon = (): void => {
+    if (process.platform !== 'darwin' && !win.isDestroyed()) {
+      win.setIcon(createThemedHrackIcon())
+    }
+  }
+  nativeTheme.on('updated', updateWindowIcon)
 
   win.on('close', (event) => {
     if (isQuitting()) return
@@ -96,6 +107,7 @@ export function createWindow(prefs: MainPrefs): BrowserWindow {
   })
   win.on('closed', () => {
     if (moveTimer) clearTimeout(moveTimer)
+    nativeTheme.off('updated', updateWindowIcon)
   })
 
   // 外链交给系统浏览器，避免在 Electron 内打开

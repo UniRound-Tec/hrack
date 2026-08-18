@@ -187,6 +187,8 @@ export interface DshSurfaceBounds {
   y: number
   width: number
   height: number
+  /** Native view corner radius (DIP)；主题圆角开启时为 20，否则 0。 */
+  cornerRadius: number
 }
 
 /** Renderer 已从通过校验的 HRack 主题解析出的 DSH token 覆盖。 */

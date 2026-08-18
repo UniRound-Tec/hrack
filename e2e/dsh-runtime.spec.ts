@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import {
   DSH_CLI_DEFINITION_ID,
   DSH_COMPATIBLE_VERSION,
@@ -14,6 +14,11 @@ import {
   selectDshRuntimeCandidates
 } from '../electron/dsh-host/DshRuntime'
 import type { DshRuntimeCandidate } from '../shared/dsh-ipc'
+import {
+  resolveHrackUserDataDir,
+  resolveNativeDshHome,
+  resolveWslDshHome
+} from '../electron/app-paths'
 import { launchApp } from './helpers'
 
 const windowsCandidate: Extract<
@@ -47,6 +52,23 @@ test('DSH is discovered as an exact-version hidden runtime', () => {
   expect(definition).toMatchObject({ allowWslWindowsInterop: false })
   expect(definition?.probes[0].outputPattern.test(DSH_COMPATIBLE_VERSION)).toBe(true)
   expect(definition?.probes[0].outputPattern.test('0.1.0-rc.7')).toBe(false)
+})
+
+test('HRack paths use the new brand and share an existing DSH home', () => {
+  const appData = join('users', 'test', 'app-data')
+  const home = join('users', 'test')
+  expect(resolveHrackUserDataDir(appData, true)).toBe(join(appData, 'HRack'))
+  expect(
+    resolveNativeDshHome(
+      'shared',
+      home,
+      join(appData, 'HRack', 'dsh-home')
+    )
+  ).toBe(join(home, '.dsh'))
+  expect(resolveWslDshHome('shared', '/home/test')).toBe('/home/test/.dsh')
+  expect(resolveWslDshHome('isolated', '/home/test')).toBe(
+    '/home/test/.local/share/hrack/dsh-home'
+  )
 })
 
 test('auto prefers host then WSL then the bundled fallback', () => {
@@ -87,7 +109,7 @@ test('external launch preserves native and WSL runtime boundaries', () => {
   const wsl = buildDshExternalSpawnSpec({
     candidate: wslCandidate,
     port: 43124,
-    dshHome: '/home/test/.local/share/vibing/dsh-home',
+    dshHome: '/home/test/.local/share/hrack/dsh-home',
     environmentPath: '/home/test/.local/bin:/usr/bin:/bin',
     inheritedEnv: { SystemRoot: 'C:\\Windows' }
   })
@@ -96,7 +118,7 @@ test('external launch preserves native and WSL runtime boundaries', () => {
     '--distribution',
     'Ubuntu-24.04',
     'PATH=/home/test/.local/bin:/usr/bin:/bin',
-    'DSH_HOME=/home/test/.local/share/vibing/dsh-home',
+    'DSH_HOME=/home/test/.local/share/hrack/dsh-home',
     '/home/test/.local/bin/dsh',
     '--port',
     '43124'
@@ -300,7 +322,7 @@ test('a real WSL launch receives Linux PATH/HOME and is reaped on stop', async (
       }
     }
     expect(envelope.result.value).toMatchObject({
-      dshHome: `${home}/.local/share/vibing/dsh-home`,
+      dshHome: `${home}/.local/share/hrack/dsh-home`,
       telemetryDisabled: '1'
     })
     linuxPid = envelope.result.value.pid

@@ -247,7 +247,8 @@ export interface WindowPositionPayload {
 }
 
 export const ThemeInvokeChannel = {
-  ListUser: 'theme:list-user'
+  ListUser: 'theme:list-user',
+  SaveCustom: 'theme:save-custom'
 } as const
 
 export const DialogInvokeChannel = {
@@ -420,8 +421,8 @@ export interface WindowApi {
 }
 
 export interface ThemeApi {
-  /** Main only reads files; renderer owns schema and CSS color validation. */
   listUser: () => Promise<UserThemeFile[]>
+  saveCustom: (source: string) => Promise<void>
 }
 
 export interface DialogApi {

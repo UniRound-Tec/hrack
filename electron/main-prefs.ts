@@ -65,7 +65,7 @@ export const defaultMainPrefs: MainPrefs = {
     locale: DEFAULT_LANGUAGE
   },
   floatingWindowPosition: null,
-  dshHomeMode: 'isolated',
+  dshHomeMode: 'shared',
   dshRetention: { kind: 'all' },
   dshRuntimePreference: { kind: 'auto' }
 }
