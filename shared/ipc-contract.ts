@@ -341,6 +341,7 @@ export interface UpdateSnapshot {
   currentVersion: string
   availableVersion: string | null
   releaseDate: string | null
+  releaseNotes: string | null
   progress: UpdateProgress | null
   checkedAt: number | null
   error: string | null

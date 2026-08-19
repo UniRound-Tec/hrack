@@ -67,6 +67,7 @@ export class UpdateService {
       currentVersion: options.currentVersion,
       availableVersion: null,
       releaseDate: null,
+      releaseNotes: null,
       progress: null,
       checkedAt: null,
       error: null
@@ -165,6 +166,15 @@ export class UpdateService {
     return task
   }
 
+  /** E2E/调试：不经过网络直接进入 available 状态，便于验证更新确认 UI。 */
+  debugSetAvailable(version: string, releaseNotes: string | null = null): void {
+    this.onAvailable({
+      version,
+      releaseDate: null,
+      releaseNotes
+    })
+  }
+
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
@@ -185,6 +195,7 @@ export class UpdateService {
       phase: 'available',
       availableVersion: update.version,
       releaseDate: update.releaseDate,
+      releaseNotes: update.releaseNotes ?? null,
       progress: null,
       checkedAt: this.now(),
       error: null
@@ -197,6 +208,7 @@ export class UpdateService {
       phase: 'up-to-date',
       availableVersion: null,
       releaseDate: update.releaseDate,
+      releaseNotes: null,
       progress: null,
       checkedAt: this.now(),
       error: null
@@ -216,6 +228,7 @@ export class UpdateService {
       phase: 'downloaded',
       availableVersion: update.version,
       releaseDate: update.releaseDate,
+      releaseNotes: update.releaseNotes ?? null,
       progress: this.state.progress
         ? { ...this.state.progress, percent: 100 }
         : { percent: 100, transferred: 0, total: 0, bytesPerSecond: 0 },

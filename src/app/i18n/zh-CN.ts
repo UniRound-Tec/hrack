@@ -8,6 +8,7 @@ export const zhCN = {
   titlebar: {
     newSession: '新建',
     settings: '设置',
+    updateAvailable: (version: string) => `发现新版本 ${version}`,
     minimize: '最小化',
     maximize: '最大化',
     restore: '还原',
@@ -367,6 +368,24 @@ export const zhCN = {
     terminalBackgroundOpacityHint: '只影响背景图，不影响文字',
     terminalBackgroundTooLarge: '图片不能超过 16 MB',
     terminalBackgroundUnsupported: '不支持这种图片格式',
+    notificationSound: '事件提示音',
+    notificationSoundHint: '阻塞、完成或异常时播放提示音',
+    notificationSoundEnabled: '启用提示音',
+    notificationSoundEnabledHint: '关闭后所有事件都不再发声',
+    notificationSoundBlocked: '阻塞 / 需要操作',
+    notificationSoundBlockedHint: '等待批准或输入时播放',
+    notificationSoundCompleted: '完成',
+    notificationSoundCompletedHint: '一轮任务完成时播放',
+    notificationSoundError: '异常',
+    notificationSoundErrorHint: '任务失败时播放',
+    notificationSoundFile: '提示音文件',
+    notificationSoundFileHint: '选择本地音频上传；默认使用内置 done.mp3',
+    notificationSoundChoose: '选择音频',
+    notificationSoundChange: '更换',
+    notificationSoundClear: '恢复默认',
+    notificationSoundPreview: '试听',
+    notificationSoundTooLarge: '音频不能超过 10 MB',
+    notificationSoundUnsupported: '不支持的音频格式',
     percent: (value: number) => `${value}%`,
     defaultTerminal: '默认终端',
     defaultTerminalHint: 'quick launch 的「终端」芯片按此启动',
@@ -452,6 +471,15 @@ export const zhCN = {
     homeHint: '首页内容将在 P3 接入；三态导航与终端路由已可用。',
     settingsHint: 'P2 先开放导航模式；完整设置项将在 P3 接入。',
     unavailableTerminal: '这个演示会话没有可打开的终端。'
+  },
+  updateModal: {
+    title: (version: string) => `发现新版本 ${version}`,
+    releaseNotes: '更新说明',
+    noReleaseNotes: '暂无更新说明',
+    update: '立即更新',
+    ignore: '忽略此版本',
+    never: '以后不再弹出',
+    later: '稍后'
   }
 }
 

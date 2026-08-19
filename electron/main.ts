@@ -79,6 +79,8 @@ if (userDataOverride) {
   app.setPath('userData', userDataDir)
 }
 registerFloatingRendererScheme()
+// 事件提示音在后台/非聚焦时也可能触发；允许无手势自动播放。
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 const cliArgv = extractHrackCliArgv(process.argv)
 if (cliArgv) {
@@ -218,6 +220,8 @@ const updateService = new UpdateService({
   enabled: app.isPackaged && process.env['HRACK_DISABLE_UPDATES'] !== '1',
   currentVersion: packageMetadata.version,
   driver: new ElectronUpdaterDriver(),
+  autoDownload: false,
+  initialCheckDelayMs: 0,
   broadcast: (snapshot) =>
     broadcastToAllWindows(UpdateEventChannel.StateChanged, snapshot),
   beforeInstall: () => prepareShutdown()
@@ -355,6 +359,8 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
   }
 
   registerIpc(manager, ctx)
+  // 启动即开始自动检查更新，不依赖窗口/设置页/托盘初始化完成。
+  updateService.startAutomaticChecks()
   try {
     await bridgeServer.start()
   } catch (error) {
@@ -387,7 +393,6 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
     registerGlobalShortcut(winRef)
   }
   startThemeWatcher()
-  updateService.startAutomaticChecks()
 
   // E2E：主进程调试钩子（托盘菜单点击 / 快捷键注册状态无法从 renderer 注入）。
   if (process.env['HRACK_E2E']) {
@@ -396,6 +401,14 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
       isWindowVisible: () => Boolean(winRef && !winRef.isDestroyed() && winRef.isVisible()),
       isWindowDestroyed: () => Boolean(winRef?.isDestroyed()),
       isShortcutRegistered: () => isGlobalShortcutRegistered(),
+      forceUpdateAvailable: (version: unknown, releaseNotes: unknown) => {
+        if (typeof version !== 'string' || !version.trim()) return false
+        updateService.debugSetAvailable(
+          version.trim(),
+          typeof releaseNotes === 'string' ? releaseNotes : null
+        )
+        return true
+      },
       toggleWindow: () => {
         if (winRef && !winRef.isDestroyed()) toggleWindowVisibility(winRef)
       },

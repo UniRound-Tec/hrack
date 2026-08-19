@@ -72,6 +72,14 @@ import {
   TerminalBackgroundStore
 } from './terminal-background'
 import {
+  installNotificationSoundProtocol,
+  NotificationSoundStore
+} from './notification-sound'
+import {
+  NOTIFICATION_SOUND_EXTENSIONS,
+  NotificationSoundInvokeChannel
+} from '../shared/notification-sound'
+import {
   directoryPickerDefaultPath,
   normalizePickedDirectory
 } from './directory-picker'
@@ -246,6 +254,11 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     join(app.getPath('userData'), 'terminal-background')
   )
   installTerminalBackgroundProtocol(terminalBackgrounds)
+  const notificationSounds = new NotificationSoundStore(
+    join(app.getPath('userData'), 'notification-sound'),
+    join(__dirname, '../../resources/done.mp3')
+  )
+  installNotificationSoundProtocol(notificationSounds)
   ipcMain.handle(WorkspaceReaderInvokeChannel.Describe, (_event, terminalId: unknown) =>
     ctx.workspaceReader.describe(terminalId)
   )
@@ -534,6 +547,29 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(TerminalBackgroundInvokeChannel.Clear, async (event) => {
     requireMainWindow(event, ctx)
     await terminalBackgrounds.clear()
+  })
+  ipcMain.handle(NotificationSoundInvokeChannel.Pick, async (event) => {
+    requireMainWindow(event, ctx)
+    const win = senderWindow(event)
+    const options = {
+      properties: ['openFile' as const],
+      filters: [
+        {
+          name: 'Audio',
+          extensions: [...NOTIFICATION_SOUND_EXTENSIONS] as string[]
+        }
+      ]
+    }
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options)
+    const selected = result.filePaths[0]
+    if (result.canceled || !selected) return null
+    return notificationSounds.importFile(selected)
+  })
+  ipcMain.handle(NotificationSoundInvokeChannel.Clear, async (event) => {
+    requireMainWindow(event, ctx)
+    await notificationSounds.clear()
   })
   ipcMain.handle(
     DialogInvokeChannel.PickDirectory,

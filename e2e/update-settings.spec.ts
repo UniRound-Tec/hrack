@@ -15,7 +15,7 @@ test.afterEach(async () => {
 test('shows the current version and keeps network updates disabled in development builds', async () => {
   await openSettings(page, 'update')
 
-  await expect(page.getByTestId('settings-update-version')).toContainText('0.3.0')
+  await expect(page.getByTestId('settings-update-version')).toContainText('0.3.4')
   await expect(page.getByTestId('settings-update-status')).toContainText(
     '开发版本不连接更新服务'
   )

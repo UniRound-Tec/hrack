@@ -5,6 +5,7 @@ export const zhTW = {
   titlebar: {
     newSession: '新增',
     settings: '設定',
+    updateAvailable: (version: string) => `發現新版本 ${version}`,
     minimize: '最小化',
     maximize: '最大化',
     restore: '還原',
@@ -364,6 +365,24 @@ export const zhTW = {
     terminalBackgroundOpacityHint: '只影響背景圖，不影響文字',
     terminalBackgroundTooLarge: '圖片不能超過 16 MB',
     terminalBackgroundUnsupported: '不支援這種圖片格式',
+    notificationSound: '事件提示音',
+    notificationSoundHint: '阻塞、完成或異常時播放提示音',
+    notificationSoundEnabled: '啟用提示音',
+    notificationSoundEnabledHint: '關閉後所有事件都不再發聲',
+    notificationSoundBlocked: '阻塞 / 需要操作',
+    notificationSoundBlockedHint: '等待核准或輸入時播放',
+    notificationSoundCompleted: '完成',
+    notificationSoundCompletedHint: '一輪任務完成時播放',
+    notificationSoundError: '異常',
+    notificationSoundErrorHint: '任務失敗時播放',
+    notificationSoundFile: '提示音檔案',
+    notificationSoundFileHint: '選擇本機音訊上傳；預設使用內建 done.mp3',
+    notificationSoundChoose: '選擇音訊',
+    notificationSoundChange: '更換',
+    notificationSoundClear: '恢復預設',
+    notificationSoundPreview: '試聽',
+    notificationSoundTooLarge: '音訊不能超過 10 MB',
+    notificationSoundUnsupported: '不支援的音訊格式',
     percent: (value: number) => `${value}%`,
     defaultTerminal: '預設終端機',
     defaultTerminalHint: 'quick launch 的「終端機」晶片依此啟動',
@@ -449,5 +468,14 @@ export const zhTW = {
     homeHint: '首頁內容將在 P3 接入；三態導覽與終端機路由已可用。',
     settingsHint: 'P2 先開放導覽模式；完整設定項將在 P3 接入。',
     unavailableTerminal: '這個示範工作階段沒有可開啟的終端機。'
+  },
+  updateModal: {
+    title: (version: string) => `發現新版本 ${version}`,
+    releaseNotes: '更新說明',
+    noReleaseNotes: '暫無更新說明',
+    update: '立即更新',
+    ignore: '忽略此版本',
+    never: '以後不再彈出',
+    later: '稍後'
   }
 } satisfies AppStrings

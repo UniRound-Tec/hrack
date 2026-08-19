@@ -25,6 +25,8 @@ import {
   terminalBackgroundFits,
   type TerminalBackgroundFit
 } from '../../shared/terminal-background'
+import { hasNotificationSound } from '../../shared/notification-sound'
+import { playNotificationPreview } from '../state/notificationSound'
 import ClickSpark from './effects/ClickSpark'
 import Dropdown, { type DropdownOption } from './Dropdown'
 import floatingRendererSkill from '../../resources/skills/create-hrack-floating-renderer/SKILL.md?raw'
@@ -55,7 +57,7 @@ const SETTINGS_CATEGORIES = [
   'update'
 ] as const
 
-type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number]
+export type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number]
 
 function dshPreferenceValue(config: DshRuntimeConfig | null): string {
   const preference = config?.runtimePreference
@@ -75,6 +77,7 @@ interface SettingsPageProps {
   dshRuntimeScanning: boolean
   dshRuntimeScanError: string | null
   onRefreshDshRuntimes: () => void
+  initialCategory?: SettingsCategory
 }
 
 export default function SettingsPage({
@@ -87,7 +90,8 @@ export default function SettingsPage({
   dshRuntimeReport,
   dshRuntimeScanning,
   dshRuntimeScanError,
-  onRefreshDshRuntimes
+  onRefreshDshRuntimes,
+  initialCategory = 'appearance'
 }: SettingsPageProps) {
   const settings = useSettingsStore()
   const strings = useStrings()
@@ -113,8 +117,15 @@ export default function SettingsPage({
   const [bridgeSkillCopied, setBridgeSkillCopied] = useState(false)
   const [backgroundBusy, setBackgroundBusy] = useState(false)
   const [backgroundError, setBackgroundError] = useState<string | null>(null)
-  const [category, setCategory] = useState<SettingsCategory>('appearance')
+  const [notificationSoundBusy, setNotificationSoundBusy] = useState(false)
+  const [notificationSoundError, setNotificationSoundError] =
+    useState<string | null>(null)
+  const [category, setCategory] = useState<SettingsCategory>(initialCategory)
   const contentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setCategory(initialCategory)
+  }, [initialCategory])
   const dshRuntimeBusy = dshRuntimeScanning || dshRuntimeChanging
   const dshRuntimeError = dshRuntimeActionError ?? dshRuntimeScanError
   const themeRegistryVersion = useThemeRegistryVersion((state) => state.version)
@@ -277,6 +288,50 @@ export default function SettingsPage({
       .then(() => settings.clearTerminalBackground())
       .catch((error) => setBackgroundError(backgroundMessage(error)))
       .finally(() => setBackgroundBusy(false))
+  }
+
+  const notificationSoundMessage = (error: unknown): string => {
+    const code = error instanceof Error ? error.message : String(error)
+    if (code.includes('audio-too-large')) {
+      return strings.settings.notificationSoundTooLarge
+    }
+    if (code.includes('unsupported-audio-type')) {
+      return strings.settings.notificationSoundUnsupported
+    }
+    return code
+  }
+
+  const pickNotificationSound = (): void => {
+    setNotificationSoundError(null)
+    setNotificationSoundBusy(true)
+    void window.notificationSoundApi
+      .pick()
+      .then((result) => {
+        if (result) {
+          settings.setNotificationSound(result.name, result.revision)
+        }
+      })
+      .catch((error) =>
+        setNotificationSoundError(notificationSoundMessage(error))
+      )
+      .finally(() => setNotificationSoundBusy(false))
+  }
+
+  const clearNotificationSound = (): void => {
+    setNotificationSoundError(null)
+    setNotificationSoundBusy(true)
+    void window.notificationSoundApi
+      .clear()
+      .then(() => settings.clearNotificationSound())
+      .catch((error) =>
+        setNotificationSoundError(notificationSoundMessage(error))
+      )
+      .finally(() => setNotificationSoundBusy(false))
+  }
+
+  const previewNotificationSound = (): void => {
+    setNotificationSoundError(null)
+    playNotificationPreview()
   }
 
   const changeGlobalShortcut = (enabled: boolean): void => {
@@ -919,6 +974,96 @@ export default function SettingsPage({
           {category === 'session' && (
           <Section label="session" title={strings.settings.sections.session}>
             <Row label={strings.settings.attentionPriority} hint={strings.settings.attentionPriorityHint}><Toggle testId="settings-attention-priority" checked={settings.attentionPriorityEnabled} onChange={settings.setAttentionPriorityEnabled} /></Row>
+            <div className="border-b border-border-faint py-3.5">
+              <div className="flex items-center justify-between gap-6">
+                <div className="min-w-0">
+                  <p className="font-pingfang text-[12px] font-medium text-text-secondary">{strings.settings.notificationSound}</p>
+                  <p className="mt-0.5 font-pingfang text-[11px] text-text-faint">{strings.settings.notificationSoundHint}</p>
+                </div>
+                <div className="shrink-0">
+                  <Toggle testId="settings-notification-sound-enabled" checked={settings.notificationSoundEnabled} onChange={settings.setNotificationSoundEnabled} />
+                </div>
+              </div>
+              <div className={`mt-3 ml-4 rounded-lg border border-border-faint bg-surface-strong/40 p-3 ${settings.notificationSoundEnabled ? '' : 'opacity-60'}`}>
+                <div className="flex items-center justify-between gap-6 py-1">
+                  <div className="min-w-0">
+                    <p className="font-pingfang text-[11px] font-medium text-text-secondary">{strings.settings.notificationSoundBlocked}</p>
+                    <p className="mt-0.5 font-pingfang text-[10px] text-text-faint">{strings.settings.notificationSoundBlockedHint}</p>
+                  </div>
+                  <div className="shrink-0">
+                    <Toggle testId="settings-notification-sound-blocked" checked={settings.notificationSoundOnBlocked} disabled={!settings.notificationSoundEnabled} onChange={settings.setNotificationSoundOnBlocked} />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-6 py-1">
+                  <div className="min-w-0">
+                    <p className="font-pingfang text-[11px] font-medium text-text-secondary">{strings.settings.notificationSoundCompleted}</p>
+                    <p className="mt-0.5 font-pingfang text-[10px] text-text-faint">{strings.settings.notificationSoundCompletedHint}</p>
+                  </div>
+                  <div className="shrink-0">
+                    <Toggle testId="settings-notification-sound-completed" checked={settings.notificationSoundOnCompleted} disabled={!settings.notificationSoundEnabled} onChange={settings.setNotificationSoundOnCompleted} />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-6 py-1">
+                  <div className="min-w-0">
+                    <p className="font-pingfang text-[11px] font-medium text-text-secondary">{strings.settings.notificationSoundError}</p>
+                    <p className="mt-0.5 font-pingfang text-[10px] text-text-faint">{strings.settings.notificationSoundErrorHint}</p>
+                  </div>
+                  <div className="shrink-0">
+                    <Toggle testId="settings-notification-sound-error" checked={settings.notificationSoundOnError} disabled={!settings.notificationSoundEnabled} onChange={settings.setNotificationSoundOnError} />
+                  </div>
+                </div>
+                <div className="mt-2 flex items-start justify-between gap-4 border-t border-border-faint pt-3">
+                  <div className="min-w-0">
+                    <p className="font-pingfang text-[11px] font-medium text-text-secondary">{strings.settings.notificationSoundFile}</p>
+                    <p className="mt-0.5 font-pingfang text-[10px] text-text-faint">{notificationSoundError ?? strings.settings.notificationSoundFileHint}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <span
+                      data-testid="settings-notification-sound-name"
+                      className="max-w-[180px] truncate font-pingfang text-[11px] text-text-faint"
+                      title={
+                        hasNotificationSound(settings.notificationSoundName)
+                          ? settings.notificationSoundName
+                          : undefined
+                      }
+                    >
+                      {settings.notificationSoundName}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        data-testid="settings-notification-sound-preview"
+                        disabled={notificationSoundBusy || !hasNotificationSound(settings.notificationSoundName)}
+                        onClick={previewNotificationSound}
+                        className="cursor-target rounded-lg border border-border-default bg-input px-2 py-1.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {strings.settings.notificationSoundPreview}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="settings-notification-sound-choose"
+                        disabled={notificationSoundBusy}
+                        onClick={pickNotificationSound}
+                        className="cursor-target rounded-lg border border-border-default bg-input px-2 py-1.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {settings.notificationSoundRevision > 0
+                          ? strings.settings.notificationSoundChange
+                          : strings.settings.notificationSoundChoose}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="settings-notification-sound-clear"
+                        disabled={notificationSoundBusy || settings.notificationSoundRevision === 0}
+                        onClick={clearNotificationSound}
+                        className="cursor-target rounded-lg border border-border-default bg-input px-2 py-1.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {strings.settings.notificationSoundClear}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
             <Row label={strings.settings.defaultTerminal} hint={strings.settings.defaultTerminalHint}><Dropdown testId="settings-default-terminal" direction="up" value={shells.some((shell) => shell.id === settings.defaultTerminal) ? settings.defaultTerminal : shells[0]?.id ?? ''} disabled={shells.length === 0} options={shells.map((shell) => ({ value: shell.id, label: shell.name }))} onChange={(value) => settings.setDefaultTerminal(value)} /></Row>
             <Row
               label={strings.dsh.runtimeLabel}

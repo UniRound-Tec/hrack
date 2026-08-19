@@ -11,6 +11,11 @@ import {
   normalizeTerminalBackgroundRevision,
   type TerminalBackgroundFit
 } from '../../shared/terminal-background'
+import {
+  DEFAULT_NOTIFICATION_SOUND_NAME,
+  normalizeNotificationSoundName,
+  normalizeNotificationSoundRevision
+} from '../../shared/notification-sound'
 
 const LEGACY_DEFAULT_FONT_FAMILY =
   'Consolas, "Cascadia Code", "Courier New", monospace'
@@ -52,6 +57,22 @@ export interface SettingsSnapshot {
   terminalBackgroundFit: TerminalBackgroundFit
   /** 背景图不透明度，0.1–1。 */
   terminalBackgroundOpacity: number
+  /** 事件提示音总开关。 */
+  notificationSoundEnabled: boolean
+  /** 阻塞/需要操作时播放提示音。 */
+  notificationSoundOnBlocked: boolean
+  /** 完成时播放提示音。 */
+  notificationSoundOnCompleted: boolean
+  /** 异常时播放提示音。 */
+  notificationSoundOnError: boolean
+  /** 当前提示音显示名；默认 done.mp3，上传后为用户文件名。 */
+  notificationSoundName: string
+  /** 当前提示音版本号；0 表示使用打包默认音，>0 表示用户上传音。 */
+  notificationSoundRevision: number
+  /** 用户选择“忽略”的更新版本；等于该版本时不再弹更新确认框。 */
+  ignoredUpdateVersion: string | null
+  /** 用户选择“以后不再弹出”后，所有未来版本都不再自动弹出更新确认框。 */
+  updateModalDisabled: boolean
 }
 
 /** v3 及更早版本的默认字号；v4 起默认 14，迁移时把旧默认值一并带过去。 */
@@ -80,7 +101,15 @@ export const defaultSettings: SettingsSnapshot = {
   terminalBackgroundName: '',
   terminalBackgroundRevision: 0,
   terminalBackgroundFit: 'cover',
-  terminalBackgroundOpacity: 0.3
+  terminalBackgroundOpacity: 0.3,
+  notificationSoundEnabled: true,
+  notificationSoundOnBlocked: true,
+  notificationSoundOnCompleted: true,
+  notificationSoundOnError: true,
+  notificationSoundName: DEFAULT_NOTIFICATION_SOUND_NAME,
+  notificationSoundRevision: 0,
+  ignoredUpdateVersion: null,
+  updateModalDisabled: false
 }
 
 /** Terminal consumers only need this stable subset. */
@@ -118,6 +147,14 @@ export interface SettingsState extends SettingsSnapshot {
   setTerminalBackgroundFit(fit: TerminalBackgroundFit): void
   setTerminalBackgroundOpacity(opacity: number): void
   clearTerminalBackground(): void
+  setNotificationSoundEnabled(enabled: boolean): void
+  setNotificationSoundOnBlocked(enabled: boolean): void
+  setNotificationSoundOnCompleted(enabled: boolean): void
+  setNotificationSoundOnError(enabled: boolean): void
+  setNotificationSound(name: string, revision: number): void
+  clearNotificationSound(): void
+  ignoreUpdateVersion(version: string | null): void
+  setUpdateModalDisabled(disabled: boolean): void
   reset(): void
 }
 
@@ -154,6 +191,9 @@ function normalizeDshScale(value: unknown): number {
  * default follow it) and adds the rounded-terminal flag.
  * v11 adds the TargetCursor hover-frame toggle (default on).
  * v12 adds terminal background image, fit mode, and opacity.
+ * v13 adds configurable notification sound, event toggles, and custom sound info.
+ * v14 adds the user-ignored update version for the update confirmation modal.
+ * v15 adds a global "don't ask again" switch for update confirmation modals.
  */
 export function migrateSettings(
   persistedState: unknown,
@@ -265,7 +305,38 @@ export function migrateSettings(
       : defaultSettings.terminalBackgroundFit,
     terminalBackgroundOpacity: normalizeTerminalBackgroundOpacity(
       legacy.terminalBackgroundOpacity
-    )
+    ),
+    notificationSoundEnabled:
+      typeof legacy.notificationSoundEnabled === 'boolean'
+        ? legacy.notificationSoundEnabled
+        : defaultSettings.notificationSoundEnabled,
+    notificationSoundOnBlocked:
+      typeof legacy.notificationSoundOnBlocked === 'boolean'
+        ? legacy.notificationSoundOnBlocked
+        : defaultSettings.notificationSoundOnBlocked,
+    notificationSoundOnCompleted:
+      typeof legacy.notificationSoundOnCompleted === 'boolean'
+        ? legacy.notificationSoundOnCompleted
+        : defaultSettings.notificationSoundOnCompleted,
+    notificationSoundOnError:
+      typeof legacy.notificationSoundOnError === 'boolean'
+        ? legacy.notificationSoundOnError
+        : defaultSettings.notificationSoundOnError,
+    notificationSoundName: normalizeNotificationSoundName(
+      legacy.notificationSoundName
+    ),
+    notificationSoundRevision: normalizeNotificationSoundRevision(
+      legacy.notificationSoundRevision
+    ),
+    ignoredUpdateVersion:
+      typeof legacy.ignoredUpdateVersion === 'string' &&
+      legacy.ignoredUpdateVersion.trim()
+        ? legacy.ignoredUpdateVersion.trim()
+        : null,
+    updateModalDisabled:
+      typeof legacy.updateModalDisabled === 'boolean'
+        ? legacy.updateModalDisabled
+        : false
   }
 }
 
@@ -331,6 +402,33 @@ export const createSettingsState: StateCreator<SettingsState> = (set) => ({
       terminalBackgroundName: '',
       terminalBackgroundRevision: 0
     }),
+  setNotificationSoundEnabled: (notificationSoundEnabled) =>
+    set({ notificationSoundEnabled }),
+  setNotificationSoundOnBlocked: (notificationSoundOnBlocked) =>
+    set({ notificationSoundOnBlocked }),
+  setNotificationSoundOnCompleted: (notificationSoundOnCompleted) =>
+    set({ notificationSoundOnCompleted }),
+  setNotificationSoundOnError: (notificationSoundOnError) =>
+    set({ notificationSoundOnError }),
+  setNotificationSound: (name, revision) =>
+    set({
+      notificationSoundName: normalizeNotificationSoundName(name),
+      notificationSoundRevision: normalizeNotificationSoundRevision(revision)
+    }),
+  clearNotificationSound: () =>
+    set({
+      notificationSoundName: DEFAULT_NOTIFICATION_SOUND_NAME,
+      notificationSoundRevision: 0
+    }),
+  ignoreUpdateVersion: (ignoredUpdateVersion) =>
+    set({
+      ignoredUpdateVersion:
+        typeof ignoredUpdateVersion === 'string' && ignoredUpdateVersion.trim()
+          ? ignoredUpdateVersion.trim()
+          : null
+    }),
+  setUpdateModalDisabled: (updateModalDisabled) =>
+    set({ updateModalDisabled }),
   reset: () => set(defaultSettings)
 })
 
@@ -339,7 +437,7 @@ migrateLegacyStorageKey('hrack-terminal-settings', 'vibing-terminal-settings')
 export const useSettingsStore = create<SettingsState>()(
   persist(createSettingsState, {
     name: 'hrack-terminal-settings',
-    version: 12,
+    version: 15,
     migrate: migrateSettings,
     partialize: ({
       onboardingCompleted,
@@ -361,7 +459,15 @@ export const useSettingsStore = create<SettingsState>()(
       terminalBackgroundName,
       terminalBackgroundRevision,
       terminalBackgroundFit,
-      terminalBackgroundOpacity
+      terminalBackgroundOpacity,
+      notificationSoundEnabled,
+      notificationSoundOnBlocked,
+      notificationSoundOnCompleted,
+      notificationSoundOnError,
+      notificationSoundName,
+      notificationSoundRevision,
+      ignoredUpdateVersion,
+      updateModalDisabled
     }) => ({
       onboardingCompleted,
       uiThemeId,
@@ -382,7 +488,15 @@ export const useSettingsStore = create<SettingsState>()(
       terminalBackgroundName,
       terminalBackgroundRevision,
       terminalBackgroundFit,
-      terminalBackgroundOpacity
+      terminalBackgroundOpacity,
+      notificationSoundEnabled,
+      notificationSoundOnBlocked,
+      notificationSoundOnCompleted,
+      notificationSoundOnError,
+      notificationSoundName,
+      notificationSoundRevision,
+      ignoredUpdateVersion,
+      updateModalDisabled
     })
   })
 )

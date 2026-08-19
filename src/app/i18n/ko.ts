@@ -5,6 +5,7 @@ export const ko = {
   titlebar: {
     newSession: '새로 만들기',
     settings: '설정',
+    updateAvailable: (version: string) => `새 버전 ${version} 사용 가능`,
     minimize: '최소화',
     maximize: '최대화',
     restore: '복원',
@@ -364,6 +365,24 @@ export const ko = {
     terminalBackgroundOpacityHint: '이미지에만 적용되며 글자에는 영향이 없습니다',
     terminalBackgroundTooLarge: '이미지는 16 MB 이하여야 합니다',
     terminalBackgroundUnsupported: '이 이미지 형식은 지원되지 않습니다',
+    notificationSound: '이벤트 소리',
+    notificationSoundHint: '차단, 완료 또는 오류 시 소리를 재생합니다',
+    notificationSoundEnabled: '소리 사용',
+    notificationSoundEnabledHint: '끄면 모든 이벤트에서 소리가 나지 않습니다',
+    notificationSoundBlocked: '차단 / 작업 필요',
+    notificationSoundBlockedHint: '승인 또는 입력을 기다릴 때 재생',
+    notificationSoundCompleted: '완료',
+    notificationSoundCompletedHint: '턴이 끝나면 재생',
+    notificationSoundError: '오류',
+    notificationSoundErrorHint: '작업 실패 시 재생',
+    notificationSoundFile: '소리 파일',
+    notificationSoundFileHint: '로컬 오디오를 선택해 업로드. 기본값은 내장 done.mp3',
+    notificationSoundChoose: '오디오 선택',
+    notificationSoundChange: '변경',
+    notificationSoundClear: '기본값 복원',
+    notificationSoundPreview: '미리 듣기',
+    notificationSoundTooLarge: '오디오는 10 MB 이하여야 합니다',
+    notificationSoundUnsupported: '지원되지 않는 오디오 형식입니다',
     percent: (value: number) => `${value}%`,
     defaultTerminal: '기본 터미널',
     defaultTerminalHint: 'quick launch의 터미널 칩이 이것으로 시작',
@@ -449,5 +468,14 @@ export const ko = {
     homeHint: '홈 콘텐츠는 P3에서 추가. 세 상태 내비게이션과 터미널 라우팅은 사용 가능.',
     settingsHint: 'P2에서는 내비게이션 모드만 제공. 전체 설정은 P3에서 추가.',
     unavailableTerminal: '이 데모 세션에는 열 수 있는 터미널이 없습니다.'
+  },
+  updateModal: {
+    title: (version: string) => `새 버전 ${version} 사용 가능`,
+    releaseNotes: '업데이트 내역',
+    noReleaseNotes: '업데이트 내역이 없습니다',
+    update: '지금 업데이트',
+    ignore: '이 버전 무시',
+    never: '다시 표시하지 않음',
+    later: '나중에'
   }
 } satisfies AppStrings

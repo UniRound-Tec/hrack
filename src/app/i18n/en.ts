@@ -5,6 +5,7 @@ export const en = {
   titlebar: {
     newSession: 'New',
     settings: 'Settings',
+    updateAvailable: (version: string) => `Update ${version} available`,
     minimize: 'Minimize',
     maximize: 'Maximize',
     restore: 'Restore',
@@ -366,6 +367,24 @@ export const en = {
     terminalBackgroundOpacityHint: 'Affects the image only, not the text',
     terminalBackgroundTooLarge: 'Images must be 16 MB or smaller',
     terminalBackgroundUnsupported: 'This image format is not supported',
+    notificationSound: 'Event sound',
+    notificationSoundHint: 'Play a sound on blocked, completed, or error events',
+    notificationSoundEnabled: 'Enable sound',
+    notificationSoundEnabledHint: 'No event sounds when disabled',
+    notificationSoundBlocked: 'Blocked / needs you',
+    notificationSoundBlockedHint: 'Play when waiting for approval or input',
+    notificationSoundCompleted: 'Completed',
+    notificationSoundCompletedHint: 'Play when a turn finishes',
+    notificationSoundError: 'Error',
+    notificationSoundErrorHint: 'Play when a task fails',
+    notificationSoundFile: 'Sound file',
+    notificationSoundFileHint: 'Pick a local audio file; the bundled done.mp3 is the default',
+    notificationSoundChoose: 'Choose audio',
+    notificationSoundChange: 'Change',
+    notificationSoundClear: 'Restore default',
+    notificationSoundPreview: 'Preview',
+    notificationSoundTooLarge: 'Audio must be 10 MB or smaller',
+    notificationSoundUnsupported: 'This audio format is not supported',
     percent: (value: number) => `${value}%`,
     defaultTerminal: 'Default terminal',
     defaultTerminalHint: 'The Terminal chip on quick launch starts this',
@@ -451,5 +470,14 @@ export const en = {
     homeHint: 'Home content lands in P3; three-state navigation and routing work.',
     settingsHint: 'P2 unlocks navigation mode; full settings land in P3.',
     unavailableTerminal: 'This demo session has no terminal to open.'
+  },
+  updateModal: {
+    title: (version: string) => `Update ${version} available`,
+    releaseNotes: 'Release notes',
+    noReleaseNotes: 'No release notes available',
+    update: 'Update now',
+    ignore: 'Ignore this version',
+    never: "Don't ask again",
+    later: 'Later'
   }
 } satisfies AppStrings

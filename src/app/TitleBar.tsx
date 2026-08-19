@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
+  Download,
   PanelRightClose,
   PanelRightOpen,
   Settings2,
@@ -12,6 +13,8 @@ interface TitleBarProps {
   showPrimaryActions?: boolean
   onSettings?: () => void
   settingsActive?: boolean
+  updateBadge?: string | null
+  onOpenUpdate?: () => void
   onToggleCode?: () => void
   codeOpen?: boolean
 }
@@ -21,6 +24,8 @@ export default function TitleBar({
   showPrimaryActions = true,
   onSettings,
   settingsActive = false,
+  updateBadge = null,
+  onOpenUpdate,
   onToggleCode,
   codeOpen = false
 }: TitleBarProps) {
@@ -75,6 +80,19 @@ export default function TitleBar({
               <SquarePen className="size-3.5" strokeWidth={1.75} />
               {strings.titlebar.newSession}
             </button>
+            {updateBadge && onOpenUpdate && (
+              <button
+                type="button"
+                data-testid="titlebar-update"
+                title={strings.titlebar.updateAvailable(updateBadge)}
+                aria-label={strings.titlebar.updateAvailable(updateBadge)}
+                onClick={onOpenUpdate}
+                className="titlebar-action cursor-target flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] transition-colors"
+              >
+                <Download className="size-3.5" strokeWidth={1.75} />
+                <span className="max-w-24 truncate">{updateBadge}</span>
+              </button>
+            )}
             <button
               type="button"
               data-testid="titlebar-settings"

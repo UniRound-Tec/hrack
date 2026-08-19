@@ -5,6 +5,7 @@ export const ja = {
   titlebar: {
     newSession: '新規',
     settings: '設定',
+    updateAvailable: (version: string) => `新しいバージョン ${version} があります`,
     minimize: '最小化',
     maximize: '最大化',
     restore: '元に戻す',
@@ -364,6 +365,24 @@ export const ja = {
     terminalBackgroundOpacityHint: '画像のみに影響し、文字には影響しません',
     terminalBackgroundTooLarge: '画像は 16 MB 以下にしてください',
     terminalBackgroundUnsupported: 'この画像形式はサポートされていません',
+    notificationSound: 'イベントサウンド',
+    notificationSoundHint: 'ブロック・完了・エラー時にサウンドを再生',
+    notificationSoundEnabled: 'サウンドを有効化',
+    notificationSoundEnabledHint: '無効にするとすべてのイベントで鳴りません',
+    notificationSoundBlocked: 'ブロック / 操作待ち',
+    notificationSoundBlockedHint: '承認や入力待ちのときに再生',
+    notificationSoundCompleted: '完了',
+    notificationSoundCompletedHint: 'ターン完了時に再生',
+    notificationSoundError: 'エラー',
+    notificationSoundErrorHint: 'タスク失敗時に再生',
+    notificationSoundFile: 'サウンドファイル',
+    notificationSoundFileHint: 'ローカル音声を選択してアップロード。既定は内蔵 done.mp3',
+    notificationSoundChoose: '音声を選択',
+    notificationSoundChange: '変更',
+    notificationSoundClear: '既定に戻す',
+    notificationSoundPreview: '試聴',
+    notificationSoundTooLarge: '音声は 10 MB 以下にしてください',
+    notificationSoundUnsupported: 'この音声形式はサポートされていません',
     percent: (value: number) => `${value}%`,
     defaultTerminal: 'デフォルトターミナル',
     defaultTerminalHint: 'quick launch の「ターミナル」チップがこれで起動します',
@@ -449,5 +468,14 @@ export const ja = {
     homeHint: 'ホーム内容は P3 で追加。三状態ナビゲーションとターミナルルーティングは利用可。',
     settingsHint: 'P2 ではナビゲーションモードのみ解放。完全な設定は P3 で追加。',
     unavailableTerminal: 'このデモセッションには開けるターミナルがありません。'
+  },
+  updateModal: {
+    title: (version: string) => `新しいバージョン ${version} があります`,
+    releaseNotes: '更新内容',
+    noReleaseNotes: '更新内容はありません',
+    update: '今すぐ更新',
+    ignore: 'このバージョンを無視',
+    never: '今後表示しない',
+    later: '後で'
   }
 } satisfies AppStrings

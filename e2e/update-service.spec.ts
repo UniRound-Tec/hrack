@@ -75,7 +75,11 @@ class FakeUpdateDriver implements UpdateDriver {
 
 function createService(
   driver: FakeUpdateDriver,
-  options: { enabled?: boolean; autoDownload?: boolean } = {}
+  options: {
+    enabled?: boolean
+    autoDownload?: boolean
+    initialCheckDelayMs?: number
+  } = {}
 ) {
   const broadcasts: string[] = []
   let installsPrepared = 0
@@ -84,6 +88,7 @@ function createService(
     currentVersion: '0.3.0',
     driver,
     autoDownload: options.autoDownload,
+    initialCheckDelayMs: options.initialCheckDelayMs,
     now: () => 1_234,
     broadcast: (snapshot) => broadcasts.push(snapshot.phase),
     beforeInstall: async () => {
@@ -105,6 +110,21 @@ test('keeps development builds disabled without subscribing or checking', async 
   expect(driver.subscriptions).toBe(0)
   expect(driver.checks).toBe(0)
   expect(broadcasts).toEqual([])
+})
+
+test('starts an automatic check when startAutomaticChecks is called', async () => {
+  const driver = new FakeUpdateDriver()
+  const { service } = createService(driver, {
+    autoDownload: false,
+    initialCheckDelayMs: 5
+  })
+
+  service.startAutomaticChecks()
+  await expect
+    .poll(() => driver.checks, { timeout: 2_000 })
+    .toBeGreaterThan(0)
+
+  service.dispose()
 })
 
 test('deduplicates concurrent checks and lets the latest event replace the snapshot', async () => {
@@ -169,6 +189,25 @@ test('automatically downloads an available update and reports progress', async (
 
   gate.resolve()
   await Promise.resolve()
+  service.dispose()
+})
+
+test('carries release notes into the available update snapshot', () => {
+  const driver = new FakeUpdateDriver()
+  const { service } = createService(driver, { autoDownload: false })
+
+  driver.available({
+    version: '0.4.0',
+    releaseDate: '2026-08-17',
+    releaseNotes: 'What’s new in 0.4.0'
+  })
+  expect(service.getState()).toMatchObject({
+    phase: 'available',
+    availableVersion: '0.4.0',
+    releaseNotes: 'What’s new in 0.4.0'
+  })
+  expect(driver.downloads).toBe(0)
+
   service.dispose()
 })
 
