@@ -1,6 +1,6 @@
 # HRack 远程控制 — Spec
 
-> 状态：**讨论结论（2026-08-20），未实施。**
+> 状态：**讨论结论（2026-08-20），未实施。** 落地按 [§11](#11-分批实施-p0p8) P0–P8 分模块关门，整份契约都有效，但未到期的报文必须 `not-implemented`，不得假装成功。
 > 范围：一部手机远程看见、新建、驾驶 HRack 里已经在跑（或由手机新建）的 CLI 会话。
 > 父文档：[SPEC.md](./SPEC.md)、[SPEC-S.md](./SPEC-S.md)。
 > 本机 OpenCode Bridge 仍只活在本机，见 [SPEC-OPENCODE-BRIDGE.md](./SPEC-OPENCODE-BRIDGE.md)。远程不走那条套接字。
@@ -165,7 +165,7 @@ hello 限流，防止扫 `roomId`。
 | `sessions-snapshot` | `sessions: RemoteSession[]` | 手机连上或电脑重连成功后一次 |
 | `session-upsert` | `session: RemoteSession` | 投影变化 |
 | `session-removed` | `sessionId` | tab/会话关掉 |
-| `catalog` | `launchable: RemoteLaunchable[]`, `recentWorkspaces: string[]` | 快照同时发；扫描变化时再发 |
+| `catalog` | `launchable: RemoteLaunchable[]`, `recentWorkspaces: string[]` | **P5 起**：手机加入时发；扫描/最近工作区变化时再发 |
 | `drive-ok` | `sessionId`, `cols`, `rows`, `history` | 同意驾驶；`history` 为现有 `PtyHistorySnapshot` 的远程表示 |
 | `drive-reject` | `reason` | `not-found` / `exited` / `busy` |
 | `undriven` | `sessionId`, `reason` | `reclaim` / `left` / `phone-timeout` / `session-exit` / `desktop-offline` |
@@ -205,6 +205,20 @@ hello 限流，防止扫 `roomId`。
 历史：`drive-ok.history` 复用现有 PTY 历史上限；`complete: false` 表示已截断。手机 xterm 先 replay 再接 `pty-out`。
 
 驾驶中电脑 **不得** 因窗口 fit 对这条 PTY 发 resize。手机的 `pty-resize` 才是这条 PTY 的 winsize 来源。释放后由电脑按当前窗口 fit 一次。
+
+### 6.4 报文按阶段生效
+
+| 阶段 | 允许发出或必须正确处理的 type |
+|---|---|
+| P0 | 全部 type 的 TypeScript 形状与 URL 解析；还没有真实连接 |
+| P1 | `hello` / `hello-ok` / `peer-join` / `peer-leave` / `occupied` / `bad-key` / `revoked`；电脑 → `sessions-snapshot` / `session-upsert` / `session-removed` |
+| P2 | 中继转发任意 JSON；占座与吊销。不理解控制面语义 |
+| P4 | `drive` / `drive-ok` / `drive-reject` / `undrive` / `undriven` / `pty-*` |
+| P5 | `catalog` / `create` / `create-ok` / `create-reject` |
+
+未到期：收到后回 `{ type: 'not-implemented', for: '<type>' }`（控制面）或忽略（中继不当业务端）。不得半套成功。
+
+本地测试允许 `http://` / `ws://`。产品默认仍是 `https://` / `wss://`。加入 URL 的 scheme 决定 WebSocket scheme。
 
 ---
 
@@ -289,22 +303,229 @@ hello 限流，防止扫 `roomId`。
 
 ---
 
-## 11. 仓库与落地顺序
+## 11. 分批实施（P0–P8）
 
-三个仓库，发布周期分开：
+三个仓库，发布周期分开：`hrack`、`hrack-remote-server`、`hrack-remote-app`。App 与中继的语言/框架本 spec 不锁。
 
-1. `hrack-remote-server` — 配对页 + 房间 + WSS 转发  
-2. `hrack` — 设置里的 URL、占座、快照/catalog、驾驶与 tab 锁、`create`  
-3. `hrack-remote-app` — 扫码、列表、新建、xterm  
+**纪律**
 
-建议切片（仍不在本文件实施）：
+- 一期一个模块，过验收再开下一期。不要在 P1 里顺手做驾驶。
+- 每期必须有**自动验收**（单测或定向 e2e）。完整 `npm run e2e` 不是每期门禁（见 `AGENTS.md`）。
+- 对端用**测试替身**即可关门：P1/P4/P5 用进程内或 localhost WSS 冒充手机/中继；P2 用两个夹具客户端，不必等真 App。
+- 未到期报文 `not-implemented`。不自动拉起 HRack GUI。
+- 协议权威类型先落在 `hrack/shared/remote-protocol.ts`。中继与 App 同期复制，抽出独立包不是开门条件。
 
-1. 配对：生成 URL+码、两边占座、`occupied`、吊销。  
-2. 控制面：快照 + 六态增量，App 只读列表。  
-3. 新建：catalog + 最近工作区 + `create`。  
-4. 驾驶：历史 + PTY + tab 锁 + 抢回 + 15s 掉线释放。  
+```text
+P0 协议
+ └─ P1 HRack 出站：控制面推送（测试中继验收，不依赖网站）
+      ├─ P4 HRack 驾驶（继续用测试中继即可关门）
+      │    └─ P5 HRack 新建
+      └─ P2 中继网站：生成 URL/码 + 占座转发
+           └─ P3 列表通路：HRack + 真中继 + 夹具手机
+                └─ P6 App 扫码 + 列表
+                     ├─ P7 App 新建  ← 还依赖 P5
+                     └─ P8 App 终端  ← 还依赖 P4
+```
 
-App 与中继的语言/框架本 spec 不锁。
+默认顺序：**P0 → P1 → P2 → P3**，与「先协议、再桌面出站、再网页」一致。P2 技术上只依赖 P0，可以和 P1 并行，但验收排在 P1 之后，避免中继和桌面客户端同时调试协议分歧。
+
+P4 不需要网站：夹具直接连 P1 的测试中继。P6 必须等 P3。P7 等 P5+P6。P8 等 P4+P6。
+
+### 总表
+
+| 期 | 模块 | 仓库 | 这一期结束时人能验收什么 |
+|---|---|---|---|
+| **P0** | 协议 | `hrack` | 报文、URL、座位规则有类型和单测，还没有窗口、没有网站 |
+| **P1** | 桌面出站 · 控制面 | `hrack` | 设置里填 URL，连上测试中继，会话列表和六态会推出去 |
+| **P2** | 中继网站 | `hrack-remote-server` | 浏览器生成 URL+二维码；两个夹具客户端能占座、转发、occupied、吊销 |
+| **P3** | 列表打通 | `hrack` + server | 网页生成 → HRack 填 URL → 夹具手机经真中继收到真实会话快照 |
+| **P4** | 桌面驾驶 | `hrack` | 夹具发 `drive`，该 tab 锁住并改尺寸，抢回/掉线按 §9 释放，有 PTY 进出 |
+| **P5** | 桌面新建 | `hrack` | 夹具发 `create`，电脑按首页同一条链拉起 AI CLI 并自动驾驶 |
+| **P6** | App 列表 | `hrack-remote-app` | 扫码进入，看到真实会话和六态；电脑未连时等待，不拉起 GUI |
+| **P7** | App 新建 | app | 选 CLI、必填工作区、免审批开关，能在电脑上拉起并进入驾驶 |
+| **P8** | App 终端 | app | 手机 xterm 复读被驾驶 PTY，能键入；返回列表 = undrive |
+
+系统推送、E2E 加密、多设备不在 P0–P8。
+
+---
+
+### P0 — 协议冻结
+
+**做**
+
+- `shared/remote-protocol.ts`：§6 全部 type、`RemoteSession`、`RemoteLaunchable`、`not-implemented`。
+- 加入 URL 解析：`{origin, base, roomId, wsUrl}`；`http`↔`ws`、`https`↔`wss`；`base` 含子路径。
+- 房间座位状态机（纯函数）：空座占上、活连接 `occupied`、死连接腾座、吊销。
+- 若干黄金 JSON 夹具（hello、snapshot、drive-ok）。
+
+**不做：** 网络、设置 UI、网站、App。
+
+**验收**
+
+- 单测：解析 `https://hrack.dev/aK3`、`https://my.box:8443/remote/aK3`、`http://127.0.0.1:9/aK3`。
+- 单测：第二台 desktop `occupied`；吊销后 `bad-key`。
+- 夹具 JSON 能通过类型守卫。非法 `v` 拒绝。
+
+---
+
+### P1 — HRack 出站 · 控制面推送
+
+依赖 P0。对端是 **测试中继**（e2e/单测里起的 localhost WSS），不是 P2 网站。
+
+**做**
+
+- 设置：完整 URL 输入、连接前确认（终端会送到该源）、连接/断开、连接状态（未填 / 连接中 / 已出站等待手机 / 对端已占座 / 失败原因）、已填 URL 的二维码。
+- 出站 `hello` `role=desktop`。不自动启动第二份 GUI。
+- 手机 `peer-join` 或重连成功后发一次 `sessions-snapshot`；之后投影变化 `session-upsert` / `session-removed`。只含 AI CLI 会话，字段按 §6.2 裁剪。
+- 收到 `drive` / `create` / `pty-in` → `not-implemented`。
+
+**不做：** 真中继仓库、驾驶、catalog、新建、App。
+
+**验收（定向，必须自动）**
+
+1. 填 `ws://127.0.0.1:<test>/<room>`，确认后出站；测试中继收到 `hello` desktop。
+2. 有两条 AI CLI 时，夹具手机连上后收到 `sessions-snapshot`，`sessionId` / `status` 与桌面投影一致。
+3. 夹具连上后把一条会话打成 `needs-you`（或等价夹具），中继侧收到 `session-upsert`。
+4. 关掉该会话 → `session-removed`。
+5. 未开 HRack 时测试中继不会被「自动拉起 GUI」。本条是负面：本功能不得 spawn 新的官方/开发实例。
+6. 第二桌面连同一 room → `occupied`，第一桌面不断。
+
+---
+
+### P2 — 中继网站（前后端）
+
+依赖 P0。不依赖 HRack 窗口。新建 `hrack-remote-server`。
+
+**做**
+
+- 生成页：完整加入 URL、二维码（内容=URL）、复制、吊销。
+- 内存房间；`{base}/v1/ws`；心跳腾座；hello 限流。
+- 按 room 转发 JSON。不解析 `pty-*` 正文，日志不记 PTY / `pty-in`。
+- 1:1:1 占座、`hello-ok.peer`、`peer-join` / `peer-leave`、`occupied`、`bad-key`、`revoked`。
+- 单房间缓冲上限，超出断开该房间。
+
+**不做：** 会话列表 UI、xterm、账号、持久化终端、HRack 设置。
+
+**验收**
+
+1. 打开生成页，URL 最后一段是 128-bit url-safe；码解码等于该 URL。
+2. 夹具 desktop + phone 先后 `hello`，双方收到 `hello-ok` 与 `peer-join`。
+3. desktop 发任意 JSON，phone 原样收到（证明中继不改业务帧）。
+4. 第二个 desktop `occupied`；吊销后两端 `revoked`，再 hello 为 `bad-key`。
+5. 进程重启后房间空，旧 roomId `bad-key`。
+
+---
+
+### P3 — 列表通路打通
+
+依赖 P1 + P2。第一次把真 HRack 和真中继接在一起。夹具仍可冒充手机。
+
+**做**
+
+- HRack 对 P2 的真实 URL 出站（含 https 自建与 http 本地）。
+- 必要时修 URL/`base` 与 cookie/跨域等部署问题。不新加业务报文。
+
+**验收**
+
+1. 本地起 P2 → 生成 URL → HRack 粘贴确认 → 夹具手机扫不了码也可以手动用同一 URL 连 WSS。
+2. 夹具收到的 snapshot 来自**真实** HRack 会话，不是 P1 测试中继灌的假数据。
+3. HRack 设置里的二维码解码等于所填 URL。
+
+P3 关门 = 「电脑把列表送到公网房间」成立。此后 App 和驾驶可以并行。
+
+---
+
+### P4 — HRack 驾驶
+
+依赖 P1（连接）。验收可用测试中继或 P2。
+
+**做**
+
+- 处理 `drive` / `undrive` / `pty-resize`；回复 `drive-ok`（含 history）或 `drive-reject`。
+- 只 SIGWINCH 被驾驶的那条 PTY；该 tab 遮罩「手机正在控制 · 抢回」；侧栏角标；其它 tab 不锁。
+- 窗口 resize 不 fit 被驾驶 PTY。
+- `pty-out` / `pty-in` / `pty-ack` / `pty-exit`；接入 `PtyDataQueue` 与 `PtyHistory`。
+- 抢回、返回、15s 手机掉线、会话退出 → §9。抢回优先。
+
+**不做：** App xterm、新建、catalog。
+
+**验收**
+
+1. 夹具 `drive` 已知 `sessionId` + 40×18 → 该 PTY 变为 40×18，其它 PTY 行列不变。
+2. 被驾驶 tab 本机键入进不了 PTY；点抢回后恢复窗口 fit，夹具收到 `undriven reason=reclaim`。
+3. `drive-ok.history` 非空（该会话已有输出时）；随后夹具写入 `pty-in`，桌面 PTY 收到相同字节。
+4. 夹具断 15s+ → 自动释放。
+5. 对非 AI CLI / 未知 id → `drive-reject`。
+6. 暴量输出时队列有界，HRack 不炸进程。
+
+---
+
+### P5 — HRack 新建
+
+依赖 P4（建成后要直接驾驶）。
+
+**做**
+
+- 推 `catalog`（`RemoteLaunchable` + `recentWorkspaces`，无 `resolvedExecutable`）。
+- 处理 `create`：走现有 `prepareLaunch` → spawn → agent start，`workspace` 必填。
+- 成功：`create-ok` + 按请求尺寸 spawn + `drive-ok`。失败：`create-reject`，不 spawn。
+- WSL 只按 `installationId` 的 runtime 在电脑上启动。
+
+**验收**
+
+1. 夹具收到的 catalog 与首页可启动列表一致，且无本机 exe 路径。
+2. 合法 `installationId` + 存在的工作区 → 电脑出现新 AI CLI tab，并进入驾驶。
+3. 空工作区或不存在路径 → `create-reject`，不新开 tab。
+4. 免审批开关与首页同一套 `skipApproval` 注入。
+
+---
+
+### P6 — App 扫码 + 列表
+
+依赖 P3。
+
+**做**
+
+- 扫码（完整 URL）；等待电脑空态；列表绑 `sessions-*`。
+- 电脑未连不得假装有会话。不自动拉起 GUI。
+
+**不做：** 新建表单、xterm、系统推送。点进会话若 P4 已上可显示「即将支持」或进入 P8；P6 关门不要求终端。
+
+**验收**
+
+1. 扫网页或 HRack 上的码，进同一房间。
+2. 电脑已连：列表与桌面 AI CLI 一致，六态会变。
+3. 电脑未连：等待态。第二部手机 `occupied`。
+
+---
+
+### P7 — App 新建
+
+依赖 P5 + P6。
+
+**做：** 与首页同构的新建：CLI 列表、installation/WSL、工作区必填（最近+手打）、免审批。提交 `create`，成功则进入驾驶（若 P8 未到，至少电脑侧 tab 已出现）。
+
+**验收：** 手机填最近工作区能在电脑拉起对应 CLI；手打错误路径看到失败，电脑不多 tab。
+
+---
+
+### P8 — App 终端
+
+依赖 P4 + P6。
+
+**做：** xterm 复读 history + `pty-out`；附加键 Esc/Ctrl/Tab/方向；IME 组字后再 `pty-in`；返回列表 `undrive`。
+
+**验收**
+
+1. 点进已有会话，手机看到与电脑被驾驶 tab 同一套格子（可缩放显示，不改第二套 winsize）。
+2. 手机键入出现在电脑 PTY；返回列表后电脑 tab 解锁并 fit。
+3. 中文输入不把拼音逐键送进 PTY。
+
+---
+
+### 每期完成后再做的事
+
+P8 之后才考虑：后台推送、E2E 加密、普通 shell 驾驶、抽出共享协议包。不插入 P0–P8 中间。
 
 ---
 
