@@ -110,6 +110,10 @@ export class ElectronFloatingWindowController
   private lastContentHeight: number | null = null
   private lastShapeRects: FloatingShapeRect[] = []
   private suppressWindowRecovery = false
+  /** Bottom edge used as the stable anchor across programmatic resizes. */
+  private anchorBottom: number | null = null
+  /** True while this controller is moving/resizing the window itself. */
+  private suppressAnchorUpdate = false
   private readonly handleDisplayChange = (): void => this.clampToVisibleArea()
 
   constructor(private readonly deps: FloatingWindowControllerDeps) {
@@ -281,17 +285,8 @@ export class ElectronFloatingWindowController
     const scaledWidth = Math.round(definition.width * this.scale)
     const boundedHeight = nextHeight
     if (boundedHeight === bounds.height && scaledWidth === bounds.width) return
-    const bottom = bounds.y + bounds.height
-    const nextY = Math.max(
-      workArea.y,
-      Math.min(bottom - boundedHeight, workArea.y + workArea.height - boundedHeight)
-    )
-    win.setBounds({
-      x: bounds.x,
-      y: nextY,
-      width: scaledWidth,
-      height: boundedHeight
-    })
+    const bottom = this.anchorBottom ?? (bounds.y + bounds.height)
+    this.setBoundsKeepingBottom(win, bounds.x, scaledWidth, boundedHeight, bottom)
   }
 
   setShape(rects: FloatingShapeRect[]): void {
@@ -511,6 +506,7 @@ export class ElectronFloatingWindowController
     this.lastContentHeight = definition.minHeight
     this.lastShapeRects = []
     this.suppressWindowRecovery = false
+    this.anchorBottom = win.getBounds().y + win.getBounds().height
     win.on('closed', () => {
       if (this.window === win) {
         this.window = null
@@ -519,7 +515,13 @@ export class ElectronFloatingWindowController
       if (this.moveTimer) clearTimeout(this.moveTimer)
       this.moveTimer = null
     })
-    win.on('move', () => this.schedulePositionSave(win))
+    win.on('move', () => {
+      if (!this.suppressAnchorUpdate && !win.isDestroyed()) {
+        const bounds = win.getBounds()
+        this.anchorBottom = bounds.y + bounds.height
+      }
+      this.schedulePositionSave(win)
+    })
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
     win.webContents.on('will-navigate', (event, nextUrl) => {
       if (!this.isAllowedNavigation(definition, nextUrl)) event.preventDefault()
@@ -645,19 +647,55 @@ export class ElectronFloatingWindowController
     const contentHeight = this.lastContentHeight ?? definition.minHeight
     const height = Math.max(minHeight, Math.min(maxHeight, Math.round(contentHeight * this.scale)))
     const right = bounds.x + bounds.width
-    const bottom = bounds.y + bounds.height
+    const bottom = this.anchorBottom ?? (bounds.y + bounds.height)
+    const x = Math.max(workArea.x, Math.min(right - width, workArea.x + workArea.width - width))
     win.setMinimumSize(1, 1)
     win.setMaximumSize(workArea.width, workArea.height)
-    win.setBounds({
-      x: Math.max(workArea.x, Math.min(right - width, workArea.x + workArea.width - width)),
-      y: Math.max(workArea.y, Math.min(bottom - height, workArea.y + workArea.height - height)),
-      width,
-      height
-    })
+    this.setBoundsKeepingBottom(win, x, width, height, bottom)
     win.setMinimumSize(width, minHeight)
     win.setMaximumSize(width, maxHeight)
     win.webContents.setZoomFactor(this.scale)
     if (this.lastShapeRects.length > 0) this.setShape(this.lastShapeRects)
+  }
+
+  /**
+   * Resize/move the window while keeping `bottom` as the stable anchor.
+   *
+   * On scaled displays Electron may quantize the resulting window height (e.g.
+   * a 150% display turns a requested height of 109 DIP into 110 DIP). Reading
+   * the actual bounds and correcting y prevents the bottom edge from drifting
+   * downward on every content-height update.
+   */
+  private setBoundsKeepingBottom(
+    win: BrowserWindow,
+    x: number,
+    width: number,
+    height: number,
+    bottom: number
+  ): void {
+    const workArea = screen.getDisplayMatching(win.getBounds()).workArea
+    const requestedY = Math.max(
+      workArea.y,
+      Math.min(bottom - height, workArea.y + workArea.height - height)
+    )
+    this.suppressAnchorUpdate = true
+    try {
+      win.setBounds({ x, y: requestedY, width, height })
+      const actual = win.getBounds()
+      const actualBottom = actual.y + actual.height
+      if (actualBottom !== bottom) {
+        const correctedY = Math.max(
+          workArea.y,
+          Math.min(
+            bottom - actual.height,
+            workArea.y + workArea.height - actual.height
+          )
+        )
+        if (correctedY !== actual.y) win.setPosition(actual.x, correctedY)
+      }
+    } finally {
+      this.suppressAnchorUpdate = false
+    }
   }
 
   private schedulePositionSave(win: BrowserWindow): void {
