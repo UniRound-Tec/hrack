@@ -7,6 +7,7 @@ import {
   ClipboardInvokeChannel,
   CliInvokeChannel,
   DialogInvokeChannel,
+  TerminalBackgroundInvokeChannel,
   FloatingWindowEventChannel,
   FloatingWindowInvokeChannel,
   PtyInvokeChannel,
@@ -29,6 +30,7 @@ import {
   type CliApi,
   type CliLaunchSelection,
   type DialogApi,
+  type TerminalBackgroundApi,
   type FloatingWindowApi,
   type FloatingWindowState,
   type FocusSessionPayload,
@@ -245,6 +247,11 @@ const themeApi: ThemeApi = {
 const dialogApi: DialogApi = {
   pickDirectory: (request) =>
     ipcRenderer.invoke(DialogInvokeChannel.PickDirectory, request)
+}
+
+const terminalBackgroundApi: TerminalBackgroundApi = {
+  pick: () => ipcRenderer.invoke(TerminalBackgroundInvokeChannel.Pick),
+  clear: () => ipcRenderer.invoke(TerminalBackgroundInvokeChannel.Clear)
 }
 
 const shellApi: ShellApi = {
@@ -552,6 +559,7 @@ try {
   contextBridge.exposeInMainWorld('floatingWindowApi', floatingWindowApi)
   contextBridge.exposeInMainWorld('themeApi', themeApi)
   contextBridge.exposeInMainWorld('dialogApi', dialogApi)
+  contextBridge.exposeInMainWorld('terminalBackgroundApi', terminalBackgroundApi)
   contextBridge.exposeInMainWorld('shellApi', shellApi)
   contextBridge.exposeInMainWorld('cliApi', cliApi)
   contextBridge.exposeInMainWorld('statsApi', statsApi)

@@ -21,7 +21,7 @@ import {
   statusTone
 } from '../src/app/sessionStatus'
 
-test.describe('settingsStore v11', () => {
+test.describe('settingsStore v12', () => {
   test('migrates v0/v1 terminal defaults before applying the v3 schema', () => {
     const fromV0 = migrateSettings(
       {
@@ -94,7 +94,11 @@ test.describe('settingsStore v11', () => {
       workspaceTreeWidth: 220,
       attentionPriorityEnabled: false,
       dshScale: 0.9,
-      targetCursorEnabled: true
+      targetCursorEnabled: true,
+      terminalBackgroundName: '',
+      terminalBackgroundRevision: 0,
+      terminalBackgroundFit: 'cover',
+      terminalBackgroundOpacity: 0.3
     })
     expect(migrated).not.toHaveProperty('themeId')
   })
@@ -134,6 +138,32 @@ test.describe('settingsStore v11', () => {
     ).toBe(false)
   })
 
+  test('v12 adds terminal wallpaper settings without wiping older preferences', () => {
+    expect(migrateSettings({ fontSize: 14 }, 11)).toMatchObject({
+      fontSize: 14,
+      terminalBackgroundName: '',
+      terminalBackgroundRevision: 0,
+      terminalBackgroundFit: 'cover',
+      terminalBackgroundOpacity: 0.3
+    })
+    expect(
+      migrateSettings(
+        {
+          terminalBackgroundName: 'wall.png',
+          terminalBackgroundRevision: 99,
+          terminalBackgroundFit: 'tile',
+          terminalBackgroundOpacity: 0.4
+        },
+        11
+      )
+    ).toMatchObject({
+      terminalBackgroundName: 'wall.png',
+      terminalBackgroundRevision: 99,
+      terminalBackgroundFit: 'tile',
+      terminalBackgroundOpacity: 0.4
+    })
+  })
+
   test('updates and resets the full settings slice', () => {
     const store = createStore<SettingsState>()(createSettingsState)
     expect(store.getState().onboardingCompleted).toBe(false)
@@ -150,6 +180,9 @@ test.describe('settingsStore v11', () => {
     store.getState().setAttentionPriorityEnabled(true)
     store.getState().setDshScale(1.1)
     store.getState().setTargetCursorEnabled(false)
+    store.getState().setTerminalBackground('bg.webp', 12)
+    store.getState().setTerminalBackgroundFit('contain')
+    store.getState().setTerminalBackgroundOpacity(0.5)
 
     expect(store.getState()).toMatchObject({
       onboardingCompleted: true,
@@ -165,7 +198,11 @@ test.describe('settingsStore v11', () => {
       workspaceTreeWidth: 280,
       attentionPriorityEnabled: true,
       dshScale: 1.1,
-      targetCursorEnabled: false
+      targetCursorEnabled: false,
+      terminalBackgroundName: 'bg.webp',
+      terminalBackgroundRevision: 12,
+      terminalBackgroundFit: 'contain',
+      terminalBackgroundOpacity: 0.5
     })
 
     store.getState().reset()

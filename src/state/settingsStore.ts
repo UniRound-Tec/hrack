@@ -4,6 +4,13 @@ import type { AppLocale } from '../app/i18n'
 import { detectLocale } from '../app/i18n/locale'
 import { isTerminalThemeId, type ThemeId } from '../terminal/themes'
 import { migrateLegacyStorageKey } from './legacyStorage'
+import {
+  isTerminalBackgroundFit,
+  normalizeTerminalBackgroundName,
+  normalizeTerminalBackgroundOpacity,
+  normalizeTerminalBackgroundRevision,
+  type TerminalBackgroundFit
+} from '../../shared/terminal-background'
 
 const LEGACY_DEFAULT_FONT_FAMILY =
   'Consolas, "Cascadia Code", "Courier New", monospace'
@@ -38,6 +45,13 @@ export interface SettingsSnapshot {
   dshScale: number
   /** 指针移到按钮上时的跟随方框；默认开，与历史行为一致。 */
   targetCursorEnabled: boolean
+  /** 终端背景图显示名；空字符串表示未选择。 */
+  terminalBackgroundName: string
+  /** 背景图版本号，用于刷新自定义协议缓存。 */
+  terminalBackgroundRevision: number
+  terminalBackgroundFit: TerminalBackgroundFit
+  /** 背景图不透明度，0.1–1。 */
+  terminalBackgroundOpacity: number
 }
 
 /** v3 及更早版本的默认字号；v4 起默认 14，迁移时把旧默认值一并带过去。 */
@@ -62,7 +76,11 @@ export const defaultSettings: SettingsSnapshot = {
   workspaceTreeWidth: 220,
   attentionPriorityEnabled: false,
   dshScale: 0.9,
-  targetCursorEnabled: true
+  targetCursorEnabled: true,
+  terminalBackgroundName: '',
+  terminalBackgroundRevision: 0,
+  terminalBackgroundFit: 'cover',
+  terminalBackgroundOpacity: 0.3
 }
 
 /** Terminal consumers only need this stable subset. */
@@ -96,6 +114,10 @@ export interface SettingsState extends SettingsSnapshot {
   setAttentionPriorityEnabled(enabled: boolean): void
   setDshScale(scale: number): void
   setTargetCursorEnabled(enabled: boolean): void
+  setTerminalBackground(name: string, revision: number): void
+  setTerminalBackgroundFit(fit: TerminalBackgroundFit): void
+  setTerminalBackgroundOpacity(opacity: number): void
+  clearTerminalBackground(): void
   reset(): void
 }
 
@@ -131,6 +153,7 @@ function normalizeDshScale(value: unknown): number {
  * v4 lowers the default font size 16 -> 14 (users who never left the old
  * default follow it) and adds the rounded-terminal flag.
  * v11 adds the TargetCursor hover-frame toggle (default on).
+ * v12 adds terminal background image, fit mode, and opacity.
  */
 export function migrateSettings(
   persistedState: unknown,
@@ -230,7 +253,19 @@ export function migrateSettings(
     targetCursorEnabled:
       typeof legacy.targetCursorEnabled === 'boolean'
         ? legacy.targetCursorEnabled
-        : defaultSettings.targetCursorEnabled
+        : defaultSettings.targetCursorEnabled,
+    terminalBackgroundName: normalizeTerminalBackgroundName(
+      legacy.terminalBackgroundName
+    ),
+    terminalBackgroundRevision: normalizeTerminalBackgroundRevision(
+      legacy.terminalBackgroundRevision
+    ),
+    terminalBackgroundFit: isTerminalBackgroundFit(legacy.terminalBackgroundFit)
+      ? legacy.terminalBackgroundFit
+      : defaultSettings.terminalBackgroundFit,
+    terminalBackgroundOpacity: normalizeTerminalBackgroundOpacity(
+      legacy.terminalBackgroundOpacity
+    )
   }
 }
 
@@ -276,6 +311,26 @@ export const createSettingsState: StateCreator<SettingsState> = (set) => ({
   setDshScale: (dshScale) => set({ dshScale: normalizeDshScale(dshScale) }),
   setTargetCursorEnabled: (targetCursorEnabled) =>
     set({ targetCursorEnabled }),
+  setTerminalBackground: (name, revision) =>
+    set({
+      terminalBackgroundName: normalizeTerminalBackgroundName(name),
+      terminalBackgroundRevision: normalizeTerminalBackgroundRevision(revision)
+    }),
+  setTerminalBackgroundFit: (terminalBackgroundFit) =>
+    set({
+      terminalBackgroundFit: isTerminalBackgroundFit(terminalBackgroundFit)
+        ? terminalBackgroundFit
+        : defaultSettings.terminalBackgroundFit
+    }),
+  setTerminalBackgroundOpacity: (opacity) =>
+    set({
+      terminalBackgroundOpacity: normalizeTerminalBackgroundOpacity(opacity)
+    }),
+  clearTerminalBackground: () =>
+    set({
+      terminalBackgroundName: '',
+      terminalBackgroundRevision: 0
+    }),
   reset: () => set(defaultSettings)
 })
 
@@ -284,7 +339,7 @@ migrateLegacyStorageKey('hrack-terminal-settings', 'vibing-terminal-settings')
 export const useSettingsStore = create<SettingsState>()(
   persist(createSettingsState, {
     name: 'hrack-terminal-settings',
-    version: 11,
+    version: 12,
     migrate: migrateSettings,
     partialize: ({
       onboardingCompleted,
@@ -302,7 +357,11 @@ export const useSettingsStore = create<SettingsState>()(
       workspaceTreeWidth,
       attentionPriorityEnabled,
       dshScale,
-      targetCursorEnabled
+      targetCursorEnabled,
+      terminalBackgroundName,
+      terminalBackgroundRevision,
+      terminalBackgroundFit,
+      terminalBackgroundOpacity
     }) => ({
       onboardingCompleted,
       uiThemeId,
@@ -319,7 +378,11 @@ export const useSettingsStore = create<SettingsState>()(
       workspaceTreeWidth,
       attentionPriorityEnabled,
       dshScale,
-      targetCursorEnabled
+      targetCursorEnabled,
+      terminalBackgroundName,
+      terminalBackgroundRevision,
+      terminalBackgroundFit,
+      terminalBackgroundOpacity
     })
   })
 )

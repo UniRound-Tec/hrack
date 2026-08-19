@@ -6,6 +6,7 @@
 
 import type { UserThemeFile } from './theme-schema'
 import type { FloatingAppearance } from './floating-window'
+import type { TerminalBackgroundPickResult } from './terminal-background'
 export {
   FloatingWindowEventChannel,
   FloatingWindowInvokeChannel,
@@ -268,6 +269,11 @@ export const DialogInvokeChannel = {
   PickDirectory: 'dialog:pick-directory'
 } as const
 
+export const TerminalBackgroundInvokeChannel = {
+  Pick: 'terminal-background:pick',
+  Clear: 'terminal-background:clear'
+} as const
+
 export interface DirectoryPickerRequest {
   defaultPath?: string
   runtime: CliRuntime
@@ -445,6 +451,11 @@ export interface ThemeApi {
 
 export interface DialogApi {
   pickDirectory: (request: DirectoryPickerRequest) => Promise<string | null>
+}
+
+export interface TerminalBackgroundApi {
+  pick: () => Promise<TerminalBackgroundPickResult | null>
+  clear: () => Promise<void>
 }
 
 export interface ShellApi {

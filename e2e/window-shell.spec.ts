@@ -312,6 +312,15 @@ test('registers and unregisters the global shortcut with the settings toggle', a
   await expect.poll(shortcut).toBe(true)
 })
 
+test('settings expose terminal background controls', async () => {
+  await page.getByTestId('titlebar-settings').click()
+  await expect(page.getByTestId('settings-page')).toBeVisible()
+  await expect(page.getByTestId('settings-terminal-background-choose')).toBeVisible()
+  await expect(page.getByTestId('settings-terminal-background-preview')).toBeVisible()
+  await expect(page.getByTestId('settings-terminal-background-fit')).toBeVisible()
+  await expect(page.getByTestId('settings-terminal-background-opacity')).toBeVisible()
+})
+
 test('settings can disable the hover-frame overlay', async () => {
   await page.getByTestId('titlebar-settings').click()
   await expect(page.getByTestId('settings-page')).toBeVisible()

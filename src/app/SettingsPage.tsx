@@ -18,7 +18,13 @@ import {
 import { appLocales, useStrings } from './i18n'
 import { getUiThemeRegistry, useThemeRegistryVersion } from './themeRuntime'
 import { terminalThemeIds, terminalThemes } from '../terminal/themes'
+import TerminalBackgroundPreview from '../terminal/TerminalBackgroundPreview'
 import { useSettingsStore, defaultSettings, type NavMode } from '../state/settingsStore'
+import {
+  hasTerminalBackground,
+  terminalBackgroundFits,
+  type TerminalBackgroundFit
+} from '../../shared/terminal-background'
 import ClickSpark from './effects/ClickSpark'
 import Dropdown, { type DropdownOption } from './Dropdown'
 import floatingRendererSkill from '../../resources/skills/create-hrack-floating-renderer/SKILL.md?raw'
@@ -95,6 +101,8 @@ export default function SettingsPage({
   const [themeJsonError, setThemeJsonError] = useState<string | null>(null)
   const [themeSkillCopied, setThemeSkillCopied] = useState(false)
   const [bridgeSkillCopied, setBridgeSkillCopied] = useState(false)
+  const [backgroundBusy, setBackgroundBusy] = useState(false)
+  const [backgroundError, setBackgroundError] = useState<string | null>(null)
   const dshRuntimeBusy = dshRuntimeScanning || dshRuntimeChanging
   const dshRuntimeError = dshRuntimeActionError ?? dshRuntimeScanError
   const themeRegistryVersion = useThemeRegistryVersion((state) => state.version)
@@ -222,6 +230,37 @@ export default function SettingsPage({
     settings.setLanguage(locale)
     // 托盘菜单是原生 UI：语言变更立即上报主进程同步文案。
     void window.appApi.setMainPrefs({ language: locale })
+  }
+
+  const backgroundMessage = (error: unknown): string => {
+    const code = error instanceof Error ? error.message : String(error)
+    if (code.includes('image-too-large')) return strings.settings.terminalBackgroundTooLarge
+    if (code.includes('unsupported-image-type')) {
+      return strings.settings.terminalBackgroundUnsupported
+    }
+    return code
+  }
+
+  const pickTerminalBackground = (): void => {
+    setBackgroundError(null)
+    setBackgroundBusy(true)
+    void window.terminalBackgroundApi
+      .pick()
+      .then((result) => {
+        if (result) settings.setTerminalBackground(result.name, result.revision)
+      })
+      .catch((error) => setBackgroundError(backgroundMessage(error)))
+      .finally(() => setBackgroundBusy(false))
+  }
+
+  const clearTerminalBackground = (): void => {
+    setBackgroundError(null)
+    setBackgroundBusy(true)
+    void window.terminalBackgroundApi
+      .clear()
+      .then(() => settings.clearTerminalBackground())
+      .catch((error) => setBackgroundError(backgroundMessage(error)))
+      .finally(() => setBackgroundBusy(false))
   }
 
   const changeGlobalShortcut = (enabled: boolean): void => {
@@ -693,6 +732,119 @@ export default function SettingsPage({
             <Row label={strings.settings.fontSize}><div className="flex items-center gap-0.5 rounded-lg bg-control p-0.5"><button type="button" data-testid="settings-font-decrease" aria-label={strings.settings.decreaseFontSize} onClick={() => settings.setFont(settings.fontFamily, Math.max(10, settings.fontSize - 1))} className="cursor-target flex size-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-control-active hover:text-text-primary"><Minus className="size-3" strokeWidth={1.75} /></button><span data-testid="settings-font-size" className="w-10 text-center font-maple text-[12px] text-text-secondary">{strings.settings.pixels(settings.fontSize)}</span><button type="button" data-testid="settings-font-increase" aria-label={strings.settings.increaseFontSize} onClick={() => settings.setFont(settings.fontFamily, Math.min(24, settings.fontSize + 1))} className="cursor-target flex size-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-control-active hover:text-text-primary"><Plus className="size-3" strokeWidth={1.75} /></button></div></Row>
             <Row label={strings.settings.ligatures} hint={strings.settings.ligaturesHint}><Toggle testId="settings-ligatures" checked={settings.ligatures} onChange={settings.setLigatures} /></Row>
             <Row label={strings.settings.terminalRounded} hint={strings.settings.terminalRoundedHint}><Toggle testId="settings-terminal-rounded" checked={settings.terminalRounded} onChange={settings.setTerminalRounded} /></Row>
+            <Row
+              label={strings.settings.terminalBackground}
+              hint={backgroundError ?? strings.settings.terminalBackgroundHint}
+            >
+              <div className="flex items-start gap-2">
+                <TerminalBackgroundPreview />
+                <div className="flex min-w-0 flex-col items-end gap-1.5">
+                  <span
+                    data-testid="settings-terminal-background-name"
+                    className="max-w-[140px] truncate font-pingfang text-[11px] text-text-faint"
+                    title={
+                      hasTerminalBackground(
+                        settings.terminalBackgroundName,
+                        settings.terminalBackgroundRevision
+                      )
+                        ? settings.terminalBackgroundName
+                        : undefined
+                    }
+                  >
+                    {hasTerminalBackground(
+                      settings.terminalBackgroundName,
+                      settings.terminalBackgroundRevision
+                    )
+                      ? settings.terminalBackgroundName
+                      : strings.settings.terminalBackgroundEmpty}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      data-testid="settings-terminal-background-choose"
+                      disabled={backgroundBusy}
+                      onClick={pickTerminalBackground}
+                      className="cursor-target rounded-lg border border-border-default bg-input px-2 py-1.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {hasTerminalBackground(
+                        settings.terminalBackgroundName,
+                        settings.terminalBackgroundRevision
+                      )
+                        ? strings.settings.terminalBackgroundChange
+                        : strings.settings.terminalBackgroundChoose}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="settings-terminal-background-clear"
+                      disabled={
+                        backgroundBusy ||
+                        !hasTerminalBackground(
+                          settings.terminalBackgroundName,
+                          settings.terminalBackgroundRevision
+                        )
+                      }
+                      onClick={clearTerminalBackground}
+                      className="cursor-target rounded-lg border border-border-default bg-input px-2 py-1.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {strings.settings.terminalBackgroundClear}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Row>
+            <Row label={strings.settings.terminalBackgroundFit} hint={strings.settings.terminalBackgroundFitHint}>
+              <Dropdown
+                testId="settings-terminal-background-fit"
+                value={settings.terminalBackgroundFit}
+                options={terminalBackgroundFits.map((fit) => ({
+                  value: fit,
+                  label:
+                    fit === 'cover'
+                      ? strings.settings.terminalBackgroundFitCover
+                      : fit === 'contain'
+                        ? strings.settings.terminalBackgroundFitContain
+                        : fit === 'fill'
+                          ? strings.settings.terminalBackgroundFitFill
+                          : strings.settings.terminalBackgroundFitTile
+                }))}
+                buttonClassName="min-w-[100px]"
+                onChange={(value) =>
+                  settings.setTerminalBackgroundFit(value as TerminalBackgroundFit)
+                }
+              />
+            </Row>
+            <Row
+              label={strings.settings.terminalBackgroundOpacity}
+              hint={strings.settings.terminalBackgroundOpacityHint}
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  data-testid="settings-terminal-background-opacity"
+                  type="range"
+                  min={10}
+                  max={100}
+                  step={5}
+                  value={Math.round(settings.terminalBackgroundOpacity * 100)}
+                  aria-valuemin={10}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(settings.terminalBackgroundOpacity * 100)}
+                  onChange={(event) =>
+                    settings.setTerminalBackgroundOpacity(
+                      Number(event.target.value) / 100
+                    )
+                  }
+                  className="h-1 w-24 cursor-target accent-[var(--hrack-button-primary-bg)]"
+                />
+                <span
+                  data-testid="settings-terminal-background-opacity-value"
+                  className="w-10 text-right font-maple text-[12px] text-text-secondary"
+                >
+                  {strings.settings.percent(
+                    Math.round(settings.terminalBackgroundOpacity * 100)
+                  )}
+                </span>
+              </div>
+            </Row>
           </Section>
 
           <Section label="session" title={strings.settings.sections.session}>

@@ -7,6 +7,7 @@ import type {
   CliApi,
   ClipboardApi,
   DialogApi,
+  TerminalBackgroundApi,
   FloatingWindowApi,
   PtyApi,
   ShellApi,
@@ -30,6 +31,7 @@ declare global {
     hrackFloating: FloatingRendererApi
     themeApi: ThemeApi
     dialogApi: DialogApi
+    terminalBackgroundApi: TerminalBackgroundApi
     shellApi: ShellApi
     cliApi: CliApi
     statsApi: StatsApi

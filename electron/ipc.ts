@@ -17,6 +17,7 @@ import {
   CliInvokeChannel,
   DialogInvokeChannel,
   FloatingWindowInvokeChannel,
+  TerminalBackgroundInvokeChannel,
   PtyInvokeChannel,
   ShellInvokeChannel,
   StatsInvokeChannel,
@@ -66,6 +67,10 @@ import type { DshProjectionBridge } from './dsh-host/DshProjectionBridge'
 import type { DshWebSurfaceController } from './dsh-surface/DshWebSurfaceController'
 import type { UpdateService } from './update/UpdateService'
 import { UserThemeStore } from './user-themes'
+import {
+  installTerminalBackgroundProtocol,
+  TerminalBackgroundStore
+} from './terminal-background'
 import {
   directoryPickerDefaultPath,
   normalizePickedDirectory
@@ -237,6 +242,10 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   const userThemes = new UserThemeStore(
     join(app.getPath('userData'), 'themes')
   )
+  const terminalBackgrounds = new TerminalBackgroundStore(
+    join(app.getPath('userData'), 'terminal-background')
+  )
+  installTerminalBackgroundProtocol(terminalBackgrounds)
   ipcMain.handle(WorkspaceReaderInvokeChannel.Describe, (_event, terminalId: unknown) =>
     ctx.workspaceReader.describe(terminalId)
   )
@@ -502,6 +511,29 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(ThemeInvokeChannel.SaveCustom, (event, source: unknown) => {
     requireMainWindow(event, ctx)
     return userThemes.saveCustom(source)
+  })
+  ipcMain.handle(TerminalBackgroundInvokeChannel.Pick, async (event) => {
+    requireMainWindow(event, ctx)
+    const win = senderWindow(event)
+    const options = {
+      properties: ['openFile' as const],
+      filters: [
+        {
+          name: 'Images',
+          extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif']
+        }
+      ]
+    }
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options)
+    const selected = result.filePaths[0]
+    if (result.canceled || !selected) return null
+    return terminalBackgrounds.importFile(selected)
+  })
+  ipcMain.handle(TerminalBackgroundInvokeChannel.Clear, async (event) => {
+    requireMainWindow(event, ctx)
+    await terminalBackgrounds.clear()
   })
   ipcMain.handle(
     DialogInvokeChannel.PickDirectory,
