@@ -29,6 +29,10 @@ import {
 
 const EDGE_GAP = 20
 const FLOATING_PARTITION = 'hrack-floating-renderers'
+/** Highest practical always-on-top level; macOS maps this above normal apps. */
+const FLOATING_ALWAYS_ON_TOP_LEVEL = 'screen-saver' as const
+/** Re-assert topmost periodically so other topmost/fullscreen apps cannot keep it buried. */
+const FLOATING_TOPMOST_REFRESH_MS = 8_000
 
 export interface FloatingWindowController {
   getState(): FloatingWindowState
@@ -98,6 +102,7 @@ export class ElectronFloatingWindowController
   private initialized = false
   private operation: Promise<void> = Promise.resolve()
   private moveTimer: NodeJS.Timeout | null = null
+  private topmostTimer: NodeJS.Timeout | null = null
   private uninstallProtocol: (() => void) | null = null
   private selectedRendererId = BUILTIN_FLOATING_RENDERER_ID
   private attentionEffectEnabled = true
@@ -379,6 +384,8 @@ export class ElectronFloatingWindowController
     this.disposed = true
     if (this.moveTimer) clearTimeout(this.moveTimer)
     this.moveTimer = null
+    if (this.topmostTimer) clearInterval(this.topmostTimer)
+    this.topmostTimer = null
     screen.removeListener('display-removed', this.handleDisplayChange)
     screen.removeListener('display-metrics-changed', this.handleDisplayChange)
     this.registry.dispose()
@@ -514,6 +521,8 @@ export class ElectronFloatingWindowController
       }
       if (this.moveTimer) clearTimeout(this.moveTimer)
       this.moveTimer = null
+      if (this.topmostTimer) clearInterval(this.topmostTimer)
+      this.topmostTimer = null
     })
     win.on('move', () => {
       if (!this.suppressAnchorUpdate && !win.isDestroyed()) {
@@ -542,7 +551,7 @@ export class ElectronFloatingWindowController
         )
       )
     })
-    win.setAlwaysOnTop(true, 'floating')
+    win.setAlwaysOnTop(true, FLOATING_ALWAYS_ON_TOP_LEVEL)
     win.webContents.setZoomFactor(this.scale)
 
     if (definition.id === BUILTIN_FLOATING_RENDERER_ID) {
@@ -573,6 +582,11 @@ export class ElectronFloatingWindowController
     }
     this.broadcastSnapshot()
     win.showInactive()
+    this.ensureTopmost(win)
+    this.topmostTimer = setInterval(
+      () => this.ensureTopmost(win),
+      FLOATING_TOPMOST_REFRESH_MS
+    )
   }
 
   private async handleRendererFailure(
@@ -632,6 +646,8 @@ export class ElectronFloatingWindowController
     this.lastContentHeight = null
     this.lastShapeRects = []
     this.suppressWindowRecovery = true
+    if (this.topmostTimer) clearInterval(this.topmostTimer)
+    this.topmostTimer = null
     if (win && !win.isDestroyed()) win.destroy()
   }
 
@@ -656,6 +672,17 @@ export class ElectronFloatingWindowController
     win.setMaximumSize(width, maxHeight)
     win.webContents.setZoomFactor(this.scale)
     if (this.lastShapeRects.length > 0) this.setShape(this.lastShapeRects)
+  }
+
+  /** Re-assert the floating window's topmost z-order. */
+  private ensureTopmost(win: BrowserWindow): void {
+    if (!win || win.isDestroyed() || !this.enabled || this.disposed) return
+    try {
+      win.setAlwaysOnTop(true, FLOATING_ALWAYS_ON_TOP_LEVEL)
+      win.moveTop()
+    } catch {
+      // Topmost re-assertion is best-effort; ignore platform-specific failures.
+    }
   }
 
   /**
