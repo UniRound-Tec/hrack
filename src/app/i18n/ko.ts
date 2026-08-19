@@ -382,7 +382,6 @@ export const ko = {
     updateCheck: '업데이트 확인',
     updateDownload: '업데이트 다운로드',
     updateRestart: '다시 시작하고 설치',
-    preferences: 'settings · preferences',
     description: '레이아웃과 컨트롤은 확정된 프로토타입을 따르며 설정은 settingsStore에 직접 기록됩니다.',
     mapleMono: 'Maple Mono',
     pixels: (value: number) => `${value}px`,

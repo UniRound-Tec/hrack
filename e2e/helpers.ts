@@ -157,6 +157,26 @@ export async function launchApp(options: {
   }
 }
 
+export type SettingsCategory =
+  | 'appearance'
+  | 'layout'
+  | 'terminal'
+  | 'session'
+  | 'update'
+
+export async function openSettings(
+  page: Page,
+  category: SettingsCategory = 'appearance'
+): Promise<void> {
+  const settings = page.getByTestId('settings-page')
+  if (!(await settings.isVisible())) {
+    await page.getByTestId('titlebar-settings').click()
+  }
+  await expect(settings).toBeVisible()
+  await page.getByTestId(`settings-category-${category}`).click()
+  await expect(settings).toHaveAttribute('data-settings-category', category)
+}
+
 /** App Shell entry used by legacy multi-terminal gates after the M3 tab bar was removed. */
 export async function openDefaultTerminal(window: Page): Promise<void> {
   await window.keyboard.press('Control+Shift+T')

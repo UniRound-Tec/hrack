@@ -382,7 +382,6 @@ export const zhTW = {
     updateCheck: '檢查更新',
     updateDownload: '下載更新',
     updateRestart: '重新啟動並安裝',
-    preferences: 'settings · preferences',
     description: '版面與控制項沿用定稿原型；各項設定直讀寫 settingsStore。',
     mapleMono: 'Maple Mono',
     pixels: (value: number) => `${value}px`,

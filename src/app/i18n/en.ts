@@ -384,7 +384,6 @@ export const en = {
     updateCheck: 'Check for updates',
     updateDownload: 'Download update',
     updateRestart: 'Restart and install',
-    preferences: 'settings · preferences',
     description: 'Layout and controls follow the locked prototype; settings write through.',
     mapleMono: 'Maple Mono',
     pixels: (value: number) => `${value}px`,

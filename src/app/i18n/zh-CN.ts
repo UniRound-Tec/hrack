@@ -385,7 +385,6 @@ export const zhCN = {
     updateCheck: '检查更新',
     updateDownload: '下载更新',
     updateRestart: '重启并安装',
-    preferences: 'settings · preferences',
     description: '布局与控件沿用定稿原型；各项设置直读写 settingsStore。',
     mapleMono: 'Maple Mono',
     pixels: (value: number) => `${value}px`,

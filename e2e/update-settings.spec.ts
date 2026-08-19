@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test'
-import { launchApp } from './helpers'
+import { launchApp, openSettings } from './helpers'
 
 let app: ElectronApplication
 let page: Page
@@ -13,7 +13,7 @@ test.afterEach(async () => {
 })
 
 test('shows the current version and keeps network updates disabled in development builds', async () => {
-  await page.getByTestId('titlebar-settings').click()
+  await openSettings(page, 'update')
 
   await expect(page.getByTestId('settings-update-version')).toContainText('0.3.0')
   await expect(page.getByTestId('settings-update-status')).toContainText(

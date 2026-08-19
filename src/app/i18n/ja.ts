@@ -382,7 +382,6 @@ export const ja = {
     updateCheck: '更新を確認',
     updateDownload: '更新をダウンロード',
     updateRestart: '再起動してインストール',
-    preferences: 'settings · preferences',
     description: 'レイアウトとコントロールは確定プロトタイプに準拠。設定は settingsStore に直書き。',
     mapleMono: 'Maple Mono',
     pixels: (value: number) => `${value}px`,

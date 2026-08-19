@@ -14,7 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { PNG } from "pngjs";
-import { launchApp } from "./helpers";
+import { launchApp, openSettings } from "./helpers";
 
 interface FloatingInspect {
   state: {
@@ -431,7 +431,7 @@ test("settings copies the built-in renderer creation Skill without exposing its 
       });
     });
 
-    await window.getByTestId("titlebar-settings").click();
+    await openSettings(window, "layout");
     const settings = window.getByTestId("settings-page");
     const copy = window.getByTestId("settings-floating-renderer-copy-skill");
     await expect(settings).toBeVisible();
