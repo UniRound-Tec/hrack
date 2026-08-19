@@ -21,7 +21,7 @@ import {
   statusTone
 } from '../src/app/sessionStatus'
 
-test.describe('settingsStore v12', () => {
+test.describe('settingsStore v13', () => {
   test('migrates v0/v1 terminal defaults before applying the v3 schema', () => {
     const fromV0 = migrateSettings(
       {
@@ -98,7 +98,13 @@ test.describe('settingsStore v12', () => {
       terminalBackgroundName: '',
       terminalBackgroundRevision: 0,
       terminalBackgroundFit: 'cover',
-      terminalBackgroundOpacity: 0.3
+      terminalBackgroundOpacity: 0.3,
+      notificationSoundEnabled: true,
+      notificationSoundOnBlocked: true,
+      notificationSoundOnCompleted: true,
+      notificationSoundOnError: true,
+      notificationSoundName: 'done.mp3',
+      notificationSoundRevision: 0
     })
     expect(migrated).not.toHaveProperty('themeId')
   })
@@ -161,6 +167,36 @@ test.describe('settingsStore v12', () => {
       terminalBackgroundRevision: 99,
       terminalBackgroundFit: 'tile',
       terminalBackgroundOpacity: 0.4
+    })
+  })
+
+  test('v13 adds notification sound settings without wiping older preferences', () => {
+    expect(migrateSettings({ fontSize: 14 }, 12)).toMatchObject({
+      fontSize: 14,
+      notificationSoundEnabled: true,
+      notificationSoundOnBlocked: true,
+      notificationSoundOnCompleted: true,
+      notificationSoundOnError: true,
+      notificationSoundName: 'done.mp3',
+      notificationSoundRevision: 0
+    })
+    expect(
+      migrateSettings(
+        {
+          notificationSoundEnabled: false,
+          notificationSoundOnBlocked: false,
+          notificationSoundName: 'custom.wav',
+          notificationSoundRevision: 42
+        },
+        12
+      )
+    ).toMatchObject({
+      notificationSoundEnabled: false,
+      notificationSoundOnBlocked: false,
+      notificationSoundOnCompleted: true,
+      notificationSoundOnError: true,
+      notificationSoundName: 'custom.wav',
+      notificationSoundRevision: 42
     })
   })
 

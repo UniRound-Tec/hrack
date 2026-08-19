@@ -320,6 +320,29 @@ test('settings expose terminal background controls', async () => {
   await expect(page.getByTestId('settings-terminal-background-opacity')).toBeVisible()
 })
 
+test('settings expose notification sound controls', async () => {
+  await openSettings(page, 'session')
+  await expect(page.getByTestId('settings-notification-sound-enabled')).toBeVisible()
+  await expect(page.getByTestId('settings-notification-sound-blocked')).toBeVisible()
+  await expect(page.getByTestId('settings-notification-sound-completed')).toBeVisible()
+  await expect(page.getByTestId('settings-notification-sound-error')).toBeVisible()
+  await expect(page.getByTestId('settings-notification-sound-preview')).toBeVisible()
+  await expect(page.getByTestId('settings-notification-sound-choose')).toBeVisible()
+  await expect(page.getByTestId('settings-notification-sound-clear')).toBeVisible()
+
+  const sound = await page.evaluate(
+    () =>
+      new Promise<{ ok: boolean; error?: string }>((resolve) => {
+        const audio = new Audio('hrack-notification://local/current')
+        audio.oncanplaythrough = () => resolve({ ok: true })
+        audio.onerror = () =>
+          resolve({ ok: false, error: audio.error?.message ?? 'audio error' })
+        setTimeout(() => resolve({ ok: false, error: 'timeout' }), 3000)
+      })
+  )
+  expect(sound.ok).toBe(true)
+})
+
 test('settings split into category pages', async () => {
   await openSettings(page, 'appearance')
   await expect(page.getByTestId('settings-nav')).toBeVisible()

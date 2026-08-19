@@ -79,6 +79,8 @@ if (userDataOverride) {
   app.setPath('userData', userDataDir)
 }
 registerFloatingRendererScheme()
+// 事件提示音在后台/非聚焦时也可能触发；允许无手势自动播放。
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 const cliArgv = extractHrackCliArgv(process.argv)
 if (cliArgv) {

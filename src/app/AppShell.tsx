@@ -48,6 +48,7 @@ import { useWorkspaceReaderStore } from '../workspace-reader/workspaceReaderStor
 import { planChildTerminal } from './childTerminal'
 import { projectSessionNavigation } from '../session-navigation/sessionNavigation'
 import { useSessionNavigationStore } from '../session-navigation/sessionNavigationStore'
+import { playNotificationSound } from '../state/notificationSound'
 
 export interface HRackDebugShellApi {
   navigate(pageId: PageId): void
@@ -444,6 +445,22 @@ export default function AppShell() {
       const previous = sessionsStore.sessions.find(
         (session) => session.sessionId === projection.sessionId
       )
+      // DSH 没有 AgentEvent 事件流，只能靠投影状态跃迁触发提示音；
+      // 其余 adapter 在 onEvents 里按事件触发，避免同一事件响两次。
+      if (
+        projection.adapterId === 'dsh' &&
+        previous &&
+        projection.lastSeq > (previous.projectionSeq ?? -1) &&
+        previous.status !== projection.status
+      ) {
+        if (projection.status === 'needs-you') {
+          playNotificationSound('blocked')
+        } else if (projection.status === 'done') {
+          playNotificationSound('completed')
+        } else if (projection.status === 'error') {
+          playNotificationSound('error')
+        }
+      }
       sessionsStore.applyProjection(projection)
 
       const navigation = useSessionNavigationStore.getState()
@@ -467,6 +484,15 @@ export default function AppShell() {
     })
     const unsubscribeEvents = window.agentApi.onEvents((events) => {
       useAgentEventsStore.getState().record(events)
+      for (const event of events) {
+        if (event.kind === 'approval.requested' || event.kind === 'input.requested') {
+          playNotificationSound('blocked')
+        } else if (event.kind === 'turn.completed') {
+          playNotificationSound('completed')
+        } else if (event.kind === 'turn.failed') {
+          playNotificationSound('error')
+        }
+      }
     })
     void Promise.all([
       window.ptyApi.listRecoverable(),

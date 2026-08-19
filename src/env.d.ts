@@ -16,6 +16,7 @@ import type {
   UpdateApi,
   WindowApi
 } from '../shared/ipc-contract'
+import type { NotificationSoundApi } from '../shared/notification-sound'
 import type { FloatingRendererApi } from '../shared/floating-window'
 import type { HRackDebugShellApi } from './app/AppShell'
 import type { WorkspaceReaderApi } from '../shared/workspace-reader'
@@ -32,6 +33,7 @@ declare global {
     themeApi: ThemeApi
     dialogApi: DialogApi
     terminalBackgroundApi: TerminalBackgroundApi
+    notificationSoundApi: NotificationSoundApi
     shellApi: ShellApi
     cliApi: CliApi
     statsApi: StatsApi

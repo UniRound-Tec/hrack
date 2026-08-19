@@ -69,6 +69,11 @@ import {
   type WorkspaceReaderApi
 } from '../shared/workspace-reader'
 import {
+  NotificationSoundInvokeChannel,
+  type NotificationSoundApi,
+  type NotificationSoundPickResult
+} from '../shared/notification-sound'
+import {
   DshEventChannel,
   DshInvokeChannel,
   type DshApi,
@@ -252,6 +257,12 @@ const dialogApi: DialogApi = {
 const terminalBackgroundApi: TerminalBackgroundApi = {
   pick: () => ipcRenderer.invoke(TerminalBackgroundInvokeChannel.Pick),
   clear: () => ipcRenderer.invoke(TerminalBackgroundInvokeChannel.Clear)
+}
+
+const notificationSoundApi: NotificationSoundApi = {
+  pick: (): Promise<NotificationSoundPickResult | null> =>
+    ipcRenderer.invoke(NotificationSoundInvokeChannel.Pick),
+  clear: () => ipcRenderer.invoke(NotificationSoundInvokeChannel.Clear)
 }
 
 const shellApi: ShellApi = {
@@ -560,6 +571,7 @@ try {
   contextBridge.exposeInMainWorld('themeApi', themeApi)
   contextBridge.exposeInMainWorld('dialogApi', dialogApi)
   contextBridge.exposeInMainWorld('terminalBackgroundApi', terminalBackgroundApi)
+  contextBridge.exposeInMainWorld('notificationSoundApi', notificationSoundApi)
   contextBridge.exposeInMainWorld('shellApi', shellApi)
   contextBridge.exposeInMainWorld('cliApi', cliApi)
   contextBridge.exposeInMainWorld('statsApi', statsApi)
