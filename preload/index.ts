@@ -440,6 +440,8 @@ function isUpdateSnapshot(value: unknown): value is UpdateSnapshot {
     (snapshot.availableVersion === null ||
       typeof snapshot.availableVersion === 'string') &&
     (snapshot.releaseDate === null || typeof snapshot.releaseDate === 'string') &&
+    (snapshot.releaseNotes === null ||
+      typeof snapshot.releaseNotes === 'string') &&
     (snapshot.checkedAt === null || typeof snapshot.checkedAt === 'number') &&
     (snapshot.error === null || typeof snapshot.error === 'string') &&
     (progress === null ||

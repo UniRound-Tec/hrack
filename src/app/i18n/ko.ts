@@ -5,6 +5,7 @@ export const ko = {
   titlebar: {
     newSession: '새로 만들기',
     settings: '설정',
+    updateAvailable: (version: string) => `새 버전 ${version} 사용 가능`,
     minimize: '최소화',
     maximize: '최대화',
     restore: '복원',
@@ -467,5 +468,14 @@ export const ko = {
     homeHint: '홈 콘텐츠는 P3에서 추가. 세 상태 내비게이션과 터미널 라우팅은 사용 가능.',
     settingsHint: 'P2에서는 내비게이션 모드만 제공. 전체 설정은 P3에서 추가.',
     unavailableTerminal: '이 데모 세션에는 열 수 있는 터미널이 없습니다.'
+  },
+  updateModal: {
+    title: (version: string) => `새 버전 ${version} 사용 가능`,
+    releaseNotes: '업데이트 내역',
+    noReleaseNotes: '업데이트 내역이 없습니다',
+    update: '지금 업데이트',
+    ignore: '이 버전 무시',
+    never: '다시 표시하지 않음',
+    later: '나중에'
   }
 } satisfies AppStrings

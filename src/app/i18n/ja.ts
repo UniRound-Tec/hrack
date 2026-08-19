@@ -5,6 +5,7 @@ export const ja = {
   titlebar: {
     newSession: '新規',
     settings: '設定',
+    updateAvailable: (version: string) => `新しいバージョン ${version} があります`,
     minimize: '最小化',
     maximize: '最大化',
     restore: '元に戻す',
@@ -467,5 +468,14 @@ export const ja = {
     homeHint: 'ホーム内容は P3 で追加。三状態ナビゲーションとターミナルルーティングは利用可。',
     settingsHint: 'P2 ではナビゲーションモードのみ解放。完全な設定は P3 で追加。',
     unavailableTerminal: 'このデモセッションには開けるターミナルがありません。'
+  },
+  updateModal: {
+    title: (version: string) => `新しいバージョン ${version} があります`,
+    releaseNotes: '更新内容',
+    noReleaseNotes: '更新内容はありません',
+    update: '今すぐ更新',
+    ignore: 'このバージョンを無視',
+    never: '今後表示しない',
+    later: '後で'
   }
 } satisfies AppStrings

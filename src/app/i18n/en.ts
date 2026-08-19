@@ -5,6 +5,7 @@ export const en = {
   titlebar: {
     newSession: 'New',
     settings: 'Settings',
+    updateAvailable: (version: string) => `Update ${version} available`,
     minimize: 'Minimize',
     maximize: 'Maximize',
     restore: 'Restore',
@@ -469,5 +470,14 @@ export const en = {
     homeHint: 'Home content lands in P3; three-state navigation and routing work.',
     settingsHint: 'P2 unlocks navigation mode; full settings land in P3.',
     unavailableTerminal: 'This demo session has no terminal to open.'
+  },
+  updateModal: {
+    title: (version: string) => `Update ${version} available`,
+    releaseNotes: 'Release notes',
+    noReleaseNotes: 'No release notes available',
+    update: 'Update now',
+    ignore: 'Ignore this version',
+    never: "Don't ask again",
+    later: 'Later'
   }
 } satisfies AppStrings

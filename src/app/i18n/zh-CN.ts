@@ -8,6 +8,7 @@ export const zhCN = {
   titlebar: {
     newSession: '新建',
     settings: '设置',
+    updateAvailable: (version: string) => `发现新版本 ${version}`,
     minimize: '最小化',
     maximize: '最大化',
     restore: '还原',
@@ -470,6 +471,15 @@ export const zhCN = {
     homeHint: '首页内容将在 P3 接入；三态导航与终端路由已可用。',
     settingsHint: 'P2 先开放导航模式；完整设置项将在 P3 接入。',
     unavailableTerminal: '这个演示会话没有可打开的终端。'
+  },
+  updateModal: {
+    title: (version: string) => `发现新版本 ${version}`,
+    releaseNotes: '更新说明',
+    noReleaseNotes: '暂无更新说明',
+    update: '立即更新',
+    ignore: '忽略此版本',
+    never: '以后不再弹出',
+    later: '稍后'
   }
 }
 

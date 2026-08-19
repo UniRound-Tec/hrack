@@ -57,7 +57,7 @@ const SETTINGS_CATEGORIES = [
   'update'
 ] as const
 
-type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number]
+export type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number]
 
 function dshPreferenceValue(config: DshRuntimeConfig | null): string {
   const preference = config?.runtimePreference
@@ -77,6 +77,7 @@ interface SettingsPageProps {
   dshRuntimeScanning: boolean
   dshRuntimeScanError: string | null
   onRefreshDshRuntimes: () => void
+  initialCategory?: SettingsCategory
 }
 
 export default function SettingsPage({
@@ -89,7 +90,8 @@ export default function SettingsPage({
   dshRuntimeReport,
   dshRuntimeScanning,
   dshRuntimeScanError,
-  onRefreshDshRuntimes
+  onRefreshDshRuntimes,
+  initialCategory = 'appearance'
 }: SettingsPageProps) {
   const settings = useSettingsStore()
   const strings = useStrings()
@@ -118,8 +120,12 @@ export default function SettingsPage({
   const [notificationSoundBusy, setNotificationSoundBusy] = useState(false)
   const [notificationSoundError, setNotificationSoundError] =
     useState<string | null>(null)
-  const [category, setCategory] = useState<SettingsCategory>('appearance')
+  const [category, setCategory] = useState<SettingsCategory>(initialCategory)
   const contentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setCategory(initialCategory)
+  }, [initialCategory])
   const dshRuntimeBusy = dshRuntimeScanning || dshRuntimeChanging
   const dshRuntimeError = dshRuntimeActionError ?? dshRuntimeScanError
   const themeRegistryVersion = useThemeRegistryVersion((state) => state.version)

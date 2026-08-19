@@ -21,7 +21,7 @@ import {
   statusTone
 } from '../src/app/sessionStatus'
 
-test.describe('settingsStore v13', () => {
+test.describe('settingsStore v15', () => {
   test('migrates v0/v1 terminal defaults before applying the v3 schema', () => {
     const fromV0 = migrateSettings(
       {
@@ -104,7 +104,9 @@ test.describe('settingsStore v13', () => {
       notificationSoundOnCompleted: true,
       notificationSoundOnError: true,
       notificationSoundName: 'done.mp3',
-      notificationSoundRevision: 0
+      notificationSoundRevision: 0,
+      ignoredUpdateVersion: null,
+      updateModalDisabled: false
     })
     expect(migrated).not.toHaveProperty('themeId')
   })
@@ -200,6 +202,28 @@ test.describe('settingsStore v13', () => {
     })
   })
 
+  test('v14 adds the ignored update version without wiping older preferences', () => {
+    expect(migrateSettings({ fontSize: 14 }, 13)).toMatchObject({
+      fontSize: 14,
+      ignoredUpdateVersion: null
+    })
+    expect(
+      migrateSettings({ ignoredUpdateVersion: '0.4.0' }, 13)
+    ).toMatchObject({
+      ignoredUpdateVersion: '0.4.0'
+    })
+  })
+
+  test('v15 adds the global don-t-ask-again switch without wiping older preferences', () => {
+    expect(migrateSettings({ fontSize: 14 }, 14)).toMatchObject({
+      fontSize: 14,
+      updateModalDisabled: false
+    })
+    expect(migrateSettings({ updateModalDisabled: true }, 14)).toMatchObject({
+      updateModalDisabled: true
+    })
+  })
+
   test('updates and resets the full settings slice', () => {
     const store = createStore<SettingsState>()(createSettingsState)
     expect(store.getState().onboardingCompleted).toBe(false)
@@ -219,6 +243,8 @@ test.describe('settingsStore v13', () => {
     store.getState().setTerminalBackground('bg.webp', 12)
     store.getState().setTerminalBackgroundFit('contain')
     store.getState().setTerminalBackgroundOpacity(0.5)
+    store.getState().ignoreUpdateVersion('9.9.9')
+    store.getState().setUpdateModalDisabled(true)
 
     expect(store.getState()).toMatchObject({
       onboardingCompleted: true,
@@ -238,7 +264,9 @@ test.describe('settingsStore v13', () => {
       terminalBackgroundName: 'bg.webp',
       terminalBackgroundRevision: 12,
       terminalBackgroundFit: 'contain',
-      terminalBackgroundOpacity: 0.5
+      terminalBackgroundOpacity: 0.5,
+      ignoredUpdateVersion: '9.9.9',
+      updateModalDisabled: true
     })
 
     store.getState().reset()

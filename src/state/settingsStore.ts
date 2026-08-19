@@ -69,6 +69,10 @@ export interface SettingsSnapshot {
   notificationSoundName: string
   /** 当前提示音版本号；0 表示使用打包默认音，>0 表示用户上传音。 */
   notificationSoundRevision: number
+  /** 用户选择“忽略”的更新版本；等于该版本时不再弹更新确认框。 */
+  ignoredUpdateVersion: string | null
+  /** 用户选择“以后不再弹出”后，所有未来版本都不再自动弹出更新确认框。 */
+  updateModalDisabled: boolean
 }
 
 /** v3 及更早版本的默认字号；v4 起默认 14，迁移时把旧默认值一并带过去。 */
@@ -103,7 +107,9 @@ export const defaultSettings: SettingsSnapshot = {
   notificationSoundOnCompleted: true,
   notificationSoundOnError: true,
   notificationSoundName: DEFAULT_NOTIFICATION_SOUND_NAME,
-  notificationSoundRevision: 0
+  notificationSoundRevision: 0,
+  ignoredUpdateVersion: null,
+  updateModalDisabled: false
 }
 
 /** Terminal consumers only need this stable subset. */
@@ -147,6 +153,8 @@ export interface SettingsState extends SettingsSnapshot {
   setNotificationSoundOnError(enabled: boolean): void
   setNotificationSound(name: string, revision: number): void
   clearNotificationSound(): void
+  ignoreUpdateVersion(version: string | null): void
+  setUpdateModalDisabled(disabled: boolean): void
   reset(): void
 }
 
@@ -184,6 +192,8 @@ function normalizeDshScale(value: unknown): number {
  * v11 adds the TargetCursor hover-frame toggle (default on).
  * v12 adds terminal background image, fit mode, and opacity.
  * v13 adds configurable notification sound, event toggles, and custom sound info.
+ * v14 adds the user-ignored update version for the update confirmation modal.
+ * v15 adds a global "don't ask again" switch for update confirmation modals.
  */
 export function migrateSettings(
   persistedState: unknown,
@@ -317,7 +327,16 @@ export function migrateSettings(
     ),
     notificationSoundRevision: normalizeNotificationSoundRevision(
       legacy.notificationSoundRevision
-    )
+    ),
+    ignoredUpdateVersion:
+      typeof legacy.ignoredUpdateVersion === 'string' &&
+      legacy.ignoredUpdateVersion.trim()
+        ? legacy.ignoredUpdateVersion.trim()
+        : null,
+    updateModalDisabled:
+      typeof legacy.updateModalDisabled === 'boolean'
+        ? legacy.updateModalDisabled
+        : false
   }
 }
 
@@ -401,6 +420,15 @@ export const createSettingsState: StateCreator<SettingsState> = (set) => ({
       notificationSoundName: DEFAULT_NOTIFICATION_SOUND_NAME,
       notificationSoundRevision: 0
     }),
+  ignoreUpdateVersion: (ignoredUpdateVersion) =>
+    set({
+      ignoredUpdateVersion:
+        typeof ignoredUpdateVersion === 'string' && ignoredUpdateVersion.trim()
+          ? ignoredUpdateVersion.trim()
+          : null
+    }),
+  setUpdateModalDisabled: (updateModalDisabled) =>
+    set({ updateModalDisabled }),
   reset: () => set(defaultSettings)
 })
 
@@ -409,7 +437,7 @@ migrateLegacyStorageKey('hrack-terminal-settings', 'vibing-terminal-settings')
 export const useSettingsStore = create<SettingsState>()(
   persist(createSettingsState, {
     name: 'hrack-terminal-settings',
-    version: 13,
+    version: 15,
     migrate: migrateSettings,
     partialize: ({
       onboardingCompleted,
@@ -437,7 +465,9 @@ export const useSettingsStore = create<SettingsState>()(
       notificationSoundOnCompleted,
       notificationSoundOnError,
       notificationSoundName,
-      notificationSoundRevision
+      notificationSoundRevision,
+      ignoredUpdateVersion,
+      updateModalDisabled
     }) => ({
       onboardingCompleted,
       uiThemeId,
@@ -464,7 +494,9 @@ export const useSettingsStore = create<SettingsState>()(
       notificationSoundOnCompleted,
       notificationSoundOnError,
       notificationSoundName,
-      notificationSoundRevision
+      notificationSoundRevision,
+      ignoredUpdateVersion,
+      updateModalDisabled
     })
   })
 )

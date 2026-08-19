@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import type { CliScanReport, ShellOption } from '../../shared/ipc-contract'
+import type {
+  CliScanReport,
+  ShellOption,
+  UpdateSnapshot
+} from '../../shared/ipc-contract'
 import type { AgentEvent } from '../../shared/agent-events'
 import type { DshRuntimeScanReport } from '../../shared/dsh-ipc'
 import TitleBar from './TitleBar'
@@ -9,10 +13,11 @@ import IconRail from './IconRail'
 import TopTabBar from './TopTabBar'
 import TerminalPage from './TerminalPage'
 import HomePage from './HomePage'
-import SettingsPage from './SettingsPage'
+import SettingsPage, { type SettingsCategory } from './SettingsPage'
 import DshPage from './DshPage'
 import NewSessionFlow from './NewSessionFlow'
 import CloseSessionDialog from './CloseSessionDialog'
+import UpdateAvailableModal from './UpdateAvailableModal'
 import TargetCursor from './effects/TargetCursor'
 import SidebarTint from './SidebarTint'
 import {
@@ -71,6 +76,16 @@ interface PendingBridgeLaunch {
 
 export default function AppShell() {
   const [pageId, setPageId] = useState<PageId>('home')
+  const [settingsCategory, setSettingsCategory] =
+    useState<SettingsCategory>('appearance')
+  const [updateSnapshot, setUpdateSnapshot] =
+    useState<UpdateSnapshot | null>(null)
+  const [updateModalVersion, setUpdateModalVersion] =
+    useState<string | null>(null)
+  const [updateModalReleaseNotes, setUpdateModalReleaseNotes] =
+    useState<string | null>(null)
+  const [updateModalDismissedVersion, setUpdateModalDismissedVersion] =
+    useState<string | null>(null)
   const [newSessionOpen, setNewSessionOpen] = useState(false)
   const [pendingCloseSession, setPendingCloseSession] =
     useState<SessionEntry | null>(null)
@@ -97,6 +112,18 @@ export default function AppShell() {
   const defaultTerminal = useSettingsStore((state) => state.defaultTerminal)
   const setDefaultTerminal = useSettingsStore(
     (state) => state.setDefaultTerminal
+  )
+  const ignoredUpdateVersion = useSettingsStore(
+    (state) => state.ignoredUpdateVersion
+  )
+  const ignoreUpdateVersion = useSettingsStore(
+    (state) => state.ignoreUpdateVersion
+  )
+  const updateModalDisabled = useSettingsStore(
+    (state) => state.updateModalDisabled
+  )
+  const setUpdateModalDisabled = useSettingsStore(
+    (state) => state.setUpdateModalDisabled
   )
   const sessions = useSessionsStore((state) => state.sessions)
   const sessionNavigation = useSessionNavigationStore(
@@ -156,6 +183,43 @@ export default function AppShell() {
     void scanDshRuntimes(false)
   }, [scanClis, scanDshRuntimes])
 
+  // 全局跟踪更新状态：启动后即使不打开设置页也能在标题栏看到新版本提示。
+  useEffect(() => {
+    let cancelled = false
+    const unsubscribe = window.updateApi.onStateChanged((snapshot) => {
+      if (!cancelled) setUpdateSnapshot(snapshot)
+    })
+    void window.updateApi.getState().then((snapshot) => {
+      if (!cancelled) setUpdateSnapshot(snapshot)
+    })
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [])
+
+  // 发现新版本且用户未忽略/未在本会话稍后关闭时，弹出更新确认框。
+  useEffect(() => {
+    if (updateModalDisabled) return
+    if (updateSnapshot?.phase !== 'available' || !updateSnapshot.availableVersion) {
+      return
+    }
+    const version = updateSnapshot.availableVersion
+    if (
+      ignoredUpdateVersion === version ||
+      updateModalDismissedVersion === version
+    ) {
+      return
+    }
+    setUpdateModalVersion(version)
+    setUpdateModalReleaseNotes(updateSnapshot.releaseNotes)
+  }, [
+    updateSnapshot,
+    ignoredUpdateVersion,
+    updateModalDismissedVersion,
+    updateModalDisabled
+  ])
+
   const terminalIds = useMemo(
     () => new Set(terminals.map((terminal) => terminal.id)),
     [terminals]
@@ -192,6 +256,47 @@ export default function AppShell() {
     activeTerminalId ? (state.sessions[activeTerminalId]?.open ?? false) : false
   )
   const setReaderOpen = useWorkspaceReaderStore((state) => state.setOpen)
+  const updateBadge =
+    updateSnapshot &&
+    (updateSnapshot.phase === 'available' ||
+      updateSnapshot.phase === 'downloading' ||
+      updateSnapshot.phase === 'downloaded' ||
+      (updateSnapshot.phase === 'error' && updateSnapshot.availableVersion)) &&
+    updateSnapshot.availableVersion &&
+    updateSnapshot.availableVersion !== ignoredUpdateVersion
+      ? updateSnapshot.availableVersion
+      : null
+
+  const closeUpdateModal = (): void => {
+    if (updateModalVersion) {
+      setUpdateModalDismissedVersion(updateModalVersion)
+    }
+    setUpdateModalVersion(null)
+  }
+
+  const ignoreUpdateModal = (): void => {
+    if (updateModalVersion) {
+      ignoreUpdateVersion(updateModalVersion)
+      setUpdateModalDismissedVersion(updateModalVersion)
+    }
+    setUpdateModalVersion(null)
+  }
+
+  const neverUpdateModal = (): void => {
+    setUpdateModalDisabled(true)
+    if (updateModalVersion) {
+      setUpdateModalDismissedVersion(updateModalVersion)
+    }
+    setUpdateModalVersion(null)
+  }
+
+  const applyUpdateModal = (): void => {
+    if (updateModalVersion) {
+      setUpdateModalDismissedVersion(updateModalVersion)
+    }
+    setUpdateModalVersion(null)
+    void window.updateApi.download().catch(() => {})
+  }
 
   const navigate = useCallback(
     (nextPage: PageId): void => {
@@ -829,8 +934,16 @@ export default function AppShell() {
       <SidebarTint />
       <TitleBar
         onNew={openNewSession}
-        onSettings={() => navigate('settings')}
+        onSettings={() => {
+          setSettingsCategory('appearance')
+          navigate('settings')
+        }}
         settingsActive={pageId === 'settings'}
+        updateBadge={updateBadge}
+        onOpenUpdate={() => {
+          setSettingsCategory('update')
+          navigate('settings')
+        }}
         onToggleCode={
           activeHasWorkspace && activeTerminalId
             ? () => setReaderOpen(activeTerminalId, !activeReaderOpen)
@@ -903,6 +1016,7 @@ export default function AppShell() {
             />
             {pageId === 'settings' && (
               <SettingsPage
+                initialCategory={settingsCategory}
                 shells={shells}
                 cliCount={cliReport?.launchable.length ?? 0}
                 cliScanning={cliScanning}
@@ -972,6 +1086,20 @@ export default function AppShell() {
               setPendingCloseSession(null)
               closeSessionAndTerminal(session)
             }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {updateModalVersion && (
+          <UpdateAvailableModal
+            key={updateModalVersion}
+            version={updateModalVersion}
+            releaseNotes={updateModalReleaseNotes}
+            onUpdate={applyUpdateModal}
+            onIgnore={ignoreUpdateModal}
+            onNever={neverUpdateModal}
+            onLater={closeUpdateModal}
           />
         )}
       </AnimatePresence>

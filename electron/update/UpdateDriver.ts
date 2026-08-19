@@ -3,6 +3,7 @@ import { autoUpdater, type AppUpdater } from 'electron-updater'
 export interface UpdateDescriptor {
   version: string
   releaseDate: string | null
+  releaseNotes?: string | null
 }
 
 export interface UpdateTransfer {
@@ -30,10 +31,29 @@ export interface UpdateDriver {
   quitAndInstall(): void
 }
 
-function descriptor(info: { version: string; releaseDate?: string }): UpdateDescriptor {
+function releaseNotesText(
+  releaseNotes: string | Array<{ note?: string | null }> | null | undefined
+): string | null {
+  if (typeof releaseNotes === 'string') return releaseNotes.trim() || null
+  if (Array.isArray(releaseNotes)) {
+    const text = releaseNotes
+      .map((item) => item.note?.trim() ?? '')
+      .filter(Boolean)
+      .join('\n\n')
+    return text || null
+  }
+  return null
+}
+
+function descriptor(info: {
+  version: string
+  releaseDate?: string
+  releaseNotes?: string | Array<{ note?: string | null }> | null
+}): UpdateDescriptor {
   return {
     version: info.version,
-    releaseDate: typeof info.releaseDate === 'string' ? info.releaseDate : null
+    releaseDate: typeof info.releaseDate === 'string' ? info.releaseDate : null,
+    releaseNotes: releaseNotesText(info.releaseNotes)
   }
 }
 
@@ -54,14 +74,23 @@ export class ElectronUpdaterDriver implements UpdateDriver {
 
   subscribe(handlers: UpdateDriverHandlers): () => void {
     const onChecking = (): void => handlers.checking()
-    const onAvailable = (info: { version: string; releaseDate?: string }): void =>
-      handlers.available(descriptor(info))
-    const onNotAvailable = (info: { version: string; releaseDate?: string }): void =>
-      handlers.notAvailable(descriptor(info))
+    const onAvailable = (info: {
+      version: string
+      releaseDate?: string
+      releaseNotes?: string | Array<{ note?: string | null }> | null
+    }): void => handlers.available(descriptor(info))
+    const onNotAvailable = (info: {
+      version: string
+      releaseDate?: string
+      releaseNotes?: string | Array<{ note?: string | null }> | null
+    }): void => handlers.notAvailable(descriptor(info))
     const onProgress = (progress: UpdateTransfer): void =>
       handlers.progress(progress)
-    const onDownloaded = (info: { version: string; releaseDate?: string }): void =>
-      handlers.downloaded(descriptor(info))
+    const onDownloaded = (info: {
+      version: string
+      releaseDate?: string
+      releaseNotes?: string | Array<{ note?: string | null }> | null
+    }): void => handlers.downloaded(descriptor(info))
     const onCancelled = (): void => handlers.cancelled()
     const onError = (error: Error): void => handlers.error(error)
 
