@@ -258,6 +258,7 @@ export default function TargetCursor({
   return (
     <div
       ref={cursorRef}
+      data-testid="target-cursor"
       className="target-cursor-wrapper"
       style={showCursor ? undefined : { mixBlendMode: 'normal' }}
     >

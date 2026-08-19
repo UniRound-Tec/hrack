@@ -453,6 +453,9 @@ export default function SettingsPage({
             <Row label={strings.settings.uiTheme} hint={strings.settings.uiThemeHint}>
               <Dropdown testId="settings-ui-theme" value={settings.uiThemeId} options={uiThemeOptions} onChange={changeUiTheme} />
             </Row>
+            <Row label={strings.settings.targetCursor} hint={strings.settings.targetCursorHint}>
+              <Toggle testId="settings-target-cursor" checked={settings.targetCursorEnabled} onChange={settings.setTargetCursorEnabled} />
+            </Row>
             {registry.errors.length > 0 && <div data-testid="theme-load-errors" className="border-b border-border-faint py-3 text-[11px] text-status-error"><p className="font-semibold">{strings.settings.themeErrors}</p>{registry.errors.map((error) => <p key={error.filename} className="mt-1 font-maple">{error.filename}: {error.message}</p>)}</div>}
             <div data-testid="settings-theme-json" className="border-b border-border-faint py-3.5">
               <div className="flex items-start justify-between gap-4">

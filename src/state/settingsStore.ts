@@ -36,6 +36,8 @@ export interface SettingsSnapshot {
   attentionPriorityEnabled: boolean
   /** 官方 DSH Web surface 的独立缩放，不写入 DSH 自身设置。 */
   dshScale: number
+  /** 指针移到按钮上时的跟随方框；默认开，与历史行为一致。 */
+  targetCursorEnabled: boolean
 }
 
 /** v3 及更早版本的默认字号；v4 起默认 14，迁移时把旧默认值一并带过去。 */
@@ -59,7 +61,8 @@ export const defaultSettings: SettingsSnapshot = {
   readerWidthRatio: 0.52,
   workspaceTreeWidth: 220,
   attentionPriorityEnabled: false,
-  dshScale: 0.9
+  dshScale: 0.9,
+  targetCursorEnabled: true
 }
 
 /** Terminal consumers only need this stable subset. */
@@ -92,6 +95,7 @@ export interface SettingsState extends SettingsSnapshot {
   setWorkspaceTreeWidth(width: number): void
   setAttentionPriorityEnabled(enabled: boolean): void
   setDshScale(scale: number): void
+  setTargetCursorEnabled(enabled: boolean): void
   reset(): void
 }
 
@@ -126,6 +130,7 @@ function normalizeDshScale(value: unknown): number {
  * `themeId` preference into independent GUI and terminal theme fields.
  * v4 lowers the default font size 16 -> 14 (users who never left the old
  * default follow it) and adds the rounded-terminal flag.
+ * v11 adds the TargetCursor hover-frame toggle (default on).
  */
 export function migrateSettings(
   persistedState: unknown,
@@ -221,7 +226,11 @@ export function migrateSettings(
       typeof legacy.attentionPriorityEnabled === 'boolean'
         ? legacy.attentionPriorityEnabled
         : defaultSettings.attentionPriorityEnabled,
-    dshScale: normalizeDshScale(legacy.dshScale)
+    dshScale: normalizeDshScale(legacy.dshScale),
+    targetCursorEnabled:
+      typeof legacy.targetCursorEnabled === 'boolean'
+        ? legacy.targetCursorEnabled
+        : defaultSettings.targetCursorEnabled
   }
 }
 
@@ -265,6 +274,8 @@ export const createSettingsState: StateCreator<SettingsState> = (set) => ({
   setAttentionPriorityEnabled: (attentionPriorityEnabled) =>
     set({ attentionPriorityEnabled }),
   setDshScale: (dshScale) => set({ dshScale: normalizeDshScale(dshScale) }),
+  setTargetCursorEnabled: (targetCursorEnabled) =>
+    set({ targetCursorEnabled }),
   reset: () => set(defaultSettings)
 })
 
@@ -273,7 +284,7 @@ migrateLegacyStorageKey('hrack-terminal-settings', 'vibing-terminal-settings')
 export const useSettingsStore = create<SettingsState>()(
   persist(createSettingsState, {
     name: 'hrack-terminal-settings',
-    version: 10,
+    version: 11,
     migrate: migrateSettings,
     partialize: ({
       onboardingCompleted,
@@ -290,7 +301,8 @@ export const useSettingsStore = create<SettingsState>()(
       readerWidthRatio,
       workspaceTreeWidth,
       attentionPriorityEnabled,
-      dshScale
+      dshScale,
+      targetCursorEnabled
     }) => ({
       onboardingCompleted,
       uiThemeId,
@@ -306,7 +318,8 @@ export const useSettingsStore = create<SettingsState>()(
       readerWidthRatio,
       workspaceTreeWidth,
       attentionPriorityEnabled,
-      dshScale
+      dshScale,
+      targetCursorEnabled
     })
   })
 )

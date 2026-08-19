@@ -266,6 +266,9 @@ export const ja = {
     floatingTitle: 'フローティングステータス',
     enabled: '表示する',
     disabled: '表示しない',
+    targetCursorTitle: 'ホバー枠',
+    targetCursorOn: 'オン',
+    targetCursorOff: 'オフ',
     scanFailed: 'スキャンを完了できませんでした',
     scanFound: (clis: number, installations: number) => `${clis} 個の CLI、${installations} 件のインストールを検出`,
     continue: 'HRack を始める'
@@ -281,6 +284,8 @@ export const ja = {
     },
     uiTheme: 'UI テーマ',
     uiThemeHint: 'アプリ UI のみに影響。ターミナルの配色とは独立',
+    targetCursor: 'ホバー枠',
+    targetCursorHint: 'ポインター下のボタンを枠で囲みます。遅れて感じる場合はオフ',
     light: 'ライト',
     dark: 'ダーク',
     themeJson: 'テーマ JSON',

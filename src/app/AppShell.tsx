@@ -90,6 +90,9 @@ export default function AppShell() {
   const navMode = useSettingsStore((state) => state.navMode)
   const setNavMode = useSettingsStore((state) => state.setNavMode)
   const terminalRounded = useSettingsStore((state) => state.terminalRounded)
+  const targetCursorEnabled = useSettingsStore(
+    (state) => state.targetCursorEnabled
+  )
   const defaultTerminal = useSettingsStore((state) => state.defaultTerminal)
   const setDefaultTerminal = useSettingsStore(
     (state) => state.setDefaultTerminal
@@ -902,7 +905,7 @@ export default function AppShell() {
         </main>
       </div>
 
-      {!activeTerminalId && (
+      {!activeTerminalId && targetCursorEnabled && (
         <TargetCursor
           showCursor={false}
           hideDefaultCursor={false}

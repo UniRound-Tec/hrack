@@ -21,7 +21,7 @@ import {
   statusTone
 } from '../src/app/sessionStatus'
 
-test.describe('settingsStore v10', () => {
+test.describe('settingsStore v11', () => {
   test('migrates v0/v1 terminal defaults before applying the v3 schema', () => {
     const fromV0 = migrateSettings(
       {
@@ -43,7 +43,8 @@ test.describe('settingsStore v10', () => {
       defaultTerminal: 'powershell',
       language: defaultSettings.language,
       globalShortcutEnabled: true,
-      dshScale: 0.9
+      dshScale: 0.9,
+      targetCursorEnabled: true
     })
 
     const fromV1 = migrateSettings(
@@ -92,7 +93,8 @@ test.describe('settingsStore v10', () => {
       readerWidthRatio: 0.52,
       workspaceTreeWidth: 220,
       attentionPriorityEnabled: false,
-      dshScale: 0.9
+      dshScale: 0.9,
+      targetCursorEnabled: true
     })
     expect(migrated).not.toHaveProperty('themeId')
   })
@@ -125,6 +127,13 @@ test.describe('settingsStore v10', () => {
     )
   })
 
+  test('v11 keeps the hover frame on unless the user already turned it off', () => {
+    expect(migrateSettings({ fontSize: 14 }, 10).targetCursorEnabled).toBe(true)
+    expect(
+      migrateSettings({ targetCursorEnabled: false }, 10).targetCursorEnabled
+    ).toBe(false)
+  })
+
   test('updates and resets the full settings slice', () => {
     const store = createStore<SettingsState>()(createSettingsState)
     expect(store.getState().onboardingCompleted).toBe(false)
@@ -140,6 +149,7 @@ test.describe('settingsStore v10', () => {
     store.getState().setWorkspaceTreeWidth(280)
     store.getState().setAttentionPriorityEnabled(true)
     store.getState().setDshScale(1.1)
+    store.getState().setTargetCursorEnabled(false)
 
     expect(store.getState()).toMatchObject({
       onboardingCompleted: true,
@@ -154,7 +164,8 @@ test.describe('settingsStore v10', () => {
       readerWidthRatio: 0.6,
       workspaceTreeWidth: 280,
       attentionPriorityEnabled: true,
-      dshScale: 1.1
+      dshScale: 1.1,
+      targetCursorEnabled: false
     })
 
     store.getState().reset()

@@ -266,6 +266,9 @@ export const zhTW = {
     floatingTitle: '浮動狀態視窗',
     enabled: '開啟浮動視窗',
     disabled: '暫不開啟',
+    targetCursorTitle: '懸停方框',
+    targetCursorOn: '開啟特效',
+    targetCursorOff: '關閉特效',
     scanFailed: '掃描未完成',
     scanFound: (clis: number, installations: number) => `找到 ${clis} 個 CLI，共 ${installations} 個安裝`,
     continue: '進入 HRack'
@@ -281,6 +284,8 @@ export const zhTW = {
     },
     uiTheme: '介面主題',
     uiThemeHint: '只影響應用程式介面，與終端機配色相互獨立',
+    targetCursor: '懸停方框',
+    targetCursorHint: '指標移到按鈕上時用方框框住。覺得不跟手可以關掉',
     light: '淺色',
     dark: '深色',
     themeJson: '主題 JSON',

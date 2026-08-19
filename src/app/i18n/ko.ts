@@ -266,6 +266,9 @@ export const ko = {
     floatingTitle: '플로팅 상태 창',
     enabled: '플로팅 창 켜기',
     disabled: '지금은 끄기',
+    targetCursorTitle: '호버 테두리',
+    targetCursorOn: '켜기',
+    targetCursorOff: '끄기',
     scanFailed: '검색을 완료하지 못했습니다',
     scanFound: (clis: number, installations: number) => `CLI ${clis}개, 설치 ${installations}개 발견`,
     continue: 'HRack 시작'
@@ -281,6 +284,8 @@ export const ko = {
     },
     uiTheme: 'UI 테마',
     uiThemeHint: '앱 인터페이스에만 영향. 터미널 색상과 독립',
+    targetCursor: '호버 테두리',
+    targetCursorHint: '포인터 아래 버튼을 테두리로 강조합니다. 반응이 느리게 느껴지면 끄세요',
     light: '라이트',
     dark: '다크',
     themeJson: '테마 JSON',

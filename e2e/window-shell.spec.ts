@@ -312,6 +312,20 @@ test('registers and unregisters the global shortcut with the settings toggle', a
   await expect.poll(shortcut).toBe(true)
 })
 
+test('settings can disable the hover-frame overlay', async () => {
+  await page.getByTestId('titlebar-settings').click()
+  await expect(page.getByTestId('settings-page')).toBeVisible()
+  const overlay = page.getByTestId('target-cursor')
+  const toggle = page.getByTestId('settings-target-cursor')
+  await expect(toggle).toHaveAttribute('aria-checked', 'true')
+  await expect(overlay).toBeAttached()
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-checked', 'false')
+  await expect(overlay).toHaveCount(0)
+  await toggle.click()
+  await expect(page.getByTestId('target-cursor')).toBeAttached()
+})
+
 test('tray menu items drive hide-toggle, new session, and quit callbacks', async () => {
   // 注意：electronApp.evaluate 的第一个参数始终是 electron 模块，
   // 真正的入参在第二个位置（index）。

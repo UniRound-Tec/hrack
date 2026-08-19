@@ -269,6 +269,9 @@ export const zhCN = {
     floatingTitle: '悬浮状态窗',
     enabled: '开启悬浮窗',
     disabled: '暂不开启',
+    targetCursorTitle: '悬停方框',
+    targetCursorOn: '开启特效',
+    targetCursorOff: '关闭特效',
     scanFailed: '扫描没有完成',
     scanFound: (clis: number, installations: number) => `发现 ${clis} 个 CLI，共 ${installations} 个安装`,
     continue: '进入 HRack'
@@ -284,6 +287,8 @@ export const zhCN = {
     },
     uiTheme: '界面主题',
     uiThemeHint: '只影响应用界面，与终端配色相互独立',
+    targetCursor: '悬停方框',
+    targetCursorHint: '指针移到按钮上时用方框框住。觉得不跟手可以关掉',
     light: '浅色',
     dark: '深色',
     themeJson: '主题 JSON',

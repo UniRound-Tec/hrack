@@ -267,6 +267,9 @@ export const en = {
     floatingTitle: 'Floating status window',
     enabled: 'Keep it visible',
     disabled: 'Leave it off',
+    targetCursorTitle: 'Hover frame',
+    targetCursorOn: 'On',
+    targetCursorOff: 'Off',
     scanFailed: 'The scan did not finish',
     scanFound: (clis: number, installations: number) => `${clis} CLIs found across ${installations} installations`,
     continue: 'Enter HRack'
@@ -282,6 +285,8 @@ export const en = {
     },
     uiTheme: 'UI theme',
     uiThemeHint: 'Only affects the app UI, independent of terminal colors',
+    targetCursor: 'Hover frame',
+    targetCursorHint: 'Corners snap to buttons under the pointer. Turn off if it feels laggy',
     light: 'Light',
     dark: 'Dark',
     themeJson: 'Theme JSON',
