@@ -9,7 +9,7 @@ import { writeFileSync } from 'fs'
 import { join, resolve } from 'path'
 import { PNG } from 'pngjs'
 import { UI_COLOR_TOKENS, uiTokenToCssVariable } from '../shared/theme-schema'
-import { launchApp } from './helpers'
+import { launchApp, openSettings } from './helpers'
 
 let app: ElectronApplication
 let page: Page
@@ -304,12 +304,75 @@ test('registers and unregisters the global shortcut with the settings toggle', a
     )
   await expect.poll(shortcut).toBe(true)
 
-  await page.getByTestId('titlebar-settings').click()
+  await openSettings(page, 'layout')
   const toggle = page.getByTestId('settings-global-shortcut')
   await toggle.click()
   await expect.poll(shortcut).toBe(false)
   await toggle.click()
   await expect.poll(shortcut).toBe(true)
+})
+
+test('settings expose terminal background controls', async () => {
+  await openSettings(page, 'terminal')
+  await expect(page.getByTestId('settings-terminal-background-choose')).toBeVisible()
+  await expect(page.getByTestId('settings-terminal-background-preview')).toBeVisible()
+  await expect(page.getByTestId('settings-terminal-background-fit')).toBeVisible()
+  await expect(page.getByTestId('settings-terminal-background-opacity')).toBeVisible()
+})
+
+test('settings expose notification sound controls', async () => {
+  await openSettings(page, 'session')
+  await expect(page.getByTestId('settings-notification-sound-enabled')).toBeVisible()
+  await expect(page.getByTestId('settings-notification-sound-blocked')).toBeVisible()
+  await expect(page.getByTestId('settings-notification-sound-completed')).toBeVisible()
+  await expect(page.getByTestId('settings-notification-sound-error')).toBeVisible()
+  await expect(page.getByTestId('settings-notification-sound-preview')).toBeVisible()
+  await expect(page.getByTestId('settings-notification-sound-choose')).toBeVisible()
+  await expect(page.getByTestId('settings-notification-sound-clear')).toBeVisible()
+
+  const sound = await page.evaluate(
+    () =>
+      new Promise<{ ok: boolean; error?: string }>((resolve) => {
+        const audio = new Audio('hrack-notification://local/current')
+        audio.oncanplaythrough = () => resolve({ ok: true })
+        audio.onerror = () =>
+          resolve({ ok: false, error: audio.error?.message ?? 'audio error' })
+        setTimeout(() => resolve({ ok: false, error: 'timeout' }), 3000)
+      })
+  )
+  expect(sound.ok).toBe(true)
+})
+
+test('settings split into category pages', async () => {
+  await openSettings(page, 'appearance')
+  await expect(page.getByTestId('settings-nav')).toBeVisible()
+  await expect(page.getByTestId('settings-ui-theme')).toBeVisible()
+  await expect(page.getByTestId('settings-terminal-background-choose')).toHaveCount(0)
+  await expect(page.getByTestId('settings-update-action')).toHaveCount(0)
+
+  await openSettings(page, 'terminal')
+  await expect(page.getByTestId('settings-terminal-background-choose')).toBeVisible()
+  await expect(page.getByTestId('settings-ui-theme')).toHaveCount(0)
+
+  await openSettings(page, 'layout')
+  await expect(page.getByTestId('settings-global-shortcut')).toBeVisible()
+
+  await openSettings(page, 'update')
+  await expect(page.getByTestId('settings-update-action')).toBeVisible()
+  await expect(page.getByTestId('settings-global-shortcut')).toHaveCount(0)
+})
+
+test('settings can disable the hover-frame overlay', async () => {
+  await openSettings(page, 'appearance')
+  const overlay = page.getByTestId('target-cursor')
+  const toggle = page.getByTestId('settings-target-cursor')
+  await expect(toggle).toHaveAttribute('aria-checked', 'true')
+  await expect(overlay).toBeAttached()
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-checked', 'false')
+  await expect(overlay).toHaveCount(0)
+  await toggle.click()
+  await expect(page.getByTestId('target-cursor')).toBeAttached()
 })
 
 test('tray menu items drive hide-toggle, new session, and quit callbacks', async () => {

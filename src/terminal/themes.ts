@@ -135,3 +135,13 @@ export function isTerminalThemeId(value: unknown): value is ThemeId {
 export function getTerminalTheme(themeId: ThemeId): TerminalThemeDefinition {
   return terminalThemes[themeId] ?? terminalThemes.dark
 }
+
+/** Wallpaper needs a transparent default cell so the image can show through. */
+export function getXtermTheme(
+  themeId: ThemeId,
+  backgroundImage: boolean
+): ITheme {
+  const theme = getTerminalTheme(themeId).terminal
+  if (!backgroundImage) return theme
+  return { ...theme, background: '#00000000' }
+}

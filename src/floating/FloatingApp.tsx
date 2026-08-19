@@ -79,7 +79,7 @@ export default function FloatingApp({
       cancelAnimationFrame(frame)
       observer.disconnect()
     }
-  })
+  }, [])
 
   const active = useMemo(
     () =>

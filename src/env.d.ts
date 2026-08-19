@@ -7,6 +7,7 @@ import type {
   CliApi,
   ClipboardApi,
   DialogApi,
+  TerminalBackgroundApi,
   FloatingWindowApi,
   PtyApi,
   ShellApi,
@@ -15,6 +16,7 @@ import type {
   UpdateApi,
   WindowApi
 } from '../shared/ipc-contract'
+import type { NotificationSoundApi } from '../shared/notification-sound'
 import type { FloatingRendererApi } from '../shared/floating-window'
 import type { HRackDebugShellApi } from './app/AppShell'
 import type { WorkspaceReaderApi } from '../shared/workspace-reader'
@@ -30,6 +32,8 @@ declare global {
     hrackFloating: FloatingRendererApi
     themeApi: ThemeApi
     dialogApi: DialogApi
+    terminalBackgroundApi: TerminalBackgroundApi
+    notificationSoundApi: NotificationSoundApi
     shellApi: ShellApi
     cliApi: CliApi
     statsApi: StatsApi

@@ -3,6 +3,7 @@ import { ArrowRight, Check, RefreshCw } from 'lucide-react'
 import type { CliScanReport } from '../../shared/ipc-contract'
 import { useSettingsStore } from '../state/settingsStore'
 import ShinyText from './effects/ShinyText'
+import TargetCursor from './effects/TargetCursor'
 import Dropdown, { type DropdownOption } from './Dropdown'
 import SidebarTint from './SidebarTint'
 import TitleBar from './TitleBar'
@@ -150,11 +151,13 @@ export default function FirstRunOnboarding({
                 testId="onboarding-language"
                 value={settings.language}
                 options={languageOptions}
-                rootClassName="w-[150px]"
+                rootClassName="w-[180px]"
                 buttonClassName="h-10 w-full rounded-xl px-4 text-[11px]"
                 onChange={changeLanguage}
               />
             </div>
+          </div>
+          <div className="mt-3 flex items-end justify-center gap-3">
             <div>
               <p className="mb-2 px-1 font-pingfang text-[10px] font-medium text-text-faint">
                 {strings.onboarding.floatingTitle}
@@ -167,7 +170,7 @@ export default function FirstRunOnboarding({
                 aria-label={strings.onboarding.floatingTitle}
                 disabled={floatingUpdating}
                 onClick={changeFloatingWindow}
-                className={`h-10 min-w-[150px] rounded-xl border px-4 font-pingfang text-[11px] font-medium transition-colors ${
+                className={`cursor-target h-10 w-[180px] rounded-xl border px-4 font-pingfang text-[11px] font-medium transition-colors ${
                   settings.floatEnabled
                     ? 'border-button-primary bg-button-primary text-button-primary-fg'
                     : 'border-border-default bg-input text-text-muted hover:bg-input-hover'
@@ -176,6 +179,30 @@ export default function FirstRunOnboarding({
                 {settings.floatEnabled
                   ? strings.onboarding.enabled
                   : strings.onboarding.disabled}
+              </button>
+            </div>
+            <div>
+              <p className="mb-2 px-1 font-pingfang text-[10px] font-medium text-text-faint">
+                {strings.onboarding.targetCursorTitle}
+              </p>
+              <button
+                type="button"
+                role="switch"
+                data-testid="onboarding-target-cursor"
+                aria-checked={settings.targetCursorEnabled}
+                aria-label={strings.onboarding.targetCursorTitle}
+                onClick={() =>
+                  settings.setTargetCursorEnabled(!settings.targetCursorEnabled)
+                }
+                className={`cursor-target h-10 w-[180px] rounded-xl border px-4 font-pingfang text-[11px] font-medium transition-colors ${
+                  settings.targetCursorEnabled
+                    ? 'border-button-primary bg-button-primary text-button-primary-fg'
+                    : 'border-border-default bg-input text-text-muted hover:bg-input-hover'
+                }`}
+              >
+                {settings.targetCursorEnabled
+                  ? strings.onboarding.targetCursorOn
+                  : strings.onboarding.targetCursorOff}
               </button>
             </div>
           </div>
@@ -206,13 +233,25 @@ export default function FirstRunOnboarding({
             onClick={() => {
               if (canComplete) onComplete()
             }}
-            className="mx-auto mt-5 flex w-[280px] items-center justify-center gap-2 rounded-xl bg-button-primary px-5 py-3 font-pingfang text-[12px] font-medium text-button-primary-fg transition-colors hover:bg-button-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
+            className="cursor-target mx-auto mt-5 flex w-[280px] items-center justify-center gap-2 rounded-xl bg-button-primary px-5 py-3 font-pingfang text-[12px] font-medium text-button-primary-fg transition-colors hover:bg-button-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
             {strings.onboarding.continue}
             <ArrowRight className="size-3.5" strokeWidth={1.8} />
           </button>
         </section>
       </main>
+
+      {settings.targetCursorEnabled && (
+        <TargetCursor
+          showCursor={false}
+          hideDefaultCursor={false}
+          spinDuration={2}
+          parallaxOn
+          hoverDuration={0.2}
+          cursorColor="var(--hrack-accent-cursor)"
+          cursorColorOnTarget="var(--hrack-accent-target)"
+        />
+      )}
     </div>
   )
 }

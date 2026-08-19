@@ -18,7 +18,15 @@ import {
 import { appLocales, useStrings } from './i18n'
 import { getUiThemeRegistry, useThemeRegistryVersion } from './themeRuntime'
 import { terminalThemeIds, terminalThemes } from '../terminal/themes'
+import TerminalBackgroundPreview from '../terminal/TerminalBackgroundPreview'
 import { useSettingsStore, defaultSettings, type NavMode } from '../state/settingsStore'
+import {
+  hasTerminalBackground,
+  terminalBackgroundFits,
+  type TerminalBackgroundFit
+} from '../../shared/terminal-background'
+import { hasNotificationSound } from '../../shared/notification-sound'
+import { playNotificationPreview } from '../state/notificationSound'
 import ClickSpark from './effects/ClickSpark'
 import Dropdown, { type DropdownOption } from './Dropdown'
 import floatingRendererSkill from '../../resources/skills/create-hrack-floating-renderer/SKILL.md?raw'
@@ -41,6 +49,16 @@ const colorKeys = [
   'brightMagenta', 'brightCyan', 'brightWhite'
 ] as const
 
+const SETTINGS_CATEGORIES = [
+  'appearance',
+  'layout',
+  'terminal',
+  'session',
+  'update'
+] as const
+
+export type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number]
+
 function dshPreferenceValue(config: DshRuntimeConfig | null): string {
   const preference = config?.runtimePreference
   return preference?.kind === 'installation'
@@ -59,6 +77,7 @@ interface SettingsPageProps {
   dshRuntimeScanning: boolean
   dshRuntimeScanError: string | null
   onRefreshDshRuntimes: () => void
+  initialCategory?: SettingsCategory
 }
 
 export default function SettingsPage({
@@ -71,7 +90,8 @@ export default function SettingsPage({
   dshRuntimeReport,
   dshRuntimeScanning,
   dshRuntimeScanError,
-  onRefreshDshRuntimes
+  onRefreshDshRuntimes,
+  initialCategory = 'appearance'
 }: SettingsPageProps) {
   const settings = useSettingsStore()
   const strings = useStrings()
@@ -95,6 +115,17 @@ export default function SettingsPage({
   const [themeJsonError, setThemeJsonError] = useState<string | null>(null)
   const [themeSkillCopied, setThemeSkillCopied] = useState(false)
   const [bridgeSkillCopied, setBridgeSkillCopied] = useState(false)
+  const [backgroundBusy, setBackgroundBusy] = useState(false)
+  const [backgroundError, setBackgroundError] = useState<string | null>(null)
+  const [notificationSoundBusy, setNotificationSoundBusy] = useState(false)
+  const [notificationSoundError, setNotificationSoundError] =
+    useState<string | null>(null)
+  const [category, setCategory] = useState<SettingsCategory>(initialCategory)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setCategory(initialCategory)
+  }, [initialCategory])
   const dshRuntimeBusy = dshRuntimeScanning || dshRuntimeChanging
   const dshRuntimeError = dshRuntimeActionError ?? dshRuntimeScanError
   const themeRegistryVersion = useThemeRegistryVersion((state) => state.version)
@@ -212,6 +243,10 @@ export default function SettingsPage({
     }
   }, [])
 
+  useEffect(() => {
+    contentRef.current?.scrollTo(0, 0)
+  }, [category])
+
   const changeUiTheme = (themeId: string): void => {
     setThemeJsonError(null)
     settings.setUiTheme(themeId)
@@ -222,6 +257,81 @@ export default function SettingsPage({
     settings.setLanguage(locale)
     // 托盘菜单是原生 UI：语言变更立即上报主进程同步文案。
     void window.appApi.setMainPrefs({ language: locale })
+  }
+
+  const backgroundMessage = (error: unknown): string => {
+    const code = error instanceof Error ? error.message : String(error)
+    if (code.includes('image-too-large')) return strings.settings.terminalBackgroundTooLarge
+    if (code.includes('unsupported-image-type')) {
+      return strings.settings.terminalBackgroundUnsupported
+    }
+    return code
+  }
+
+  const pickTerminalBackground = (): void => {
+    setBackgroundError(null)
+    setBackgroundBusy(true)
+    void window.terminalBackgroundApi
+      .pick()
+      .then((result) => {
+        if (result) settings.setTerminalBackground(result.name, result.revision)
+      })
+      .catch((error) => setBackgroundError(backgroundMessage(error)))
+      .finally(() => setBackgroundBusy(false))
+  }
+
+  const clearTerminalBackground = (): void => {
+    setBackgroundError(null)
+    setBackgroundBusy(true)
+    void window.terminalBackgroundApi
+      .clear()
+      .then(() => settings.clearTerminalBackground())
+      .catch((error) => setBackgroundError(backgroundMessage(error)))
+      .finally(() => setBackgroundBusy(false))
+  }
+
+  const notificationSoundMessage = (error: unknown): string => {
+    const code = error instanceof Error ? error.message : String(error)
+    if (code.includes('audio-too-large')) {
+      return strings.settings.notificationSoundTooLarge
+    }
+    if (code.includes('unsupported-audio-type')) {
+      return strings.settings.notificationSoundUnsupported
+    }
+    return code
+  }
+
+  const pickNotificationSound = (): void => {
+    setNotificationSoundError(null)
+    setNotificationSoundBusy(true)
+    void window.notificationSoundApi
+      .pick()
+      .then((result) => {
+        if (result) {
+          settings.setNotificationSound(result.name, result.revision)
+        }
+      })
+      .catch((error) =>
+        setNotificationSoundError(notificationSoundMessage(error))
+      )
+      .finally(() => setNotificationSoundBusy(false))
+  }
+
+  const clearNotificationSound = (): void => {
+    setNotificationSoundError(null)
+    setNotificationSoundBusy(true)
+    void window.notificationSoundApi
+      .clear()
+      .then(() => settings.clearNotificationSound())
+      .catch((error) =>
+        setNotificationSoundError(notificationSoundMessage(error))
+      )
+      .finally(() => setNotificationSoundBusy(false))
+  }
+
+  const previewNotificationSound = (): void => {
+    setNotificationSoundError(null)
+    playNotificationPreview()
   }
 
   const changeGlobalShortcut = (enabled: boolean): void => {
@@ -442,16 +552,67 @@ export default function SettingsPage({
 
   return (
     <ClickSpark sparkColor="var(--hrack-accent-spark)" sparkSize={8} sparkRadius={18} sparkCount={10} duration={450}>
-      <section data-testid="settings-page" className="sidebar-scroll h-full overflow-y-auto">
-        <header className="px-8 pt-10 pb-6">
-          <p className="mb-3 font-maple text-[10px] tracking-[0.28em] text-text-faint uppercase">{strings.settings.preferences}</p>
-          <h1 className="font-pingfang text-[32px] font-semibold leading-tight tracking-wide text-text-primary">{strings.settings.title}</h1>
-          <p className="mt-2 font-pingfang text-[12px] text-text-faint">{strings.settings.description}</p>
-        </header>
-        <div className="flex max-w-[560px] flex-col gap-7 px-8 pb-10">
+      <section
+        data-testid="settings-page"
+        data-settings-category={category}
+        className="flex h-full min-h-0"
+      >
+        <nav
+          data-testid="settings-nav"
+          aria-label={strings.settings.title}
+          className="flex w-[208px] shrink-0 flex-col border-r border-border-faint px-3 pt-8 pb-6"
+        >
+          <div className="px-2.5 pb-5">
+            <h1 className="font-pingfang text-[20px] font-semibold tracking-wide text-text-primary">
+              {strings.settings.title}
+            </h1>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            {SETTINGS_CATEGORIES.map((id) => {
+              const selected = category === id
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  data-testid={`settings-category-${id}`}
+                  aria-current={selected ? 'page' : undefined}
+                  onClick={() => setCategory(id)}
+                  className={[
+                    'cursor-target w-full rounded-lg px-2.5 py-2 text-left font-pingfang text-[13px] font-medium transition-colors',
+                    selected
+                      ? 'bg-surface-strong text-text-primary'
+                      : 'text-text-secondary hover:bg-surface-hover'
+                  ].join(' ')}
+                >
+                  {strings.settings.sections[id]}
+                </button>
+              )
+            })}
+          </div>
+        </nav>
+        <div
+          ref={contentRef}
+          data-testid="settings-content"
+          className="sidebar-scroll min-w-0 flex-1 overflow-y-auto"
+        >
+          <header className="px-10 pt-10 pb-6">
+            <h2 className="font-pingfang text-[28px] font-semibold leading-tight tracking-wide text-text-primary">
+              {strings.settings.sections[category]}
+            </h2>
+            {category === 'appearance' && (
+              <p className="mt-2 max-w-[760px] font-pingfang text-[12px] text-text-faint">
+                {strings.settings.description}
+              </p>
+            )}
+          </header>
+          <div className="flex w-full max-w-[760px] flex-col px-10 pb-12">
+          {category === 'appearance' && (
           <Section label="appearance" title={strings.settings.sections.appearance}>
             <Row label={strings.settings.uiTheme} hint={strings.settings.uiThemeHint}>
               <Dropdown testId="settings-ui-theme" value={settings.uiThemeId} options={uiThemeOptions} onChange={changeUiTheme} />
+            </Row>
+            <Row label={strings.settings.targetCursor} hint={strings.settings.targetCursorHint}>
+              <Toggle testId="settings-target-cursor" checked={settings.targetCursorEnabled} onChange={settings.setTargetCursorEnabled} />
             </Row>
             {registry.errors.length > 0 && <div data-testid="theme-load-errors" className="border-b border-border-faint py-3 text-[11px] text-status-error"><p className="font-semibold">{strings.settings.themeErrors}</p>{registry.errors.map((error) => <p key={error.filename} className="mt-1 font-maple">{error.filename}: {error.message}</p>)}</div>}
             <div data-testid="settings-theme-json" className="border-b border-border-faint py-3.5">
@@ -543,7 +704,9 @@ export default function SettingsPage({
               />
             </Row>
           </Section>
+          )}
 
+          {category === 'layout' && (
           <Section label="layout" title={strings.settings.sections.layout}>
             <Row label={strings.settings.navigationMode} hint={strings.settings.navigationModeHint}>
               <div className="flex items-center gap-0.5 rounded-lg bg-control p-0.5">
@@ -659,7 +822,9 @@ export default function SettingsPage({
               </details>
             )}
           </Section>
+          )}
 
+          {category === 'terminal' && (
           <Section label="terminal" title={strings.settings.sections.terminal}>
             <div className="border-b border-border-faint py-3.5">
               <div className="flex items-center justify-between gap-6"><div className="min-w-0"><p className="font-pingfang text-[12px] font-medium text-text-secondary">{strings.settings.terminalTheme}</p><p className="mt-0.5 font-pingfang text-[11px] text-text-faint">{strings.settings.terminalThemeHint}</p></div><Dropdown testId="settings-terminal-theme" value={settings.terminalThemeId} options={terminalThemeOptions} onChange={(value) => settings.setTerminalTheme(value as typeof settings.terminalThemeId)} /></div>
@@ -690,10 +855,215 @@ export default function SettingsPage({
             <Row label={strings.settings.fontSize}><div className="flex items-center gap-0.5 rounded-lg bg-control p-0.5"><button type="button" data-testid="settings-font-decrease" aria-label={strings.settings.decreaseFontSize} onClick={() => settings.setFont(settings.fontFamily, Math.max(10, settings.fontSize - 1))} className="cursor-target flex size-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-control-active hover:text-text-primary"><Minus className="size-3" strokeWidth={1.75} /></button><span data-testid="settings-font-size" className="w-10 text-center font-maple text-[12px] text-text-secondary">{strings.settings.pixels(settings.fontSize)}</span><button type="button" data-testid="settings-font-increase" aria-label={strings.settings.increaseFontSize} onClick={() => settings.setFont(settings.fontFamily, Math.min(24, settings.fontSize + 1))} className="cursor-target flex size-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-control-active hover:text-text-primary"><Plus className="size-3" strokeWidth={1.75} /></button></div></Row>
             <Row label={strings.settings.ligatures} hint={strings.settings.ligaturesHint}><Toggle testId="settings-ligatures" checked={settings.ligatures} onChange={settings.setLigatures} /></Row>
             <Row label={strings.settings.terminalRounded} hint={strings.settings.terminalRoundedHint}><Toggle testId="settings-terminal-rounded" checked={settings.terminalRounded} onChange={settings.setTerminalRounded} /></Row>
+            <Row
+              label={strings.settings.terminalBackground}
+              hint={backgroundError ?? strings.settings.terminalBackgroundHint}
+            >
+              <div className="flex items-start gap-2">
+                <TerminalBackgroundPreview />
+                <div className="flex min-w-0 flex-col items-end gap-1.5">
+                  <span
+                    data-testid="settings-terminal-background-name"
+                    className="max-w-[140px] truncate font-pingfang text-[11px] text-text-faint"
+                    title={
+                      hasTerminalBackground(
+                        settings.terminalBackgroundName,
+                        settings.terminalBackgroundRevision
+                      )
+                        ? settings.terminalBackgroundName
+                        : undefined
+                    }
+                  >
+                    {hasTerminalBackground(
+                      settings.terminalBackgroundName,
+                      settings.terminalBackgroundRevision
+                    )
+                      ? settings.terminalBackgroundName
+                      : strings.settings.terminalBackgroundEmpty}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      data-testid="settings-terminal-background-choose"
+                      disabled={backgroundBusy}
+                      onClick={pickTerminalBackground}
+                      className="cursor-target rounded-lg border border-border-default bg-input px-2 py-1.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {hasTerminalBackground(
+                        settings.terminalBackgroundName,
+                        settings.terminalBackgroundRevision
+                      )
+                        ? strings.settings.terminalBackgroundChange
+                        : strings.settings.terminalBackgroundChoose}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="settings-terminal-background-clear"
+                      disabled={
+                        backgroundBusy ||
+                        !hasTerminalBackground(
+                          settings.terminalBackgroundName,
+                          settings.terminalBackgroundRevision
+                        )
+                      }
+                      onClick={clearTerminalBackground}
+                      className="cursor-target rounded-lg border border-border-default bg-input px-2 py-1.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {strings.settings.terminalBackgroundClear}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Row>
+            <Row label={strings.settings.terminalBackgroundFit} hint={strings.settings.terminalBackgroundFitHint}>
+              <Dropdown
+                testId="settings-terminal-background-fit"
+                value={settings.terminalBackgroundFit}
+                options={terminalBackgroundFits.map((fit) => ({
+                  value: fit,
+                  label:
+                    fit === 'cover'
+                      ? strings.settings.terminalBackgroundFitCover
+                      : fit === 'contain'
+                        ? strings.settings.terminalBackgroundFitContain
+                        : fit === 'fill'
+                          ? strings.settings.terminalBackgroundFitFill
+                          : strings.settings.terminalBackgroundFitTile
+                }))}
+                buttonClassName="min-w-[100px]"
+                onChange={(value) =>
+                  settings.setTerminalBackgroundFit(value as TerminalBackgroundFit)
+                }
+              />
+            </Row>
+            <Row
+              label={strings.settings.terminalBackgroundOpacity}
+              hint={strings.settings.terminalBackgroundOpacityHint}
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  data-testid="settings-terminal-background-opacity"
+                  type="range"
+                  min={10}
+                  max={100}
+                  step={5}
+                  value={Math.round(settings.terminalBackgroundOpacity * 100)}
+                  aria-valuemin={10}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(settings.terminalBackgroundOpacity * 100)}
+                  onChange={(event) =>
+                    settings.setTerminalBackgroundOpacity(
+                      Number(event.target.value) / 100
+                    )
+                  }
+                  className="h-1 w-36 cursor-target accent-[var(--hrack-button-primary-bg)]"
+                />
+                <span
+                  data-testid="settings-terminal-background-opacity-value"
+                  className="w-10 text-right font-maple text-[12px] text-text-secondary"
+                >
+                  {strings.settings.percent(
+                    Math.round(settings.terminalBackgroundOpacity * 100)
+                  )}
+                </span>
+              </div>
+            </Row>
           </Section>
+          )}
 
+          {category === 'session' && (
           <Section label="session" title={strings.settings.sections.session}>
             <Row label={strings.settings.attentionPriority} hint={strings.settings.attentionPriorityHint}><Toggle testId="settings-attention-priority" checked={settings.attentionPriorityEnabled} onChange={settings.setAttentionPriorityEnabled} /></Row>
+            <div className="border-b border-border-faint py-3.5">
+              <div className="flex items-center justify-between gap-6">
+                <div className="min-w-0">
+                  <p className="font-pingfang text-[12px] font-medium text-text-secondary">{strings.settings.notificationSound}</p>
+                  <p className="mt-0.5 font-pingfang text-[11px] text-text-faint">{strings.settings.notificationSoundHint}</p>
+                </div>
+                <div className="shrink-0">
+                  <Toggle testId="settings-notification-sound-enabled" checked={settings.notificationSoundEnabled} onChange={settings.setNotificationSoundEnabled} />
+                </div>
+              </div>
+              <div className={`mt-3 ml-4 rounded-lg border border-border-faint bg-surface-strong/40 p-3 ${settings.notificationSoundEnabled ? '' : 'opacity-60'}`}>
+                <div className="flex items-center justify-between gap-6 py-1">
+                  <div className="min-w-0">
+                    <p className="font-pingfang text-[11px] font-medium text-text-secondary">{strings.settings.notificationSoundBlocked}</p>
+                    <p className="mt-0.5 font-pingfang text-[10px] text-text-faint">{strings.settings.notificationSoundBlockedHint}</p>
+                  </div>
+                  <div className="shrink-0">
+                    <Toggle testId="settings-notification-sound-blocked" checked={settings.notificationSoundOnBlocked} disabled={!settings.notificationSoundEnabled} onChange={settings.setNotificationSoundOnBlocked} />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-6 py-1">
+                  <div className="min-w-0">
+                    <p className="font-pingfang text-[11px] font-medium text-text-secondary">{strings.settings.notificationSoundCompleted}</p>
+                    <p className="mt-0.5 font-pingfang text-[10px] text-text-faint">{strings.settings.notificationSoundCompletedHint}</p>
+                  </div>
+                  <div className="shrink-0">
+                    <Toggle testId="settings-notification-sound-completed" checked={settings.notificationSoundOnCompleted} disabled={!settings.notificationSoundEnabled} onChange={settings.setNotificationSoundOnCompleted} />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-6 py-1">
+                  <div className="min-w-0">
+                    <p className="font-pingfang text-[11px] font-medium text-text-secondary">{strings.settings.notificationSoundError}</p>
+                    <p className="mt-0.5 font-pingfang text-[10px] text-text-faint">{strings.settings.notificationSoundErrorHint}</p>
+                  </div>
+                  <div className="shrink-0">
+                    <Toggle testId="settings-notification-sound-error" checked={settings.notificationSoundOnError} disabled={!settings.notificationSoundEnabled} onChange={settings.setNotificationSoundOnError} />
+                  </div>
+                </div>
+                <div className="mt-2 flex items-start justify-between gap-4 border-t border-border-faint pt-3">
+                  <div className="min-w-0">
+                    <p className="font-pingfang text-[11px] font-medium text-text-secondary">{strings.settings.notificationSoundFile}</p>
+                    <p className="mt-0.5 font-pingfang text-[10px] text-text-faint">{notificationSoundError ?? strings.settings.notificationSoundFileHint}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <span
+                      data-testid="settings-notification-sound-name"
+                      className="max-w-[180px] truncate font-pingfang text-[11px] text-text-faint"
+                      title={
+                        hasNotificationSound(settings.notificationSoundName)
+                          ? settings.notificationSoundName
+                          : undefined
+                      }
+                    >
+                      {settings.notificationSoundName}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        data-testid="settings-notification-sound-preview"
+                        disabled={notificationSoundBusy || !hasNotificationSound(settings.notificationSoundName)}
+                        onClick={previewNotificationSound}
+                        className="cursor-target rounded-lg border border-border-default bg-input px-2 py-1.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {strings.settings.notificationSoundPreview}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="settings-notification-sound-choose"
+                        disabled={notificationSoundBusy}
+                        onClick={pickNotificationSound}
+                        className="cursor-target rounded-lg border border-border-default bg-input px-2 py-1.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {settings.notificationSoundRevision > 0
+                          ? strings.settings.notificationSoundChange
+                          : strings.settings.notificationSoundChoose}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="settings-notification-sound-clear"
+                        disabled={notificationSoundBusy || settings.notificationSoundRevision === 0}
+                        onClick={clearNotificationSound}
+                        className="cursor-target rounded-lg border border-border-default bg-input px-2 py-1.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {strings.settings.notificationSoundClear}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
             <Row label={strings.settings.defaultTerminal} hint={strings.settings.defaultTerminalHint}><Dropdown testId="settings-default-terminal" direction="up" value={shells.some((shell) => shell.id === settings.defaultTerminal) ? settings.defaultTerminal : shells[0]?.id ?? ''} disabled={shells.length === 0} options={shells.map((shell) => ({ value: shell.id, label: shell.name }))} onChange={(value) => settings.setDefaultTerminal(value)} /></Row>
             <Row
               label={strings.dsh.runtimeLabel}
@@ -796,7 +1166,9 @@ export default function SettingsPage({
               </button>
             </Row>
           </Section>
+          )}
 
+          {category === 'update' && (
           <Section label="update" title={strings.settings.sections.update}>
             <div data-testid="settings-update" className="border-b border-border-faint py-3.5 last:border-b-0">
               <div className="flex items-center justify-between gap-6">
@@ -832,14 +1204,16 @@ export default function SettingsPage({
               )}
             </div>
           </Section>
+          )}
+          </div>
         </div>
       </section>
     </ClickSpark>
   )
 }
 
-function Section({ label, title, children }: { label: string; title: string; children: ReactNode }) {
-  return <section><div className="border-b border-border-subtle pb-2"><p className="font-maple text-[10px] tracking-[0.22em] text-text-faint uppercase">{label}</p><h2 className="mt-0.5 font-pingfang text-[13px] font-semibold text-text-secondary">{title}</h2></div>{children}</section>
+function Section({ children }: { label: string; title: string; children: ReactNode }) {
+  return <div>{children}</div>
 }
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {

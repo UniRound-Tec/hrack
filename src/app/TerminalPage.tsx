@@ -1,10 +1,12 @@
 import TerminalView from '../terminal/TerminalView'
+import TerminalBackgroundLayer from '../terminal/TerminalBackgroundLayer'
 import { getTerminalTheme } from '../terminal/themes'
 import { useSettingsStore } from '../state/settingsStore'
 import type { TerminalEntry } from '../state/terminalsStore'
 import WorkspaceReaderLayout from '../workspace-reader/WorkspaceReaderLayout'
 import { getTerminalLaunch } from '../state/terminalLaunchRegistry'
 import { useWorkspaceReaderStore } from '../workspace-reader/workspaceReaderStore'
+import { hasTerminalBackground } from '../../shared/terminal-background'
 
 interface TerminalPageProps {
   terminal: TerminalEntry
@@ -22,7 +24,19 @@ export default function TerminalPage({
 }: TerminalPageProps) {
   const rounded = useSettingsStore((state) => state.terminalRounded)
   const terminalThemeId = useSettingsStore((state) => state.terminalThemeId)
+  const backgroundName = useSettingsStore((state) => state.terminalBackgroundName)
+  const backgroundRevision = useSettingsStore(
+    (state) => state.terminalBackgroundRevision
+  )
+  const backgroundFit = useSettingsStore((state) => state.terminalBackgroundFit)
+  const backgroundOpacity = useSettingsStore(
+    (state) => state.terminalBackgroundOpacity
+  )
   const background = getTerminalTheme(terminalThemeId).terminal.background
+  const showBackground = hasTerminalBackground(
+    backgroundName,
+    backgroundRevision
+  )
   const launch = getTerminalLaunch(terminal.id)
   const hasWorkspace =
     Boolean(terminal.cwd) &&
@@ -32,18 +46,30 @@ export default function TerminalPage({
   )
   const terminalSurface = (
     <div
-      className={
+      className={`relative h-full w-full overflow-hidden ${
+        showBackground ? 'terminal-has-background' : ''
+      } ${
         rounded
-          ? `h-full w-full pt-2 pl-3.5 ${hasWorkspace && readerOpen ? '' : 'pr-3.5'}`
-          : 'h-full w-full'
-      }
+          ? `pt-2 pl-3.5 ${hasWorkspace && readerOpen ? '' : 'pr-3.5'}`
+          : ''
+      }`}
     >
-      <TerminalView
-        tabId={terminal.id}
-        active={active}
-        onInitialSpawn={onInitialSpawn}
-        onExit={onExit}
-      />
+      {showBackground && (
+        <TerminalBackgroundLayer
+          testId="terminal-background-image"
+          revision={backgroundRevision}
+          fit={backgroundFit}
+          opacity={backgroundOpacity}
+        />
+      )}
+      <div className="relative h-full w-full">
+        <TerminalView
+          tabId={terminal.id}
+          active={active}
+          onInitialSpawn={onInitialSpawn}
+          onExit={onExit}
+        />
+      </div>
     </div>
   )
   return (

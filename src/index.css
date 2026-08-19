@@ -486,6 +486,23 @@ textarea,
   animation: hover-card-in 150ms ease-out 150ms forwards;
 }
 
+.terminal-has-background .xterm,
+.terminal-has-background .xterm-viewport,
+.terminal-has-background .xterm-screen {
+  background-color: transparent !important;
+}
+
+/* DOM 渲染器会露出 xterm-viewport 的 overflow:scroll 槽；滚轮滚动仍可用。 */
+.terminal-has-background .xterm-viewport {
+  scrollbar-width: none;
+}
+
+.terminal-has-background .xterm-viewport::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 .shell-sheet {
   box-shadow: 0 -18px 40px var(--hrack-shadow-window);
 }

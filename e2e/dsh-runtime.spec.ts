@@ -18,7 +18,7 @@ import {
   resolveNativeDshHome,
   resolveWslDshHome
 } from '../electron/app-paths'
-import { e2eDshExecutable, launchApp } from './helpers'
+import { e2eDshExecutable, launchApp, openSettings } from './helpers'
 
 const windowsCandidate: DshRuntimeCandidate = {
   id: 'dsh:windows',
@@ -148,6 +148,7 @@ test('settings scans DSH runtimes and persists an explicit local choice', async 
     await first.window.evaluate(() => {
       window.__hrackDebugShell?.navigate('settings')
     })
+    await openSettings(first.window, 'session')
     const select = first.window.getByTestId('dsh-runtime-select')
     await expect(select).toBeEnabled({ timeout: 20_000 })
     await expect(select).toHaveAttribute('data-value', 'auto')

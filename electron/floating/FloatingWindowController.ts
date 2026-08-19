@@ -29,6 +29,10 @@ import {
 
 const EDGE_GAP = 20
 const FLOATING_PARTITION = 'hrack-floating-renderers'
+/** Highest practical always-on-top level; macOS maps this above normal apps. */
+const FLOATING_ALWAYS_ON_TOP_LEVEL = 'screen-saver' as const
+/** Re-assert topmost periodically so other topmost/fullscreen apps cannot keep it buried. */
+const FLOATING_TOPMOST_REFRESH_MS = 8_000
 
 export interface FloatingWindowController {
   getState(): FloatingWindowState
@@ -98,6 +102,7 @@ export class ElectronFloatingWindowController
   private initialized = false
   private operation: Promise<void> = Promise.resolve()
   private moveTimer: NodeJS.Timeout | null = null
+  private topmostTimer: NodeJS.Timeout | null = null
   private uninstallProtocol: (() => void) | null = null
   private selectedRendererId = BUILTIN_FLOATING_RENDERER_ID
   private attentionEffectEnabled = true
@@ -110,6 +115,10 @@ export class ElectronFloatingWindowController
   private lastContentHeight: number | null = null
   private lastShapeRects: FloatingShapeRect[] = []
   private suppressWindowRecovery = false
+  /** Bottom edge used as the stable anchor across programmatic resizes. */
+  private anchorBottom: number | null = null
+  /** True while this controller is moving/resizing the window itself. */
+  private suppressAnchorUpdate = false
   private readonly handleDisplayChange = (): void => this.clampToVisibleArea()
 
   constructor(private readonly deps: FloatingWindowControllerDeps) {
@@ -281,17 +290,8 @@ export class ElectronFloatingWindowController
     const scaledWidth = Math.round(definition.width * this.scale)
     const boundedHeight = nextHeight
     if (boundedHeight === bounds.height && scaledWidth === bounds.width) return
-    const bottom = bounds.y + bounds.height
-    const nextY = Math.max(
-      workArea.y,
-      Math.min(bottom - boundedHeight, workArea.y + workArea.height - boundedHeight)
-    )
-    win.setBounds({
-      x: bounds.x,
-      y: nextY,
-      width: scaledWidth,
-      height: boundedHeight
-    })
+    const bottom = this.anchorBottom ?? (bounds.y + bounds.height)
+    this.setBoundsKeepingBottom(win, bounds.x, scaledWidth, boundedHeight, bottom)
   }
 
   setShape(rects: FloatingShapeRect[]): void {
@@ -384,6 +384,8 @@ export class ElectronFloatingWindowController
     this.disposed = true
     if (this.moveTimer) clearTimeout(this.moveTimer)
     this.moveTimer = null
+    if (this.topmostTimer) clearInterval(this.topmostTimer)
+    this.topmostTimer = null
     screen.removeListener('display-removed', this.handleDisplayChange)
     screen.removeListener('display-metrics-changed', this.handleDisplayChange)
     this.registry.dispose()
@@ -511,6 +513,7 @@ export class ElectronFloatingWindowController
     this.lastContentHeight = definition.minHeight
     this.lastShapeRects = []
     this.suppressWindowRecovery = false
+    this.anchorBottom = win.getBounds().y + win.getBounds().height
     win.on('closed', () => {
       if (this.window === win) {
         this.window = null
@@ -518,8 +521,16 @@ export class ElectronFloatingWindowController
       }
       if (this.moveTimer) clearTimeout(this.moveTimer)
       this.moveTimer = null
+      if (this.topmostTimer) clearInterval(this.topmostTimer)
+      this.topmostTimer = null
     })
-    win.on('move', () => this.schedulePositionSave(win))
+    win.on('move', () => {
+      if (!this.suppressAnchorUpdate && !win.isDestroyed()) {
+        const bounds = win.getBounds()
+        this.anchorBottom = bounds.y + bounds.height
+      }
+      this.schedulePositionSave(win)
+    })
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
     win.webContents.on('will-navigate', (event, nextUrl) => {
       if (!this.isAllowedNavigation(definition, nextUrl)) event.preventDefault()
@@ -540,7 +551,7 @@ export class ElectronFloatingWindowController
         )
       )
     })
-    win.setAlwaysOnTop(true, 'floating')
+    win.setAlwaysOnTop(true, FLOATING_ALWAYS_ON_TOP_LEVEL)
     win.webContents.setZoomFactor(this.scale)
 
     if (definition.id === BUILTIN_FLOATING_RENDERER_ID) {
@@ -571,6 +582,11 @@ export class ElectronFloatingWindowController
     }
     this.broadcastSnapshot()
     win.showInactive()
+    this.ensureTopmost(win)
+    this.topmostTimer = setInterval(
+      () => this.ensureTopmost(win),
+      FLOATING_TOPMOST_REFRESH_MS
+    )
   }
 
   private async handleRendererFailure(
@@ -630,6 +646,8 @@ export class ElectronFloatingWindowController
     this.lastContentHeight = null
     this.lastShapeRects = []
     this.suppressWindowRecovery = true
+    if (this.topmostTimer) clearInterval(this.topmostTimer)
+    this.topmostTimer = null
     if (win && !win.isDestroyed()) win.destroy()
   }
 
@@ -645,19 +663,66 @@ export class ElectronFloatingWindowController
     const contentHeight = this.lastContentHeight ?? definition.minHeight
     const height = Math.max(minHeight, Math.min(maxHeight, Math.round(contentHeight * this.scale)))
     const right = bounds.x + bounds.width
-    const bottom = bounds.y + bounds.height
+    const bottom = this.anchorBottom ?? (bounds.y + bounds.height)
+    const x = Math.max(workArea.x, Math.min(right - width, workArea.x + workArea.width - width))
     win.setMinimumSize(1, 1)
     win.setMaximumSize(workArea.width, workArea.height)
-    win.setBounds({
-      x: Math.max(workArea.x, Math.min(right - width, workArea.x + workArea.width - width)),
-      y: Math.max(workArea.y, Math.min(bottom - height, workArea.y + workArea.height - height)),
-      width,
-      height
-    })
+    this.setBoundsKeepingBottom(win, x, width, height, bottom)
     win.setMinimumSize(width, minHeight)
     win.setMaximumSize(width, maxHeight)
     win.webContents.setZoomFactor(this.scale)
     if (this.lastShapeRects.length > 0) this.setShape(this.lastShapeRects)
+  }
+
+  /** Re-assert the floating window's topmost z-order. */
+  private ensureTopmost(win: BrowserWindow): void {
+    if (!win || win.isDestroyed() || !this.enabled || this.disposed) return
+    try {
+      win.setAlwaysOnTop(true, FLOATING_ALWAYS_ON_TOP_LEVEL)
+      win.moveTop()
+    } catch {
+      // Topmost re-assertion is best-effort; ignore platform-specific failures.
+    }
+  }
+
+  /**
+   * Resize/move the window while keeping `bottom` as the stable anchor.
+   *
+   * On scaled displays Electron may quantize the resulting window height (e.g.
+   * a 150% display turns a requested height of 109 DIP into 110 DIP). Reading
+   * the actual bounds and correcting y prevents the bottom edge from drifting
+   * downward on every content-height update.
+   */
+  private setBoundsKeepingBottom(
+    win: BrowserWindow,
+    x: number,
+    width: number,
+    height: number,
+    bottom: number
+  ): void {
+    const workArea = screen.getDisplayMatching(win.getBounds()).workArea
+    const requestedY = Math.max(
+      workArea.y,
+      Math.min(bottom - height, workArea.y + workArea.height - height)
+    )
+    this.suppressAnchorUpdate = true
+    try {
+      win.setBounds({ x, y: requestedY, width, height })
+      const actual = win.getBounds()
+      const actualBottom = actual.y + actual.height
+      if (actualBottom !== bottom) {
+        const correctedY = Math.max(
+          workArea.y,
+          Math.min(
+            bottom - actual.height,
+            workArea.y + workArea.height - actual.height
+          )
+        )
+        if (correctedY !== actual.y) win.setPosition(actual.x, correctedY)
+      }
+    } finally {
+      this.suppressAnchorUpdate = false
+    }
   }
 
   private schedulePositionSave(win: BrowserWindow): void {

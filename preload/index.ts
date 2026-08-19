@@ -7,6 +7,7 @@ import {
   ClipboardInvokeChannel,
   CliInvokeChannel,
   DialogInvokeChannel,
+  TerminalBackgroundInvokeChannel,
   FloatingWindowEventChannel,
   FloatingWindowInvokeChannel,
   PtyInvokeChannel,
@@ -29,6 +30,7 @@ import {
   type CliApi,
   type CliLaunchSelection,
   type DialogApi,
+  type TerminalBackgroundApi,
   type FloatingWindowApi,
   type FloatingWindowState,
   type FocusSessionPayload,
@@ -66,6 +68,11 @@ import {
   type WorkspaceChange,
   type WorkspaceReaderApi
 } from '../shared/workspace-reader'
+import {
+  NotificationSoundInvokeChannel,
+  type NotificationSoundApi,
+  type NotificationSoundPickResult
+} from '../shared/notification-sound'
 import {
   DshEventChannel,
   DshInvokeChannel,
@@ -247,6 +254,17 @@ const dialogApi: DialogApi = {
     ipcRenderer.invoke(DialogInvokeChannel.PickDirectory, request)
 }
 
+const terminalBackgroundApi: TerminalBackgroundApi = {
+  pick: () => ipcRenderer.invoke(TerminalBackgroundInvokeChannel.Pick),
+  clear: () => ipcRenderer.invoke(TerminalBackgroundInvokeChannel.Clear)
+}
+
+const notificationSoundApi: NotificationSoundApi = {
+  pick: (): Promise<NotificationSoundPickResult | null> =>
+    ipcRenderer.invoke(NotificationSoundInvokeChannel.Pick),
+  clear: () => ipcRenderer.invoke(NotificationSoundInvokeChannel.Clear)
+}
+
 const shellApi: ShellApi = {
   listAvailable: () => ipcRenderer.invoke(ShellInvokeChannel.ListAvailable)
 }
@@ -422,6 +440,8 @@ function isUpdateSnapshot(value: unknown): value is UpdateSnapshot {
     (snapshot.availableVersion === null ||
       typeof snapshot.availableVersion === 'string') &&
     (snapshot.releaseDate === null || typeof snapshot.releaseDate === 'string') &&
+    (snapshot.releaseNotes === null ||
+      typeof snapshot.releaseNotes === 'string') &&
     (snapshot.checkedAt === null || typeof snapshot.checkedAt === 'number') &&
     (snapshot.error === null || typeof snapshot.error === 'string') &&
     (progress === null ||
@@ -552,6 +572,8 @@ try {
   contextBridge.exposeInMainWorld('floatingWindowApi', floatingWindowApi)
   contextBridge.exposeInMainWorld('themeApi', themeApi)
   contextBridge.exposeInMainWorld('dialogApi', dialogApi)
+  contextBridge.exposeInMainWorld('terminalBackgroundApi', terminalBackgroundApi)
+  contextBridge.exposeInMainWorld('notificationSoundApi', notificationSoundApi)
   contextBridge.exposeInMainWorld('shellApi', shellApi)
   contextBridge.exposeInMainWorld('cliApi', cliApi)
   contextBridge.exposeInMainWorld('statsApi', statsApi)

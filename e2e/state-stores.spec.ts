@@ -21,7 +21,7 @@ import {
   statusTone
 } from '../src/app/sessionStatus'
 
-test.describe('settingsStore v10', () => {
+test.describe('settingsStore v15', () => {
   test('migrates v0/v1 terminal defaults before applying the v3 schema', () => {
     const fromV0 = migrateSettings(
       {
@@ -43,7 +43,8 @@ test.describe('settingsStore v10', () => {
       defaultTerminal: 'powershell',
       language: defaultSettings.language,
       globalShortcutEnabled: true,
-      dshScale: 0.9
+      dshScale: 0.9,
+      targetCursorEnabled: true
     })
 
     const fromV1 = migrateSettings(
@@ -92,7 +93,20 @@ test.describe('settingsStore v10', () => {
       readerWidthRatio: 0.52,
       workspaceTreeWidth: 220,
       attentionPriorityEnabled: false,
-      dshScale: 0.9
+      dshScale: 0.9,
+      targetCursorEnabled: true,
+      terminalBackgroundName: '',
+      terminalBackgroundRevision: 0,
+      terminalBackgroundFit: 'cover',
+      terminalBackgroundOpacity: 0.3,
+      notificationSoundEnabled: true,
+      notificationSoundOnBlocked: true,
+      notificationSoundOnCompleted: true,
+      notificationSoundOnError: true,
+      notificationSoundName: 'done.mp3',
+      notificationSoundRevision: 0,
+      ignoredUpdateVersion: null,
+      updateModalDisabled: false
     })
     expect(migrated).not.toHaveProperty('themeId')
   })
@@ -125,6 +139,91 @@ test.describe('settingsStore v10', () => {
     )
   })
 
+  test('v11 keeps the hover frame on unless the user already turned it off', () => {
+    expect(migrateSettings({ fontSize: 14 }, 10).targetCursorEnabled).toBe(true)
+    expect(
+      migrateSettings({ targetCursorEnabled: false }, 10).targetCursorEnabled
+    ).toBe(false)
+  })
+
+  test('v12 adds terminal wallpaper settings without wiping older preferences', () => {
+    expect(migrateSettings({ fontSize: 14 }, 11)).toMatchObject({
+      fontSize: 14,
+      terminalBackgroundName: '',
+      terminalBackgroundRevision: 0,
+      terminalBackgroundFit: 'cover',
+      terminalBackgroundOpacity: 0.3
+    })
+    expect(
+      migrateSettings(
+        {
+          terminalBackgroundName: 'wall.png',
+          terminalBackgroundRevision: 99,
+          terminalBackgroundFit: 'tile',
+          terminalBackgroundOpacity: 0.4
+        },
+        11
+      )
+    ).toMatchObject({
+      terminalBackgroundName: 'wall.png',
+      terminalBackgroundRevision: 99,
+      terminalBackgroundFit: 'tile',
+      terminalBackgroundOpacity: 0.4
+    })
+  })
+
+  test('v13 adds notification sound settings without wiping older preferences', () => {
+    expect(migrateSettings({ fontSize: 14 }, 12)).toMatchObject({
+      fontSize: 14,
+      notificationSoundEnabled: true,
+      notificationSoundOnBlocked: true,
+      notificationSoundOnCompleted: true,
+      notificationSoundOnError: true,
+      notificationSoundName: 'done.mp3',
+      notificationSoundRevision: 0
+    })
+    expect(
+      migrateSettings(
+        {
+          notificationSoundEnabled: false,
+          notificationSoundOnBlocked: false,
+          notificationSoundName: 'custom.wav',
+          notificationSoundRevision: 42
+        },
+        12
+      )
+    ).toMatchObject({
+      notificationSoundEnabled: false,
+      notificationSoundOnBlocked: false,
+      notificationSoundOnCompleted: true,
+      notificationSoundOnError: true,
+      notificationSoundName: 'custom.wav',
+      notificationSoundRevision: 42
+    })
+  })
+
+  test('v14 adds the ignored update version without wiping older preferences', () => {
+    expect(migrateSettings({ fontSize: 14 }, 13)).toMatchObject({
+      fontSize: 14,
+      ignoredUpdateVersion: null
+    })
+    expect(
+      migrateSettings({ ignoredUpdateVersion: '0.4.0' }, 13)
+    ).toMatchObject({
+      ignoredUpdateVersion: '0.4.0'
+    })
+  })
+
+  test('v15 adds the global don-t-ask-again switch without wiping older preferences', () => {
+    expect(migrateSettings({ fontSize: 14 }, 14)).toMatchObject({
+      fontSize: 14,
+      updateModalDisabled: false
+    })
+    expect(migrateSettings({ updateModalDisabled: true }, 14)).toMatchObject({
+      updateModalDisabled: true
+    })
+  })
+
   test('updates and resets the full settings slice', () => {
     const store = createStore<SettingsState>()(createSettingsState)
     expect(store.getState().onboardingCompleted).toBe(false)
@@ -140,6 +239,12 @@ test.describe('settingsStore v10', () => {
     store.getState().setWorkspaceTreeWidth(280)
     store.getState().setAttentionPriorityEnabled(true)
     store.getState().setDshScale(1.1)
+    store.getState().setTargetCursorEnabled(false)
+    store.getState().setTerminalBackground('bg.webp', 12)
+    store.getState().setTerminalBackgroundFit('contain')
+    store.getState().setTerminalBackgroundOpacity(0.5)
+    store.getState().ignoreUpdateVersion('9.9.9')
+    store.getState().setUpdateModalDisabled(true)
 
     expect(store.getState()).toMatchObject({
       onboardingCompleted: true,
@@ -154,7 +259,14 @@ test.describe('settingsStore v10', () => {
       readerWidthRatio: 0.6,
       workspaceTreeWidth: 280,
       attentionPriorityEnabled: true,
-      dshScale: 1.1
+      dshScale: 1.1,
+      targetCursorEnabled: false,
+      terminalBackgroundName: 'bg.webp',
+      terminalBackgroundRevision: 12,
+      terminalBackgroundFit: 'contain',
+      terminalBackgroundOpacity: 0.5,
+      ignoredUpdateVersion: '9.9.9',
+      updateModalDisabled: true
     })
 
     store.getState().reset()

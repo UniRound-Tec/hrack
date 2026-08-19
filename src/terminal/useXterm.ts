@@ -11,7 +11,8 @@ import {
 } from './debugBridge'
 import { createRendererController, type RendererController } from './addons'
 import { useSettingsStore } from '../state/settingsStore'
-import { getTerminalTheme } from './themes'
+import { getXtermTheme } from './themes'
+import { hasTerminalBackground } from '../../shared/terminal-background'
 import { createLigatureController } from './ligatures'
 import {
   getTerminalLaunch,
@@ -142,6 +143,7 @@ export function useXterm(
     const initialSettings = useSettingsStore.getState()
     const term = new Terminal({
       allowProposedApi: true,
+      allowTransparency: true,
       fontFamily: initialSettings.fontFamily,
       fontSize: initialSettings.fontSize,
       cursorBlink: true,
@@ -152,7 +154,13 @@ export function useXterm(
       // 主进程会隔离 ConPTY resize 重画，因此当前光标行也必须由 xterm 自己 reflow。
       reflowCursorLine: true,
       windowsPty: meta.windowsPty,
-      theme: getTerminalTheme(initialSettings.terminalThemeId).terminal
+      theme: getXtermTheme(
+        initialSettings.terminalThemeId,
+        hasTerminalBackground(
+          initialSettings.terminalBackgroundName,
+          initialSettings.terminalBackgroundRevision
+        )
+      )
     })
 
     const fit = new FitAddon()
@@ -351,10 +359,26 @@ export function useXterm(
 
     const unsubscribeSettings = useSettingsStore.subscribe(
       (settings, previous) => {
-        if (settings.terminalThemeId !== previous.terminalThemeId) {
-          term.options.theme = getTerminalTheme(
-            settings.terminalThemeId
-          ).terminal
+        const wallpaperOn = hasTerminalBackground(
+          settings.terminalBackgroundName,
+          settings.terminalBackgroundRevision
+        )
+        const wallpaperWasOn = hasTerminalBackground(
+          previous.terminalBackgroundName,
+          previous.terminalBackgroundRevision
+        )
+        if (
+          settings.terminalThemeId !== previous.terminalThemeId ||
+          wallpaperOn !== wallpaperWasOn
+        ) {
+          term.options.theme = getXtermTheme(
+            settings.terminalThemeId,
+            wallpaperOn
+          )
+        }
+        if (wallpaperOn !== wallpaperWasOn) {
+          if (wallpaperOn) renderer.deactivate('terminal-background')
+          else if (activeRef.current) renderer.activate()
         }
         if (
           settings.fontFamily !== previous.fontFamily ||
@@ -809,7 +833,15 @@ export function useXterm(
     setActiveTerminalForDebug(tabId)
     rendererFrameRef.current = requestAnimationFrame(() => {
       rendererFrameRef.current = null
-      rendererRef.current?.activate()
+      const settings = useSettingsStore.getState()
+      if (
+        !hasTerminalBackground(
+          settings.terminalBackgroundName,
+          settings.terminalBackgroundRevision
+        )
+      ) {
+        rendererRef.current?.activate()
+      }
       fitRequestRef.current?.()
     })
     return () => {

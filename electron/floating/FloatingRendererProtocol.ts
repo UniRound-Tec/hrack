@@ -1,6 +1,8 @@
 import { protocol, type Session } from "electron";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
+import { TERMINAL_BACKGROUND_SCHEME } from "../../shared/terminal-background";
+import { NOTIFICATION_SOUND_SCHEME } from "../../shared/notification-sound";
 import type { FloatingRendererRegistry } from "./FloatingRendererRegistry";
 
 export const FLOATING_RENDERER_SCHEME = "hrack-floating";
@@ -74,6 +76,26 @@ export function registerFloatingRendererScheme(): void {
         secure: true,
         supportFetchAPI: true,
         corsEnabled: false,
+      },
+    },
+    {
+      scheme: TERMINAL_BACKGROUND_SCHEME,
+      privileges: {
+        standard: true,
+        secure: true,
+        supportFetchAPI: true,
+        corsEnabled: true,
+        stream: true,
+      },
+    },
+    {
+      scheme: NOTIFICATION_SOUND_SCHEME,
+      privileges: {
+        standard: true,
+        secure: true,
+        supportFetchAPI: true,
+        corsEnabled: false,
+        stream: true,
       },
     },
   ]);
