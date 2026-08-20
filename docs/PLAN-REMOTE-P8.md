@@ -1,6 +1,6 @@
 # HRack Remote P8 计划：App 真实终端
 
-> 状态：2026-08-21 已完成 Android 16 模拟器 + 安装版 release App + 公网真实 PTY 检查点；Android 物理真机中文 IME、iOS 真机和两款真实 AI CLI 仍未完成，P8 尚未全平台关门。
+> 状态：2026-08-21 已完成 Android 16 模拟器 + 安装版 release App + 公网真实 PTY 检查点，并补齐真实 Claude Code/Codex CLI 基础视觉 smoke；Android 物理真机中文 IME、iOS 真机及两款 CLI 的物理设备复验仍未完成，P8 尚未全平台关门。
 
 ## 1. 目标与关门定义
 
@@ -101,11 +101,11 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 
 ## 6. 真实设备与诚实边界
 
-当前 Windows 工作区可自动完成 Android 16 模拟器、release APK、公网 relay、Electron 与真实 PTY。以下证据不能由模拟器或 fixture 冒充：
+当前 Windows 工作区可自动完成 Android 16 模拟器、release APK、公网 relay、Electron、真实 PTY，以及本机真实 AI CLI 的基础视觉 smoke。以下发布证据不能由模拟器或 fixture 冒充：
 
 - Android 物理真机与中文输入法 composition；
 - iPhone/iPad 物理真机上的本地 bundle、safe area、WebGL/DOM、旋转和 IME；
-- 登录态 Claude Code 与另一款真实全屏/彩色 AI CLI 的长输出 smoke。
+- Claude Code 与 Codex 在上述物理设备上的真实视觉、中文输入和长输出 smoke。
 
 实现和 Android 公网门禁通过后，可以提供“可真实远控的 Android 预发布版”；未补齐上述设备矩阵前，`SPEC-REMOTE` 状态不得写成 P8 全部完成。
 
@@ -128,7 +128,9 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 - App `9f8c77e`：真实 Android PTY 显式 DOM 降级，保留 WebGL 预检与 context-loss 能力；
 - App `35130f6`：增加提交后整段发送的原生组合输入路径；
 - HRack `b01c7c5`：新增安装版 App → 公网 relay → Electron → 真实 ConPTY 的 P8 门禁；
-- App `64d8b81`：验证记录与三张实机界面截图（文档提交）。
+- App `64d8b81`：验证记录与三张模拟器真实接口截图（文档提交）；
+- HRack `4e149d2` / `1270717`：增加真实 Claude Code/Codex CLI 公网门禁，并改用官方本地命令和单次配置覆盖，避免触发模型请求或更新安装；
+- App `25781ec`：固化两款真实 CLI 截图及验证记录。
 
 终端高频字节没有进入 React session state；WebView 内串行写入，只有 `write` callback 完成才回传 deliveryId，原生 client 匹配后才发送 `pty-ack`。新建与已有会话共用同一个 measured terminal 流程。
 
@@ -145,6 +147,8 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 
 App 同时通过协议/终端 parity、TypeScript、8 suites / 31 tests、Expo Doctor 20/20、相对离线 bundle 检查和 Android release 构建。完整截图与失败过程记录在 App 仓库 `docs/P8-ANDROID-VALIDATION.md`。
 
+真实 AI CLI 门禁另以同一 release App 和公网房间启动本机真实安装的 Claude Code 2.1.220 与 Codex CLI 0.146.0，最终 `1 passed (1.2m)`。Claude 提交本地 `/help`，Codex 提交官方本地 `/status`；两者均验证 PTY 权威 history、解析字节增长、真实 TUI 截图和返回 `undrive`，没有提交业务 prompt 或发起模型请求。Codex 用单次 `-c check_for_update_on_startup=false` 关闭启动更新检查，不修改用户安装。两张截图已固化到 App 仓库。
+
 准备提交时又执行了一次 HRack 最终完整回归：`328 passed / 13 skipped`，耗时 3.8 分钟，无失败。13 个 skip 均有显式外部环境条件；其中公网 P7、P8 Android 用例已在本轮分别定向真实运行并通过，不能把完整回归中的条件跳过误读成未测。
 
 ### 8.3 视觉事故与性能结论
@@ -157,7 +161,7 @@ App 同时通过协议/终端 parity、TypeScript、8 suites / 31 tests、Expo D
 
 - Android 物理真机：中文输入法 composition、软键盘、safe area 与旋转；
 - iPhone/iPad 物理真机：本地 bundle、renderer/fallback、IME 与旋转；
-- 登录态 Claude Code 与另一款全屏/彩色 AI CLI 的真实视觉和长输出 smoke；
+- 在上述物理设备上复跑 Claude Code 与 Codex 的真实视觉、中文输入和长输出 smoke；
 - 上述设备矩阵完成后的最终完整回归。
 
 在这些证据补齐前，状态只能是“P8 Android 模拟器实现检查点完成”，不能写成 P8 全部完成，也不能宣布进入 P8 之后的阶段。
