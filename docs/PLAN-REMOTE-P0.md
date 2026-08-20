@@ -143,7 +143,7 @@ installations: Array<{
 |---|---|
 | `drive` | `requestId`, `sessionId`, `cols`, `rows` |
 | `undrive` | `sessionId` |
-| `create` | `requestId`, `installationId`, `workspace`（非空）, `skipApproval?: boolean`, `args?: string[]` |
+| `create` | `requestId`, `installationId`, `workspace`, `cols`, `rows`, `skipApproval?: boolean`, `args?: string[]` |
 | `pty-resize` | `sessionId`, `cols`, `rows` |
 
 **数据面**
@@ -155,7 +155,7 @@ installations: Array<{
 | `pty-ack` | `sessionId`, `bytes` |
 | `pty-exit` | `sessionId`, `code?: number`, `signal?: number` |
 
-外部文本必须走 `parseRemoteFrame`：先拒绝超过 1 MiB 的帧，再 `JSON.parse` 并调用 `parseRemoteMessage`。`v` 不是 `1`、`create.workspace` 空白、尺寸/数组/数据块越界、`pty-out` 不是标准 base64 或 `byteLength` 不吻合均拒绝。守卫输出是重建后的窄对象。
+外部文本必须走 `parseRemoteFrame`：先拒绝超过 1 MiB 的帧，再 `JSON.parse` 并调用 `parseRemoteMessage`。`v` 不是 `1`、`create.workspace` 含 NUL/超长/非字符串、尺寸/数组/数据块越界、`pty-out` 不是标准 base64 或 `byteLength` 不吻合均拒绝。空 workspace 在 P5 激活时改为结构合法，由桌面返回有关联的 `create-reject invalid-workspace`。守卫输出是重建后的窄对象。
 
 ---
 
@@ -266,7 +266,7 @@ type RoomRecord =
 - 三份黄金 JSON 通过。
 - 非法 `v` 拒绝。
 - snapshot 夹具若被塞入 `correlation` 或 `resolvedExecutable`，守卫失败（证明远程子集真的窄）。
-- 空 `create.workspace` 拒绝。
+- `create` 要求合法 `cols/rows`；空 workspace 结构合法并留给 P5 业务拒绝，NUL/超长仍拒绝。
 - `drive` / `create` 与结果要求 `requestId`；`not-implemented` 可原样带回。
 - 超大帧、非法/长度不符的 `pty-out`、过大尺寸与数组拒绝。
 

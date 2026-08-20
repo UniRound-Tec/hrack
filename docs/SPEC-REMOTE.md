@@ -188,10 +188,10 @@ hello 限流，防止扫 `roomId`。
 |---|---|---|
 | `drive` | `requestId`, `sessionId`, `cols`, `rows` | 点进一条已有会话 |
 | `undrive` | `sessionId` | 返回列表 |
-| `create` | `requestId`, `installationId`, `workspace`, `skipApproval?`, `args?` | 对齐首页；`workspace` 必填非空 |
+| `create` | `requestId`, `installationId`, `workspace`, `cols`, `rows`, `skipApproval?`, `args?` | 对齐首页；尺寸用于首次 spawn 和随后立即驾驶 |
 | `pty-resize` | `sessionId`, `cols`, `rows` | 驾驶中旋转/键盘改变可视行列 |
 
-`create.workspace` 必须是电脑能理解的路径。手打错误 → `create-reject`，不在手机上 CreateProcess，也不把 POSIX 路径交给 Windows `CreateProcess`。WSL 安装仍由电脑按 `installationId` 的 `runtime` 启动。
+`create.workspace` 必须是电脑能理解的非空路径。结构守卫允许空字符串通过，以便已占座的电脑返回有关联的 `create-reject invalid-workspace`；NUL、超长或非字符串仍在协议边界拒绝。手打错误不在手机上 CreateProcess，也不把 POSIX 路径交给 Windows `CreateProcess`。WSL 安装仍由电脑按 `installationId` 的 `runtime` 启动。`create.cols/rows` 与 `drive` 使用同一 1–10000 边界，避免先按桌面尺寸启动 TUI 再重画。
 
 `requestId` 是 1–128 字符的请求关联键。响应必须原样带回。手机重试同一个 `create` 时必须复用 `requestId`；电脑在该房间连接生命周期内缓存完成结果：相同 id + 相同 payload 返回第一次结果，不得再次 spawn；相同 id + 不同 payload → `create-reject reason=duplicate-mismatch`。`drive` 也用 `requestId` 消除迟到响应歧义，但切换驾驶本身仍按当前权威状态判断。
 
