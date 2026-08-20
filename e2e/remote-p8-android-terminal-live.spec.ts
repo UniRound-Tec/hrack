@@ -100,6 +100,11 @@ async function screenshot(testInfo: TestInfo, name: string): Promise<void> {
   await adb('pull', remotePath, testInfo.outputPath(name))
 }
 
+async function isImeShown(): Promise<boolean> {
+  const state = await adb('shell', 'dumpsys', 'input_method')
+  return /mInputShown=true/.test(state)
+}
+
 async function startAndroid(): Promise<void> {
   await adb('shell', 'pm', 'clear', appPackage)
   await adb('shell', 'am', 'start', '-W', '-n', `${appPackage}/.MainActivity`)
@@ -276,12 +281,62 @@ test.describe('remote P8 Android terminal live relay', () => {
 
       const inputMarker = `p8input${Date.now()}`
       await tapResource('terminal-command-input')
+      await expect.poll(isImeShown, { timeout: 15_000 }).toBe(true)
+      const keyboardXml = await waitForUi(
+        (xml) => {
+          const metrics = terminalMetrics(xml)
+          return (
+            !!metrics &&
+            metrics.cols === portrait.cols &&
+            metrics.rows < portrait.rows
+          )
+        },
+        'terminal resized above the Android soft keyboard'
+      )
+      const keyboard = terminalMetrics(keyboardXml)
+      if (!keyboard) throw new Error('missing soft-keyboard terminal metrics')
+      await expect
+        .poll(() => hrackPage.evaluate(() => window.remoteApi.getDriveState()))
+        .toMatchObject({
+          phase: 'driven',
+          sessionId: existing.sessionId,
+          cols: keyboard.cols,
+          rows: keyboard.rows
+        })
       await adb('shell', 'input', 'text', `echo%s${inputMarker}`)
       await waitForUi(
         (xml) => xml.includes(inputMarker),
         'committed native terminal command'
       )
+      await screenshot(testInfo, 'p8-android-terminal-soft-keyboard.png')
       await adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+      await expect.poll(isImeShown, { timeout: 15_000 }).toBe(false)
+      const restoredXml = await waitForUi(
+        (xml) => {
+          const metrics = terminalMetrics(xml)
+          return (
+            !!metrics &&
+            metrics.cols === portrait.cols &&
+            metrics.rows > keyboard.rows &&
+            metrics.rows >= portrait.rows - 1
+          )
+        },
+        'terminal restored after the Android soft keyboard closed'
+      )
+      const restored = terminalMetrics(restoredXml)
+      if (!restored) throw new Error('missing restored terminal metrics')
+      console.log(
+        `[p8-terminal-keyboard] portrait=${portrait.cols}x${portrait.rows} keyboard=${keyboard.cols}x${keyboard.rows} restored=${restored.cols}x${restored.rows}`
+      )
+      await expect
+        .poll(() => hrackPage.evaluate(() => window.remoteApi.getDriveState()))
+        .toMatchObject({
+          phase: 'driven',
+          sessionId: existing.sessionId,
+          cols: restored.cols,
+          rows: restored.rows
+        })
+      await screenshot(testInfo, 'p8-android-terminal-keyboard-restored.png')
       await tapResource('terminal-command-send')
       await expect
         .poll(() => historyText(hrackPage, existing.ptyId), { timeout: 30_000 })
