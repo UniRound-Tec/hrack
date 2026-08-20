@@ -268,6 +268,8 @@ export interface RemoteCreate {
   requestId: string
   installationId: string
   workspace: string
+  cols: number
+  rows: number
   skipApproval?: boolean
   args?: string[]
 }
@@ -1073,9 +1075,14 @@ export function parseRemoteMessage(
       }
       if (
         typeof raw.workspace !== 'string' ||
-        raw.workspace.trim().length === 0 ||
         raw.workspace.length > REMOTE_PROTOCOL_LIMITS.workspaceChars ||
         raw.workspace.includes('\0')
+      ) {
+        return fail('invalid-create')
+      }
+      if (
+        !isBoundedPosInt(raw.cols, REMOTE_PROTOCOL_LIMITS.terminalDimension) ||
+        !isBoundedPosInt(raw.rows, REMOTE_PROTOCOL_LIMITS.terminalDimension)
       ) {
         return fail('invalid-create')
       }
@@ -1092,7 +1099,9 @@ export function parseRemoteMessage(
         type: 'create',
         requestId: raw.requestId,
         installationId: raw.installationId,
-        workspace: raw.workspace
+        workspace: raw.workspace,
+        cols: raw.cols,
+        rows: raw.rows
       }
       if (typeof raw.skipApproval === 'boolean') {
         message.skipApproval = raw.skipApproval

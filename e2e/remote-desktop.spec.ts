@@ -3,6 +3,9 @@ import { createInitialAgentProjection } from '../electron/agents/AgentEventReduc
 import {
   RemoteDesktopClient,
   type RemoteDriveObserver,
+  type RemoteLaunchHost,
+  type RemoteLaunchRequest,
+  type RemoteLaunchResult,
   type RemotePtyHost,
   type RemoteSessionChange
 } from '../electron/remote/RemoteDesktopClient'
@@ -98,6 +101,46 @@ class MemoryRemotePtyHost implements RemotePtyHost {
         }
       }
     }
+  }
+}
+
+class MemoryRemoteLaunchHost implements RemoteLaunchHost {
+  catalogReads = 0
+  readonly creates: RemoteLaunchRequest[] = []
+  createDelayMs = 0
+  result: RemoteLaunchResult = {
+    ok: false,
+    reason: 'launch-failed'
+  }
+
+  async catalog() {
+    this.catalogReads += 1
+    return [
+      {
+        definition: {
+          id: 'codex',
+          adapterId: 'codex',
+          displayName: 'Codex',
+          iconId: 'codex'
+        },
+        skipApproval: { label: 'YOLO' },
+        installations: [
+          {
+            id: 'codex:windows:fixture',
+            runtime: { kind: 'host' as const, platform: 'windows' as const },
+            version: 'fixture-1'
+          }
+        ]
+      }
+    ]
+  }
+
+  async create(input: RemoteLaunchRequest) {
+    this.creates.push({ ...input, args: [...input.args] })
+    if (this.createDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.createDelayMs))
+    }
+    return this.result
   }
 }
 
@@ -200,6 +243,287 @@ test.describe('remote desktop client', () => {
           { sessionId: 's2', status: 'working' }
         ]
       })
+    phone.ws.close()
+    client.dispose()
+  })
+
+  test('sends the safe launch catalog and recent workspaces after the phone joins', async () => {
+    const launch = new MemoryRemoteLaunchHost()
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      launch,
+      broadcast: () => {}
+    })
+    client.setRecentWorkspaces(['C:/repo-one', 'C:/repo-two'])
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+
+    const phone = await openPhone(relay, 'aK3')
+    await expect
+      .poll(() => phone.messages.find((message) => message.type === 'catalog'))
+      .toEqual({
+        v: 1,
+        type: 'catalog',
+        launchable: [
+          {
+            definition: {
+              id: 'codex',
+              adapterId: 'codex',
+              displayName: 'Codex',
+              iconId: 'codex'
+            },
+            skipApproval: { label: 'YOLO' },
+            installations: [
+              {
+                id: 'codex:windows:fixture',
+                runtime: { kind: 'host', platform: 'windows' },
+                version: 'fixture-1'
+              }
+            ]
+          }
+        ],
+        recentWorkspaces: ['C:/repo-one', 'C:/repo-two']
+      })
+    expect(launch.catalogReads).toBe(1)
+
+    phone.ws.close()
+    client.dispose()
+  })
+
+  test('returns a correlated invalid-workspace rejection without opening a PTY', async () => {
+    const launch = new MemoryRemoteLaunchHost()
+    launch.result = { ok: false, reason: 'invalid-workspace' }
+    const pty = new MemoryRemotePtyHost()
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      launch,
+      pty,
+      broadcast: () => {}
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    const phone = await openPhone(relay, 'aK3')
+    await expect.poll(() => client.getState().phase).toBe('peer-online')
+
+    const request = {
+      v: 1,
+      type: 'create',
+      requestId: 'create-empty',
+      installationId: 'codex:windows:fixture',
+      workspace: '',
+      cols: 52,
+      rows: 20
+    }
+    phone.ws.send(JSON.stringify(request))
+
+    await expect
+      .poll(() =>
+        phone.messages.find(
+          (message) =>
+            message.type === 'create-reject' &&
+            message.requestId === 'create-empty'
+        )
+      )
+      .toEqual({
+        v: 1,
+        type: 'create-reject',
+        requestId: 'create-empty',
+        reason: 'invalid-workspace'
+      })
+    expect(launch.creates).toEqual([
+      {
+        installationId: 'codex:windows:fixture',
+        workspace: '',
+        args: [],
+        skipApproval: false,
+        cols: 52,
+        rows: 20
+      }
+    ])
+    expect(pty.opens).toHaveLength(0)
+
+    phone.ws.send(JSON.stringify(request))
+    await expect
+      .poll(
+        () =>
+          phone.messages.filter(
+            (message) =>
+              message.type === 'create-reject' &&
+              message.requestId === 'create-empty'
+          ).length
+      )
+      .toBe(2)
+    expect(launch.creates).toHaveLength(1)
+
+    phone.ws.close()
+    client.dispose()
+  })
+
+  test('creates one session and immediately drives its PTY at the requested size', async () => {
+    const launch = new MemoryRemoteLaunchHost()
+    launch.result = {
+      ok: true,
+      sessionId: 'created-session',
+      workspace: 'C:/repo'
+    }
+    const pty = new MemoryRemotePtyHost()
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      launch,
+      pty,
+      broadcast: () => {}
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    const phone = await openPhone(relay, 'aK3')
+    await expect.poll(() => client.getState().phase).toBe('peer-online')
+
+    phone.ws.send(
+      JSON.stringify({
+        v: 1,
+        type: 'create',
+        requestId: 'create-success',
+        installationId: 'codex:windows:fixture',
+        workspace: 'C:/repo',
+        cols: 52,
+        rows: 20,
+        skipApproval: true,
+        args: ['--model', 'o3']
+      })
+    )
+
+    await expect
+      .poll(() =>
+        phone.messages
+          .filter(
+            (message) =>
+              'requestId' in message &&
+              message.requestId === 'create-success'
+          )
+          .map((message) => message.type)
+      )
+      .toEqual(['create-ok', 'drive-ok'])
+    expect(launch.creates).toEqual([
+      {
+        installationId: 'codex:windows:fixture',
+        workspace: 'C:/repo',
+        args: ['--model', 'o3'],
+        skipApproval: true,
+        cols: 52,
+        rows: 20
+      }
+    ])
+    expect(pty.opens).toEqual([
+      { sessionId: 'created-session', cols: 52, rows: 20 }
+    ])
+    expect(client.getDriveState()).toMatchObject({
+      phase: 'driven',
+      sessionId: 'created-session',
+      cols: 52,
+      rows: 20
+    })
+
+    phone.ws.close()
+    client.dispose()
+  })
+
+  test('coalesces matching create retries and rejects a mismatched payload', async () => {
+    const launch = new MemoryRemoteLaunchHost()
+    launch.result = {
+      ok: true,
+      sessionId: 'idempotent-session',
+      workspace: 'C:/repo'
+    }
+    launch.createDelayMs = 50
+    const pty = new MemoryRemotePtyHost()
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      launch,
+      pty,
+      broadcast: () => {}
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    const phone = await openPhone(relay, 'aK3')
+    await expect.poll(() => client.getState().phase).toBe('peer-online')
+
+    const request = {
+      v: 1,
+      type: 'create',
+      requestId: 'create-idempotent',
+      installationId: 'codex:windows:fixture',
+      workspace: 'C:/repo',
+      cols: 52,
+      rows: 20,
+      args: ['--model', 'o3']
+    }
+    phone.ws.send(JSON.stringify(request))
+    phone.ws.send(JSON.stringify(request))
+    phone.ws.send(
+      JSON.stringify({
+        ...request,
+        requestId: 'create-while-busy'
+      })
+    )
+
+    await expect
+      .poll(() =>
+        phone.messages.find(
+          (message) =>
+            message.type === 'create-reject' &&
+            message.requestId === 'create-while-busy'
+        )
+      )
+      .toEqual({
+        v: 1,
+        type: 'create-reject',
+        requestId: 'create-while-busy',
+        reason: 'busy'
+      })
+
+    await expect
+      .poll(
+        () =>
+          phone.messages.filter(
+            (message) =>
+              message.type === 'drive-ok' &&
+              message.requestId === 'create-idempotent'
+          ).length
+      )
+      .toBe(2)
+    expect(launch.creates).toHaveLength(1)
+    expect(pty.opens).toHaveLength(1)
+    expect(
+      phone.messages.filter(
+        (message) =>
+          message.type === 'create-ok' &&
+          message.requestId === 'create-idempotent'
+      )
+    ).toHaveLength(2)
+
+    phone.ws.send(
+      JSON.stringify({
+        ...request,
+        workspace: 'C:/different'
+      })
+    )
+    await expect
+      .poll(() =>
+        phone.messages.find(
+          (message) =>
+            message.type === 'create-reject' &&
+            message.requestId === 'create-idempotent'
+        )
+      )
+      .toEqual({
+        v: 1,
+        type: 'create-reject',
+        requestId: 'create-idempotent',
+        reason: 'duplicate-mismatch'
+      })
+    expect(launch.creates).toHaveLength(1)
+    expect(pty.opens).toHaveLength(1)
+
     phone.ws.close()
     client.dispose()
   })

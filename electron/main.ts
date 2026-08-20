@@ -66,6 +66,7 @@ import { BridgeError } from './bridge/errors'
 import { RemoteDesktopClient } from './remote/RemoteDesktopClient'
 import { runtimeSessionSource } from './remote/runtimeSessionSource'
 import { runtimeRemotePtyHost } from './remote/runtimeRemotePtyHost'
+import { runtimeRemoteLaunchHost } from './remote/runtimeRemoteLaunchHost'
 
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
@@ -225,6 +226,11 @@ const remoteClient = new RemoteDesktopClient({
   broadcast: (state) =>
     broadcastToAllWindows(RemoteEventChannel.StateChanged, state),
   pty: runtimeRemotePtyHost(agentRuntime, manager),
+  launch: runtimeRemoteLaunchHost(cliDiscovery, agentRuntime, (request) => {
+    const win = winRef && !winRef.isDestroyed() ? winRef : null
+    if (!win || win.webContents.isDestroyed()) return
+    win.webContents.send(AppEventChannel.RemoteLaunch, request)
+  }),
   broadcastDrive: (state) =>
     broadcastToAllWindows(RemoteEventChannel.DriveChanged, state)
 })

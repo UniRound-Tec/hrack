@@ -399,7 +399,8 @@ export const RemoteInvokeChannel = {
   Revoke: 'remote:revoke',
   GetState: 'remote:get-state',
   GetDriveState: 'remote:get-drive-state',
-  Reclaim: 'remote:reclaim'
+  Reclaim: 'remote:reclaim',
+  SetRecentWorkspaces: 'remote:set-recent-workspaces'
 } as const
 
 export const RemoteEventChannel = {
@@ -438,6 +439,7 @@ export interface RemoteApi {
   getState: () => Promise<RemoteDesktopState>
   getDriveState: () => Promise<RemoteDriveState>
   reclaim: (sessionId: string) => Promise<RemoteDriveState>
+  setRecentWorkspaces: (workspaces: string[]) => Promise<void>
   onStateChange: (cb: (state: RemoteDesktopState) => void) => () => void
   onDriveStateChange: (cb: (state: RemoteDriveState) => void) => () => void
 }
@@ -450,7 +452,8 @@ export const AppEventChannel = {
   OpenNewSession: 'app:open-new-session',
   FocusSession: 'app:focus-session',
   MainPrefsChanged: 'app:main-prefs-changed',
-  BridgeLaunch: 'bridge:launch'
+  BridgeLaunch: 'bridge:launch',
+  RemoteLaunch: 'remote:launch'
 } as const
 
 export const BridgeInvokeChannel = {
@@ -578,6 +581,15 @@ export interface BridgeLaunchAck {
   error: string | null
 }
 
+export interface RemoteVisibleLaunchRequest {
+  terminalId: string
+  name: string
+  adapterId: string
+  workspace: string
+  selection: CliLaunchSelection
+  ptyId: string
+}
+
 export interface AppApi {
   /** 上报主进程偏好（backgroundColor / globalShortcutEnabled / language）。 */
   setMainPrefs: (update: MainPrefsUpdate) => Promise<void>
@@ -588,6 +600,10 @@ export interface AppApi {
   onMainPrefsChanged: (cb: (prefs: MainPrefsSnapshot) => void) => () => void
   /** Bridge create：主进程请 renderer 打开可见 OpenCode tab。 */
   onBridgeLaunch: (cb: (request: BridgeLaunchRequest) => void) => () => void
+  /** Remote create：主进程已 spawn，renderer 只显示并 attach tab。 */
+  onRemoteLaunch: (
+    cb: (request: RemoteVisibleLaunchRequest) => void
+  ) => () => void
   reportBridgeLaunch: (ack: BridgeLaunchAck) => Promise<void>
 }
 

@@ -168,16 +168,45 @@ test.describe('message guards', () => {
     }
   })
 
-  test('rejects an empty create workspace and accepts not-implemented', () => {
+  test('preserves create size and leaves an empty workspace for correlated rejection', () => {
     expect(
-      parseRemoteMessage({
+      expectMessage({
         v: 1,
         type: 'create',
         requestId: 'create-1',
         installationId: 'inst-1',
-        workspace: ''
-      }).ok
-    ).toBe(false)
+        workspace: '',
+        cols: 40,
+        rows: 18
+      })
+    ).toEqual({
+      v: 1,
+      type: 'create',
+      requestId: 'create-1',
+      installationId: 'inst-1',
+      workspace: '',
+      cols: 40,
+      rows: 18
+    })
+    for (const invalid of [
+      { workspace: 'C:\\repo' },
+      { workspace: 'C:\\repo', cols: 0, rows: 18 },
+      { workspace: 'C:\\repo', cols: 40, rows: 10_001 },
+      { workspace: 'C:\\repo\0', cols: 40, rows: 18 }
+    ]) {
+      expect(
+        parseRemoteMessage({
+          v: 1,
+          type: 'create',
+          requestId: 'create-invalid',
+          installationId: 'inst-1',
+          ...invalid
+        }).ok
+      ).toBe(false)
+    }
+  })
+
+  test('accepts not-implemented', () => {
     expect(
       expectMessage({ v: 1, type: 'not-implemented', for: 'drive' })
     ).toEqual({ v: 1, type: 'not-implemented', for: 'drive' })

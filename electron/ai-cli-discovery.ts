@@ -1224,11 +1224,12 @@ function e2eFixtureReport(startedAt: number): CliScanReport {
   // S1：observer fixture 走查需要 CLI 在脚本重放期间保持存活，
   // 因此 Windows 安装改用交互式 cmd.exe（普通 e2e 仍用 where.exe 快速退出）。
   const fixtureExecutable =
-    process.platform === 'win32'
+    process.env['HRACK_E2E_CLI_EXECUTABLE']?.trim() ||
+    (process.platform === 'win32'
       ? process.env['HRACK_FIXTURE_OBSERVER'] === '1'
         ? 'cmd.exe'
         : 'where.exe'
-      : '/bin/false'
+      : '/bin/false')
   return {
     startedAt,
     finishedAt: Date.now(),

@@ -32,6 +32,7 @@ interface NewSessionFlowProps {
   onOpenDsh: () => void
   onLaunchTerminal: (shell: ShellOption, remember: boolean) => void
   onLaunchCli: (draft: CliLaunchDraft) => Promise<string | null>
+  onWorkspaceHistoryChange?: (history: string[]) => void
 }
 
 export default function NewSessionFlow({
@@ -45,7 +46,8 @@ export default function NewSessionFlow({
   onClose,
   onOpenDsh,
   onLaunchTerminal,
-  onLaunchCli
+  onLaunchCli,
+  onWorkspaceHistoryChange
 }: NewSessionFlowProps) {
   const strings = useStrings()
   const [terminalPickerOpen, setTerminalPickerOpen] = useState(false)
@@ -58,7 +60,9 @@ export default function NewSessionFlow({
   const defaultShell = findDefaultShell(shells, defaultTerminal)
 
   const persistWorkspace = (workspace: string): void => {
-    setWorkspaceHistory(saveWorkspace(workspace))
+    const history = saveWorkspace(workspace)
+    setWorkspaceHistory(history)
+    onWorkspaceHistoryChange?.(history)
   }
 
   useEffect(() => {

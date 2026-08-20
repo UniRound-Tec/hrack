@@ -593,9 +593,11 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     }
   )
   ipcMain.handle(ShellInvokeChannel.ListAvailable, listAvailableShells)
-  ipcMain.handle(CliInvokeChannel.Scan, (_event, force: unknown) =>
-    ctx.cliDiscovery.scan(force === true)
-  )
+  ipcMain.handle(CliInvokeChannel.Scan, async (_event, force: unknown) => {
+    const report = await ctx.cliDiscovery.scan(force === true)
+    ctx.remoteClient.refreshCatalog()
+    return report
+  })
   ipcMain.handle(
     CliInvokeChannel.ResolveWorkspace,
     (_event, payload: unknown) => {
@@ -742,6 +744,25 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     }
     return ctx.remoteClient.reclaim(sessionId)
   })
+  ipcMain.handle(
+    RemoteInvokeChannel.SetRecentWorkspaces,
+    (event, workspaces: unknown) => {
+      requireMainWindow(event, ctx)
+      if (!Array.isArray(workspaces)) {
+        ctx.remoteClient.setRecentWorkspaces([])
+        return
+      }
+      const safe = workspaces
+        .filter(
+          (workspace): workspace is string =>
+            typeof workspace === 'string' &&
+            workspace.length <= 32_768 &&
+            !workspace.includes('\0')
+        )
+        .slice(0, 5)
+      ctx.remoteClient.setRecentWorkspaces(safe)
+    }
+  )
 
   // 诊断：渲染进程把 resize 前后的 buffer 快照写到 logs/resize-diag.log，供离线分析。
   // 只在真实 dev 会话里抓证据用，定位后移除。

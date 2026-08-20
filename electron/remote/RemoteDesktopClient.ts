@@ -8,11 +8,12 @@ import {
 } from '../../shared/ipc-contract'
 import {
   REMOTE_PROTOCOL_LIMITS,
-  isRemotePhoneToDesktopMessage,
   parseJoinUrl,
   parseRemoteFrame,
   type JoinUrl,
+  type RemoteCreateRejectReason,
   type RemoteDriveRejectReason,
+  type RemoteLaunchable,
   type RemoteMessage,
   type RemotePtyHistorySnapshot,
   type RemoteSession
@@ -52,6 +53,36 @@ export interface RemotePtyHost {
     input: { sessionId: string; cols: number; rows: number },
     observer: RemoteDriveObserver
   ): RemotePtyOpenResult
+}
+
+export interface RemoteLaunchRequest {
+  installationId: string
+  workspace: string
+  args: readonly string[]
+  skipApproval: boolean
+  cols: number
+  rows: number
+}
+
+export type RemoteLaunchResult =
+  | { ok: true; sessionId: string; workspace: string }
+  | {
+      ok: false
+      reason: Extract<
+        RemoteCreateRejectReason,
+        'invalid-workspace' | 'installation-not-found' | 'launch-failed'
+      >
+      detail?: string
+    }
+
+export interface RemoteLaunchHost {
+  catalog(): Promise<RemoteLaunchable[]>
+  create(input: RemoteLaunchRequest): Promise<RemoteLaunchResult>
+}
+
+interface CreateRequestRecord {
+  fingerprint: string
+  result: Promise<RemoteMessage[]>
 }
 
 function driveOkMessage(
@@ -140,6 +171,9 @@ export class RemoteDesktopClient {
   private state: RemoteDesktopState = REMOTE_DESKTOP_IDLE_STATE
   private driveState: RemoteDriveState = REMOTE_DRIVE_IDLE_STATE
   private driven: RemoteDrivenPty | null = null
+  private recentWorkspaces: string[] = []
+  private readonly createRequests = new Map<string, CreateRequestRecord>()
+  private activeCreateRequestId: string | null = null
   private phoneGraceTimer: ReturnType<typeof setTimeout> | null = null
   private pendingRevoke: {
     promise: Promise<RemoteDesktopState>
@@ -152,6 +186,7 @@ export class RemoteDesktopClient {
       sessions: RemoteSessionSource
       broadcast: (state: RemoteDesktopState) => void
       pty?: RemotePtyHost
+      launch?: RemoteLaunchHost
       broadcastDrive?: (state: RemoteDriveState) => void
       revokeTimeoutMs?: number
       phoneGraceMs?: number
@@ -164,6 +199,40 @@ export class RemoteDesktopClient {
 
   getDriveState(): RemoteDriveState {
     return this.driveState
+  }
+
+  setRecentWorkspaces(workspaces: readonly string[]): void {
+    const next: string[] = []
+    const seen = new Set<string>()
+    for (const value of workspaces) {
+      if (typeof value !== 'string') continue
+      const workspace = value.trim()
+      if (
+        !workspace ||
+        workspace.length > REMOTE_PROTOCOL_LIMITS.workspaceChars ||
+        workspace.includes('\0') ||
+        seen.has(workspace)
+      ) {
+        continue
+      }
+      seen.add(workspace)
+      next.push(workspace)
+      if (next.length === 5) break
+    }
+    if (
+      next.length === this.recentWorkspaces.length &&
+      next.every(
+        (workspace, index) => workspace === this.recentWorkspaces[index]
+      )
+    ) {
+      return
+    }
+    this.recentWorkspaces = next
+    this.refreshCatalog()
+  }
+
+  refreshCatalog(): void {
+    void this.sendCatalog()
   }
 
   reclaim(sessionId: string): RemoteDriveState {
@@ -224,6 +293,7 @@ export class RemoteDesktopClient {
       this.socket = null
       this.cancelPhoneGrace()
       this.releaseDrive()
+      this.resetCreateRequests()
       this.snapshotSent = false
       this.unsubscribe?.()
       this.unsubscribe = null
@@ -297,7 +367,10 @@ export class RemoteDesktopClient {
           origin: this.join?.origin ?? this.state.origin,
           error: null
         })
-        if (message.peer.phone) this.sendSnapshot()
+        if (message.peer.phone) {
+          this.sendSnapshot()
+          this.refreshCatalog()
+        }
         return
       case 'peer-join':
         if (message.role !== 'phone') return
@@ -309,6 +382,7 @@ export class RemoteDesktopClient {
           error: null
         })
         this.sendSnapshot()
+        this.refreshCatalog()
         return
       case 'peer-leave':
         if (message.role !== 'phone') return
@@ -335,7 +409,10 @@ export class RemoteDesktopClient {
         this.fail('revoked')
         return
       case 'drive':
-        this.startDrive(message)
+        this.send(this.openDrive(message))
+        return
+      case 'create':
+        void this.startCreate(message)
         return
       case 'undrive':
         if (this.driven?.sessionId !== message.sessionId) return
@@ -361,15 +438,7 @@ export class RemoteDesktopClient {
         this.driven.acknowledge(message.bytes)
         return
       default:
-        if (isRemotePhoneToDesktopMessage(message)) {
-          const reply: RemoteMessage = {
-            v: 1,
-            type: 'not-implemented',
-            for: message.type
-          }
-          if ('requestId' in message) reply.requestId = message.requestId
-          this.send(reply)
-        }
+        return
     }
   }
 
@@ -382,18 +451,122 @@ export class RemoteDesktopClient {
     this.send({ v: 1, type: 'session-upsert', session: change.session })
   }
 
-  private startDrive(
-    message: Extract<RemoteMessage, { type: 'drive' }>
-  ): void {
-    if (this.driven) {
+  private async startCreate(
+    message: Extract<RemoteMessage, { type: 'create' }>
+  ): Promise<void> {
+    const fingerprint = JSON.stringify([
+      message.installationId,
+      message.workspace,
+      message.cols,
+      message.rows,
+      message.skipApproval === undefined
+        ? ['absent']
+        : ['present', message.skipApproval],
+      message.args === undefined ? ['absent'] : ['present', ...message.args]
+    ])
+    const existing = this.createRequests.get(message.requestId)
+    if (existing && existing.fingerprint !== fingerprint) {
       this.send({
+        v: 1,
+        type: 'create-reject',
+        requestId: message.requestId,
+        reason: 'duplicate-mismatch'
+      })
+      return
+    }
+
+    let record = existing
+    if (!record) {
+      const result =
+        this.driven || this.activeCreateRequestId
+          ? Promise.resolve<RemoteMessage[]>([
+              {
+                v: 1,
+                type: 'create-reject',
+                requestId: message.requestId,
+                reason: 'busy'
+              }
+            ])
+          : this.runCreate(message)
+      record = { fingerprint, result }
+      this.createRequests.set(message.requestId, record)
+    }
+
+    const responses = await record.result
+    if (this.createRequests.get(message.requestId) !== record) return
+    for (const response of responses) this.send(response)
+  }
+
+  private async runCreate(
+    message: Extract<RemoteMessage, { type: 'create' }>
+  ): Promise<RemoteMessage[]> {
+    const launch = this.deps.launch
+    if (!launch) {
+      return [
+        {
+          v: 1,
+          type: 'not-implemented',
+          for: message.type,
+          requestId: message.requestId
+        }
+      ]
+    }
+    this.activeCreateRequestId = message.requestId
+    let result: RemoteLaunchResult
+    try {
+      result = await launch.create({
+        installationId: message.installationId,
+        workspace: message.workspace,
+        args: message.args ?? [],
+        skipApproval: message.skipApproval === true,
+        cols: message.cols,
+        rows: message.rows
+      })
+    } catch {
+      result = { ok: false, reason: 'launch-failed' }
+    } finally {
+      if (this.activeCreateRequestId === message.requestId) {
+        this.activeCreateRequestId = null
+      }
+    }
+    if (result.ok) {
+      const created: Extract<RemoteMessage, { type: 'create-ok' }> = {
+        v: 1,
+        type: 'create-ok',
+        requestId: message.requestId,
+        sessionId: result.sessionId
+      }
+      const drive = this.openDrive({
+        v: 1,
+        type: 'drive',
+        requestId: message.requestId,
+        sessionId: result.sessionId,
+        cols: message.cols,
+        rows: message.rows
+      })
+      return [created, drive]
+    }
+    const rejection: Extract<RemoteMessage, { type: 'create-reject' }> = {
+      v: 1,
+      type: 'create-reject',
+      requestId: message.requestId,
+      reason: result.reason
+    }
+    if (result.detail) rejection.detail = result.detail
+    return [rejection]
+  }
+
+  private openDrive(
+    message: Extract<RemoteMessage, { type: 'drive' }>
+  ): RemoteMessage {
+    if (this.driven) {
+      return {
         v: 1,
         type: 'drive-reject',
         requestId: message.requestId,
         sessionId: message.sessionId,
         reason: 'busy'
-      })
-      return
+      }
     }
     const opened = this.deps.pty?.open(
       {
@@ -431,24 +604,21 @@ export class RemoteDesktopClient {
       }
     )
     if (!opened) {
-      const reply: RemoteMessage = {
+      return {
         v: 1,
         type: 'not-implemented',
         for: message.type,
         requestId: message.requestId
       }
-      this.send(reply)
-      return
     }
     if (!opened.ok) {
-      this.send({
+      return {
         v: 1,
         type: 'drive-reject',
         requestId: message.requestId,
         sessionId: message.sessionId,
         reason: opened.reason
-      })
-      return
+      }
     }
     this.driven = opened.target
     this.setDriveState({
@@ -458,7 +628,7 @@ export class RemoteDesktopClient {
       cols: message.cols,
       rows: message.rows
     })
-    this.send(boundedDriveOkMessage(message, opened.target.history))
+    return boundedDriveOkMessage(message, opened.target.history)
   }
 
   private sendSnapshot(): void {
@@ -468,6 +638,32 @@ export class RemoteDesktopClient {
       sessions: this.deps.sessions.list()
     })
     this.snapshotSent = true
+  }
+
+  private async sendCatalog(): Promise<void> {
+    const launch = this.deps.launch
+    const socket = this.socket
+    if (!launch || !this.snapshotSent || socket?.readyState !== WebSocket.OPEN) {
+      return
+    }
+    try {
+      const launchable = await launch.catalog()
+      if (
+        this.socket !== socket ||
+        !this.snapshotSent ||
+        socket.readyState !== WebSocket.OPEN
+      ) {
+        return
+      }
+      this.send({
+        v: 1,
+        type: 'catalog',
+        launchable,
+        recentWorkspaces: [...this.recentWorkspaces]
+      })
+    } catch {
+      // Catalog refresh is recoverable; the session/drive channel remains live.
+    }
   }
 
   private fail(error: RemoteDesktopError): void {
@@ -490,6 +686,7 @@ export class RemoteDesktopClient {
     this.unsubscribe?.()
     this.unsubscribe = null
     this.snapshotSent = false
+    this.resetCreateRequests()
     const socket = this.socket
     this.socket = null
     this.join = null
@@ -518,6 +715,11 @@ export class RemoteDesktopClient {
         reason
       })
     }
+  }
+
+  private resetCreateRequests(): void {
+    this.createRequests.clear()
+    this.activeCreateRequestId = null
   }
 
   private setDriveState(state: RemoteDriveState): void {

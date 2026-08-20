@@ -48,6 +48,7 @@ import {
   type RemoteApi,
   type RemoteDriveState,
   type RemoteDesktopState,
+  type RemoteVisibleLaunchRequest,
   type ShellApi,
   type SpawnOptions,
   type StatsApi,
@@ -361,6 +362,8 @@ const remoteApi: RemoteApi = {
   getDriveState: () => ipcRenderer.invoke(RemoteInvokeChannel.GetDriveState),
   reclaim: (sessionId) =>
     ipcRenderer.invoke(RemoteInvokeChannel.Reclaim, sessionId),
+  setRecentWorkspaces: (workspaces) =>
+    ipcRenderer.invoke(RemoteInvokeChannel.SetRecentWorkspaces, workspaces),
   onStateChange: (cb) => {
     const handler = (
       _event: IpcRendererEvent,
@@ -441,6 +444,42 @@ const appApi: AppApi = {
     ipcRenderer.on(AppEventChannel.BridgeLaunch, handler)
     return () =>
       ipcRenderer.removeListener(AppEventChannel.BridgeLaunch, handler)
+  },
+  onRemoteLaunch: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      request: RemoteVisibleLaunchRequest
+    ): void => {
+      if (
+        request &&
+        typeof request.terminalId === 'string' &&
+        typeof request.name === 'string' &&
+        typeof request.adapterId === 'string' &&
+        typeof request.workspace === 'string' &&
+        typeof request.ptyId === 'string' &&
+        request.selection &&
+        typeof request.selection.installationId === 'string' &&
+        typeof request.selection.workspace === 'string' &&
+        Array.isArray(request.selection.args) &&
+        request.selection.args.every((arg) => typeof arg === 'string')
+      ) {
+        cb({
+          terminalId: request.terminalId,
+          name: request.name,
+          adapterId: request.adapterId,
+          workspace: request.workspace,
+          ptyId: request.ptyId,
+          selection: {
+            installationId: request.selection.installationId,
+            workspace: request.selection.workspace,
+            args: [...request.selection.args]
+          }
+        })
+      }
+    }
+    ipcRenderer.on(AppEventChannel.RemoteLaunch, handler)
+    return () =>
+      ipcRenderer.removeListener(AppEventChannel.RemoteLaunch, handler)
   },
   reportBridgeLaunch: (ack: BridgeLaunchAck) =>
     ipcRenderer.invoke(BridgeInvokeChannel.LaunchResult, ack),

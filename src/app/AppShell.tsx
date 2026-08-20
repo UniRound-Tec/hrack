@@ -9,6 +9,7 @@ import type {
 import { REMOTE_DRIVE_IDLE_STATE } from '../../shared/ipc-contract'
 import type { AgentEvent } from '../../shared/agent-events'
 import type { DshRuntimeScanReport } from '../../shared/dsh-ipc'
+import { readWorkspaceHistory, saveWorkspace } from './workspaceHistory'
 import TitleBar from './TitleBar'
 import Sidebar from './Sidebar'
 import IconRail from './IconRail'
@@ -381,6 +382,25 @@ export default function AppShell() {
       setPageId(terminalPage(request.terminalId))
     })
   }, [addTerminal, pageId])
+
+  useEffect(() => {
+    void window.remoteApi.setRecentWorkspaces(readWorkspaceHistory())
+  }, [])
+
+  useEffect(() => {
+    return window.appApi.onRemoteLaunch((request) => {
+      addTerminal({
+        id: request.terminalId,
+        name: request.name,
+        shellId: request.adapterId,
+        cwd: request.workspace,
+        launch: { kind: 'attach', ptyId: request.ptyId, agent: true }
+      })
+      const history = saveWorkspace(request.workspace)
+      void window.remoteApi.setRecentWorkspaces(history)
+      setPageId(terminalPage(request.terminalId))
+    })
+  }, [addTerminal])
 
   useEffect(() => {
     return window.appApi.onFocusSession(({ sessionId, terminalId }) => {
@@ -1078,6 +1098,9 @@ export default function AppShell() {
         onOpenDsh={openDshFromNewSession}
         onLaunchTerminal={launchTerminal}
         onLaunchCli={launchCli}
+        onWorkspaceHistoryChange={(history) =>
+          void window.remoteApi.setRecentWorkspaces(history)
+        }
       />
 
       <AnimatePresence>

@@ -1,6 +1,6 @@
 # HRack Remote P5 计划：远程新建并立即驾驶
 
-> 状态：2026-08-21 开始实施。依赖 P4 已关门；P6 App 尚未开始，手机端继续使用协议夹具和浏览器/真机前的公开 WSS seam。
+> 状态：2026-08-21 已关门。依赖 P4 已关门；P6 App 尚未开始，手机端继续使用协议夹具和浏览器/真机前的公开 WSS seam。
 
 ## 1. 目标与关门定义
 
@@ -157,3 +157,40 @@ fingerprint 包含 `installationId`、原始 `workspace`、`args`、`skipApprova
 2. `feat: complete remote P5 creation`：协议副本、实现、定向/真实门禁与验证记录。
 
 中继仓库的协议副本、契约测试和部署记录单独提交，部署镜像保留上一版本以便回滚。
+
+---
+
+## 8. 实施记录
+
+P5 按上述边界落地，没有新增第二套启动链：
+
+- `RemoteDesktopClient` 以 `RemoteLaunchHost` 为唯一新依赖，负责 catalog、create 响应顺序、busy、请求指纹和连接生命周期内的幂等缓存；并发相同请求共用同一个 Promise；
+- `runtimeRemoteLaunchHost` 复用 `AiCliDiscoveryService`、`resolveWorkspace`、`AgentSessionRuntime.start` 和现有 renderer attach 流程；catalog 不包含 executable，UI attach 失败也不会重复 spawn；
+- 首页和远程新建共用 `shared/cli-launch-options.ts` 的免审批参数合并规则；最近工作区继续由首页 history 提供，通过窄 IPC 同步；
+- `create` 已在 HRack 与 relay 两份协议中同时增加必填 `cols/rows`，空字符串 workspace 留给桌面返回关联的 `invalid-workspace`；
+- 远程成功启动后 renderer 添加同一个 terminalId 的可见 tab、保存 workspace 并立即进入 P4 驾驶，不启动第二个 HRack GUI 或第二个 PTY。
+
+## 9. 关门验证（2026-08-21）
+
+### 9.1 自动与本机真实接口
+
+- HRack 协议、首页参数、P4 驾驶与 P5 Electron 定向组：37 项通过；
+- `RemoteDesktopClient` 完整文件：23 项通过，覆盖 catalog、失败、成功、并发幂等、busy、断线和方向隔离；
+- 本机独立生产构建 relay + 真实 Chromium + 真实 Electron + 真实 `cmd.exe` PTY：1 项通过；
+- `npm run typecheck`、`npm run build` 通过；
+- 最终 `npm run e2e` 只运行一次：328 项通过、10 项按外部环境条件跳过、零失败，耗时 3.8 分钟。
+
+本机真实创建门禁直接检查了安全 catalog、可见 tab、52×20 初始 PTY、`--yolo --model o3`、真实输入输出、最近工作区刷新、相同 requestId 只存在一个 runtime/session/tab，以及 `undrive` 后桌面恢复。
+
+### 9.2 公开生产接口
+
+relay 提交 `f356bdc` 构建为同名镜像并部署到 `https://hrack.modplex.app/`。容器继续只绑定 `127.0.0.1:8787`，保持只读根文件系统、全部 capabilities 丢弃、`no-new-privileges`、256 进程和 768 MiB 内存限制；部署后健康且重启数为 0。
+
+公开验证不是内存 mock：
+
+1. 从开发机经公开 HTTPS/WSS 完成 health、建房、Origin/canonical URL、配对、双向消息和 revoke，2.192 秒通过；
+2. 真实 Chromium 创建房间，真实 Electron HRack 入座，从安全 catalog 远程创建 Codex fixture；
+3. 公开 WSS create 直接验证 `--yolo --model p5-live-model`、44×19 初始 PTY、真实 `pty-in/pty-out/pty-ack`；
+4. 相同 create 重试仍只有一个 `AgentSessionRuntime` 会话，随后 `undrive` 解锁并公开 revoke；该门禁 6.2 秒通过。
+
+因此 P5 的“远程新建并立即驾驶”已通过本机和公开生产两条真实链路，可以进入 P6 App 实现；尚未声称已经完成手机原生 UI 或手机真机测试。
