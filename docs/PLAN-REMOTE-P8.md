@@ -1,6 +1,6 @@
 # HRack Remote P8 计划：App 真实终端
 
-> 状态：2026-08-21 已完成 Android 16 模拟器 + 安装版 release App + 公网真实 PTY 检查点，包含真实软键盘避让/尺寸恢复、离线 Fcitx5 拼音组合提交和 Claude Code/Codex CLI 基础视觉 smoke；Android 物理真机、iOS 真机及两款 CLI 的物理设备复验仍未完成，P8 尚未全平台关门。
+> 状态：2026-08-21 已完成 Android 16 模拟器 + 安装版 release App + 公网真实 PTY 检查点，包含真实软键盘避让/尺寸恢复、键盘开关后旋转、离线 Fcitx5 拼音组合提交和 Claude Code/Codex CLI 基础视觉 smoke；iOS 占位路径也已替换为共用终端 runtime 的本地单文件资源，并通过 CSP、零网络页面执行、Metro iOS 导出和 Android 包隔离门禁。Android 物理真机、iOS 真机及两款 CLI 的物理设备复验仍未完成，P8 尚未全平台关门。
 
 ## 1. 目标与关门定义
 
@@ -17,7 +17,7 @@ P8 让用户从 App 会话列表点进真实终端，也让手机新建的会话
 7. 高频 PTY 数据不进入 React session state、不触发每块 React render；桌面的既有 `PtyDataQueue` 继续提供高低水位和总上限；
 8. Android release App 经公网 WSS 驾驶真实 Electron PTY，输入标记出现在 PTY 权威 history，真实输出由 WebView 解析后 ack，旋转改变尺寸，返回后桌面解锁；保留截图与提交基线。
 
-完整发布级 P8 仍遵守 [远程终端呈现契约](./REMOTE-TERMINAL-RENDERING.md)：Android/iOS 物理真机上的中文 IME 和 Claude Code + 另一款 AI CLI 是硬门禁。Windows 主机无法替代 iOS 或物理 Android 证据；若当前环境做不到，状态必须写成“Android 模拟器实现完成，P8 未全平台关门”。
+完整发布级 P8 仍遵守 [远程终端呈现契约](./REMOTE-TERMINAL-RENDERING.md)：Android/iOS 物理真机上的中文 IME 和 Claude Code + 另一款 AI CLI 是硬门禁。Windows 主机无法替代 iOS 或物理 Android 证据；若当前环境做不到，状态必须写成“Android 模拟器与 iOS 发布输入实现完成，P8 未全平台关门”。
 
 ## 2. 数据面与性能边界
 
@@ -61,6 +61,8 @@ WebView → 原生事件：
 
 Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 WebGL 能力仍保留，但真实 history/reset/resize 后的模拟器画面出现可重复字形裁切，不能用 `renderer=WEBGL` 或数据面绿灯掩盖。物理机视觉门禁通过前不重新启用；原因、性能与截图见 §8。
 
+本地资源按平台装载但不分叉终端逻辑：Android 继续使用 `android_asset` 中的相对多文件 Vite 产物；iOS 使用 Expo/Metro 的本地 HTML asset，把同一产物的 JS、CSS 和四字体折叠成约 1.04 MB 的单文件，避免 WKWebView 只找到入口却丢失相对资源目录。脚本/样式由内容 SHA-256 CSP hash 约束，字体使用 data URI；平台后缀入口保证 Android bundle/APK 不携带这份 iOS 文件。
+
 ## 4. 原生界面与流程
 
 - 会话卡点击：进入 `TerminalScreen` → 等 WebView ready → `drive` → replay → driven；exited 会话禁用；
@@ -83,7 +85,8 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 ### B. 静态与构建
 
 - 协议、xterm、palette、字体 parity；
-- Vite 相对资源、CSP 和 bundle 文件存在性；
+- Vite 相对资源、Android 多文件 bundle、iOS 单文件 asset、CSP 内容 hash 和 bundle 文件存在性；
+- Metro iOS 导出必须包含唯一 HTML asset；Android 导出及 release APK 不得包含 iOS 单文件；
 - TypeScript/Jest；Expo Doctor；Android release 构建；停止 Metro 后冷启动。
 
 ### C. Android 公网真实接口
@@ -102,7 +105,7 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 
 ## 6. 真实设备与诚实边界
 
-当前 Windows 工作区可自动完成 Android 16 模拟器、release APK、公网 relay、Electron、真实 PTY、离线 Fcitx5 拼音组合提交，以及本机真实 AI CLI 的基础视觉 smoke。以下发布证据不能由模拟器或 fixture 冒充：
+当前 Windows 工作区可自动完成 Android 16 模拟器、release APK、公网 relay、Electron、真实 PTY、离线 Fcitx5 拼音组合提交、本机真实 AI CLI 的基础视觉 smoke，以及 iOS 单文件资源生成、离线执行和 Metro iOS 导出。后者证明 iOS 不再是占位实现，但没有运行 UIKit/WKWebView。以下发布证据不能由模拟器、浏览器或 fixture 冒充：
 
 - Android 物理真机上的中文输入法 composition 复验；
 - iPhone/iPad 物理真机上的本地 bundle、safe area、WebGL/DOM、旋转和 IME；
@@ -117,7 +120,10 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 3. App：`feat: drive sessions in mobile terminal`；
 4. HRack：`test: add P8 Android public terminal gate`；
 5. App：`docs: record P8 Android terminal validation`；
-6. HRack：`docs: record remote P8 Android checkpoint`。
+6. HRack：`docs: record remote P8 Android checkpoint`；
+7. App：`feat: enable bundled iOS terminal runtime`；
+8. HRack：`test: validate P8 iOS terminal bundle`；
+9. App / HRack：修复并锁定键盘开关后的旋转布局。
 
 ## 8. 实现与验证记录
 
@@ -137,6 +143,10 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 - App `9500255`：固化软键盘打开/恢复截图与事故记录；
 - App `5f9461d`：Android 命令输入不再设置 `TYPE_TEXT_FLAG_NO_SUGGESTIONS`，允许 IME 组合且不主动请求 shell 命令自动纠正；
 - HRack `8831024`：新增可选 Gboard/Fcitx5 中文拼音门禁，逐点证明组合串不进 PTY、候选提交后才发送最终中文。
+- App `56e2878`：删除 iOS 占位页，生成带内容 hash CSP 的单文件离线终端资源，并以平台入口隔离 Android/iOS 装载；
+- HRack `e36a4a4`：真实加载 iOS 单文件页面，验证字体、块元素、CJK 双宽、renderer fallback 和零网络请求；
+- App `e0831e7`：修复 Android 键盘开关后 `KeyboardAvoidingView` 锁住初始竖屏高度；
+- HRack `f20907e`：新增快速预检/真实驾驶旋转门禁，并要求横屏列数增加且行数减少。
 
 终端高频字节没有进入 React session state；WebView 内串行写入，只有 `write` callback 完成才回传 deliveryId，原生 client 匹配后才发送 `pty-ack`。新建与已有会话共用同一个 measured terminal 流程。
 
@@ -146,32 +156,34 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 
 ```text
 [p8-terminal-keyboard] portrait=43x31 keyboard=43x16 restored=43x31
-[p8-terminal-burst] renderer=DOM bytes=886156 elapsedMs=19872
+[p8-terminal-burst] renderer=DOM bytes=886540 elapsedMs=19882
 1 passed (1.7m)
 ```
 
-验证使用 Android 16 / API 36 Pixel 6 x86_64 模拟器上的 release APK，停止 Metro 后冷启动，经 `https://hrack.modplex.app/` 的 HTTPS/WSS 和当前公网 relay。已有 PTY 先写 history marker，App 以 43 × 31 驾驶；Gboard 英文键盘弹出后 App 与桌面唯一 PTY 同步收缩为 43 × 16。随后切换到离线 Fcitx5 Pinyin，逐键点按 `zhongwen` 时 `zhong wen` 和候选“中文”只存在于 IME，App 草稿与 PTY history 均没有裸拼音；选择候选后 App 草稿出现“中文”，点击发送后 PTY history 只含最终中文。键盘隐藏后尺寸恢复 43 × 31；6,000 行真实 PTY burst 被 xterm 解析并 ack 886,156 字节，约 43.6 KiB/s。旋转得到 97 × 12 且桌面权威尺寸一致，返回后 drive state 为 idle；App 新建第二个真实 PTY 后又以 43 × 31 直接进入终端。房间最终已撤销。
+验证使用 Android 16 / API 36 Pixel 6 x86_64 模拟器上的 release APK，停止 Metro 后冷启动，经 `https://hrack.modplex.app/` 的 HTTPS/WSS 和当前公网 relay。已有 PTY 先写 history marker，App 以 43 × 31 驾驶；Gboard 英文键盘弹出后 App 与桌面唯一 PTY 同步收缩为 43 × 16。随后切换到离线 Fcitx5 Pinyin，逐键点按 `zhongwen` 时 `zhong wen` 和候选“中文”只存在于 IME，App 草稿与 PTY history 均没有裸拼音；选择候选后 App 草稿出现“中文”，点击发送后 PTY history 只含最终中文。键盘隐藏后尺寸恢复 43 × 31；6,000 行真实 PTY burst 被 xterm 解析并 ack 886,540 字节，约 43.5 KiB/s。键盘开关之后旋转得到稳定的 97 × 15，App 和桌面权威尺寸一致且完整界面没有向下溢出；返回后 drive state 为 idle。App 新建第二个真实 PTY 后又以 43 × 31 直接进入终端。房间最终已撤销。
+
+iOS 资源门禁另用 Windows 上可执行的发布输入验证：生成资源在磁盘上约 1.04 MB，`expo export --platform ios` 列出 1 个 HTML asset，Android 导出 asset 列表为空，release APK 只包含 Android 多文件目录。Playwright 直接以本地文件加载该单文件页面，字体、块元素、CJK 双宽和 DOM fallback 通过且网络请求为 0，最终 `1 passed (1.3s)`。这不是 iOS 模拟器或真机结果。
 
 App 同时通过协议/终端 parity、TypeScript、8 suites / 31 tests、Expo Doctor 20/20、相对离线 bundle 检查和 Android release 构建。完整截图与失败过程记录在 App 仓库 `docs/P8-ANDROID-VALIDATION.md`。
 
 真实 AI CLI 门禁另以同一 release App 和公网房间启动本机真实安装的 Claude Code 2.1.220 与 Codex CLI 0.146.0，最终 `1 passed (1.2m)`。Claude 提交本地 `/help`，Codex 提交官方本地 `/status`；两者均验证 PTY 权威 history、解析字节增长、真实 TUI 截图和返回 `undrive`，没有提交业务 prompt 或发起模型请求。Codex 用单次 `-c check_for_update_on_startup=false` 关闭启动更新检查，不修改用户安装。两张截图已固化到 App 仓库。
 
-准备提交时又执行了一次 HRack 最终完整回归：`328 passed / 13 skipped`，耗时 3.8 分钟，无失败。13 个 skip 均有显式外部环境条件；其中公网 P7、P8 Android 用例已在本轮分别定向真实运行并通过，不能把完整回归中的条件跳过误读成未测。
+准备提交时又执行了一次 HRack 检查点完整回归：`328 passed / 17 skipped`，耗时 3.5 分钟，无失败。17 个 skip 均有显式外部环境条件；其中公网 P7/P8、Android 预检/真实旋转、P8 完整终端和 iOS 单文件页面门禁已按各自条件定向真实运行，不能把完整回归中的条件跳过误读成未测。物理设备矩阵完成后仍要再做 P8 最终关门回归。
 
 ### 8.3 视觉事故与性能结论
 
 第一次数据面定向门禁在历史、drive 和尺寸处通过，但 ADB 无法把键盘事件可靠送进 WebView 隐藏 textarea；改用提交式原生输入后输入链路通过。随后人工看截图发现 WebGL 字形裁切，而自动断言仍为绿色。尝试 `preserveDrawingBuffer`、最终 fit 后清 atlas，以及 history 前释放/后重建 WebGL，均未修复。切换到 HRack 已有的 xterm DOM fallback 后，竖屏、横屏 burst 尾部和新建终端截图字形均完整。
 
-DOM 多次公网实测约为 43.6–49.4 KiB/s，足以作为当前交互式 AI CLI 的 Android 预发布检查点，但不是最终高吞吐目标。后续只能在 Android 物理机真实 PTY 视觉门禁通过后恢复 WebGL；若物理机同样失败，则保持 DOM 并针对串行写入/scrollback 做性能优化，不能牺牲字形正确性。
+DOM 多次公网实测约为 43.5–49.4 KiB/s，足以作为当前交互式 AI CLI 的 Android 预发布检查点，但不是最终高吞吐目标。后续只能在 Android 物理机真实 PTY 视觉门禁通过后恢复 WebGL；若物理机同样失败，则保持 DOM 并针对串行写入/scrollback 做性能优化，不能牺牲字形正确性。
 
-软键盘门禁又发现另一处只看数据面无法发现的问题：`minHeight: 260` 阻止 Android 16 edge-to-edge 页面收缩；直接使用 `KeyboardAvoidingView(height)` 又在 `keyboardDidHide` 后残留收缩高度。最终由真实 show/hide 状态控制避让启停，在不重挂 WebView 的前提下完成 43 × 31 → 43 × 16 → 43 × 31，并由桌面 drive state 逐点确认唯一 winsize。Fcitx5 较高的中文键盘实测得到 43 × 15，仍沿用同一尺寸通道。
+软键盘门禁又发现另一处只看数据面无法发现的问题：`minHeight: 260` 阻止 Android 16 edge-to-edge 页面收缩；直接使用 `KeyboardAvoidingView(height)` 又在 `keyboardDidHide` 后残留收缩高度。第一版用真实 show/hide 状态切换 `enabled`，确实在竖屏完成了 43 × 31 → 43 × 16 → 43 × 31，却遗漏了“随后旋转”：React Native 0.83 仍会因旧 `state.bottom > 0` 套用 `_initialFrameHeight` / `flex: 0`，产生 97 × 31 的竖屏高度锁定。最终实现不再切 `enabled`；Android 仅在键盘显示时设置 `behavior=height`，隐藏时移除 behavior 以恢复 flex 布局，同时保持 WebView 不重挂。最小公网复现由红色 `43 × 31 → 97 × 31` 变为 `43 × 31 → 97 × 16`，完整中文/burst 门禁最终得到 97 × 15。门禁必须同时断言横屏列数增加、行数减少，并人工查看界面没有溢出。Fcitx5 的 43 × 15 仍沿用同一尺寸通道。
 
 中文门禁先暴露了两类外部前置问题：中文子类型会把 ADB 注入的配对 URL 改成全角标点，所以配对必须先固定英文；预装 Gboard 拼音则因模拟器镜像语言包缺失持续等待下载，不能把这个外部失败误判为 App 组合失败。最终门禁安装并核对官方 SHA-256 的 Fcitx5 Android 0.1.3 x86_64 APK，只保留内置 Pinyin，并用真实键盘逐键/候选点击证明组合串在最终 App 提交前从未进入 PTY。Android 命令框不设置 `autoCorrect=false`，避免 React Native 映射为 `TYPE_TEXT_FLAG_NO_SUGGESTIONS`；同时不设置 `true`，避免请求英文 shell 命令自动纠正。
 
 ### 8.4 未关门项
 
 - Android 物理真机：中文输入法 composition、软键盘、safe area 与旋转复验；
-- iPhone/iPad 物理真机：本地 bundle、renderer/fallback、IME 与旋转；
+- iPhone/iPad 物理真机：已生成/导出的本地 bundle 在 WKWebView 中的 renderer/fallback、safe area、IME 与旋转；
 - 在上述物理设备上复跑 Claude Code 与 Codex 的真实视觉、中文输入和长输出 smoke；
 - 上述设备矩阵完成后的最终完整回归。
 

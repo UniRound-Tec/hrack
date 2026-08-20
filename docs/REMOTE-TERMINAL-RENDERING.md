@@ -87,11 +87,19 @@ P6 Android 预检已经复现过一次“原生外壳正常、WebView 纯黑且�
 
 1. 构建显式设置相对 base（当前 App 为 `vite build terminal --base ./`）；
 2. 构建后门禁解析 `index.html` 与 CSS，拒绝 `/assets/...`、不存在文件、网络字体和放宽的 CSP；
-3. 本地资源由原生打包步骤复制到 Android assets / iOS bundle，而不是开发服务器；
+3. 本地资源必须进入 Android assets 或 iOS 发布 bundle，而不是依赖开发服务器；Android 可复制相对多文件目录，iOS 若用 Metro `require(local.html)` 则必须证明相对目录仍可达，或像当前 App 一样生成自包含单文件；
 4. WebView 的顶层加载错误必须回传原生层并显示诊断，不能只呈现空白黑屏；
 5. release 包必须在 Metro/开发服务器停止后清数据冷启动，再运行一次预检。
 
 这个门禁检查的是“包内资源可达”，不能被桌面浏览器或 Metro 开发态截图替代。以后调整 Vite、Expo、WebView 或资源目录时必须先过相对路径检查，再做真实安装包冷启动。
+
+2026-08-21 的 iOS 落地审查又补充了一层：React Native WebView 支持在 iOS `require` 本地 HTML，不代表入口旁边的 JS、CSS 和字体目录一定按原结构进入 WKWebView 可读位置。当前 App 因此复用同一个 Vite 产物，但额外生成约 1.04 MB 的 iOS 单文件：JS/CSS 内联、四个字体转 data URI、脚本和样式使用内容 SHA-256 CSP hash。生成器与门禁必须同时满足：
+
+1. 重新计算内联 script/style hash，拒绝残留相对 URL、外部引用和放宽的 `connect-src`；
+2. 用 `.gitattributes` 固定生成 HTML 为 LF，因为 Windows 自动 CRLF 转换会改变内联内容字节并让 CSP 在全新检出后失效；
+3. 使用 `.ios.ts` / `.android.ts` 平台入口隔离资源，实际 Metro iOS 导出应列出 HTML asset，而 Android 导出、JS bundle 和 APK 不得携带这份额外文件；
+4. 在没有 macOS 时可以真实离线加载该单文件，验证字体、块元素、CJK 双宽、renderer fallback 和零网络请求，但记录必须写成“iOS 发布输入检查点”，不能写成 WKWebView 或真机通过；
+5. iOS 最终仍需在 Metro 停止后的安装包上冷启动，并覆盖 safe area、旋转、系统 IME、内容进程终止和真实 PTY。
 
 ### 4.7 静态 WebGL 预检不能替代真实 PTY 视觉门禁
 
@@ -103,7 +111,7 @@ P8 Android 实现再次暴露了一个不同层次的陷阱：同一 release APK
 2. 必须人工或像素基线检查至少 history 首屏、持续输出尾部和旋转后的画面；`renderer=WEBGL` 不是视觉正确证明；
 3. `preserveDrawingBuffer`、清 glyph atlas 或重建 addon 只能作为待验证假设，不能在没有截图证据时写成已修复；
 4. 若真实画面损坏，立即走 xterm DOM fallback 并保留可观测原因；数据面、解析后 ack 和 React 外字节通道不得随 renderer 降级改变；
-5. DOM fallback 必须附真实 burst 性能数据。2026-08-21 Android 16 模拟器经公网真实 ConPTY 多次实测约为 43.6–49.4 KiB/s；其中中文 IME 最终门禁解析并 ack 886,156 字节/19.872 秒，可作为交互式预发布范围，但不等于物理机最终性能结论；
+5. DOM fallback 必须附真实 burst 性能数据。2026-08-21 Android 16 模拟器经公网真实 ConPTY 多次实测约为 43.5–49.4 KiB/s；其中键盘旋转修复后的最终门禁解析并 ack 886,540 字节/19.882 秒，可作为交互式预发布范围，但不等于物理机最终性能结论；
 6. 重新启用 WebGL 必须由 Android 物理机真实 PTY 视觉门禁授权，不能只恢复静态 P6 截图。
 
 手机输入也必须有可验证的组合安全路径。WebView 隐藏 textarea 在自动化环境中可能无法稳定接收系统键盘事件；允许提供原生提交式输入框，组合期间只编辑本地草稿、显式提交后一次发送最终文本和回车。它不能删除 xterm 原生输入，但可以作为中文 IME 安全入口与真实接口自动门禁入口。
@@ -119,6 +127,8 @@ Android 的 `adjustResize`、edge-to-edge 和 React Native `KeyboardAvoidingView
 3. App 显示格子、桌面权威 drive state 与截图三者在打开和恢复两个时点一致；
 4. 修复避让时不得重挂 WebView，否则会清空 xterm buffer、破坏 history/live 顺序；
 5. Gboard 英文键盘证明 43 × 31 → 43 × 16 → 43 × 31；较高的 Fcitx5 Pinyin 又证明 43 × 15。模拟器中文组合通过后仍要在物理设备输入法上复验最终提交前没有 `pty-in`。
+
+键盘打开/关闭通过后还必须继续旋转一次。React Native 0.83 Android 的 `KeyboardAvoidingView(height)` 会在内部 `state.bottom > 0` 时套用 `_initialFrameHeight` 和 `flex: 0`；把 `enabled` 切成 false 只会把本次计算的 `bottomHeight` 变成 0，并不保证旧 state 已清除。实际事故表现为竖屏看似恢复 43 × 31，随后横屏只更新宽度到 97 列，高度仍锁在 31 行并让界面向下溢出。当前 App 仅在 Android 键盘可见时设置 `behavior=height`，隐藏时移除 behavior 来恢复 flex 布局，不重挂 WebView。自动门禁必须等到横屏同时满足“列数增加、行数减少”，人工截图还要确认终端、命令栏和附加键没有溢出屏幕。
 
 ### 4.9 原生命令输入必须保留 IME 组合能力
 
