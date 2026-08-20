@@ -281,6 +281,7 @@ export const ja = {
       layout: 'レイアウト',
       terminal: 'ターミナル',
       session: 'セッション',
+      remote: 'リモート',
       update: 'アプリ更新'
     },
     uiTheme: 'UI テーマ',
@@ -401,6 +402,38 @@ export const ja = {
     updateCheck: '更新を確認',
     updateDownload: '更新をダウンロード',
     updateRestart: '再起動してインストール',
+    remoteUrl: '参加 URL',
+    remoteUrlHint: 'パソコンとスマホは同じ完全な URL を使います。ドメインはハードコードしません。',
+    remoteConnect: '接続',
+    remoteDisconnect: '切断',
+    remoteRevoke: 'ルームを失効',
+    remoteConfirmTitle: 'このサーバーへ端末を送りますか？',
+    remoteConfirmBody: (origin: string) =>
+      `接続後、セッション一覧と運転中の端末バイトは ${origin} に送られます。この URL を持つ人が座席を取れます。`,
+    remoteStatusIdle: '未接続',
+    remoteStatusConnecting: '接続中',
+    remoteStatusWaitingPhone: '送信済み。スマホ待ち',
+    remoteStatusPeerOnline: 'スマホが着席',
+    remoteError: (code: string) => {
+      switch (code) {
+        case 'occupied':
+          return 'その席には既にデスクトップがあります。既存接続は切断しません'
+        case 'bad-key':
+          return 'ルームが存在しないか失効しています'
+        case 'revoked':
+          return 'ルームは失効しました'
+        case 'connect-failed':
+          return 'リレーに接続できません'
+        case 'invalid-url':
+        case 'invalid-scheme':
+        case 'missing-room':
+          return 'この URL を解析できません'
+        default:
+          return `失敗: ${code}`
+      }
+    },
+    remoteQr: '参加 QR',
+    remoteQrHint: 'サイトを閉じたあとはここから読み取れます',
     description: 'レイアウトとコントロールは確定プロトタイプに準拠。設定は settingsStore に直書き。',
     mapleMono: 'Maple Mono',
     pixels: (value: number) => `${value}px`,

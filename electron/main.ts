@@ -24,6 +24,7 @@ import {
 import { startThemeWatcher, stopThemeWatcher } from './themes-watch'
 import {
   AppEventChannel,
+  RemoteEventChannel,
   UpdateEventChannel,
   type BridgeLaunchAck,
   type BridgeLaunchRequest
@@ -62,6 +63,8 @@ import { BridgeServer } from './bridge/BridgeServer'
 import { OpenCodeControlPlane } from './bridge/OpenCodeControlPlane'
 import { BridgeStateStore } from './bridge/state'
 import { BridgeError } from './bridge/errors'
+import { RemoteDesktopClient } from './remote/RemoteDesktopClient'
+import { runtimeSessionSource } from './remote/runtimeSessionSource'
 
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
@@ -216,6 +219,12 @@ function completeBridgeLaunch(ack: BridgeLaunchAck): void {
   pending(ack.error)
 }
 
+const remoteClient = new RemoteDesktopClient({
+  sessions: runtimeSessionSource(agentRuntime),
+  broadcast: (state) =>
+    broadcastToAllWindows(RemoteEventChannel.StateChanged, state)
+})
+
 const updateService = new UpdateService({
   enabled: app.isPackaged && process.env['HRACK_DISABLE_UPDATES'] !== '1',
   currentVersion: packageMetadata.version,
@@ -235,6 +244,7 @@ function prepareShutdown(): Promise<void> {
   shutdownPromise = (async () => {
     // Agent Runtime 先写入退出事实并回收 observer；随后兜底关闭普通终端。
     controlPlane.dispose()
+    remoteClient.dispose()
     await bridgeServer.stop()
     await agentRuntime.disposeAll()
     await hookIngress.dispose()
@@ -348,6 +358,7 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
     dshWire,
     dshProjections,
     updateService,
+    remoteClient,
     getDshSurfaceController: () => dshSurfaceController,
     getWindow: () => (winRef && !winRef.isDestroyed() ? winRef : null),
     getTray: () => trayRef,

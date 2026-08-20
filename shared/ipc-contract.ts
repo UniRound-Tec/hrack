@@ -358,6 +358,39 @@ export const UpdateEventChannel = {
   StateChanged: 'update:state-changed'
 } as const
 
+export type RemoteDesktopPhase =
+  | 'idle'
+  | 'connecting'
+  | 'waiting-phone'
+  | 'peer-online'
+  | 'error'
+
+export interface RemoteDesktopState {
+  phase: RemoteDesktopPhase
+  href: string | null
+  origin: string | null
+  error: string | null
+}
+
+export const RemoteInvokeChannel = {
+  Connect: 'remote:connect',
+  Disconnect: 'remote:disconnect',
+  Revoke: 'remote:revoke',
+  GetState: 'remote:get-state'
+} as const
+
+export const RemoteEventChannel = {
+  StateChanged: 'remote:state-changed'
+} as const
+
+export interface RemoteApi {
+  connect: (joinUrl: string) => Promise<RemoteDesktopState>
+  disconnect: () => Promise<RemoteDesktopState>
+  revoke: () => Promise<RemoteDesktopState>
+  getState: () => Promise<RemoteDesktopState>
+  onStateChange: (cb: (state: RemoteDesktopState) => void) => () => void
+}
+
 export const AppInvokeChannel = {
   SetMainPrefs: 'app:set-main-prefs'
 } as const

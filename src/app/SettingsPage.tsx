@@ -27,6 +27,7 @@ import {
 } from '../../shared/terminal-background'
 import { hasNotificationSound } from '../../shared/notification-sound'
 import { playNotificationPreview } from '../state/notificationSound'
+import RemoteSettingsSection from './RemoteSettingsSection'
 import ClickSpark from './effects/ClickSpark'
 import Dropdown, { type DropdownOption } from './Dropdown'
 import floatingRendererSkill from '../../resources/skills/create-hrack-floating-renderer/SKILL.md?raw'
@@ -54,6 +55,7 @@ const SETTINGS_CATEGORIES = [
   'layout',
   'terminal',
   'session',
+  'remote',
   'update'
 ] as const
 
@@ -1165,6 +1167,12 @@ export default function SettingsPage({
                   : strings.settings.bridgeSkillCopy}
               </button>
             </Row>
+          </Section>
+          )}
+
+          {category === 'remote' && (
+          <Section label="remote" title={strings.settings.sections.remote}>
+            <RemoteSettingsSection />
           </Section>
           )}
 

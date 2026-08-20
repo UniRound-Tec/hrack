@@ -11,6 +11,8 @@ import {
   FloatingWindowEventChannel,
   FloatingWindowInvokeChannel,
   PtyInvokeChannel,
+  RemoteEventChannel,
+  RemoteInvokeChannel,
   ShellInvokeChannel,
   StatsInvokeChannel,
   ThemeEventChannel,
@@ -43,6 +45,8 @@ import {
   type PtyMeta,
   type PtyResizeCursorSync,
   type RecordEventInput,
+  type RemoteApi,
+  type RemoteDesktopState,
   type ShellApi,
   type SpawnOptions,
   type StatsApi,
@@ -348,6 +352,26 @@ const workspaceReader: WorkspaceReaderApi = {
   }
 }
 
+const remoteApi: RemoteApi = {
+  connect: (joinUrl) => ipcRenderer.invoke(RemoteInvokeChannel.Connect, joinUrl),
+  disconnect: () => ipcRenderer.invoke(RemoteInvokeChannel.Disconnect),
+  revoke: () => ipcRenderer.invoke(RemoteInvokeChannel.Revoke),
+  getState: () => ipcRenderer.invoke(RemoteInvokeChannel.GetState),
+  onStateChange: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      state: RemoteDesktopState
+    ): void => {
+      if (state && typeof state === 'object' && typeof state.phase === 'string') {
+        cb(state)
+      }
+    }
+    ipcRenderer.on(RemoteEventChannel.StateChanged, handler)
+    return () =>
+      ipcRenderer.removeListener(RemoteEventChannel.StateChanged, handler)
+  }
+}
+
 const appApi: AppApi = {
   setMainPrefs: (update: MainPrefsUpdate) =>
     ipcRenderer.invoke(AppInvokeChannel.SetMainPrefs, update),
@@ -581,6 +605,7 @@ try {
   contextBridge.exposeInMainWorld('workspaceReader', workspaceReader)
   contextBridge.exposeInMainWorld('appApi', appApi)
   contextBridge.exposeInMainWorld('updateApi', updateApi)
+  contextBridge.exposeInMainWorld('remoteApi', remoteApi)
   contextBridge.exposeInMainWorld('appThemeApi', appThemeApi)
   contextBridge.exposeInMainWorld('dshApi', dshApi)
   contextBridge.exposeInMainWorld('dshWireApi', dshWireApi)

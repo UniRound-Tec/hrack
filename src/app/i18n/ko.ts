@@ -281,6 +281,7 @@ export const ko = {
       layout: '레이아웃',
       terminal: '터미널',
       session: '세션',
+      remote: '원격',
       update: '앱 업데이트'
     },
     uiTheme: 'UI 테마',
@@ -401,6 +402,38 @@ export const ko = {
     updateCheck: '업데이트 확인',
     updateDownload: '업데이트 다운로드',
     updateRestart: '다시 시작하고 설치',
+    remoteUrl: '참가 URL',
+    remoteUrlHint: '컴퓨터와 휴대폰이 같은 전체 URL을 씁니다. 클라이언트는 도메인을 하드코딩하지 않습니다.',
+    remoteConnect: '연결',
+    remoteDisconnect: '끊기',
+    remoteRevoke: '방 취소',
+    remoteConfirmTitle: '이 서버로 터미널을 보낼까요?',
+    remoteConfirmBody: (origin: string) =>
+      `연결하면 세션 목록과 운전 중인 터미널 바이트가 ${origin}으로 갑니다. 이 URL을 가진 사람이 자리를 차지할 수 있습니다.`,
+    remoteStatusIdle: '연결 안 됨',
+    remoteStatusConnecting: '연결 중',
+    remoteStatusWaitingPhone: '송신됨, 휴대폰 대기',
+    remoteStatusPeerOnline: '휴대폰이 착석함',
+    remoteError: (code: string) => {
+      switch (code) {
+        case 'occupied':
+          return '그 자리에는 이미 데스크톱이 있습니다. 기존 연결은 끊지 않았습니다'
+        case 'bad-key':
+          return '방이 없거나 취소되었습니다'
+        case 'revoked':
+          return '방이 취소되었습니다'
+        case 'connect-failed':
+          return '릴레이에 연결할 수 없습니다'
+        case 'invalid-url':
+        case 'invalid-scheme':
+        case 'missing-room':
+          return '이 URL을 해석할 수 없습니다'
+        default:
+          return `실패: ${code}`
+      }
+    },
+    remoteQr: '참가 QR',
+    remoteQrHint: '웹사이트를 닫은 뒤 여기서 스캔하세요',
     description: '레이아웃과 컨트롤은 확정된 프로토타입을 따르며 설정은 settingsStore에 직접 기록됩니다.',
     mapleMono: 'Maple Mono',
     pixels: (value: number) => `${value}px`,

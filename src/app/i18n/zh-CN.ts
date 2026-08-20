@@ -284,6 +284,7 @@ export const zhCN = {
       layout: '布局',
       terminal: '终端',
       session: '会话',
+      remote: '远程',
       update: '应用更新'
     },
     uiTheme: '界面主题',
@@ -404,6 +405,38 @@ export const zhCN = {
     updateCheck: '检查更新',
     updateDownload: '下载更新',
     updateRestart: '重启并安装',
+    remoteUrl: '加入 URL',
+    remoteUrlHint: '电脑和手机用同一条完整 URL。客户端不写死域名。',
+    remoteConnect: '连接',
+    remoteDisconnect: '断开',
+    remoteRevoke: '吊销房间',
+    remoteConfirmTitle: '把终端送到这台服务器？',
+    remoteConfirmBody: (origin: string) =>
+      `连接后，会话列表和被驾驶的终端字节会送到 ${origin}。持有这条 URL 的人可以占座。`,
+    remoteStatusIdle: '未连接',
+    remoteStatusConnecting: '连接中',
+    remoteStatusWaitingPhone: '已出站，等待手机',
+    remoteStatusPeerOnline: '手机已占座',
+    remoteError: (code: string) => {
+      switch (code) {
+        case 'occupied':
+          return '该座位已有电脑，未踢掉原连接'
+        case 'bad-key':
+          return '房间不存在或已吊销'
+        case 'revoked':
+          return '房间已吊销'
+        case 'connect-failed':
+          return '无法连上中继'
+        case 'invalid-url':
+        case 'invalid-scheme':
+        case 'missing-room':
+          return '无法解析这条 URL'
+        default:
+          return `失败：${code}`
+      }
+    },
+    remoteQr: '加入二维码',
+    remoteQrHint: '网页关掉后可扫这里补连',
     description: '布局与控件沿用定稿原型；各项设置直读写 settingsStore。',
     mapleMono: 'Maple Mono',
     pixels: (value: number) => `${value}px`,

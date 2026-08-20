@@ -282,6 +282,7 @@ export const en = {
       layout: 'Layout',
       terminal: 'Terminal',
       session: 'Sessions',
+      remote: 'Remote',
       update: 'App update'
     },
     uiTheme: 'UI theme',
@@ -403,6 +404,38 @@ export const en = {
     updateCheck: 'Check for updates',
     updateDownload: 'Download update',
     updateRestart: 'Restart and install',
+    remoteUrl: 'Join URL',
+    remoteUrlHint: 'Desktop and phone share one full URL. Clients do not hardcode a domain.',
+    remoteConnect: 'Connect',
+    remoteDisconnect: 'Disconnect',
+    remoteRevoke: 'Revoke room',
+    remoteConfirmTitle: 'Send the terminal to this server?',
+    remoteConfirmBody: (origin: string) =>
+      `After connecting, session lists and driven terminal bytes go to ${origin}. Anyone with this URL can take a seat.`,
+    remoteStatusIdle: 'Not connected',
+    remoteStatusConnecting: 'Connecting',
+    remoteStatusWaitingPhone: 'Outbound, waiting for the phone',
+    remoteStatusPeerOnline: 'Phone is seated',
+    remoteError: (code: string) => {
+      switch (code) {
+        case 'occupied':
+          return 'That seat already has a desktop; the first connection was not kicked'
+        case 'bad-key':
+          return 'Room is missing or revoked'
+        case 'revoked':
+          return 'Room revoked'
+        case 'connect-failed':
+          return 'Could not reach the relay'
+        case 'invalid-url':
+        case 'invalid-scheme':
+        case 'missing-room':
+          return 'Could not parse this URL'
+        default:
+          return `Failed: ${code}`
+      }
+    },
+    remoteQr: 'Join QR code',
+    remoteQrHint: 'Scan here if the website is already closed',
     description: 'Layout and controls follow the locked prototype; settings write through.',
     mapleMono: 'Maple Mono',
     pixels: (value: number) => `${value}px`,

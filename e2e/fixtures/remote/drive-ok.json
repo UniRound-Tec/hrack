@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "type": "drive-ok",
+  "sessionId": "sess-1",
+  "cols": 40,
+  "rows": 18,
+  "history": {
+    "complete": true,
+    "retainedOutputBytes": 5,
+    "droppedOutputBytes": 0,
+    "droppedEvents": 0,
+    "events": [
+      {
+        "sequence": 1,
+        "kind": "output",
+        "data": "hello",
+        "byteLength": 5
+      }
+    ]
+  }
+}

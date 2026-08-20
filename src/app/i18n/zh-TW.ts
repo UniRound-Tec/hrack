@@ -281,6 +281,7 @@ export const zhTW = {
       layout: '版面',
       terminal: '終端機',
       session: '工作階段',
+      remote: '遠端',
       update: '應用程式更新'
     },
     uiTheme: '介面主題',
@@ -401,6 +402,38 @@ export const zhTW = {
     updateCheck: '檢查更新',
     updateDownload: '下載更新',
     updateRestart: '重新啟動並安裝',
+    remoteUrl: '加入 URL',
+    remoteUrlHint: '電腦和手機使用同一條完整 URL。用戶端不寫死網域。',
+    remoteConnect: '連線',
+    remoteDisconnect: '中斷',
+    remoteRevoke: '撤銷房間',
+    remoteConfirmTitle: '把終端機送到這台伺服器？',
+    remoteConfirmBody: (origin: string) =>
+      `連線後，工作階段列表與被駕駛的終端機位元組會送到 ${origin}。持有這條 URL 的人可以占座。`,
+    remoteStatusIdle: '未連線',
+    remoteStatusConnecting: '連線中',
+    remoteStatusWaitingPhone: '已出站，等待手機',
+    remoteStatusPeerOnline: '手機已占座',
+    remoteError: (code: string) => {
+      switch (code) {
+        case 'occupied':
+          return '該座位已有電腦，未踢掉原連線'
+        case 'bad-key':
+          return '房間不存在或已撤銷'
+        case 'revoked':
+          return '房間已撤銷'
+        case 'connect-failed':
+          return '無法連上中繼'
+        case 'invalid-url':
+        case 'invalid-scheme':
+        case 'missing-room':
+          return '無法解析這條 URL'
+        default:
+          return `失敗：${code}`
+      }
+    },
+    remoteQr: '加入 QR 碼',
+    remoteQrHint: '網頁關掉後可掃這裡補連',
     description: '版面與控制項沿用定稿原型；各項設定直讀寫 settingsStore。',
     mapleMono: 'Maple Mono',
     pixels: (value: number) => `${value}px`,

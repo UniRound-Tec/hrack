@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "type": "sessions-snapshot",
+  "sessions": [
+    {
+      "sessionId": "sess-1",
+      "name": "Claude",
+      "adapterId": "claude",
+      "status": "needs-you",
+      "statusConfidence": "high",
+      "detail": "Waiting for approval",
+      "pendingAttentionCount": 1,
+      "activeToolCount": 0,
+      "lastActivityAt": 1755686400000,
+      "workspace": "C:/repo"
+    }
+  ]
+}

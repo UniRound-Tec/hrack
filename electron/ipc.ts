@@ -23,6 +23,7 @@ import {
   StatsInvokeChannel,
   ThemeInvokeChannel,
   UpdateInvokeChannel,
+  RemoteInvokeChannel,
   WindowInvokeChannel,
   type CliRuntime,
   type DirectoryPickerRequest,
@@ -66,6 +67,7 @@ import type { DshWireProxy } from './dsh-host/DshWireProxy'
 import type { DshProjectionBridge } from './dsh-host/DshProjectionBridge'
 import type { DshWebSurfaceController } from './dsh-surface/DshWebSurfaceController'
 import type { UpdateService } from './update/UpdateService'
+import type { RemoteDesktopClient } from './remote/RemoteDesktopClient'
 import { UserThemeStore } from './user-themes'
 import {
   installTerminalBackgroundProtocol,
@@ -151,6 +153,7 @@ export interface IpcContext {
   dshWire: DshWireProxy
   dshProjections: DshProjectionBridge
   updateService: UpdateService
+  remoteClient: RemoteDesktopClient
   getDshSurfaceController(): DshWebSurfaceController | null
   getWindow(): BrowserWindow | null
   getTray(): Tray | null
@@ -703,6 +706,26 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(UpdateInvokeChannel.Install, (event) => {
     requireMainWindow(event, ctx)
     return ctx.updateService.install()
+  })
+
+  ipcMain.handle(RemoteInvokeChannel.GetState, (event) => {
+    requireMainWindow(event, ctx)
+    return ctx.remoteClient.getState()
+  })
+  ipcMain.handle(RemoteInvokeChannel.Connect, (event, url: unknown) => {
+    requireMainWindow(event, ctx)
+    if (typeof url !== 'string' || url.length === 0 || url.length > 4_096) {
+      return ctx.remoteClient.connect('')
+    }
+    return ctx.remoteClient.connect(url)
+  })
+  ipcMain.handle(RemoteInvokeChannel.Disconnect, (event) => {
+    requireMainWindow(event, ctx)
+    return ctx.remoteClient.disconnect()
+  })
+  ipcMain.handle(RemoteInvokeChannel.Revoke, (event) => {
+    requireMainWindow(event, ctx)
+    return ctx.remoteClient.revoke()
   })
 
   // 诊断：渲染进程把 resize 前后的 buffer 快照写到 logs/resize-diag.log，供离线分析。

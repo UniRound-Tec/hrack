@@ -1,6 +1,6 @@
 # HRack 远程控制 — Spec
 
-> 状态：**讨论结论（2026-08-20），未实施。** 落地按 [§11](#11-分批实施-p0p8) P0–P8 分模块关门，整份契约都有效，但未到期的报文必须 `not-implemented`，不得假装成功。
+> 状态：**P0 已冻结，P1 出站控制面已落地（2026-08-20），P2 未做。** 落地按 [§11](#11-分批实施-p0p8) P0–P8 分模块关门，整份契约都有效，但未到期的报文必须 `not-implemented`，不得假装成功。
 > 范围：一部手机远程看见、新建、驾驶 HRack 里已经在跑（或由手机新建）的 CLI 会话。
 > 父文档：[SPEC.md](./SPEC.md)、[SPEC-S.md](./SPEC-S.md)。
 > 本机 OpenCode Bridge 仍只活在本机，见 [SPEC-OPENCODE-BRIDGE.md](./SPEC-OPENCODE-BRIDGE.md)。远程不走那条套接字。
@@ -351,6 +351,8 @@ P4 不需要网站：夹具直接连 P1 的测试中继。P6 必须等 P3。P7 �
 
 ### P0 — 协议冻结
 
+**实现：** `shared/remote-protocol.ts`（类型、守卫、加入 URL、座位纯函数）。验收：`e2e/remote-protocol.spec.ts`。
+
 **做**
 
 - `shared/remote-protocol.ts`：§6 全部 type、`RemoteSession`、`RemoteLaunchable`、`not-implemented`。
@@ -369,6 +371,8 @@ P4 不需要网站：夹具直接连 P1 的测试中继。P6 必须等 P3。P7 �
 ---
 
 ### P1 — HRack 出站 · 控制面推送
+
+**实现：** `electron/remote/RemoteDesktopClient.ts`、设置「远程」、测试中继 `e2e/helpers/remoteTestRelay.ts`。验收：`e2e/remote-desktop.spec.ts`、`e2e/remote-settings.spec.ts`。
 
 依赖 P0。对端是 **测试中继**（e2e/单测里起的 localhost WSS），不是 P2 网站。
 

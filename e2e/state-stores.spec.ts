@@ -106,7 +106,8 @@ test.describe('settingsStore v15', () => {
       notificationSoundName: 'done.mp3',
       notificationSoundRevision: 0,
       ignoredUpdateVersion: null,
-      updateModalDisabled: false
+      updateModalDisabled: false,
+      remoteJoinUrl: ''
     })
     expect(migrated).not.toHaveProperty('themeId')
   })
@@ -211,6 +212,18 @@ test.describe('settingsStore v15', () => {
       migrateSettings({ ignoredUpdateVersion: '0.4.0' }, 13)
     ).toMatchObject({
       ignoredUpdateVersion: '0.4.0'
+    })
+  })
+
+  test('v16 adds an empty remote join URL without wiping older preferences', () => {
+    expect(migrateSettings({ fontSize: 14 }, 15)).toMatchObject({
+      fontSize: 14,
+      remoteJoinUrl: ''
+    })
+    expect(
+      migrateSettings({ remoteJoinUrl: 'ws://127.0.0.1:9/aK3' }, 15)
+    ).toMatchObject({
+      remoteJoinUrl: 'ws://127.0.0.1:9/aK3'
     })
   })
 
