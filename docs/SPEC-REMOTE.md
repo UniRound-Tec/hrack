@@ -1,6 +1,6 @@
 # HRack 远程控制 — Spec
 
-> 状态：**P0–P7 已实现并经分阶段真实接口验收（2026-08-21），下一阶段为 P8。** P2 已部署到公网 HTTPS/WSS 单副本环境；P3–P5 已证明真实 HRack/PTY 的列表、驾驶和远程新建链；P6/P7 已由安装版 Android release App 经公网房间完成相机配对、实时列表和真实 PTY 新建。P8 手机终端、iOS 与物理真机硬门禁尚未完成；整份契约仍有效，未到期能力不得假装成功。
+> 状态：**P0–P7 已关门；P8 Android 模拟器公网真实 PTY 检查点已完成（2026-08-21），当前仍处于 P8 设备关门阶段。** P2 已部署到公网 HTTPS/WSS 单副本环境；P3–P5 已证明真实 HRack/PTY 的列表、驾驶和远程新建链；P6/P7 已由安装版 Android release App 完成相机配对、实时列表与真实 PTY 新建；P8 已完成 history/live、解析后 ack、输入、旋转、`undrive` 和新建后直入终端。Android 物理真机中文 IME、iOS 真机及两款真实 AI CLI 尚未完成，因此不能宣布 P8 全部关门或进入 P8 之后的阶段。
 > 范围：一部手机远程看见、新建、驾驶 HRack 里已经在跑（或由手机新建）的 CLI 会话。
 > 父文档：[SPEC.md](./SPEC.md)、[SPEC-S.md](./SPEC-S.md)。
 > 本机 OpenCode Bridge 仍只活在本机，见 [SPEC-OPENCODE-BRIDGE.md](./SPEC-OPENCODE-BRIDGE.md)。远程不走那条套接字。
@@ -532,9 +532,9 @@ P3 关门 = 「电脑把列表送到公网房间」成立。此后 App 和驾驶
 
 **状态（2026-08-21）：Android 范围已关门。** 安装版 release App 经公网 WSS 使用桌面安全 catalog 创建了唯一真实 `AgentSessionRuntime`/PTY，并验证免审批参数合并、关联成功、立即 `undrive`、权威列表 upsert 和无效工作区不多开。详见 [PLAN-REMOTE-P7.md](./PLAN-REMOTE-P7.md#7-实现与验证记录)；iOS、物理真机和终端数据面保留到 P8。
 
-**做：** 与首页同构的新建：CLI 列表、installation/WSL、工作区必填（最近+手打）、免审批。提交 `create`；P8 未到时等待关联 `drive-ok` 后立即 `undrive`，避免没有终端画面的 App 锁住桌面 tab。
+**做：** 与首页同构的新建：CLI 列表、installation/WSL、工作区必填（最近+手打）、免审批。提交 `create`；终端运行时可用时使用实测格子并在关联 `drive-ok` 后直接进入终端，运行时不可用或失败时必须释放驾驶，不能留下没有画面的锁定 tab。P7 独立验收时采用的“关联成功后立即 `undrive`”过渡行为已经由 P8 集成取代。
 
-**验收：** 手机填最近工作区能在电脑拉起对应 CLI；手打错误路径看到失败，电脑不多 tab；成功后 App 收到权威会话 upsert 且桌面 drive state 回到 idle。
+**验收：** 手机填最近工作区能在电脑拉起对应 CLI；手打错误路径看到失败，电脑不多 tab；成功后 App 收到权威会话 upsert。P7 独立门禁要求过渡实现立即回到 idle；P8 集成后要求新建终端保持 driven，用户点“返回会话”后才回到 idle。
 
 ---
 
@@ -543,6 +543,8 @@ P3 关门 = 「电脑把列表送到公网房间」成立。此后 App 和驾驶
 依赖 P4 + P6。
 
 详细落地与性能边界见 [PLAN-REMOTE-P8.md](./PLAN-REMOTE-P8.md)。
+
+**状态（2026-08-21）：Android 模拟器实现检查点完成，P8 尚未全平台关门。** 安装版 release App 已经公网 WSS 驾驶真实 Electron/`AgentSessionRuntime`/ConPTY，复读 history、提交输入、在 xterm 解析后 ack、以 43 × 31 / 97 × 12 旋转尺寸更新唯一 winsize、返回 `undrive`，并用实测尺寸新建后直入终端。真实会话因 Android WebView WebGL 字形裁切显式降级到 DOM；DOM 在公网 6,000 行 burst 中解析并 ack 886,380 字节/17.514 秒且截图字形完整。物理 Android 中文 IME、iOS 真机与两款真实 AI CLI 仍按验收第 4 项保留，详见计划的实现记录。
 
 **做：** xterm 或经 P6 预检证明等价的终端组件复读 history + `pty-out`；附加键 Esc/Ctrl/Tab/方向；IME 组字后再 `pty-in`；返回列表 `undrive`。呈现层完整执行 [远程终端呈现契约](REMOTE-TERMINAL-RENDERING.md)，与桌面端共用/校验固定版本、字体资源、完整 palette、renderer fallback、初始化及解析后 ack 时序。
 
