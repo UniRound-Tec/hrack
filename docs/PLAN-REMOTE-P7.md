@@ -1,6 +1,6 @@
 # HRack Remote P7 计划：App 远程新建 AI CLI
 
-> 状态：2026-08-21 开始实施。P5 桌面新建链与 P6 Android App 已关门；本阶段只开放手机 catalog/create，不提前实现 P8 终端数据面。
+> 状态：2026-08-21 已完成 Android 关门并可进入 P8。安装版 release App 已经公网 WSS 使用桌面 catalog 创建真实 `AgentSessionRuntime`/PTY；失败路径、幂等重试和立即释放驾驶均有自动与截图证据。
 
 ## 1. 目标与关门定义
 
@@ -96,10 +96,53 @@ App 的真实 `RemotePhoneClient` 对接构建后的 localhost relay 与桌面�
 
 ## 6. 分段提交
 
-1. HRack：`docs: plan remote P7 app creation`；
-2. App：`feat: add remote session creation`；
-3. HRack：`test: add P7 Android public gate`；
-4. App：`docs: record P7 Android public validation`；
-5. HRack：`docs: close remote P7 app creation`。
+1. HRack `f8e6081`：`docs: plan remote P7 app creation`；
+2. App `97442a2`：`feat: add remote session creation`；
+3. App `8874d31`：`test: cover P7 creation failures`；
+4. HRack `0f864ad`：`test: add P7 Android public gate`；
+5. App `70ec379`：`docs: record P7 Android public validation`；
+6. HRack：`docs: close remote P7 app creation`（本提交）。
 
 P7 不运行完整 HRack e2e；桌面 P5 已关门，本阶段只定向运行 App 门禁和新增公网 Android 用例。完整回归留到 P8 最终关门，并遵守 `AGENTS.md` 的失败定向复跑纪律。
+
+## 7. 实现与验证记录
+
+### 7.1 实现
+
+- `RemotePhoneClient` 持有安全 catalog 与冻结的 creation 状态，只接受当前 requestId 的 `create-*` / `drive-ok`；掉线、桌面离开、revoke 和忘记房间都会清空目录与 pending 状态；
+- 新建页使用原生 `KeyboardAvoidingView`、有界 `ScrollView`、横向 CLI `FlatList`、TextInput 和 switch；Windows 普通反斜杠、引号、空白转义与桌面 parser 语义一致；
+- 提交默认使用临时 80 × 24。只有 `create-ok` 与同一请求的 `drive-ok` 都到达才显示成功，随后 App 立即 `undrive`；请求在途时禁用返回，避免丢失关联响应后把桌面留在锁定态；
+- 原样重试复用冻结 requestId/payload；用户修改后再次提交生成新请求；五种拒绝原因有独立文案。
+
+### 7.2 自动门禁
+
+App：
+
+```text
+npm run check
+Protocol parity passed
+Terminal parity passed
+6 suites / 23 tests passed
+
+npx expo run:android --variant release
+BUILD SUCCESSFUL
+```
+
+安装完成后停止 Metro，强制结束 App 再由 Launcher 冷启动，配对页正常出现。
+
+公网 Android 定向门禁：
+
+```text
+npx playwright test e2e/remote-p7-android-live.spec.ts -g "creates one real Electron PTY"
+1 passed (48.8s)
+```
+
+真实链路为 Android release App → `https://hrack.modplex.app/` 对应公网 WSS → relay → Electron。手机选择最近工作区、host installation、免审批和启动参数后，桌面只有一个真实 runtime/PTY，最终参数为 `--yolo p7-mobile-model`；App 成功后桌面 drive state 为 idle，列表收到唯一 Codex upsert。不存在的工作区返回 `invalid-workspace`，活动 runtime 与 recoverable PTY 仍各为 1。房间最终撤销。
+
+首次运行只在第二次表单的 fixture 准备处失败：新会话持久化刷新了最近工作区，覆盖预置的错误路径。门禁改为错误检查前重新发布 fixture catalog，随后只定向复跑失败用例并通过，符合 `AGENTS.md` 的复跑纪律。
+
+### 7.3 证据与边界
+
+App 仓库 `docs/P7-ANDROID-VALIDATION.md` 保存表单、成功、权威会话和错误路径四张模拟器截图。它们已人工检查 safe area、长路径裁切、选中态和错误层级，没有房间密钥。
+
+P7 不冒充完成 Android 物理真机、iOS、真实 Claude/Codex 账号会话，也不实现手机终端 history/live/ack/input/resize。以上均是 P8 的实现或最终硬门禁。

@@ -1,6 +1,6 @@
 # HRack 远程控制 — Spec
 
-> 状态：**P0–P4 已实现并经真实接口验收（2026-08-20），下一阶段为 P5。** P2 已部署到公网 HTTPS/WSS 单副本环境，P3 已证明真实 HRack/PTY 列表能进入公网房间，P4 已证明该公网房间能真实驾驶、输入、回传输出并由桌面抢回同一 PTY；落地仍按 [§11](#11-分批实施-p0p8) P0–P8 分模块关门，整份契约都有效，但未到期的报文必须 `not-implemented`，不得假装成功。
+> 状态：**P0–P7 已实现并经分阶段真实接口验收（2026-08-21），下一阶段为 P8。** P2 已部署到公网 HTTPS/WSS 单副本环境；P3–P5 已证明真实 HRack/PTY 的列表、驾驶和远程新建链；P6/P7 已由安装版 Android release App 经公网房间完成相机配对、实时列表和真实 PTY 新建。P8 手机终端、iOS 与物理真机硬门禁尚未完成；整份契约仍有效，未到期能力不得假装成功。
 > 范围：一部手机远程看见、新建、驾驶 HRack 里已经在跑（或由手机新建）的 CLI 会话。
 > 父文档：[SPEC.md](./SPEC.md)、[SPEC-S.md](./SPEC-S.md)。
 > 本机 OpenCode Bridge 仍只活在本机，见 [SPEC-OPENCODE-BRIDGE.md](./SPEC-OPENCODE-BRIDGE.md)。远程不走那条套接字。
@@ -351,7 +351,7 @@ P4 不需要网站：夹具直接连 P1 的测试中继。P6 必须等 P3。P7 �
 | **P4** | 桌面驾驶 | `hrack` | 夹具发 `drive`，该 tab 锁住并改尺寸，抢回/掉线按 §9 释放，有 PTY 进出 |
 | **P5** | 桌面新建 | `hrack` | 夹具发 `create`，电脑按首页同一条链拉起 AI CLI 并自动驾驶 |
 | **P6** | App 列表 | `hrack-remote-app` | 扫码进入，看到真实会话和六态；电脑未连时等待，不拉起 GUI |
-| **P7** | App 新建 | app | 选 CLI、必填工作区、免审批开关，能在电脑上拉起并进入驾驶 |
+| **P7** | App 新建 | app | 选 CLI、必填工作区、免审批开关，电脑真实拉起；P8 前确认驾驶后立即释放 |
 | **P8** | App 终端 | app | 手机 xterm 复读被驾驶 PTY，能键入；返回列表 = undrive |
 
 系统推送、E2E 加密、多设备不在 P0–P8。
@@ -530,9 +530,11 @@ P3 关门 = 「电脑把列表送到公网房间」成立。此后 App 和驾驶
 
 依赖 P5 + P6。
 
-**做：** 与首页同构的新建：CLI 列表、installation/WSL、工作区必填（最近+手打）、免审批。提交 `create`，成功则进入驾驶（若 P8 未到，至少电脑侧 tab 已出现）。
+**状态（2026-08-21）：Android 范围已关门。** 安装版 release App 经公网 WSS 使用桌面安全 catalog 创建了唯一真实 `AgentSessionRuntime`/PTY，并验证免审批参数合并、关联成功、立即 `undrive`、权威列表 upsert 和无效工作区不多开。详见 [PLAN-REMOTE-P7.md](./PLAN-REMOTE-P7.md#7-实现与验证记录)；iOS、物理真机和终端数据面保留到 P8。
 
-**验收：** 手机填最近工作区能在电脑拉起对应 CLI；手打错误路径看到失败，电脑不多 tab。
+**做：** 与首页同构的新建：CLI 列表、installation/WSL、工作区必填（最近+手打）、免审批。提交 `create`；P8 未到时等待关联 `drive-ok` 后立即 `undrive`，避免没有终端画面的 App 锁住桌面 tab。
+
+**验收：** 手机填最近工作区能在电脑拉起对应 CLI；手打错误路径看到失败，电脑不多 tab；成功后 App 收到权威会话 upsert 且桌面 drive state 回到 idle。
 
 ---
 
