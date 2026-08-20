@@ -136,7 +136,8 @@ async function connectHrack(page: Page, joinUrl: string): Promise<void> {
 async function launchSession(
   page: Page,
   name: string,
-  adapterId = 'codex'
+  adapterId = 'codex',
+  args = ''
 ): Promise<{
   sessionId: string
   terminalId: string
@@ -149,6 +150,7 @@ async function launchSession(
   await page.getByTestId(`home-quick-${adapterId}`).click()
   await page.getByTestId('cli-session-name').fill(name)
   await page.getByTestId('cli-workspace').fill(process.cwd())
+  if (args) await page.getByTestId('cli-arguments').fill(args)
   await page.getByTestId('cli-launch').click()
   await expect
     .poll(
@@ -454,19 +456,30 @@ test.describe('remote P8 Android terminal live relay', () => {
         {
           adapterId: 'claude',
           name: 'P8 real Claude Code',
-          screenshot: 'p8-android-real-claude.png'
+          screenshot: 'p8-android-real-claude.png',
+          helpEvidence: 'For more help: https://code.claude.co',
+          localCommand: '/help',
+          args: ''
         },
         {
           adapterId: 'codex',
           name: 'P8 real Codex',
-          screenshot: 'p8-android-real-codex.png'
+          screenshot: 'p8-android-real-codex.png',
+          helpEvidence: '/status',
+          localCommand: '/status',
+          args: '-c check_for_update_on_startup=false'
         }
       ] as const
       const sessions = []
       for (const target of targets) {
         sessions.push({
           ...target,
-          ...(await launchSession(hrackPage, target.name, target.adapterId))
+          ...(await launchSession(
+            hrackPage,
+            target.name,
+            target.adapterId,
+            target.args
+          ))
         })
       }
 
@@ -503,18 +516,25 @@ test.describe('remote P8 Android terminal live relay', () => {
           .toMatchObject({ phase: 'driven', sessionId: session.sessionId })
 
         await tapResource('terminal-command-input')
-        await adb('shell', 'input', 'text', '/help')
-        await waitForUi((xml) => xml.includes('/help'), `${session.adapterId} help draft`)
+        await adb('shell', 'input', 'text', session.localCommand)
+        await waitForUi(
+          (xml) => xml.includes(session.localCommand),
+          `${session.adapterId} local command draft`
+        )
         await adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
         await tapResource('terminal-command-send')
+        await expect
+          .poll(() => historyText(hrackPage, session.ptyId), { timeout: 60_000 })
+          .toContain(session.helpEvidence)
         await waitForUi(
           (xml) => {
             const metrics = terminalMetrics(xml)
             return !!metrics && metrics.parsedBytes > initial.parsedBytes
           },
-          `${session.adapterId} help output parsed`,
+          `${session.adapterId} local command output parsed`,
           60_000
         )
+        await new Promise((resolveWait) => setTimeout(resolveWait, 1_500))
         await screenshot(testInfo, session.screenshot)
 
         await tapResource('terminal-back')
