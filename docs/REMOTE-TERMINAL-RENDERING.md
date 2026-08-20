@@ -98,7 +98,7 @@ P6 Android 预检已经复现过一次“原生外壳正常、WebView 纯黑且�
 1. 重新计算内联 script/style hash，拒绝残留相对 URL、外部引用和放宽的 `connect-src`；
 2. 用 `.gitattributes` 固定生成 HTML 为 LF，因为 Windows 自动 CRLF 转换会改变内联内容字节并让 CSP 在全新检出后失效；
 3. 使用 `.ios.ts` / `.android.ts` 平台入口隔离资源，实际 Metro iOS 导出应列出 HTML asset，而 Android 导出、JS bundle 和 APK 不得携带这份额外文件；
-4. 在没有 macOS 时可以真实离线加载该单文件，验证字体、块元素、CJK 双宽、renderer fallback 和零网络请求，但记录必须写成“iOS 发布输入检查点”，不能写成 WKWebView 或真机通过；
+4. 在没有 macOS 时应分别用 Chromium 和 Playwright WebKit 真实离线加载该单文件，除字体、块元素、CJK 双宽、renderer fallback 和零网络外，还要走完整 `open/history/live/parsed/input` 桥接并截图最终合成画面；记录仍必须写成“iOS 发布输入/引擎检查点”，不能写成 WKWebView 或真机通过；
 5. iOS 最终仍需在 Metro 停止后的安装包上冷启动，并覆盖 safe area、旋转、系统 IME、内容进程终止和真实 PTY。
 
 ### 4.7 静态 WebGL 预检不能替代真实 PTY 视觉门禁
@@ -116,7 +116,21 @@ P8 Android 实现再次暴露了一个不同层次的陷阱：同一 release APK
 
 手机输入也必须有可验证的组合安全路径。WebView 隐藏 textarea 在自动化环境中可能无法稳定接收系统键盘事件；允许提供原生提交式输入框，组合期间只编辑本地草稿、显式提交后一次发送最终文本和回车。它不能删除 xterm 原生输入，但可以作为中文 IME 安全入口与真实接口自动门禁入口。
 
-### 4.8 软键盘避让必须同步唯一 winsize
+### 4.8 xterm 辅助元素也必须进入视觉门禁
+
+2026-08-21 的 Playwright WebKit 全桥接门禁出现过一个典型假绿灯：故意乱序的 history、同时到达的 live、`history-ready → parsed`、ACK 字节数、Native 输入回传、xterm buffer 与 `.xterm-rows` 全部正确，最终截图顶部仍多出约 32 个连续 `W`。即使只统计可见文字带不少于四行，也会因为错误覆盖层自身贡献一行而通过。
+
+定向隐藏第 0 个真实终端行后，`W` 仍在同一位置，证明它不属于 PTY 输出。当前固定 xterm 6 beta 在 Chromium 中使用 OffscreenCanvas font metrics；WebKit 缺少完整指标时退到包含 32 个 `W` 的 `.xterm-char-measure-element` 测宽，而对应 beta CSS 没有把该探针移出画面。App 最终显式把探针绝对定位到屏幕外并设为 `visibility: hidden`，保留布局测量能力；少于 20 cells 的固定夹具又增加“非背景像素不得越过 200 px”的负向断言。修复前 WebKit 稳定为 268 px，修复后 Chromium/WebKit 都通过并人工看图正确。
+
+由此新增以下纪律：
+
+1. 字宽、IME、无障碍和 selection helper 都属于最终合成画面；不能只检查 xterm buffer、`.xterm-rows` 或 canvas；
+2. 视觉门禁必须同时验证预期内容与禁止区域/异常延伸，不能只数行或只做事件断言；
+3. 升级 xterm 核心或 CSS 时，必须重新检查 helper 隐藏规则；App 自有补丁要保留可测量性，不能用 `display: none` 让 cell measurement 归零；
+4. Playwright WebKit 能提前发现 WebKit 引擎问题，但不能替代 iPhone/iPad 安装版 WKWebView 的 safe area、系统 IME、旋转和内容进程恢复；
+5. 当前 Safari/WKWebView 从启动即走 DOM，Android/Chromium 仍可在孤立预检覆盖 WebGL；任何平台的真实会话恢复 WebGL，都要由物理设备真实 PTY 截图授权。
+
+### 4.9 软键盘避让必须同步唯一 winsize
 
 Android 的 `adjustResize`、edge-to-edge 和 React Native `KeyboardAvoidingView` 不是“配置过就算完成”。2026-08-21 的安装版 Android 16 门禁先后发现：过大的终端 `minHeight` 会让系统已显示 IME 但 WebView 不收缩；直接使用 `KeyboardAvoidingView(height)` 又可能在 `keyboardDidHide` 后残留收缩高度。
 
@@ -130,7 +144,7 @@ Android 的 `adjustResize`、edge-to-edge 和 React Native `KeyboardAvoidingView
 
 键盘打开/关闭通过后还必须继续旋转一次。React Native 0.83 Android 的 `KeyboardAvoidingView(height)` 会在内部 `state.bottom > 0` 时套用 `_initialFrameHeight` 和 `flex: 0`；把 `enabled` 切成 false 只会把本次计算的 `bottomHeight` 变成 0，并不保证旧 state 已清除。实际事故表现为竖屏看似恢复 43 × 31，随后横屏只更新宽度到 97 列，高度仍锁在 31 行并让界面向下溢出。当前 App 仅在 Android 键盘可见时设置 `behavior=height`，隐藏时移除 behavior 来恢复 flex 布局，不重挂 WebView。自动门禁必须等到横屏同时满足“列数增加、行数减少”，人工截图还要确认终端、命令栏和附加键没有溢出屏幕。
 
-### 4.9 原生命令输入必须保留 IME 组合能力
+### 4.10 原生命令输入必须保留 IME 组合能力
 
 Android 终端输入框不能沿用普通 shell 输入常见的 `autoCorrect={false}`。React Native 0.83 会把它映射为 Android `TYPE_TEXT_FLAG_NO_SUGGESTIONS`，可能同时关闭中文 IME 的候选/组合能力。也不能简单改成 `true`，否则会请求输入法自动纠正英文 shell 命令。Android 应不设置该标志；iOS 可以继续显式关闭纠错。
 

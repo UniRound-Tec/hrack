@@ -1,6 +1,6 @@
 # HRack Remote P8 计划：App 真实终端
 
-> 状态：2026-08-21 已完成 Android 16 模拟器 + 安装版 release App + 公网真实 PTY 检查点，包含真实软键盘避让/尺寸恢复、键盘开关后旋转、离线 Fcitx5 拼音组合提交和 Claude Code/Codex CLI 基础视觉 smoke；iOS 占位路径也已替换为共用终端 runtime 的本地单文件资源，并通过 CSP、零网络页面执行、Metro iOS 导出和 Android 包隔离门禁。Android 物理真机、iOS 真机及两款 CLI 的物理设备复验仍未完成，P8 尚未全平台关门。
+> 状态：2026-08-21 已完成 Android 16 模拟器 + 安装版 release App + 公网真实 PTY 检查点，包含真实软键盘避让/尺寸恢复、键盘开关后旋转、离线 Fcitx5 拼音组合提交和 Claude Code/Codex CLI 基础视觉 smoke；iOS 占位路径也已替换为共用终端 runtime 的本地单文件资源，并通过 CSP、Metro iOS 导出、Android 包隔离及 Chromium/Playwright WebKit 的零网络全桥接与像素截图门禁。Android 物理真机、iOS 真机及两款 CLI 的物理设备复验仍未完成，P8 尚未全平台关门。
 
 ## 1. 目标与关门定义
 
@@ -59,7 +59,7 @@ WebView → 原生事件：
 
 所有 envelope 先做类型、长度、sessionId 与阶段校验。注入脚本只使用 `JSON.stringify` 的数据字面量，不执行来自 PTY 的代码；CSP 继续禁止网络、内联脚本和外部字体。
 
-Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 WebGL 能力仍保留，但真实 history/reset/resize 后的模拟器画面出现可重复字形裁切，不能用 `renderer=WEBGL` 或数据面绿灯掩盖。物理机视觉门禁通过前不重新启用；原因、性能与截图见 §8。
+Android 和 Safari/WKWebView 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 WebGL 能力仍在 Android/Chromium 保留，但真实 history/reset/resize 后的 Android 模拟器画面出现可重复字形裁切，Safari 26.5 系列 WebGL 也有已知画面损坏风险；不能用 `renderer=WEBGL` 或数据面绿灯掩盖。各平台物理机视觉门禁通过前不重新启用；原因、性能与截图见 §8。
 
 本地资源按平台装载但不分叉终端逻辑：Android 继续使用 `android_asset` 中的相对多文件 Vite 产物；iOS 使用 Expo/Metro 的本地 HTML asset，把同一产物的 JS、CSS 和四字体折叠成约 1.04 MB 的单文件，避免 WKWebView 只找到入口却丢失相对资源目录。脚本/样式由内容 SHA-256 CSP hash 约束，字体使用 data URI；平台后缀入口保证 Android bundle/APK 不携带这份 iOS 文件。
 
@@ -87,6 +87,7 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 - 协议、xterm、palette、字体 parity；
 - Vite 相对资源、Android 多文件 bundle、iOS 单文件 asset、CSP 内容 hash 和 bundle 文件存在性；
 - Metro iOS 导出必须包含唯一 HTML asset；Android 导出及 release APK 不得包含 iOS 单文件；
+- 同一 iOS 单文件要在 Chromium 和 Playwright WebKit 中走完整 `open/history/live/parsed/input` 桥接、零网络与像素截图门禁；测试必须能发现 xterm helper 覆盖层，即使 buffer/DOM 行和 ACK 都正确；
 - TypeScript/Jest；Expo Doctor；Android release 构建；停止 Metro 后冷启动。
 
 ### C. Android 公网真实接口
@@ -105,7 +106,7 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 
 ## 6. 真实设备与诚实边界
 
-当前 Windows 工作区可自动完成 Android 16 模拟器、release APK、公网 relay、Electron、真实 PTY、离线 Fcitx5 拼音组合提交、本机真实 AI CLI 的基础视觉 smoke，以及 iOS 单文件资源生成、离线执行和 Metro iOS 导出。后者证明 iOS 不再是占位实现，但没有运行 UIKit/WKWebView。以下发布证据不能由模拟器、浏览器或 fixture 冒充：
+当前 Windows 工作区可自动完成 Android 16 模拟器、release APK、公网 relay、Electron、真实 PTY、离线 Fcitx5 拼音组合提交、本机真实 AI CLI 的基础视觉 smoke，以及 iOS 单文件资源生成、Metro iOS 导出、Chromium/Playwright WebKit 全桥接和最终合成截图。后者证明 iOS 不再是占位实现，并提前覆盖 WebKit 引擎差异，但没有运行 React Native UIKit 容器或设备上的 WKWebView。以下发布证据不能由模拟器、浏览器或 fixture 冒充：
 
 - Android 物理真机上的中文输入法 composition 复验；
 - iPhone/iPad 物理真机上的本地 bundle、safe area、WebGL/DOM、旋转和 IME；
@@ -124,6 +125,7 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 7. App：`feat: enable bundled iOS terminal runtime`；
 8. HRack：`test: validate P8 iOS terminal bundle`；
 9. App / HRack：修复并锁定键盘开关后的旋转布局。
+10. App / HRack：增加 WebKit 全桥接与 helper 覆盖层像素门禁。
 
 ## 8. 实现与验证记录
 
@@ -147,6 +149,8 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 - HRack `e36a4a4`：真实加载 iOS 单文件页面，验证字体、块元素、CJK 双宽、renderer fallback 和零网络请求；
 - App `e0831e7`：修复 Android 键盘开关后 `KeyboardAvoidingView` 锁住初始竖屏高度；
 - HRack `f20907e`：新增快速预检/真实驾驶旋转门禁，并要求横屏列数增加且行数减少。
+- App `d3fcb3f`：Safari/WKWebView 从启动使用 DOM，补齐 xterm 6 beta 的隐藏字宽探针规则，避免 32 个测量用 `W` 泄漏到终端画面；
+- HRack `06403fc`：把 iOS 单文件门禁扩展为 Chromium + WebKit 的乱序 history、并发 live、ACK、输入回传、零网络和像素截图验证。
 
 终端高频字节没有进入 React session state；WebView 内串行写入，只有 `write` callback 完成才回传 deliveryId，原生 client 匹配后才发送 `pty-ack`。新建与已有会话共用同一个 measured terminal 流程。
 
@@ -160,21 +164,30 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 1 passed (1.7m)
 ```
 
+App `d3fcb3f` 重新生成并安装 release APK 后，定向公网旋转门禁再次得到：
+
+```text
+[p8-terminal-rotation] portrait=43x31 landscape=97x16
+1 passed (42.9s)
+```
+
 验证使用 Android 16 / API 36 Pixel 6 x86_64 模拟器上的 release APK，停止 Metro 后冷启动，经 `https://hrack.modplex.app/` 的 HTTPS/WSS 和当前公网 relay。已有 PTY 先写 history marker，App 以 43 × 31 驾驶；Gboard 英文键盘弹出后 App 与桌面唯一 PTY 同步收缩为 43 × 16。随后切换到离线 Fcitx5 Pinyin，逐键点按 `zhongwen` 时 `zhong wen` 和候选“中文”只存在于 IME，App 草稿与 PTY history 均没有裸拼音；选择候选后 App 草稿出现“中文”，点击发送后 PTY history 只含最终中文。键盘隐藏后尺寸恢复 43 × 31；6,000 行真实 PTY burst 被 xterm 解析并 ack 886,540 字节，约 43.5 KiB/s。键盘开关之后旋转得到稳定的 97 × 15，App 和桌面权威尺寸一致且完整界面没有向下溢出；返回后 drive state 为 idle。App 新建第二个真实 PTY 后又以 43 × 31 直接进入终端。房间最终已撤销。
 
-iOS 资源门禁另用 Windows 上可执行的发布输入验证：生成资源在磁盘上约 1.04 MB，`expo export --platform ios` 列出 1 个 HTML asset，Android 导出 asset 列表为空，release APK 只包含 Android 多文件目录。Playwright 直接以本地文件加载该单文件页面，字体、块元素、CJK 双宽和 DOM fallback 通过且网络请求为 0，最终 `1 passed (1.3s)`。这不是 iOS 模拟器或真机结果。
+iOS 资源门禁另用 Windows 上可执行的发布输入/引擎验证：生成资源在磁盘上约 1.04 MB，`expo export --platform ios` 列出 1 个 HTML asset，Android 导出 asset 列表为空，release APK 只包含 Android 多文件目录。Playwright 分别以 Chromium 和 WebKit 从本地文件加载同一单文件页面，复读故意乱序的三段 history，把同时注入的 live 严格排在 `history-ready` 后解析，核对字节数，并把真实键盘输入 `ios-input\r` 回传到 Native bridge；字体、块元素、CJK 双宽、DOM fallback、零网络和像素截图同时通过，最终 `2 passed (2.1s)`。这不是 iOS 模拟器或真机结果。
 
 App 同时通过协议/终端 parity、TypeScript、8 suites / 31 tests、Expo Doctor 20/20、相对离线 bundle 检查和 Android release 构建。完整截图与失败过程记录在 App 仓库 `docs/P8-ANDROID-VALIDATION.md`。
 
 真实 AI CLI 门禁另以同一 release App 和公网房间启动本机真实安装的 Claude Code 2.1.220 与 Codex CLI 0.146.0，最终 `1 passed (1.2m)`。Claude 提交本地 `/help`，Codex 提交官方本地 `/status`；两者均验证 PTY 权威 history、解析字节增长、真实 TUI 截图和返回 `undrive`，没有提交业务 prompt 或发起模型请求。Codex 用单次 `-c check_for_update_on_startup=false` 关闭启动更新检查，不修改用户安装。两张截图已固化到 App 仓库。
 
-准备提交时又执行了一次 HRack 检查点完整回归：`328 passed / 17 skipped`，耗时 3.5 分钟，无失败。17 个 skip 均有显式外部环境条件；其中公网 P7/P8、Android 预检/真实旋转、P8 完整终端和 iOS 单文件页面门禁已按各自条件定向真实运行，不能把完整回归中的条件跳过误读成未测。物理设备矩阵完成后仍要再做 P8 最终关门回归。
+准备提交时又执行了一次 HRack 检查点完整回归：`328 passed / 18 skipped`，耗时 3.5 分钟，无失败。18 个 skip 均有显式外部环境条件；新增的 Chromium/WebKit 两个 iOS 单文件门禁已在带 App 路径的环境中定向得到 `2 passed`，公网 P7/P8、Android 预检/真实旋转和 P8 完整终端也已按各自条件定向真实运行，不能把完整回归中的条件跳过误读成未测。物理设备矩阵完成后仍要再做 P8 最终关门回归。
 
 ### 8.3 视觉事故与性能结论
 
 第一次数据面定向门禁在历史、drive 和尺寸处通过，但 ADB 无法把键盘事件可靠送进 WebView 隐藏 textarea；改用提交式原生输入后输入链路通过。随后人工看截图发现 WebGL 字形裁切，而自动断言仍为绿色。尝试 `preserveDrawingBuffer`、最终 fit 后清 atlas，以及 history 前释放/后重建 WebGL，均未修复。切换到 HRack 已有的 xterm DOM fallback 后，竖屏、横屏 burst 尾部和新建终端截图字形均完整。
 
 DOM 多次公网实测约为 43.5–49.4 KiB/s，足以作为当前交互式 AI CLI 的 Android 预发布检查点，但不是最终高吞吐目标。后续只能在 Android 物理机真实 PTY 视觉门禁通过后恢复 WebGL；若物理机同样失败，则保持 DOM 并针对串行写入/scrollback 做性能优化，不能牺牲字形正确性。
+
+WebKit 门禁还复现了另一类“数据面全绿、画面仍错”的事故：终端 buffer、`.xterm-rows`、history/live 顺序、ACK 和输入回传均正确，但画面顶部出现 32 个连续 `W`。隐藏真实第 0 行后它们仍存在，最终定位为 xterm 在 WebKit 缺少完整 OffscreenCanvas font metrics 时创建的 `.xterm-char-measure-element`；固定 beta CSS 没有把探针隐藏。App 把探针绝对定位到屏幕外并设为 `visibility:hidden`，保留尺寸测量；测试则在不少于四个文字带之外，增加少于 20 cells 的夹具不得把非背景像素画到 200 px 以外。修复前 WebKit 稳定为 268 px，修复后双内核通过。此后手机端不能只检查 xterm 行/canvas，字宽、IME、无障碍 helper 也必须纳入最终合成截图。
 
 软键盘门禁又发现另一处只看数据面无法发现的问题：`minHeight: 260` 阻止 Android 16 edge-to-edge 页面收缩；直接使用 `KeyboardAvoidingView(height)` 又在 `keyboardDidHide` 后残留收缩高度。第一版用真实 show/hide 状态切换 `enabled`，确实在竖屏完成了 43 × 31 → 43 × 16 → 43 × 31，却遗漏了“随后旋转”：React Native 0.83 仍会因旧 `state.bottom > 0` 套用 `_initialFrameHeight` / `flex: 0`，产生 97 × 31 的竖屏高度锁定。最终实现不再切 `enabled`；Android 仅在键盘显示时设置 `behavior=height`，隐藏时移除 behavior 以恢复 flex 布局，同时保持 WebView 不重挂。最小公网复现由红色 `43 × 31 → 97 × 31` 变为 `43 × 31 → 97 × 16`，完整中文/burst 门禁最终得到 97 × 15。门禁必须同时断言横屏列数增加、行数减少，并人工查看界面没有溢出。Fcitx5 的 43 × 15 仍沿用同一尺寸通道。
 
