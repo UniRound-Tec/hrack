@@ -191,11 +191,11 @@ test.describe('remote P7 Android live relay', () => {
       await tapResource('creation-submit')
       await waitForUi(
         (xml) =>
-          boundsFor(xml, 'creation-done') !== null &&
-          xml.includes('已经在电脑启动'),
-        'real creation success'
+          boundsFor(xml, 'terminal-back') !== null &&
+          xml.includes('手机正在控制这一个终端'),
+        'real creation entered the P8 terminal'
       )
-      await screenshot(testInfo, 'p7-android-create-success.png')
+      await screenshot(testInfo, 'p7-android-create-terminal.png')
 
       const created = await hrackPage.evaluate(async () => {
         const active = await window.agentApi.listActive()
@@ -218,9 +218,12 @@ test.describe('remote P7 Android live relay', () => {
         (pty) => pty.terminalId === created.active[0].terminalId
       )
       expect(createdPty?.args).toEqual(['--yolo', 'p7-mobile-model'])
-      expect(created.drive).toMatchObject({ phase: 'idle', sessionId: null })
+      expect(created.drive).toMatchObject({
+        phase: 'driven',
+        sessionId: created.active[0].sessionId
+      })
 
-      await tapResource('creation-done')
+      await tapResource('terminal-back')
       await waitForUi(
         (xml) =>
           boundsFor(xml, 'sessions-create') !== null &&
@@ -228,6 +231,9 @@ test.describe('remote P7 Android live relay', () => {
           xml.includes('1'),
         'created session list upsert'
       )
+      await expect
+        .poll(() => hrackPage.evaluate(() => window.remoteApi.getDriveState()))
+        .toMatchObject({ phase: 'idle', sessionId: null })
       await screenshot(testInfo, 'p7-android-created-session.png')
 
       // The newly launched workspace is persisted by AppShell and refreshes the
