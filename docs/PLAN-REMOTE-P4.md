@@ -160,6 +160,8 @@ npx playwright test e2e/remote-browser-demo-live.spec.ts
 
 该门禁不使用 Node 手机夹具；它在真实 Chromium 中打开中继的 `/demo/` 页面，选择会话、通过 xterm 输入并检查真实 Electron PTY 输出，再从页面释放控制权。
 
+演示页曾出现“协议和真实 PTY 均正确，但块元素字形错格”的呈现事故。修复结论及手机 P6/P8 必须继承的字体、palette、renderer、时序与真实视觉门禁已固化到 [远程终端呈现契约](REMOTE-TERMINAL-RENDERING.md)。
+
 所有网页房间都在 `finally` 吊销；测试不输出 roomId、加入 URL、PTY 输入正文或吊销 token。
 
 ---

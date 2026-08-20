@@ -248,7 +248,7 @@ hello 限流，防止扫 `roomId`。
 - 扫码进入房间（可提供「等待电脑」空态）。
 - 列表：所有 AI CLI 会话 + 六态。
 - 新建：列 CLI（含多 installation / WSL），工作区必填（最近或手打）；桌面该 CLI 有免审批则同样给出开关。
-- 终端：xterm 画与电脑同一套格子；附加键至少 Esc / Ctrl / Tab / 方向。中文组字不得把拼音逐键送进 PTY。
+- 终端：xterm 或等价组件画与电脑同一套格子；附加键至少 Esc / Ctrl / Tab / 方向。中文组字不得把拼音逐键送进 PTY。字体、完整 palette、renderer fallback、字体就绪/fit/ack 时序及真实 TUI 视觉门禁必须遵守 [远程终端呈现契约](REMOTE-TERMINAL-RENDERING.md)，不能只证明协议字节已到达。
 - 返回列表 = `undrive`。
 
 后台推送：本 spec 不规定。在线时列表和六态必须是活的。
@@ -513,6 +513,7 @@ P3 关门 = 「电脑把列表送到公网房间」成立。此后 App 和驾驶
 
 - 扫码（完整 URL）；等待电脑空态；列表绑 `sessions-*`。
 - 电脑未连不得假装有会话。不自动拉起 GUI。
+- 为 P8 完成终端技术预检：所选框架在 iOS/Android 真机上证明打包字体、格子、renderer/fallback、IME、safe area 与旋转尺寸可控，并建立版本/palette/资源 parity gate。预检不连接 PTY，细则见 [远程终端呈现契约 §8](REMOTE-TERMINAL-RENDERING.md#8-p6-关门前的-p8-技术预检)。
 
 **不做：** 新建表单、xterm、系统推送。点进会话若 P4 已上可显示「即将支持」或进入 P8；P6 关门不要求终端。
 
@@ -521,6 +522,7 @@ P3 关门 = 「电脑把列表送到公网房间」成立。此后 App 和驾驶
 1. 扫网页或 HRack 上的码，进同一房间。
 2. 电脑已连：列表与桌面 AI CLI 一致，六态会变。
 3. 电脑未连：等待态。第二部手机 `occupied`。
+4. P8 技术预检有真机证据；若未通过，P6 列表功能可以关门，但里程碑必须明确标为 `P8 not ready`，不得把框架风险当成 P8 的普通实现项。
 
 ---
 
@@ -538,13 +540,14 @@ P3 关门 = 「电脑把列表送到公网房间」成立。此后 App 和驾驶
 
 依赖 P4 + P6。
 
-**做：** xterm 复读 history + `pty-out`；附加键 Esc/Ctrl/Tab/方向；IME 组字后再 `pty-in`；返回列表 `undrive`。
+**做：** xterm 或经 P6 预检证明等价的终端组件复读 history + `pty-out`；附加键 Esc/Ctrl/Tab/方向；IME 组字后再 `pty-in`；返回列表 `undrive`。呈现层完整执行 [远程终端呈现契约](REMOTE-TERMINAL-RENDERING.md)，与桌面端共用/校验固定版本、字体资源、完整 palette、renderer fallback、初始化及解析后 ack 时序。
 
 **验收**
 
 1. 点进已有会话，手机看到与电脑被驾驶 tab 同一套格子（可缩放显示，不改第二套 winsize）。
 2. 手机键入出现在电脑 PTY；返回列表后电脑 tab 解锁并 fit。
 3. 中文输入不把拼音逐键送进 PTY。
+4. 呈现契约的静态 parity、确定性夹具、iOS/Android 真机、公网真实 PTY 和真实 AI CLI 四层门禁全部有记录；不能用 Node 夹具、假数据截图或单一 renderer 的 DOM 断言替代。
 
 ---
 
