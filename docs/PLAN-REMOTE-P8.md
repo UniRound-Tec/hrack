@@ -145,6 +145,8 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 
 App 同时通过协议/终端 parity、TypeScript、8 suites / 31 tests、Expo Doctor 20/20、相对离线 bundle 检查和 Android release 构建。完整截图与失败过程记录在 App 仓库 `docs/P8-ANDROID-VALIDATION.md`。
 
+准备提交时又执行了一次 HRack 最终完整回归：`328 passed / 13 skipped`，耗时 3.8 分钟，无失败。13 个 skip 均有显式外部环境条件；其中公网 P7、P8 Android 用例已在本轮分别定向真实运行并通过，不能把完整回归中的条件跳过误读成未测。
+
 ### 8.3 视觉事故与性能结论
 
 第一次数据面定向门禁在历史、drive 和尺寸处通过，但 ADB 无法把键盘事件可靠送进 WebView 隐藏 textarea；改用提交式原生输入后输入链路通过。随后人工看截图发现 WebGL 字形裁切，而自动断言仍为绿色。尝试 `preserveDrawingBuffer`、最终 fit 后清 atlas，以及 history 前释放/后重建 WebGL，均未修复。切换到 HRack 已有的 xterm DOM fallback 后，竖屏、横屏 burst 尾部和新建终端截图字形均完整。
