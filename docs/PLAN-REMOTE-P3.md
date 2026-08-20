@@ -1,6 +1,6 @@
 # P3 — 真实列表通路联调
 
-> 状态：**计划已批准，实施中（2026-08-20）**。对应 [SPEC-REMOTE.md](./SPEC-REMOTE.md) §11 P3。
+> 状态：**已完成并经本机与公网真实接口验收（2026-08-20）**。对应 [SPEC-REMOTE.md](./SPEC-REMOTE.md) §11 P3。
 >
 > 前置：P0/P1/P2 已关门；P2 公网环境为 `https://hrack.modplex.app/remote/`。P3 只连通既有模块，不扩展 v1 协议。
 
@@ -111,4 +111,19 @@ P3 关门后进入 P4（桌面驾驶）；P6 才开始 React Native App 的扫�
 
 ## 7. 实现与验证记录
 
-待执行后填写。未完成本机和公网两档真实门禁前，不得把本节改成“P3 已完成”。
+2026-08-20 已新增显式 opt-in 门禁 `e2e/remote-p3-live.spec.ts`。用例只通过中继网页、HRack 设置页和手机 WSS 三个公开 interface 工作；会话通过 Home 正常创建，进入真实 Electron 主进程、`AgentSessionRuntime` 和 `cmd.exe` PTY，不使用 `MemorySessions` 或 renderer 列表注入。
+
+TDD 取证没有跳过失败：
+
+1. 首次运行因主仓库没有独立 QR 解码器而失败；加入与 P2 浏览器门禁相同的 `jsqr` 测试依赖后，测试才能检查像素而不是自证 `data-qr-url`。
+2. 首次本机真实联调继续失败：HRack QR 元素截图只有 `18×18` 的空白外框，无法解码。根因是 `uqr` 输出只有 `viewBox`，桌面 wrapper 没给子 SVG 显示尺寸，shrink-to-fit 后只剩 padding/border；同时桌面端缺少标准 4 模块静区。
+3. 最小修复只给 `RemoteJoinQr` 增加 4 模块 border、200px 响应式 wrapper 和子 SVG 的明确宽高规则；没有修改协议、WSS 或会话投影。
+
+真实 Green 记录：
+
+- 本机生产构建 P2：`http://127.0.0.1:8788/remote/`，用独立 `hrack-remote-server` 进程执行，目标用例 `1 passed`（测试体约 2.2s）。真实网页建房、Electron 设置确认、手机 WS `hello`、真实 Runtime/PTY snapshot、QR 像素解码和网页吊销全部通过。
+- 公网 P2：`https://hrack.modplex.app/remote/`，同一目标用例 `1 passed`（测试体约 6.0s）。真实走公网 CA、HTTPS、反向代理和 WSS；snapshot 含本次 UI 创建会话的 sessionId、名称与 workspace；网页吊销后手机收到 `revoked`。
+- 失败诊断产生的本机房间和最终本机/公网房间均由 `finally` 或成功路径吊销；测试输出不打印 roomId、加入 URL或吊销 token。
+- `npm run typecheck` 通过；`npm run build` 通过；现有 `e2e/remote-settings.spec.ts` 两条真实 Electron 回归 `2 passed`。遵循 `AGENTS.md`，没有在定向失败后反复运行完整 `npm run e2e`。
+
+结论：SPEC P3 三项验收均有真实接口证据，「电脑把列表送到公网房间」成立。下一阶段为 P4；React Native App 仍从 P6 开始。

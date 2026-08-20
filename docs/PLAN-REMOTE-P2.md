@@ -391,4 +391,4 @@ P2 不用 `MemorySessions`，也不启动 Electron；它验收真实服务器网
 
 公网部署已在 `https://hrack.modplex.app/remote/` 完成：公网 CA 证书、HTTPS 建房、规范化加入 URL、WSS 双端配对/双向转发/吊销均经真实请求验证；公网反向代理关闭 `/remote/` access log，Node 只输出无 roomId、token、加入 URL和 PTY 正文的结构化运行指标。远端主机另以 200 个真实 WSS 连接、100 个双向活跃房间运行 30 秒，59,600/59,600 帧送达、p99 19ms、无断线。
 
-仍不宣称：公网证书自动续期已经跨周期验证、20,000 连接实测容量、多副本、真实 HRack P3 联调。`MAX_CONNECTIONS=20,000` 继续只是安全上限；公网域名与部署状态也不能替代 P3 的真实 Electron/PTY 列表门禁。
+仍不宣称：公网证书自动续期已经跨周期验证、20,000 连接实测容量、多副本。`MAX_CONNECTIONS=20,000` 继续只是安全上限。真实 HRack P3 联调已在后续阶段独立关门，证据见 [PLAN-REMOTE-P3.md](./PLAN-REMOTE-P3.md)，不倒算成 P2 的服务器容量证据。

@@ -170,6 +170,7 @@
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
+    "jsqr": "^1.4.0",
     "pngjs": "^7.0.0",
     "subset-font": "^2.5.0",
     "tailwindcss": "^4.3.3",

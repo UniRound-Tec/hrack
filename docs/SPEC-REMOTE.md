@@ -1,6 +1,6 @@
 # HRack 远程控制 — Spec
 
-> 状态：**P0/P1/P2 已实现并经真实接口验收（2026-08-20），P3 实施中。** P2 已部署到公网 HTTPS/WSS 单副本环境；落地仍按 [§11](#11-分批实施-p0p8) P0–P8 分模块关门，整份契约都有效，但未到期的报文必须 `not-implemented`，不得假装成功。
+> 状态：**P0–P3 已实现并经真实接口验收（2026-08-20），P4 未开始。** P2 已部署到公网 HTTPS/WSS 单副本环境，P3 已证明真实 HRack/PTY 列表能进入公网房间；落地仍按 [§11](#11-分批实施-p0p8) P0–P8 分模块关门，整份契约都有效，但未到期的报文必须 `not-implemented`，不得假装成功。
 > 范围：一部手机远程看见、新建、驾驶 HRack 里已经在跑（或由手机新建）的 CLI 会话。
 > 父文档：[SPEC.md](./SPEC.md)、[SPEC-S.md](./SPEC-S.md)。
 > 本机 OpenCode Bridge 仍只活在本机，见 [SPEC-OPENCODE-BRIDGE.md](./SPEC-OPENCODE-BRIDGE.md)。远程不走那条套接字。
