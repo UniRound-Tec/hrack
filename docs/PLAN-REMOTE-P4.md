@@ -151,6 +151,15 @@ $env:HRACK_REMOTE_P4_URL = 'https://hrack.modplex.app/'
 npx playwright test e2e/remote-p4-live.spec.ts
 ```
 
+P4 关门后另补了一个同协议的浏览器演示控制器。它不扩大 P4 协议，也不提前实现 P5：
+
+```powershell
+$env:HRACK_REMOTE_DEMO_URL = 'http://127.0.0.1:8788/remote/'
+npx playwright test e2e/remote-browser-demo-live.spec.ts
+```
+
+该门禁不使用 Node 手机夹具；它在真实 Chromium 中打开中继的 `/demo/` 页面，选择会话、通过 xterm 输入并检查真实 Electron PTY 输出，再从页面释放控制权。
+
 所有网页房间都在 `finally` 吊销；测试不输出 roomId、加入 URL、PTY 输入正文或吊销 token。
 
 ---
@@ -192,6 +201,7 @@ TDD 记录没有跳过失败：最初 `drive` 仍回 `not-implemented`；真实 
 - 同文件的独立生命周期门禁关闭手机真实 WebSocket，1 秒时仍保持驾驶，完整 15 秒宽限后自动释放真实 PTY；目标用例通过（约 16.7s）。
 - 独立本机生产 P2：`http://127.0.0.1:8788/remote/`。`e2e/remote-p4-live.spec.ts` 通过网页真实建房、Electron 真实 Agent/PTY、手机 WS 驾驶、双向合成字节、桌面抢回和网页吊销，`1 passed`（测试体约 3.1s）。
 - 公网生产 P2：`https://hrack.modplex.app/`。同一 live gate 真实经过公网 CA、HTTPS、反向代理和 WSS，`1 passed`（测试体约 5.6s）。没有打印或提交 roomId、加入 URL、PTY 正文或吊销 token；房间由成功路径或 `finally` 吊销。
+- 后续浏览器演示控制器本机门禁：真实 Chromium 打开中继生成的 `/demo/{roomId}`，与真实 Electron HRack/`AgentSessionRuntime`/`cmd.exe` PTY 配对。浏览器 xterm 输入的合成标记同时出现在主进程 PTY 权威历史和浏览器终端，桌面远控锁可见，页面返回会话列表后锁解除；`1 passed`（测试体约 2.1s）。
 
 最终门禁：
 
