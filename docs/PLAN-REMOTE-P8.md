@@ -1,6 +1,6 @@
 # HRack Remote P8 计划：App 真实终端
 
-> 状态：2026-08-21 已完成 Android 16 模拟器 + 安装版 release App + 公网真实 PTY 检查点，包含真实软键盘避让/尺寸恢复和 Claude Code/Codex CLI 基础视觉 smoke；Android 物理真机中文 IME、iOS 真机及两款 CLI 的物理设备复验仍未完成，P8 尚未全平台关门。
+> 状态：2026-08-21 已完成 Android 16 模拟器 + 安装版 release App + 公网真实 PTY 检查点，包含真实软键盘避让/尺寸恢复、离线 Fcitx5 拼音组合提交和 Claude Code/Codex CLI 基础视觉 smoke；Android 物理真机、iOS 真机及两款 CLI 的物理设备复验仍未完成，P8 尚未全平台关门。
 
 ## 1. 目标与关门定义
 
@@ -17,7 +17,7 @@ P8 让用户从 App 会话列表点进真实终端，也让手机新建的会话
 7. 高频 PTY 数据不进入 React session state、不触发每块 React render；桌面的既有 `PtyDataQueue` 继续提供高低水位和总上限；
 8. Android release App 经公网 WSS 驾驶真实 Electron PTY，输入标记出现在 PTY 权威 history，真实输出由 WebView 解析后 ack，旋转改变尺寸，返回后桌面解锁；保留截图与提交基线。
 
-完整发布级 P8 仍遵守 [远程终端呈现契约](./REMOTE-TERMINAL-RENDERING.md)：Android/iOS 物理真机、中文 IME 和 Claude Code + 另一款 AI CLI 是硬门禁。Windows 主机无法替代 iOS 证据；若当前环境做不到，状态必须写成“Android 模拟器实现完成，P8 未全平台关门”。
+完整发布级 P8 仍遵守 [远程终端呈现契约](./REMOTE-TERMINAL-RENDERING.md)：Android/iOS 物理真机上的中文 IME 和 Claude Code + 另一款 AI CLI 是硬门禁。Windows 主机无法替代 iOS 或物理 Android 证据；若当前环境做不到，状态必须写成“Android 模拟器实现完成，P8 未全平台关门”。
 
 ## 2. 数据面与性能边界
 
@@ -91,19 +91,20 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 1. 公开 relay 创建临时房间，Electron 启动真实 AgentSessionRuntime/PTY 并预写 history marker；
 2. 安装版 App 加入，点击真实会话；断言 desktop drive state 尺寸来自 App WebView；
 3. App 通过提交后整段发送的原生输入入口发送 `echo <marker>`，PTY 权威 history 出现输入与输出；xterm 解析后 App 已解析字节递增；
-4. 产生 history 与 live 交界输出，检查顺序和 ack 后桌面队列继续前进；
-5. 旋转横屏，只有被驾驶 PTY 尺寸改变；截图终端；
-6. 返回列表，断言 desktop drive state idle 且 PTY 恢复桌面 fit；
-7. 从 App 新建一条会话，检查 `create` 使用 WebView 尺寸并进入真实终端；
-8. revoke 房间并清理。
+4. 可选中文门禁先用 Gboard English (US) 完成配对，再切换已准备好的 Gboard 拼音或离线 Fcitx5 Pinyin；组合串不得进入 PTY，候选提交并点击 App“发送”后 PTY 只出现最终中文；
+5. 产生 history 与 live 交界输出，检查顺序和 ack 后桌面队列继续前进；
+6. 旋转横屏，只有被驾驶 PTY 尺寸改变；截图终端；
+7. 返回列表，断言 desktop drive state idle 且 PTY 恢复桌面 fit；
+8. 从 App 新建一条会话，检查 `create` 使用 WebView 尺寸并进入真实终端；
+9. revoke 房间并清理。
 
 失败后遵守 `AGENTS.md`：先记录失败步骤，只定向复跑本 P8 用例；通过后最终关门才运行一次完整回归。
 
 ## 6. 真实设备与诚实边界
 
-当前 Windows 工作区可自动完成 Android 16 模拟器、release APK、公网 relay、Electron、真实 PTY，以及本机真实 AI CLI 的基础视觉 smoke。以下发布证据不能由模拟器或 fixture 冒充：
+当前 Windows 工作区可自动完成 Android 16 模拟器、release APK、公网 relay、Electron、真实 PTY、离线 Fcitx5 拼音组合提交，以及本机真实 AI CLI 的基础视觉 smoke。以下发布证据不能由模拟器或 fixture 冒充：
 
-- Android 物理真机与中文输入法 composition；
+- Android 物理真机上的中文输入法 composition 复验；
 - iPhone/iPad 物理真机上的本地 bundle、safe area、WebGL/DOM、旋转和 IME；
 - Claude Code 与 Codex 在上述物理设备上的真实视觉、中文输入和长输出 smoke。
 
@@ -133,7 +134,9 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 - App `25781ec`：固化两款真实 CLI 截图及验证记录；
 - App `6d99237`：修复 Android 软键盘弹出/隐藏时终端布局收缩和恢复；
 - HRack `04d63c0`：门禁同时核对系统 IME、App 格子和桌面唯一 winsize；
-- App `9500255`：固化软键盘打开/恢复截图与事故记录。
+- App `9500255`：固化软键盘打开/恢复截图与事故记录；
+- App `5f9461d`：Android 命令输入不再设置 `TYPE_TEXT_FLAG_NO_SUGGESTIONS`，允许 IME 组合且不主动请求 shell 命令自动纠正；
+- HRack `8831024`：新增可选 Gboard/Fcitx5 中文拼音门禁，逐点证明组合串不进 PTY、候选提交后才发送最终中文。
 
 终端高频字节没有进入 React session state；WebView 内串行写入，只有 `write` callback 完成才回传 deliveryId，原生 client 匹配后才发送 `pty-ack`。新建与已有会话共用同一个 measured terminal 流程。
 
@@ -143,11 +146,11 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 
 ```text
 [p8-terminal-keyboard] portrait=43x31 keyboard=43x16 restored=43x31
-[p8-terminal-burst] renderer=DOM bytes=886604 elapsedMs=18558
-1 passed (1.5m)
+[p8-terminal-burst] renderer=DOM bytes=886156 elapsedMs=19872
+1 passed (1.7m)
 ```
 
-验证使用 Android 16 / API 36 Pixel 6 x86_64 模拟器上的 release APK，停止 Metro 后冷启动，经 `https://hrack.modplex.app/` 的 HTTPS/WSS 和当前公网 relay。已有 PTY 先写 history marker，App 以 43 × 31 驾驶；LatinIME 弹出后 App 与桌面唯一 PTY 同步收缩为 43 × 16，隐藏后恢复 43 × 31；原生提交入口的唯一输入 marker 出现在 PTY 权威 history；随后 6,000 行真实 PTY burst 被 xterm 解析并 ack 886,604 字节，约 46.7 KiB/s。旋转得到 97 × 12 且桌面权威尺寸一致，返回后 drive state 为 idle；App 新建第二个真实 PTY 后又以 43 × 31 直接进入终端。房间最终已撤销。
+验证使用 Android 16 / API 36 Pixel 6 x86_64 模拟器上的 release APK，停止 Metro 后冷启动，经 `https://hrack.modplex.app/` 的 HTTPS/WSS 和当前公网 relay。已有 PTY 先写 history marker，App 以 43 × 31 驾驶；Gboard 英文键盘弹出后 App 与桌面唯一 PTY 同步收缩为 43 × 16。随后切换到离线 Fcitx5 Pinyin，逐键点按 `zhongwen` 时 `zhong wen` 和候选“中文”只存在于 IME，App 草稿与 PTY history 均没有裸拼音；选择候选后 App 草稿出现“中文”，点击发送后 PTY history 只含最终中文。键盘隐藏后尺寸恢复 43 × 31；6,000 行真实 PTY burst 被 xterm 解析并 ack 886,156 字节，约 43.6 KiB/s。旋转得到 97 × 12 且桌面权威尺寸一致，返回后 drive state 为 idle；App 新建第二个真实 PTY 后又以 43 × 31 直接进入终端。房间最终已撤销。
 
 App 同时通过协议/终端 parity、TypeScript、8 suites / 31 tests、Expo Doctor 20/20、相对离线 bundle 检查和 Android release 构建。完整截图与失败过程记录在 App 仓库 `docs/P8-ANDROID-VALIDATION.md`。
 
@@ -159,13 +162,15 @@ App 同时通过协议/终端 parity、TypeScript、8 suites / 31 tests、Expo D
 
 第一次数据面定向门禁在历史、drive 和尺寸处通过，但 ADB 无法把键盘事件可靠送进 WebView 隐藏 textarea；改用提交式原生输入后输入链路通过。随后人工看截图发现 WebGL 字形裁切，而自动断言仍为绿色。尝试 `preserveDrawingBuffer`、最终 fit 后清 atlas，以及 history 前释放/后重建 WebGL，均未修复。切换到 HRack 已有的 xterm DOM fallback 后，竖屏、横屏 burst 尾部和新建终端截图字形均完整。
 
-DOM 两次公网实测为 46.7–49.4 KiB/s，足以作为当前交互式 AI CLI 的 Android 预发布检查点，但不是最终高吞吐目标。后续只能在 Android 物理机真实 PTY 视觉门禁通过后恢复 WebGL；若物理机同样失败，则保持 DOM 并针对串行写入/scrollback 做性能优化，不能牺牲字形正确性。
+DOM 多次公网实测约为 43.6–49.4 KiB/s，足以作为当前交互式 AI CLI 的 Android 预发布检查点，但不是最终高吞吐目标。后续只能在 Android 物理机真实 PTY 视觉门禁通过后恢复 WebGL；若物理机同样失败，则保持 DOM 并针对串行写入/scrollback 做性能优化，不能牺牲字形正确性。
 
-软键盘门禁又发现另一处只看数据面无法发现的问题：`minHeight: 260` 阻止 Android 16 edge-to-edge 页面收缩；直接使用 `KeyboardAvoidingView(height)` 又在 `keyboardDidHide` 后残留收缩高度。最终由真实 show/hide 状态控制避让启停，在不重挂 WebView 的前提下完成 43 × 31 → 43 × 16 → 43 × 31，并由桌面 drive state 逐点确认唯一 winsize。模拟器只有 LatinIME，这项结果不替代中文 composition 真机门禁。
+软键盘门禁又发现另一处只看数据面无法发现的问题：`minHeight: 260` 阻止 Android 16 edge-to-edge 页面收缩；直接使用 `KeyboardAvoidingView(height)` 又在 `keyboardDidHide` 后残留收缩高度。最终由真实 show/hide 状态控制避让启停，在不重挂 WebView 的前提下完成 43 × 31 → 43 × 16 → 43 × 31，并由桌面 drive state 逐点确认唯一 winsize。Fcitx5 较高的中文键盘实测得到 43 × 15，仍沿用同一尺寸通道。
+
+中文门禁先暴露了两类外部前置问题：中文子类型会把 ADB 注入的配对 URL 改成全角标点，所以配对必须先固定英文；预装 Gboard 拼音则因模拟器镜像语言包缺失持续等待下载，不能把这个外部失败误判为 App 组合失败。最终门禁安装并核对官方 SHA-256 的 Fcitx5 Android 0.1.3 x86_64 APK，只保留内置 Pinyin，并用真实键盘逐键/候选点击证明组合串在最终 App 提交前从未进入 PTY。Android 命令框不设置 `autoCorrect=false`，避免 React Native 映射为 `TYPE_TEXT_FLAG_NO_SUGGESTIONS`；同时不设置 `true`，避免请求英文 shell 命令自动纠正。
 
 ### 8.4 未关门项
 
-- Android 物理真机：中文输入法 composition、软键盘、safe area 与旋转；
+- Android 物理真机：中文输入法 composition、软键盘、safe area 与旋转复验；
 - iPhone/iPad 物理真机：本地 bundle、renderer/fallback、IME 与旋转；
 - 在上述物理设备上复跑 Claude Code 与 Codex 的真实视觉、中文输入和长输出 smoke；
 - 上述设备矩阵完成后的最终完整回归。

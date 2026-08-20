@@ -1,6 +1,6 @@
 # 远程终端呈现契约（P6 预检 / P8 门禁）
 
-> 状态：P8 实现与验收必须遵守。本文记录 2026-08-20 浏览器演示页和 2026-08-21 Android 真实 PTY 的两次渲染事故，并把修复经验变成手机端约束。
+> 状态：P8 实现与验收必须遵守。本文记录 2026-08-20 浏览器演示页和 2026-08-21 Android 真实 PTY 暴露的多次渲染、软键盘与 IME 事故，并把修复经验变成手机端约束。
 
 ## 1. 为什么需要单独的契约
 
@@ -75,7 +75,7 @@ App 至少先支持 HRack Dark，并完整复用 `background`、`foreground`、`
 
 - safe area、软键盘和横竖屏变化必须进入同一套尺寸计算；不得另建第二套“显示尺寸”和 PTY winsize。
 - 缩放只能改变同一格子的显示比例；若缩放导致实际可见行列变化，就必须以新的唯一行列发送一次 `pty-resize`。
-- IME 组合阶段不发 `pty-in`，只在 composition commit 后发送最终文本；必须用中文实机输入验证，不能只模拟 `insertText`。
+- IME 组合阶段不发 `pty-in`，只在 composition commit 后发送最终文本；必须用真实系统中文 IME 验证，不能只模拟 `insertText`，发布前还要在物理设备复验。
 - Esc、Ctrl、Tab 和四方向键必须生成与桌面终端一致的输入序列；Ctrl 的锁定/单次模式要有明确反馈。
 - 选择、滚动、复制和键盘手势不得误触发页面导航；返回列表必须始终可达。
 
@@ -103,7 +103,7 @@ P8 Android 实现再次暴露了一个不同层次的陷阱：同一 release APK
 2. 必须人工或像素基线检查至少 history 首屏、持续输出尾部和旋转后的画面；`renderer=WEBGL` 不是视觉正确证明；
 3. `preserveDrawingBuffer`、清 glyph atlas 或重建 addon 只能作为待验证假设，不能在没有截图证据时写成已修复；
 4. 若真实画面损坏，立即走 xterm DOM fallback 并保留可观测原因；数据面、解析后 ack 和 React 外字节通道不得随 renderer 降级改变；
-5. DOM fallback 必须附真实 burst 性能数据。2026-08-21 Android 16 模拟器经公网真实 ConPTY 两次实测分别解析并 ack 886,380 字节/17.514 秒与 886,604 字节/18.558 秒（约 46.7–49.4 KiB/s），可作为交互式预发布范围，但不等于物理机最终性能结论；
+5. DOM fallback 必须附真实 burst 性能数据。2026-08-21 Android 16 模拟器经公网真实 ConPTY 多次实测约为 43.6–49.4 KiB/s；其中中文 IME 最终门禁解析并 ack 886,156 字节/19.872 秒，可作为交互式预发布范围，但不等于物理机最终性能结论；
 6. 重新启用 WebGL 必须由 Android 物理机真实 PTY 视觉门禁授权，不能只恢复静态 P6 截图。
 
 手机输入也必须有可验证的组合安全路径。WebView 隐藏 textarea 在自动化环境中可能无法稳定接收系统键盘事件；允许提供原生提交式输入框，组合期间只编辑本地草稿、显式提交后一次发送最终文本和回车。它不能删除 xterm 原生输入，但可以作为中文 IME 安全入口与真实接口自动门禁入口。
@@ -118,7 +118,17 @@ Android 的 `adjustResize`、edge-to-edge 和 React Native `KeyboardAvoidingView
 2. 键盘打开后 WebView 必须重新 fit，并把新 cols/rows 作为同一个被驾驶 PTY 的唯一 winsize；隐藏后再次 fit 和恢复；
 3. App 显示格子、桌面权威 drive state 与截图三者在打开和恢复两个时点一致；
 4. 修复避让时不得重挂 WebView，否则会清空 xterm buffer、破坏 history/live 顺序；
-5. 模拟器 LatinIME 只证明软键盘布局与 resize，不证明中文 composition；中文仍要在物理设备输入法上验证最终提交前没有 `pty-in`。
+5. Gboard 英文键盘证明 43 × 31 → 43 × 16 → 43 × 31；较高的 Fcitx5 Pinyin 又证明 43 × 15。模拟器中文组合通过后仍要在物理设备输入法上复验最终提交前没有 `pty-in`。
+
+### 4.9 原生命令输入必须保留 IME 组合能力
+
+Android 终端输入框不能沿用普通 shell 输入常见的 `autoCorrect={false}`。React Native 0.83 会把它映射为 Android `TYPE_TEXT_FLAG_NO_SUGGESTIONS`，可能同时关闭中文 IME 的候选/组合能力。也不能简单改成 `true`，否则会请求输入法自动纠正英文 shell 命令。Android 应不设置该标志；iOS 可以继续显式关闭纠错。
+
+真实中文门禁还必须区分三层状态：
+
+1. 配对 URL 与终端中文输入不是同一场景。自动输入 URL 前固定英文键盘，避免中文标点把 `https://` 改成全角；进入终端后再切中文 IME；
+2. 组合串可能显示在 IME 自己的 preedit 区，而不进入受控 `TextInput`。门禁不能要求 App 草稿一定出现裸拼音；应证明候选提交前 PTY 没有拼音、候选提交后 App 草稿出现最终中文、显式发送后 PTY 只出现最终中文；
+3. 输入法语言包缺失是测试设备前置失败，不是 App 协议失败。2026-08-21 预装 Gboard 拼音持续等待下载且 MDD 数据缺失，最终改用核对官方 SHA-256 的离线 Fcitx5 Android 0.1.3 内置 Pinyin 完成证据；验证记录必须写明实际 IME，不能只写“中文键盘已选中”。
 
 ## 5. 禁止的捷径
 
