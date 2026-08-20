@@ -85,6 +85,17 @@ function terminalMetrics(xml: string): TerminalMetrics | null {
   }
 }
 
+function preflightMetrics(xml: string): TerminalMetrics | null {
+  const match = xml.match(/text="(\d+) × (\d+) cells"/)
+  if (!match) return null
+  return {
+    renderer: 'unknown',
+    cols: Number(match[1]),
+    rows: Number(match[2]),
+    parsedBytes: 0
+  }
+}
+
 async function waitForUi(
   predicate: (xml: string) => boolean,
   label: string,
@@ -186,11 +197,13 @@ async function tapPinyinKeyboard(value: 'zhongwen'): Promise<void> {
     w: [163, 1715],
     e: [270, 1715]
   }
+  await new Promise((resolveWait) => setTimeout(resolveWait, 700))
   for (const character of value) {
     const point = keys[character]
     if (!point)
       throw new Error(`missing Pinyin keyboard coordinate for ${character}`)
     await adb('shell', 'input', 'tap', String(point[0]), String(point[1]))
+    await new Promise((resolveWait) => setTimeout(resolveWait, 120))
   }
 }
 
@@ -289,11 +302,210 @@ async function historyText(page: Page, ptyId: string): Promise<string> {
   }, ptyId)
 }
 
+test.describe('remote P8 Android terminal preflight layout', () => {
+  test.skip(!adbExecutable, 'set HRACK_ANDROID_ADB for the installed App gate')
+
+  test('refits both axes after rotation', async ({}, testInfo) => {
+    test.skip(process.platform !== 'win32', 'current Android gate is Windows')
+    test.setTimeout(45_000)
+    try {
+      await adb(
+        'shell',
+        'settings',
+        'put',
+        'system',
+        'accelerometer_rotation',
+        '0'
+      )
+      await adb('shell', 'settings', 'put', 'system', 'user_rotation', '0')
+      await startAndroid()
+      await tapResource('pairing-terminal-preflight')
+      const portraitXml = await waitForUi(
+        (xml) => preflightMetrics(xml) !== null,
+        'portrait terminal preflight',
+        12_000
+      )
+      const portrait = preflightMetrics(portraitXml)
+      if (!portrait) throw new Error('missing portrait preflight metrics')
+
+      await adb('shell', 'settings', 'put', 'system', 'user_rotation', '1')
+      const landscapeXml = await waitForUi(
+        (xml) => {
+          const metrics = preflightMetrics(xml)
+          return (
+            !!metrics &&
+            metrics.cols > portrait.cols &&
+            metrics.rows < portrait.rows
+          )
+        },
+        'stable landscape terminal preflight',
+        12_000
+      )
+      const landscape = preflightMetrics(landscapeXml)
+      if (!landscape) throw new Error('missing landscape preflight metrics')
+      console.log(
+        `[p8-terminal-preflight-rotation] portrait=${portrait.cols}x${portrait.rows} landscape=${landscape.cols}x${landscape.rows}`
+      )
+      await screenshot(testInfo, 'p8-android-preflight-landscape.png')
+    } finally {
+      await adb('shell', 'settings', 'put', 'system', 'user_rotation', '0').catch(
+        () => {}
+      )
+      await adb(
+        'shell',
+        'settings',
+        'put',
+        'system',
+        'accelerometer_rotation',
+        '1'
+      ).catch(() => {})
+    }
+  })
+})
+
 test.describe('remote P8 Android terminal live relay', () => {
   test.skip(
     !targetUrl || !adbExecutable,
     'set HRACK_REMOTE_P8_URL and HRACK_ANDROID_ADB for the installed App gate'
   )
+
+  test('refits a driven terminal on both axes after rotation', async ({
+    page: relayPage
+  }, testInfo) => {
+    test.skip(
+      process.platform !== 'win32',
+      'current Android/Electron gate is Windows'
+    )
+    test.setTimeout(90_000)
+    if (!targetUrl) throw new Error('missing live relay target')
+
+    let app: ElectronApplication | undefined
+    let roomCreated = false
+    let roomRevoked = false
+    try {
+      const response = await relayPage.goto(targetUrl)
+      if (!response?.ok()) throw new Error('relay generate page did not load')
+      await relayPage.getByTestId('create-room').click()
+      await expect(relayPage.getByTestId('join-url')).toBeVisible()
+      roomCreated = true
+      const joinUrl = await relayPage.getByTestId('join-url').innerText()
+
+      const launched = await launchApp({
+        createDefaultTerminal: false,
+        env: {
+          HRACK_FIXTURE_OBSERVER: '1',
+          HRACK_FIXTURE_OBSERVER_HOLD: '1',
+          HRACK_E2E_CLI_EXECUTABLE: resolve(
+            __dirname,
+            'fixtures/remote/interactive-cli.cmd'
+          )
+        }
+      })
+      app = launched.app
+      const hrackPage = launched.window
+      const sessionName = 'P8 rotation probe'
+      const existing = await launchSession(hrackPage, sessionName)
+      await connectHrack(hrackPage, joinUrl)
+
+      await adb(
+        'shell',
+        'settings',
+        'put',
+        'system',
+        'accelerometer_rotation',
+        '0'
+      )
+      await adb('shell', 'settings', 'put', 'system', 'user_rotation', '0')
+      await selectIme(gboardIme)
+      await startAndroid()
+      await pairAndroid(joinUrl)
+      await waitForUi(
+        (xml) =>
+          xml.includes(sessionName) &&
+          boundsFor(xml, 'sessions-create') !== null,
+        'rotation probe session list'
+      )
+      await tapResource(`session-${existing.sessionId}`)
+      const portraitXml = await waitForUi(
+        (xml) => terminalMetrics(xml) !== null,
+        'rotation probe portrait terminal'
+      )
+      const portrait = terminalMetrics(portraitXml)
+      if (!portrait) throw new Error('missing rotation probe portrait metrics')
+
+      await tapResource('terminal-command-input')
+      await expect.poll(isImeShown, { timeout: 15_000 }).toBe(true)
+      await waitForUi(
+        (xml) => {
+          const metrics = terminalMetrics(xml)
+          return !!metrics && metrics.rows < portrait.rows
+        },
+        'rotation probe soft keyboard resize',
+        12_000
+      )
+      await adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+      await expect.poll(isImeShown, { timeout: 15_000 }).toBe(false)
+      await waitForUi(
+        (xml) => {
+          const metrics = terminalMetrics(xml)
+          return !!metrics && metrics.rows >= portrait.rows - 1
+        },
+        'rotation probe soft keyboard restore',
+        12_000
+      )
+
+      await adb('shell', 'settings', 'put', 'system', 'user_rotation', '1')
+      try {
+        await waitForUi(
+          (xml) => {
+            const metrics = terminalMetrics(xml)
+            return (
+              !!metrics &&
+              metrics.cols > portrait.cols &&
+              metrics.rows < portrait.rows
+            )
+          },
+          'stable driven landscape terminal',
+          12_000
+        )
+      } catch (error) {
+        const current = terminalMetrics(await dumpUi())
+        console.log(
+          `[p8-terminal-rotation-red] portrait=${portrait.cols}x${portrait.rows} current=${current?.cols ?? 0}x${current?.rows ?? 0}`
+        )
+        await screenshot(testInfo, 'p8-android-driven-landscape-red.png')
+        throw error
+      }
+      const landscape = terminalMetrics(await dumpUi())
+      if (!landscape) throw new Error('missing rotation probe landscape metrics')
+      console.log(
+        `[p8-terminal-rotation] portrait=${portrait.cols}x${portrait.rows} landscape=${landscape.cols}x${landscape.rows}`
+      )
+
+      await relayPage.getByTestId('revoke-room').click()
+      await expect(relayPage.getByTestId('status')).toHaveText('Room revoked.')
+      roomRevoked = true
+    } finally {
+      if (roomCreated && !roomRevoked) {
+        const revoke = relayPage.getByTestId('revoke-room')
+        if (await revoke.isVisible().catch(() => false)) {
+          await revoke.click().catch(() => {})
+        }
+      }
+      await app?.close().catch(() => {})
+      await adb('shell', 'settings', 'put', 'system', 'user_rotation', '0').catch(
+        () => {}
+      )
+      await adb(
+        'shell',
+        'settings',
+        'put',
+        'system',
+        'accelerometer_rotation',
+        '1'
+      ).catch(() => {})
+    }
+  })
 
   test('drives, types, resizes, releases and creates through the installed App', async ({
     page: relayPage
@@ -525,7 +737,8 @@ test.describe('remote P8 Android terminal live relay', () => {
         const metrics = terminalMetrics(xml)
         return (
           !!metrics &&
-          (metrics.cols !== portrait.cols || metrics.rows !== portrait.rows)
+          metrics.cols > portrait.cols &&
+          metrics.rows < portrait.rows
         )
       }, 'landscape terminal resize')
       const landscape = terminalMetrics(landscapeXml)
