@@ -1,6 +1,6 @@
 # HRack Remote P6 计划：原生 App 扫码、等待态与会话列表
 
-> 状态：2026-08-21 开始实施。P3 公网列表链路、P4 驾驶与 P5 新建均已关门；本阶段只关闭 P6，并为 P8 完成可运行的终端技术预检。
+> 状态：2026-08-21 已完成 Android 关门并可进入 P7。Camera QR、手动链接、release 独立冷启动、公网 WSS、真实 Electron 会话运行时/PTY、异常态和终端技术预检均已有实际证据；iOS 与物理真机终端证据仍严格保留到 P8。
 
 ## 1. 目标与关门定义
 
@@ -147,13 +147,34 @@ Android 模拟器的自动断言与截图是本机检查点；按照呈现契约
 
 ---
 
-## 7. 分段提交
+## 7. 关门结果
 
-1. HRack：`docs: plan remote P6 app`；
-2. App：`chore: scaffold remote app`；
-3. App：`feat: complete P6 pairing and sessions`；
-4. App：`feat: add terminal readiness preflight`；
-5. App：`docs: record P6 Android public validation`；
-6. HRack：`docs: close remote P6 app`。
+Android Pixel 6 AVD / Android 16（API 36）上的 release App 已完成两轮公开接口门禁：
+
+- 手动完整链接：`1 passed (1.3m)`；
+- Emulator `imagefile:` 相机源提供临时公网房间二维码，Expo `CameraView` 真实解码：`1 passed (1.4m)`。
+
+两轮都经过 `https://hrack.modplex.app/` 的公开 HTTPS/WSS，而不是本机 relay。桌面端实际启动两个 `AgentSessionRuntime` 和 PTY；PTY 内使用确定性 E2E fixture CLI 产生六态，App 没有注入 reducer 或伪造列表。证据覆盖 snapshot、第二会话 upsert、`需要你`、attention/tool、occupied、重试、桌面离线清空与 revoke。
+
+相机门禁每次创建临时房间，结束后撤销房间并删除含密钥二维码；持久截图不包含 room id。完整矩阵、边界和截图见 App 仓库 `docs/P6-ANDROID-VALIDATION.md`。对应检查点：
+
+- HRack 公网门禁：`1af812d`、`9e616e9`；
+- App P6 实现/终端预检/验证记录：`845a551`、`4233b7d`、`0feb691`；
+- Relay：`c5ddfc7`。
+
+App 的自动门禁为 4 suites / 11 tests，协议、xterm/palette/font parity、终端相对资源路径检查、TypeScript 与 Expo Doctor（20/20）均通过；Android release APK 构建成功，并在 Metro 停止后清数据冷启动成功。终端预检实测 WebGL 竖屏 42 × 31、DOM fallback 可用、WebGL 横屏 96 × 12。
+
+P6 没有冒充完成以下范围：iOS、物理 Android、物理真机中文 IME，以及 Claude Code/第二个真实 AI CLI 的终端驾驶。这些是 P8 的硬门禁，不阻止 P7 开发。
+
+---
+
+## 8. 分段提交
+
+1. HRack：`docs: plan remote P6 app`（完成）；
+2. App：`chore: scaffold remote app`（完成）；
+3. App：`feat: complete P6 pairing and sessions`（完成）；
+4. App：`feat: add terminal readiness preflight`（完成）；
+5. App：`docs: record P6 Android public validation`（完成）；
+6. HRack：`docs: close remote P6 app`（本提交）。
 
 每个提交前运行与该切片直接相关的自动门禁。最终完整 App 测试、Android release/debug 构建和公网模拟器验收只在 P6 关门前运行一次。

@@ -79,6 +79,20 @@ App 至少先支持 HRack Dark，并完整复用 `background`、`foreground`、`
 - Esc、Ctrl、Tab 和四方向键必须生成与桌面终端一致的输入序列；Ctrl 的锁定/单次模式要有明确反馈。
 - 选择、滚动、复制和键盘手势不得误触发页面导航；返回列表必须始终可达。
 
+### 4.6 App 内本地 WebView 资源
+
+P6 Android 预检已经复现过一次“原生外壳正常、WebView 纯黑且没有明显页面错误”的问题。原因是 Vite 默认把入口资源写成 `/assets/...`：浏览器服务器能从站点根目录提供它，但 Android 的 `file:///android_asset/hrack-terminal/index.html` 会把它解析为错误的 `file:///android_asset/assets/...`，因此 JS、CSS 与字体都没有加载。
+
+使用 WebView/xterm 时必须同时满足：
+
+1. 构建显式设置相对 base（当前 App 为 `vite build terminal --base ./`）；
+2. 构建后门禁解析 `index.html` 与 CSS，拒绝 `/assets/...`、不存在文件、网络字体和放宽的 CSP；
+3. 本地资源由原生打包步骤复制到 Android assets / iOS bundle，而不是开发服务器；
+4. WebView 的顶层加载错误必须回传原生层并显示诊断，不能只呈现空白黑屏；
+5. release 包必须在 Metro/开发服务器停止后清数据冷启动，再运行一次预检。
+
+这个门禁检查的是“包内资源可达”，不能被桌面浏览器或 Metro 开发态截图替代。以后调整 Vite、Expo、WebView 或资源目录时必须先过相对路径检查，再做真实安装包冷启动。
+
 ## 5. 禁止的捷径
 
 - 用页面/UI 的 sans-serif 或系统默认 `monospace` 代替打包字体。
