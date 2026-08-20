@@ -103,10 +103,22 @@ P8 Android 实现再次暴露了一个不同层次的陷阱：同一 release APK
 2. 必须人工或像素基线检查至少 history 首屏、持续输出尾部和旋转后的画面；`renderer=WEBGL` 不是视觉正确证明；
 3. `preserveDrawingBuffer`、清 glyph atlas 或重建 addon 只能作为待验证假设，不能在没有截图证据时写成已修复；
 4. 若真实画面损坏，立即走 xterm DOM fallback 并保留可观测原因；数据面、解析后 ack 和 React 外字节通道不得随 renderer 降级改变；
-5. DOM fallback 必须附真实 burst 性能数据。2026-08-21 Android 16 模拟器经公网真实 ConPTY 实测解析并 ack 886,380 字节/17.514 秒（约 49.4 KiB/s），可作为交互式预发布下限，但不等于物理机最终性能结论；
+5. DOM fallback 必须附真实 burst 性能数据。2026-08-21 Android 16 模拟器经公网真实 ConPTY 两次实测分别解析并 ack 886,380 字节/17.514 秒与 886,604 字节/18.558 秒（约 46.7–49.4 KiB/s），可作为交互式预发布范围，但不等于物理机最终性能结论；
 6. 重新启用 WebGL 必须由 Android 物理机真实 PTY 视觉门禁授权，不能只恢复静态 P6 截图。
 
 手机输入也必须有可验证的组合安全路径。WebView 隐藏 textarea 在自动化环境中可能无法稳定接收系统键盘事件；允许提供原生提交式输入框，组合期间只编辑本地草稿、显式提交后一次发送最终文本和回车。它不能删除 xterm 原生输入，但可以作为中文 IME 安全入口与真实接口自动门禁入口。
+
+### 4.8 软键盘避让必须同步唯一 winsize
+
+Android 的 `adjustResize`、edge-to-edge 和 React Native `KeyboardAvoidingView` 不是“配置过就算完成”。2026-08-21 的安装版 Android 16 门禁先后发现：过大的终端 `minHeight` 会让系统已显示 IME 但 WebView 不收缩；直接使用 `KeyboardAvoidingView(height)` 又可能在 `keyboardDidHide` 后残留收缩高度。
+
+因此终端页还必须满足：
+
+1. 用系统真实 IME 可见状态证明键盘确实打开/关闭，不能只调用 focus/blur；
+2. 键盘打开后 WebView 必须重新 fit，并把新 cols/rows 作为同一个被驾驶 PTY 的唯一 winsize；隐藏后再次 fit 和恢复；
+3. App 显示格子、桌面权威 drive state 与截图三者在打开和恢复两个时点一致；
+4. 修复避让时不得重挂 WebView，否则会清空 xterm buffer、破坏 history/live 顺序；
+5. 模拟器 LatinIME 只证明软键盘布局与 resize，不证明中文 composition；中文仍要在物理设备输入法上验证最终提交前没有 `pty-in`。
 
 ## 5. 禁止的捷径
 

@@ -1,6 +1,6 @@
 # HRack 远程控制 — Spec
 
-> 状态：**P0–P7 已关门；P8 Android 模拟器公网真实 PTY 检查点已完成（2026-08-21），当前仍处于 P8 设备关门阶段。** P2 已部署到公网 HTTPS/WSS 单副本环境；P3–P5 已证明真实 HRack/PTY 的列表、驾驶和远程新建链；P6/P7 已由安装版 Android release App 完成相机配对、实时列表与真实 PTY 新建；P8 已完成 history/live、解析后 ack、输入、旋转、`undrive`、新建后直入终端，以及真实 Claude Code/Codex CLI 的模拟器基础视觉 smoke。Android 物理真机中文 IME、iOS 真机和两款 CLI 的物理设备复验尚未完成，因此不能宣布 P8 全部关门或进入 P8 之后的阶段。
+> 状态：**P0–P7 已关门；P8 Android 模拟器公网真实 PTY 检查点已完成（2026-08-21），当前仍处于 P8 设备关门阶段。** P2 已部署到公网 HTTPS/WSS 单副本环境；P3–P5 已证明真实 HRack/PTY 的列表、驾驶和远程新建链；P6/P7 已由安装版 Android release App 完成相机配对、实时列表与真实 PTY 新建；P8 已完成 history/live、解析后 ack、输入、真实软键盘避让/尺寸恢复、旋转、`undrive`、新建后直入终端，以及真实 Claude Code/Codex CLI 的模拟器基础视觉 smoke。Android 物理真机中文 IME、iOS 真机和两款 CLI 的物理设备复验尚未完成，因此不能宣布 P8 全部关门或进入 P8 之后的阶段。
 > 范围：一部手机远程看见、新建、驾驶 HRack 里已经在跑（或由手机新建）的 CLI 会话。
 > 父文档：[SPEC.md](./SPEC.md)、[SPEC-S.md](./SPEC-S.md)。
 > 本机 OpenCode Bridge 仍只活在本机，见 [SPEC-OPENCODE-BRIDGE.md](./SPEC-OPENCODE-BRIDGE.md)。远程不走那条套接字。
@@ -544,7 +544,7 @@ P3 关门 = 「电脑把列表送到公网房间」成立。此后 App 和驾驶
 
 详细落地与性能边界见 [PLAN-REMOTE-P8.md](./PLAN-REMOTE-P8.md)。
 
-**状态（2026-08-21）：Android 模拟器实现检查点完成，P8 尚未全平台关门。** 安装版 release App 已经公网 WSS 驾驶真实 Electron/`AgentSessionRuntime`/ConPTY，复读 history、提交输入、在 xterm 解析后 ack、以 43 × 31 / 97 × 12 旋转尺寸更新唯一 winsize、返回 `undrive`，并用实测尺寸新建后直入终端。真实会话因 Android WebView WebGL 字形裁切显式降级到 DOM；DOM 在公网 6,000 行 burst 中解析并 ack 886,380 字节/17.514 秒且截图字形完整。本机真实 Claude Code 2.1.220 与 Codex CLI 0.146.0 也已通过公网链路完成本地命令、字节解析、截图和释放 smoke。物理 Android 中文 IME、iOS 真机及两款 CLI 在这些设备上的中文与长输出复验仍按验收第 4 项保留，详见计划的实现记录。
+**状态（2026-08-21）：Android 模拟器实现检查点完成，P8 尚未全平台关门。** 安装版 release App 已经公网 WSS 驾驶真实 Electron/`AgentSessionRuntime`/ConPTY，复读 history、提交输入、在 xterm 解析后 ack；竖屏、LatinIME 和横屏分别以 43 × 31、43 × 16、97 × 12 更新唯一 winsize，键盘隐藏后恢复 43 × 31；返回 `undrive`，并用实测尺寸新建后直入终端。真实会话因 Android WebView WebGL 字形裁切显式降级到 DOM；DOM 两次公网 6,000 行 burst 为 46.7–49.4 KiB/s 且截图字形完整。本机真实 Claude Code 2.1.220 与 Codex CLI 0.146.0 也已通过公网链路完成本地命令、字节解析、截图和释放 smoke。物理 Android 中文 IME、iOS 真机及两款 CLI 在这些设备上的中文与长输出复验仍按验收第 4 项保留，详见计划的实现记录。
 
 **做：** xterm 或经 P6 预检证明等价的终端组件复读 history + `pty-out`；附加键 Esc/Ctrl/Tab/方向；IME 组字后再 `pty-in`；返回列表 `undrive`。呈现层完整执行 [远程终端呈现契约](REMOTE-TERMINAL-RENDERING.md)，与桌面端共用/校验固定版本、字体资源、完整 palette、renderer fallback、初始化及解析后 ack 时序。
 

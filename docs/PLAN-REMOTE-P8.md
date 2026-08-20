@@ -1,6 +1,6 @@
 # HRack Remote P8 计划：App 真实终端
 
-> 状态：2026-08-21 已完成 Android 16 模拟器 + 安装版 release App + 公网真实 PTY 检查点，并补齐真实 Claude Code/Codex CLI 基础视觉 smoke；Android 物理真机中文 IME、iOS 真机及两款 CLI 的物理设备复验仍未完成，P8 尚未全平台关门。
+> 状态：2026-08-21 已完成 Android 16 模拟器 + 安装版 release App + 公网真实 PTY 检查点，包含真实软键盘避让/尺寸恢复和 Claude Code/Codex CLI 基础视觉 smoke；Android 物理真机中文 IME、iOS 真机及两款 CLI 的物理设备复验仍未完成，P8 尚未全平台关门。
 
 ## 1. 目标与关门定义
 
@@ -130,7 +130,10 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 - HRack `b01c7c5`：新增安装版 App → 公网 relay → Electron → 真实 ConPTY 的 P8 门禁；
 - App `64d8b81`：验证记录与三张模拟器真实接口截图（文档提交）；
 - HRack `4e149d2` / `1270717`：增加真实 Claude Code/Codex CLI 公网门禁，并改用官方本地命令和单次配置覆盖，避免触发模型请求或更新安装；
-- App `25781ec`：固化两款真实 CLI 截图及验证记录。
+- App `25781ec`：固化两款真实 CLI 截图及验证记录；
+- App `6d99237`：修复 Android 软键盘弹出/隐藏时终端布局收缩和恢复；
+- HRack `04d63c0`：门禁同时核对系统 IME、App 格子和桌面唯一 winsize；
+- App `9500255`：固化软键盘打开/恢复截图与事故记录。
 
 终端高频字节没有进入 React session state；WebView 内串行写入，只有 `write` callback 完成才回传 deliveryId，原生 client 匹配后才发送 `pty-ack`。新建与已有会话共用同一个 measured terminal 流程。
 
@@ -139,11 +142,12 @@ Android 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 W
 最终定向门禁：
 
 ```text
-[p8-terminal-burst] renderer=DOM bytes=886380 elapsedMs=17514
-1 passed (1.4m)
+[p8-terminal-keyboard] portrait=43x31 keyboard=43x16 restored=43x31
+[p8-terminal-burst] renderer=DOM bytes=886604 elapsedMs=18558
+1 passed (1.5m)
 ```
 
-验证使用 Android 16 / API 36 Pixel 6 x86_64 模拟器上的 release APK，停止 Metro 后冷启动，经 `https://hrack.modplex.app/` 的 HTTPS/WSS 和当前公网 relay。已有 PTY 先写 history marker，App 以 43 × 31 驾驶；原生提交入口的唯一输入 marker 出现在 PTY 权威 history；随后 6,000 行真实 PTY burst 被 xterm 解析并 ack 886,380 字节，约 49.4 KiB/s。旋转得到 97 × 12 且桌面权威尺寸一致，返回后 drive state 为 idle；App 新建第二个真实 PTY 后又以 43 × 31 直接进入终端。房间最终已撤销。
+验证使用 Android 16 / API 36 Pixel 6 x86_64 模拟器上的 release APK，停止 Metro 后冷启动，经 `https://hrack.modplex.app/` 的 HTTPS/WSS 和当前公网 relay。已有 PTY 先写 history marker，App 以 43 × 31 驾驶；LatinIME 弹出后 App 与桌面唯一 PTY 同步收缩为 43 × 16，隐藏后恢复 43 × 31；原生提交入口的唯一输入 marker 出现在 PTY 权威 history；随后 6,000 行真实 PTY burst 被 xterm 解析并 ack 886,604 字节，约 46.7 KiB/s。旋转得到 97 × 12 且桌面权威尺寸一致，返回后 drive state 为 idle；App 新建第二个真实 PTY 后又以 43 × 31 直接进入终端。房间最终已撤销。
 
 App 同时通过协议/终端 parity、TypeScript、8 suites / 31 tests、Expo Doctor 20/20、相对离线 bundle 检查和 Android release 构建。完整截图与失败过程记录在 App 仓库 `docs/P8-ANDROID-VALIDATION.md`。
 
@@ -155,7 +159,9 @@ App 同时通过协议/终端 parity、TypeScript、8 suites / 31 tests、Expo D
 
 第一次数据面定向门禁在历史、drive 和尺寸处通过，但 ADB 无法把键盘事件可靠送进 WebView 隐藏 textarea；改用提交式原生输入后输入链路通过。随后人工看截图发现 WebGL 字形裁切，而自动断言仍为绿色。尝试 `preserveDrawingBuffer`、最终 fit 后清 atlas，以及 history 前释放/后重建 WebGL，均未修复。切换到 HRack 已有的 xterm DOM fallback 后，竖屏、横屏 burst 尾部和新建终端截图字形均完整。
 
-49.4 KiB/s 足以作为当前交互式 AI CLI 的 Android 预发布检查点，但不是最终高吞吐目标。后续只能在 Android 物理机真实 PTY 视觉门禁通过后恢复 WebGL；若物理机同样失败，则保持 DOM 并针对串行写入/scrollback 做性能优化，不能牺牲字形正确性。
+DOM 两次公网实测为 46.7–49.4 KiB/s，足以作为当前交互式 AI CLI 的 Android 预发布检查点，但不是最终高吞吐目标。后续只能在 Android 物理机真实 PTY 视觉门禁通过后恢复 WebGL；若物理机同样失败，则保持 DOM 并针对串行写入/scrollback 做性能优化，不能牺牲字形正确性。
+
+软键盘门禁又发现另一处只看数据面无法发现的问题：`minHeight: 260` 阻止 Android 16 edge-to-edge 页面收缩；直接使用 `KeyboardAvoidingView(height)` 又在 `keyboardDidHide` 后残留收缩高度。最终由真实 show/hide 状态控制避让启停，在不重挂 WebView 的前提下完成 43 × 31 → 43 × 16 → 43 × 31，并由桌面 drive state 逐点确认唯一 winsize。模拟器只有 LatinIME，这项结果不替代中文 composition 真机门禁。
 
 ### 8.4 未关门项
 
