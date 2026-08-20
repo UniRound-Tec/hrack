@@ -443,6 +443,7 @@ test.describe('remote P8 Android terminal live relay', () => {
         'rotation probe soft keyboard resize',
         12_000
       )
+      await screenshot(testInfo, 'p8-android-rotation-probe-keyboard.png')
       await adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
       await expect.poll(isImeShown, { timeout: 15_000 }).toBe(false)
       await waitForUi(
