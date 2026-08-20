@@ -542,6 +542,8 @@ P3 关门 = 「电脑把列表送到公网房间」成立。此后 App 和驾驶
 
 依赖 P4 + P6。
 
+详细落地与性能边界见 [PLAN-REMOTE-P8.md](./PLAN-REMOTE-P8.md)。
+
 **做：** xterm 或经 P6 预检证明等价的终端组件复读 history + `pty-out`；附加键 Esc/Ctrl/Tab/方向；IME 组字后再 `pty-in`；返回列表 `undrive`。呈现层完整执行 [远程终端呈现契约](REMOTE-TERMINAL-RENDERING.md)，与桌面端共用/校验固定版本、字体资源、完整 palette、renderer fallback、初始化及解析后 ack 时序。
 
 **验收**
