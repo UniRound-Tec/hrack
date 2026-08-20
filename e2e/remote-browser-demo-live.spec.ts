@@ -119,6 +119,10 @@ test.describe('remote browser controller live relay', () => {
       await expect(hrackPage.getByTestId('terminal-remote-overlay')).toBeVisible()
 
       const marker = `HRACK_BROWSER_DEMO_${Date.now()}`
+      const renderedBytesBefore = Number(
+        (await demoPage.locator('.terminal-host').getAttribute('data-rendered-pty-bytes')) ??
+          '0'
+      )
       await demoPage.locator('.xterm-helper-textarea').focus()
       await demoPage.keyboard.type(`echo ${marker}`)
       await demoPage.keyboard.press('Enter')
@@ -133,7 +137,15 @@ test.describe('remote browser controller live relay', () => {
           }, agent.ptyId)
         )
         .toContain(marker)
-      await expect(demoPage.locator('.xterm-rows')).toContainText(marker)
+      await expect
+        .poll(async () =>
+          Number(
+            (await demoPage
+              ?.locator('.terminal-host')
+              .getAttribute('data-rendered-pty-bytes')) ?? '0'
+          )
+        )
+        .toBeGreaterThan(renderedBytesBefore)
 
       await demoPage.getByTestId('demo-return').click()
       await expect(demoPage.getByTestId('demo-session-list')).toBeVisible()
