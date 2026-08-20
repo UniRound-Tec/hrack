@@ -18,6 +18,9 @@ import {
 const execFileAsync = promisify(execFile)
 const targetUrl = process.env.HRACK_REMOTE_P6_URL
 const adbExecutable = process.env.HRACK_ANDROID_ADB
+const providedJoinUrl = process.env.HRACK_REMOTE_P6_JOIN_URL
+const providedRevokeToken = process.env.HRACK_REMOTE_P6_REVOKE_TOKEN
+const useCameraQr = process.env.HRACK_ANDROID_CAMERA_QR === '1'
 const appPackage =
   process.env.HRACK_ANDROID_APP_PACKAGE ?? 'app.modplex.hrack.remote'
 const uiDumpPath = '/sdcard/hrack-p6-window.xml'
@@ -99,6 +102,24 @@ async function pairAndroid(joinUrl: string): Promise<void> {
   await enterSensitiveText(joinUrl)
   await adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
   await tapResource('pairing-connect')
+}
+
+async function pairAndroidByCamera(): Promise<void> {
+  await adb('shell', 'pm', 'grant', appPackage, 'android.permission.CAMERA')
+  await tapResource('pairing-scan')
+}
+
+async function revokeRoom(joinUrl: string, revokeToken: string): Promise<void> {
+  const parsed = parseJoinUrl(joinUrl)
+  if (!parsed.ok) throw new Error('provided relay join URL is invalid')
+  const response = await fetch(
+    `${parsed.value.origin}${parsed.value.base}/v1/rooms/${encodeURIComponent(parsed.value.roomId)}`,
+    {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${revokeToken}` }
+    }
+  )
+  if (!response.ok) throw new Error('relay room revoke failed')
 }
 
 async function startAndroid(): Promise<void> {
@@ -220,6 +241,13 @@ test.describe('remote P6 Android live relay', () => {
     let roomCreated = false
     let roomRevoked = false
 
+    if (Boolean(providedJoinUrl) !== Boolean(providedRevokeToken)) {
+      throw new Error('pre-created room requires both join URL and revoke token')
+    }
+    if (useCameraQr && !providedJoinUrl) {
+      throw new Error('camera QR mode requires a pre-created room')
+    }
+
     try {
       await adb('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0')
       await adb('shell', 'settings', 'put', 'system', 'user_rotation', '0')
@@ -228,15 +256,25 @@ test.describe('remote P6 Android live relay', () => {
 
       const response = await relayPage.goto(targetUrl)
       if (!response?.ok()) throw new Error('relay generate page did not load')
-      await relayPage.getByTestId('create-room').click()
-      await expect(relayPage.getByTestId('join-url')).toBeVisible()
-      roomCreated = true
-      const joinUrl = await relayPage.getByTestId('join-url').innerText()
+      let joinUrl: string
+      if (providedJoinUrl) {
+        joinUrl = providedJoinUrl
+        roomCreated = true
+      } else {
+        await relayPage.getByTestId('create-room').click()
+        await expect(relayPage.getByTestId('join-url')).toBeVisible()
+        roomCreated = true
+        joinUrl = await relayPage.getByTestId('join-url').innerText()
+      }
 
-      await pairAndroid(joinUrl)
+      if (useCameraQr) await pairAndroidByCamera()
+      else await pairAndroid(joinUrl)
       await waitForUi(
         (xml) => xml.includes('等待 HRack 桌面端'),
-        'phone waiting for desktop'
+        useCameraQr
+          ? 'phone waiting for desktop after a real camera QR scan'
+          : 'phone waiting for desktop after manual pairing',
+        45_000
       )
       await screenshot(testInfo, 'p6-android-waiting.png')
 
@@ -307,8 +345,12 @@ test.describe('remote P6 Android live relay', () => {
       )
       await screenshot(testInfo, 'p6-android-desktop-offline.png')
 
-      await relayPage.getByTestId('revoke-room').click()
-      await expect(relayPage.getByTestId('status')).toHaveText('Room revoked.')
+      if (providedJoinUrl && providedRevokeToken) {
+        await revokeRoom(providedJoinUrl, providedRevokeToken)
+      } else {
+        await relayPage.getByTestId('revoke-room').click()
+        await expect(relayPage.getByTestId('status')).toHaveText('Room revoked.')
+      }
       roomRevoked = true
       await waitForUi(
         (xml) => xml.includes('房间已经关闭'),
@@ -318,9 +360,13 @@ test.describe('remote P6 Android live relay', () => {
     } finally {
       occupyingPhone?.close()
       if (roomCreated && !roomRevoked) {
-        const revoke = relayPage.getByTestId('revoke-room')
-        if (await revoke.isVisible().catch(() => false)) {
-          await revoke.click().catch(() => {})
+        if (providedJoinUrl && providedRevokeToken) {
+          await revokeRoom(providedJoinUrl, providedRevokeToken).catch(() => {})
+        } else {
+          const revoke = relayPage.getByTestId('revoke-room')
+          if (await revoke.isVisible().catch(() => false)) {
+            await revoke.click().catch(() => {})
+          }
         }
       }
       await app?.close().catch(() => {})
