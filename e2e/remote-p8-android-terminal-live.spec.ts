@@ -15,6 +15,15 @@ const targetUrl = process.env.HRACK_REMOTE_P8_URL
 const adbExecutable = process.env.HRACK_ANDROID_ADB
 const appPackage =
   process.env.HRACK_ANDROID_APP_PACKAGE ?? 'app.modplex.hrack.remote'
+const chineseImeDriver = process.env.HRACK_REMOTE_P8_CHINESE_IME ?? ''
+if (chineseImeDriver && !['gboard', 'fcitx5'].includes(chineseImeDriver)) {
+  throw new Error('HRACK_REMOTE_P8_CHINESE_IME must be gboard or fcitx5')
+}
+const chineseImeGate =
+  chineseImeDriver === 'gboard' || chineseImeDriver === 'fcitx5'
+const gboardIme =
+  'com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME'
+const fcitx5Ime = 'org.fcitx.fcitx5.android/.input.FcitxInputMethodService'
 const uiDumpPath = '/sdcard/hrack-p8-window.xml'
 
 function quoteRegex(value: string): string {
@@ -47,6 +56,13 @@ function boundsFor(xml: string, resourceId: string): [number, number] | null {
     Math.round((Number(match[1]) + Number(match[3])) / 2),
     Math.round((Number(match[2]) + Number(match[4])) / 2)
   ]
+}
+
+function textForResource(xml: string, resourceId: string): string | null {
+  const node = xml.match(
+    new RegExp(`<node[^>]*resource-id="${quoteRegex(resourceId)}"[^>]*>`)
+  )?.[0]
+  return node?.match(/\btext="([^"]*)"/)?.[1] ?? null
 }
 
 interface TerminalMetrics {
@@ -105,6 +121,79 @@ async function isImeShown(): Promise<boolean> {
   return /mInputShown=true/.test(state)
 }
 
+async function ensureGboardSubtype(
+  name: 'English (US)' | '简体中文 (拼音)',
+  locale: 'en_US' | 'zh_CN'
+): Promise<void> {
+  const methods = await adb('shell', 'ime', 'list', '-a')
+  const subtype = methods.match(
+    new RegExp(
+      `mSubtypeNameOverride=${quoteRegex(name)}[\\s\\S]{0,300}?mSubtypeId=(\\d+)[\\s\\S]{0,300}?mSubtypeLocale=${locale}`
+    )
+  )
+  if (!subtype) throw new Error(`Gboard ${name} is not installed`)
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const selected = (
+      await adb(
+        'shell',
+        'settings',
+        'get',
+        'secure',
+        'selected_input_method_subtype'
+      )
+    ).trim()
+    if (selected === subtype[1]) return
+    await adb('shell', 'input', 'keyevent', 'KEYCODE_LANGUAGE_SWITCH')
+    await new Promise((resolveWait) => setTimeout(resolveWait, 500))
+  }
+  throw new Error(`failed to select Gboard ${name}`)
+}
+
+async function ensureEnglishUsSubtype(): Promise<void> {
+  await ensureGboardSubtype('English (US)', 'en_US')
+}
+
+async function ensureChinesePinyinSubtype(): Promise<void> {
+  await ensureGboardSubtype('简体中文 (拼音)', 'zh_CN')
+}
+
+async function selectIme(ime: string): Promise<void> {
+  const result = await adb('shell', 'ime', 'set', ime)
+  if (!result.includes('selected'))
+    throw new Error(`failed to select IME: ${ime}`)
+  await new Promise((resolveWait) => setTimeout(resolveWait, 700))
+}
+
+async function selectChineseIme(): Promise<void> {
+  if (chineseImeDriver === 'fcitx5') {
+    await selectIme(fcitx5Ime)
+    return
+  }
+  await ensureChinesePinyinSubtype()
+}
+
+async function tapPinyinKeyboard(value: 'zhongwen'): Promise<void> {
+  const size = await adb('shell', 'wm', 'size')
+  if (!size.includes('1080x2400')) {
+    throw new Error('Chinese IME gate requires the 1080x2400 Pixel 6 AVD')
+  }
+  const keys: Record<string, [number, number]> = {
+    z: [217, 2022],
+    h: [648, 1860],
+    o: [918, 1715],
+    n: [756, 2022],
+    g: [540, 1860],
+    w: [163, 1715],
+    e: [270, 1715]
+  }
+  for (const character of value) {
+    const point = keys[character]
+    if (!point)
+      throw new Error(`missing Pinyin keyboard coordinate for ${character}`)
+    await adb('shell', 'input', 'tap', String(point[0]), String(point[1]))
+  }
+}
+
 async function startAndroid(): Promise<void> {
   await adb('shell', 'pm', 'clear', appPackage)
   await adb('shell', 'am', 'start', '-W', '-n', `${appPackage}/.MainActivity`)
@@ -115,8 +204,10 @@ async function startAndroid(): Promise<void> {
 }
 
 async function pairAndroid(joinUrl: string): Promise<void> {
+  if (chineseImeGate) await selectIme(gboardIme)
   await tapResource('pairing-manual-toggle')
   await tapResource('pairing-url')
+  if (chineseImeGate) await ensureEnglishUsSubtype()
   try {
     await adb('shell', 'input', 'text', joinUrl)
   } catch {
@@ -207,7 +298,10 @@ test.describe('remote P8 Android terminal live relay', () => {
   test('drives, types, resizes, releases and creates through the installed App', async ({
     page: relayPage
   }, testInfo) => {
-    test.skip(process.platform !== 'win32', 'current Android/Electron gate is Windows')
+    test.skip(
+      process.platform !== 'win32',
+      'current Android/Electron gate is Windows'
+    )
     test.setTimeout(240_000)
     if (!targetUrl) throw new Error('missing live relay target')
 
@@ -252,18 +346,28 @@ test.describe('remote P8 Android terminal live relay', () => {
       )
       await connectHrack(hrackPage, joinUrl)
 
-      await adb('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0')
+      await adb(
+        'shell',
+        'settings',
+        'put',
+        'system',
+        'accelerometer_rotation',
+        '0'
+      )
       await adb('shell', 'settings', 'put', 'system', 'user_rotation', '0')
       await startAndroid()
       await pairAndroid(joinUrl)
       await waitForUi(
-        (xml) => xml.includes(sessionName) && boundsFor(xml, 'sessions-create') !== null,
+        (xml) =>
+          xml.includes(sessionName) &&
+          boundsFor(xml, 'sessions-create') !== null,
         'real session list'
       )
       await tapResource(`session-${existing.sessionId}`)
       const portraitXml = await waitForUi(
         (xml) =>
-          xml.includes('手机正在控制这一个终端') && terminalMetrics(xml) !== null,
+          xml.includes('手机正在控制这一个终端') &&
+          terminalMetrics(xml) !== null,
         'driven terminal with parsed history'
       )
       const portrait = terminalMetrics(portraitXml)
@@ -282,17 +386,14 @@ test.describe('remote P8 Android terminal live relay', () => {
       const inputMarker = `p8input${Date.now()}`
       await tapResource('terminal-command-input')
       await expect.poll(isImeShown, { timeout: 15_000 }).toBe(true)
-      const keyboardXml = await waitForUi(
-        (xml) => {
-          const metrics = terminalMetrics(xml)
-          return (
-            !!metrics &&
-            metrics.cols === portrait.cols &&
-            metrics.rows < portrait.rows
-          )
-        },
-        'terminal resized above the Android soft keyboard'
-      )
+      const keyboardXml = await waitForUi((xml) => {
+        const metrics = terminalMetrics(xml)
+        return (
+          !!metrics &&
+          metrics.cols === portrait.cols &&
+          metrics.rows < portrait.rows
+        )
+      }, 'terminal resized above the Android soft keyboard')
       const keyboard = terminalMetrics(keyboardXml)
       if (!keyboard) throw new Error('missing soft-keyboard terminal metrics')
       await expect
@@ -308,21 +409,56 @@ test.describe('remote P8 Android terminal live relay', () => {
         (xml) => xml.includes(inputMarker),
         'committed native terminal command'
       )
+      if (chineseImeGate) {
+        await adb('shell', 'input', 'text', '%s')
+        await selectChineseIme()
+        await tapPinyinKeyboard('zhongwen')
+        await screenshot(testInfo, 'p8-android-terminal-chinese-probe.png')
+        if (chineseImeDriver === 'fcitx5') {
+          const composingXml = await dumpUi()
+          expect(
+            textForResource(composingXml, 'terminal-command-input') ?? ''
+          ).not.toContain('zhongwen')
+        } else {
+          await waitForUi(
+            (xml) =>
+              textForResource(xml, 'terminal-command-input')?.includes(
+                'zhongwen'
+              ) === true,
+            'Chinese IME composing pinyin in the native draft'
+          )
+        }
+        expect(await historyText(hrackPage, existing.ptyId)).not.toContain(
+          'zhongwen'
+        )
+        await screenshot(testInfo, 'p8-android-terminal-chinese-composing.png')
+        await adb(
+          'shell',
+          'input',
+          'tap',
+          '150',
+          chineseImeDriver === 'fcitx5' ? '1500' : '1580'
+        )
+        await waitForUi(
+          (xml) =>
+            textForResource(xml, 'terminal-command-input')?.includes('中文') ===
+            true,
+          'Chinese IME committed a candidate to the native draft'
+        )
+        await screenshot(testInfo, 'p8-android-terminal-chinese-committed.png')
+      }
       await screenshot(testInfo, 'p8-android-terminal-soft-keyboard.png')
       await adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
       await expect.poll(isImeShown, { timeout: 15_000 }).toBe(false)
-      const restoredXml = await waitForUi(
-        (xml) => {
-          const metrics = terminalMetrics(xml)
-          return (
-            !!metrics &&
-            metrics.cols === portrait.cols &&
-            metrics.rows > keyboard.rows &&
-            metrics.rows >= portrait.rows - 1
-          )
-        },
-        'terminal restored after the Android soft keyboard closed'
-      )
+      const restoredXml = await waitForUi((xml) => {
+        const metrics = terminalMetrics(xml)
+        return (
+          !!metrics &&
+          metrics.cols === portrait.cols &&
+          metrics.rows > keyboard.rows &&
+          metrics.rows >= portrait.rows - 1
+        )
+      }, 'terminal restored after the Android soft keyboard closed')
       const restored = terminalMetrics(restoredXml)
       if (!restored) throw new Error('missing restored terminal metrics')
       console.log(
@@ -341,13 +477,15 @@ test.describe('remote P8 Android terminal live relay', () => {
       await expect
         .poll(() => historyText(hrackPage, existing.ptyId), { timeout: 30_000 })
         .toContain(inputMarker)
-      const parsedAfterInput = await waitForUi(
-        (xml) => {
-          const metrics = terminalMetrics(xml)
-          return !!metrics && metrics.parsedBytes > portrait.parsedBytes
-        },
-        'WebView parsed and acked live PTY output'
-      )
+      if (chineseImeGate) {
+        const committedHistory = await historyText(hrackPage, existing.ptyId)
+        expect(committedHistory).toContain('中文')
+        expect(committedHistory).not.toContain('zhongwen')
+      }
+      const parsedAfterInput = await waitForUi((xml) => {
+        const metrics = terminalMetrics(xml)
+        return !!metrics && metrics.parsedBytes > portrait.parsedBytes
+      }, 'WebView parsed and acked live PTY output')
       expect(terminalMetrics(parsedAfterInput)?.parsedBytes).toBeGreaterThan(
         portrait.parsedBytes
       )
@@ -376,22 +514,20 @@ test.describe('remote P8 Android terminal live relay', () => {
         45_000
       )
       const afterBurst = terminalMetrics(afterBurstXml)
-      if (!afterBurst) throw new Error('missing terminal metrics after PTY burst')
+      if (!afterBurst)
+        throw new Error('missing terminal metrics after PTY burst')
       console.log(
         `[p8-terminal-burst] renderer=${afterBurst.renderer} bytes=${afterBurst.parsedBytes - beforeBurst} elapsedMs=${Date.now() - burstStartedAt}`
       )
 
       await adb('shell', 'settings', 'put', 'system', 'user_rotation', '1')
-      const landscapeXml = await waitForUi(
-        (xml) => {
-          const metrics = terminalMetrics(xml)
-          return (
-            !!metrics &&
-            (metrics.cols !== portrait.cols || metrics.rows !== portrait.rows)
-          )
-        },
-        'landscape terminal resize'
-      )
+      const landscapeXml = await waitForUi((xml) => {
+        const metrics = terminalMetrics(xml)
+        return (
+          !!metrics &&
+          (metrics.cols !== portrait.cols || metrics.rows !== portrait.rows)
+        )
+      }, 'landscape terminal resize')
       const landscape = terminalMetrics(landscapeXml)
       if (!landscape) throw new Error('missing landscape terminal metrics')
       await expect
@@ -406,7 +542,9 @@ test.describe('remote P8 Android terminal live relay', () => {
 
       await tapResource('terminal-back')
       await waitForUi(
-        (xml) => xml.includes(sessionName) && boundsFor(xml, 'sessions-create') !== null,
+        (xml) =>
+          xml.includes(sessionName) &&
+          boundsFor(xml, 'sessions-create') !== null,
         'session list after undrive'
       )
       await expect
@@ -426,20 +564,27 @@ test.describe('remote P8 Android terminal live relay', () => {
       await tapResource('creation-submit')
       await waitForUi(
         (xml) =>
-          xml.includes('手机正在控制这一个终端') && terminalMetrics(xml) !== null,
+          xml.includes('手机正在控制这一个终端') &&
+          terminalMetrics(xml) !== null,
         'newly created measured terminal'
       )
       const createdMetrics = terminalMetrics(await dumpUi())
       if (!createdMetrics) throw new Error('missing created terminal metrics')
       const created = await hrackPage.evaluate(async (firstSessionId) => {
         const sessions = await window.agentApi.listActive()
-        const next = sessions.find((session) => session.sessionId !== firstSessionId)
+        const next = sessions.find(
+          (session) => session.sessionId !== firstSessionId
+        )
         if (!next) return null
         const pty = (await window.ptyApi.listRecoverable()).find(
           (candidate) => candidate.terminalId === next.terminalId
         )
         return pty
-          ? { sessionId: next.sessionId, terminalId: next.terminalId, ptyId: pty.ptyId }
+          ? {
+              sessionId: next.sessionId,
+              terminalId: next.terminalId,
+              ptyId: pty.ptyId
+            }
           : null
       }, existing.sessionId)
       expect(created).not.toBeNull()
@@ -470,19 +615,32 @@ test.describe('remote P8 Android terminal live relay', () => {
         }
       }
       await app?.close().catch(() => {})
-      await adb('shell', 'settings', 'put', 'system', 'user_rotation', '0').catch(
-        () => {}
-      )
-      await adb('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '1').catch(
-        () => {}
-      )
+      await adb(
+        'shell',
+        'settings',
+        'put',
+        'system',
+        'user_rotation',
+        '0'
+      ).catch(() => {})
+      await adb(
+        'shell',
+        'settings',
+        'put',
+        'system',
+        'accelerometer_rotation',
+        '1'
+      ).catch(() => {})
     }
   })
 
   test('renders real Claude Code and Codex TUIs through the installed App', async ({
     page: relayPage
   }, testInfo) => {
-    test.skip(process.platform !== 'win32', 'current Android/Electron gate is Windows')
+    test.skip(
+      process.platform !== 'win32',
+      'current Android/Electron gate is Windows'
+    )
     test.skip(
       process.env.HRACK_REMOTE_P8_REAL_AI !== '1',
       'set HRACK_REMOTE_P8_REAL_AI=1 to launch installed authenticated AI CLIs'
@@ -544,7 +702,14 @@ test.describe('remote P8 Android terminal live relay', () => {
       )
       await connectHrack(hrackPage, joinUrl)
 
-      await adb('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0')
+      await adb(
+        'shell',
+        'settings',
+        'put',
+        'system',
+        'accelerometer_rotation',
+        '0'
+      )
       await adb('shell', 'settings', 'put', 'system', 'user_rotation', '0')
       await startAndroid()
       await pairAndroid(joinUrl)
@@ -558,7 +723,8 @@ test.describe('remote P8 Android terminal live relay', () => {
         await tapResource(`session-${session.sessionId}`)
         const initialXml = await waitForUi(
           (xml) =>
-            xml.includes('手机正在控制这一个终端') && terminalMetrics(xml) !== null,
+            xml.includes('手机正在控制这一个终端') &&
+            terminalMetrics(xml) !== null,
           `${session.adapterId} driven terminal`,
           60_000
         )
@@ -567,7 +733,9 @@ test.describe('remote P8 Android terminal live relay', () => {
         expect(initial.renderer).toBe('DOM')
         expect(initial.parsedBytes).toBeGreaterThan(0)
         await expect
-          .poll(() => hrackPage.evaluate(() => window.remoteApi.getDriveState()))
+          .poll(() =>
+            hrackPage.evaluate(() => window.remoteApi.getDriveState())
+          )
           .toMatchObject({ phase: 'driven', sessionId: session.sessionId })
 
         await tapResource('terminal-command-input')
@@ -579,7 +747,9 @@ test.describe('remote P8 Android terminal live relay', () => {
         await adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
         await tapResource('terminal-command-send')
         await expect
-          .poll(() => historyText(hrackPage, session.ptyId), { timeout: 60_000 })
+          .poll(() => historyText(hrackPage, session.ptyId), {
+            timeout: 60_000
+          })
           .toContain(session.helpEvidence)
         await waitForUi(
           (xml) => {
@@ -600,7 +770,9 @@ test.describe('remote P8 Android terminal live relay', () => {
           `${session.adapterId} returned to list`
         )
         await expect
-          .poll(() => hrackPage.evaluate(() => window.remoteApi.getDriveState()))
+          .poll(() =>
+            hrackPage.evaluate(() => window.remoteApi.getDriveState())
+          )
           .toMatchObject({ phase: 'idle', sessionId: null })
       }
 
@@ -616,12 +788,22 @@ test.describe('remote P8 Android terminal live relay', () => {
         }
       }
       await app?.close().catch(() => {})
-      await adb('shell', 'settings', 'put', 'system', 'user_rotation', '0').catch(
-        () => {}
-      )
-      await adb('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '1').catch(
-        () => {}
-      )
+      await adb(
+        'shell',
+        'settings',
+        'put',
+        'system',
+        'user_rotation',
+        '0'
+      ).catch(() => {})
+      await adb(
+        'shell',
+        'settings',
+        'put',
+        'system',
+        'accelerometer_rotation',
+        '1'
+      ).catch(() => {})
     }
   })
 })
