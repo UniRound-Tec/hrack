@@ -1,4 +1,5 @@
 import type { AppStrings } from './zh-CN'
+import type { RemoteDesktopError } from '../../../shared/ipc-contract'
 
 /** 日本語。プロトタイプの英文マイクロラベルは英語のまま（zh-CN 基準と同一）。 */
 export const ja = {
@@ -414,7 +415,8 @@ export const ja = {
     remoteStatusConnecting: '接続中',
     remoteStatusWaitingPhone: '送信済み。スマホ待ち',
     remoteStatusPeerOnline: 'スマホが着席',
-    remoteError: (code: string) => {
+    remoteStatusRevoking: 'ルームを失効中',
+    remoteError: (code: RemoteDesktopError) => {
       switch (code) {
         case 'occupied':
           return 'その席には既にデスクトップがあります。既存接続は切断しません'
@@ -426,8 +428,15 @@ export const ja = {
           return 'リレーに接続できません'
         case 'invalid-url':
         case 'invalid-scheme':
+        case 'invalid-room':
         case 'missing-room':
           return 'この URL を解析できません'
+        case 'insecure-remote':
+          return 'リモートサーバーには HTTPS / WSS が必要です。平文はループバックのみ許可されます'
+        case 'not-connected':
+          return 'ルームを失効するには先に接続してください'
+        case 'revoke-unconfirmed':
+          return '中継が失効を確認しませんでした。ルームがまだ有効な可能性があります'
         default:
           return `失敗: ${code}`
       }

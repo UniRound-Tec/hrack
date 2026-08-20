@@ -1,8 +1,8 @@
 # P0 — 远程协议冻结
 
-> 状态：**已完成（2026-08-20）**。对应 [SPEC-REMOTE.md](./SPEC-REMOTE.md) §6、§11 P0。仓库：现有 `hrack`。当前分支：`remote`。
+> 状态：**已完成并经协议/安全复审加固（2026-08-20）**。对应 [SPEC-REMOTE.md](./SPEC-REMOTE.md) §6、§11 P0。仓库：现有 `hrack`。当前分支：`remote`。
 >
-> 实现：`shared/remote-protocol.ts`。验收：`npx playwright test e2e/remote-protocol.spec.ts`（15 passed）。
+> 实现：`shared/remote-protocol.ts`。验收：`npx playwright test e2e/remote-protocol.spec.ts`（2026-08-20 复审：18 passed）。
 
 **人能验收什么：** 报文、加入 URL、座位规则有 TypeScript 形状和自动测试；没有窗口、没有网站、没有 WebSocket。
 
@@ -31,7 +31,7 @@ npx playwright test e2e/remote-protocol.spec.ts
 npm run typecheck
 ```
 
-SPEC 三条验收都绿：三个 URL 解析样例、第二 desktop `occupied`、吊销后 `bad-key`、夹具过守卫、非法 `v` 拒绝。
+SPEC P0 验收都绿：URL/安全 scheme、座位与吊销、方向守卫、黄金夹具、请求关联、敏感字段和资源边界均有定向覆盖。
 
 ---
 
@@ -41,7 +41,9 @@ SPEC 三条验收都绿：三个 URL 解析样例、第二 desktop `occupied`、
 
 ```
 parseJoinUrl(input) → JoinUrl | JoinUrlError
+parseRemoteFrame(text) → RemoteMessage | ParseError  // 外部唯一入口，先限帧再 JSON.parse
 parseRemoteMessage(raw) → RemoteMessage | ParseError
+isRemoteDesktopToPhoneMessage / isRemotePhoneToDesktopMessage
 openRoom / hello / disconnect / revoke   // 纯函数，返回新表 + 应答
 REMOTE_PROTOCOL_VERSION = 1
 types…
@@ -56,12 +58,14 @@ types…
 ## 3. 关键决定
 
 1. **单文件、自包含。** 远程 `CliRuntime` / 历史快照在本文件重声明为 `RemoteRuntime` / `RemotePtyHistorySnapshot`，结构与 `ipc-contract` 对齐，但不 import。P1/P4 做结构兼容映射。
-2. **手写守卫，不引入 zod。** 仓库主包没有 schema 库；`shared/theme-schema.ts` 已是 `isRecord` + 字段检查风格。未知字段忽略（可加字段），缺必填或 `v !== 1` 拒绝。
+2. **手写守卫，不引入 zod。** 仓库主包没有 schema 库；`shared/theme-schema.ts` 已是 `isRecord` + 字段检查风格。一般未知字段在重建安全对象时丢弃（可加字段）；缺必填、`v !== 1`、越界字段或明确禁止的本机内部字段拒绝。
 3. **测试跟现有门禁。** 纯逻辑已用 Playwright 直接 import 源文件。P0 不新开测试框架。定向复跑：`npx playwright test e2e/remote-protocol.spec.ts`。
 4. **`pty-in.data` 冻结为 UTF-8 文本。** `pty-out.data` 按 SPEC 用 base64。手机 IME 与 xterm `onData` 都是字符串；二进制帧是后续版本的事。两端不得混用。
-5. **解析层接受短 `roomId`。** SPEC 验收 URL 是 `…/aK3`。128-bit 生成与长度校验留给 P2。解析只要求最后一段非空。
+5. **解析层接受短 `roomId`，但上限 128 字符。** SPEC 验收 URL 是 `…/aK3`。P2 生成仍必须是 128-bit url-safe；客户端不强制恰好 22 字符，以兼容既有样例和未来编码。
 6. **补上表中缺的 `revoke`。** §6 正文把 `revoke` 与 `hello` 并列排除在转发之外，表 6.1 只列了 `revoked`。P0 类型包含客户端 → 中继 `{ v, type: 'revoke', roomId }`。P2 网站 HTTP 吊销仍可另做，但 HRack 设置吊销需要这条 WS 形状。
-7. **房间表是纯数据。** 连接用测试传入的 `connectionId`（不上线）。心跳/限流是 P2；P0 只提供 `disconnect(connectionId)` 作为「死连接腾座」的入口。
+7. **房间表是纯数据。** 连接用测试传入的 `connectionId`（不上线）。同一连接最多一个房间/角色，重复同一 hello 幂等；`disconnect(connectionId)` 防御性清掉全部遗留座位。心跳/限流是 P2。
+8. **中继只浅解析。** 它不看 PTY 正文，但必须用方向守卫阻断客户端伪造中继控制帧或发送反向业务帧；“任意 JSON 原样转发”不是合法实现。
+9. **请求关联和 create 幂等写进 v1。** `drive` / `create` 及其结果带 `requestId`；P5 必须缓存 create 结果，重试不能重复 spawn。
 
 ---
 
@@ -126,20 +130,20 @@ installations: Array<{
 | `session-upsert` | `session: RemoteSession` |
 | `session-removed` | `sessionId` |
 | `catalog` | `launchable: RemoteLaunchable[]`, `recentWorkspaces: string[]` |
-| `drive-ok` | `sessionId`, `cols`, `rows`, `history: RemotePtyHistorySnapshot` |
-| `drive-reject` | `reason: 'not-found' \| 'exited' \| 'busy'` |
+| `drive-ok` | `requestId`, `sessionId`, `cols`, `rows`, `history: RemotePtyHistorySnapshot` |
+| `drive-reject` | `requestId`, `sessionId`, `reason: 'not-found' \| 'exited' \| 'busy'` |
 | `undriven` | `sessionId`, `reason: 'reclaim' \| 'left' \| 'phone-timeout' \| 'session-exit' \| 'desktop-offline'` |
-| `create-ok` | `sessionId` |
-| `create-reject` | `reason: string`, `detail?: string` |
-| `not-implemented` | `for: string` |
+| `create-ok` | `requestId`, `sessionId` |
+| `create-reject` | `requestId`, `reason: RemoteCreateRejectReason`, `detail?: string` |
+| `not-implemented` | `for: string`, `requestId?: string` |
 
 **手机 → 电脑**
 
 | type | 必填 |
 |---|---|
-| `drive` | `sessionId`, `cols`, `rows` |
+| `drive` | `requestId`, `sessionId`, `cols`, `rows` |
 | `undrive` | `sessionId` |
-| `create` | `installationId`, `workspace`（非空）, `skipApproval?: boolean`, `args?: string[]` |
+| `create` | `requestId`, `installationId`, `workspace`（非空）, `skipApproval?: boolean`, `args?: string[]` |
 | `pty-resize` | `sessionId`, `cols`, `rows` |
 
 **数据面**
@@ -151,7 +155,7 @@ installations: Array<{
 | `pty-ack` | `sessionId`, `bytes` |
 | `pty-exit` | `sessionId`, `code?: number`, `signal?: number` |
 
-`parseRemoteMessage`：输入 `unknown`（测试里对 JSON.parse 结果调用）。`v` 不是 `1` → 拒绝。`create.workspace` 空字符串 → 拒绝。合法对象上的多余键忽略。
+外部文本必须走 `parseRemoteFrame`：先拒绝超过 1 MiB 的帧，再 `JSON.parse` 并调用 `parseRemoteMessage`。`v` 不是 `1`、`create.workspace` 空白、尺寸/数组/数据块越界、`pty-out` 不是标准 base64 或 `byteLength` 不吻合均拒绝。守卫输出是重建后的窄对象。
 
 ---
 
@@ -176,10 +180,11 @@ Scheme 映射：
 | 加入 URL | `wsUrl` scheme |
 |---|---|
 | `https:` | `wss:` |
-| `http:` | `ws:` |
-| `wss:` / `ws:` | 保持（P1 测试中继填 `ws://127.0.0.1:<port>/<room>`） |
+| `http:`（仅回环） | `ws:` |
+| `wss:` | 保持 |
+| `ws:`（仅回环） | 保持（P1 测试中继填 `ws://127.0.0.1:<port>/<room>`） |
 
-其它 scheme → 失败。
+其它 scheme，以及非回环主机上的 `http:` / `ws:` → 失败（`insecure-remote`）。
 
 路径规则：
 
@@ -213,7 +218,7 @@ type RoomRecord =
 |---|---|
 | `openRoom(rooms, roomId)` | 写入空座开放房间。已存在则原样返回（不复活已吊销 id）。 |
 | `hello(rooms, { roomId, role, connectionId })` | 见下 |
-| `disconnect(rooms, connectionId)` | 找到该连接所在座位并清空；若对端仍在，返回 `peer-leave` |
+| `disconnect(rooms, connectionId)` | 清空该连接的全部座位；若对端仍在，返回 `peer-leave` |
 | `revoke(rooms, roomId)` | 标 `revoked`；返回应发给两端的 `revoked`（若座位上有连接） |
 
 `hello`：
@@ -223,7 +228,8 @@ type RoomRecord =
 | 无此 room 或 `revoked` | `bad-key` | 否 |
 | 该 `role` 座位上有**另一个**活 `connectionId` | `occupied` | 否（不踢） |
 | 座位空 | `hello-ok`（`peer` 为占座后快照） | 写入该连接。对端已占则另给对端 `peer-join` |
-| 同一 `connectionId` 重复 hello | `hello-ok` | 否 |
+| 同一 `connectionId` 重复**完全相同**的 hello | `hello-ok` | 否 |
+| 同一 `connectionId` 改 role/room，或已有多个遗留座位 | `occupied` | 否 |
 
 掉线重连：必须先 `disconnect` 旧连接，新 `connectionId` 才能占同一角色。这就是 SPEC「旧套接字已断才能占」。
 
@@ -253,7 +259,7 @@ type RoomRecord =
 
 - SPEC 三个样例 origin/base/roomId/wsUrl 精确相等。
 - `http`→`ws`、`https`→`wss`；`ws://127.0.0.1:9/aK3` 的 `wsUrl` 为 `ws://127.0.0.1:9/v1/ws`（给 P1 铺路）。
-- 尾斜杠、缺 room、非法 scheme。
+- 尾斜杠、缺 room、非法 scheme；公网/LAN `http` / `ws` 拒绝，回环明文通过。
 
 **守卫**
 
@@ -261,13 +267,15 @@ type RoomRecord =
 - 非法 `v` 拒绝。
 - snapshot 夹具若被塞入 `correlation` 或 `resolvedExecutable`，守卫失败（证明远程子集真的窄）。
 - 空 `create.workspace` 拒绝。
-- `not-implemented` 形状 `{ v: 1, type: 'not-implemented', for: 'drive' }` 通过。
+- `drive` / `create` 与结果要求 `requestId`；`not-implemented` 可原样带回。
+- 超大帧、非法/长度不符的 `pty-out`、过大尺寸与数组拒绝。
 
 **座位**
 
 - 未 `openRoom` 的 hello → `bad-key`。
 - desktop hello → `hello-ok` 且 `peer.desktop === true`、`peer.phone === false`。
 - 第二台 desktop（不同 connectionId）→ `occupied`，第一台座位不变。
+- 同连接改 role/room → `occupied`；防御性断线清掉所有遗留座位。
 - 第一台 `disconnect` 后再 hello → `hello-ok`。
 - phone 加入已有 desktop → 双方：caller `hello-ok.peer.phone === true`，desktop 收到 `peer-join`。
 - `revoke` 后两端会拿到 `revoked`；再 hello → `bad-key`。

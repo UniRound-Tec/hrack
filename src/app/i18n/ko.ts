@@ -1,4 +1,5 @@
 import type { AppStrings } from './zh-CN'
+import type { RemoteDesktopError } from '../../../shared/ipc-contract'
 
 /** 한국어. 프로토타입 영어 마이크로 라벨은 영어 유지(zh-CN 기준과 동일). */
 export const ko = {
@@ -414,7 +415,8 @@ export const ko = {
     remoteStatusConnecting: '연결 중',
     remoteStatusWaitingPhone: '송신됨, 휴대폰 대기',
     remoteStatusPeerOnline: '휴대폰이 착석함',
-    remoteError: (code: string) => {
+    remoteStatusRevoking: '방 폐기 중',
+    remoteError: (code: RemoteDesktopError) => {
       switch (code) {
         case 'occupied':
           return '그 자리에는 이미 데스크톱이 있습니다. 기존 연결은 끊지 않았습니다'
@@ -426,8 +428,15 @@ export const ko = {
           return '릴레이에 연결할 수 없습니다'
         case 'invalid-url':
         case 'invalid-scheme':
+        case 'invalid-room':
         case 'missing-room':
           return '이 URL을 해석할 수 없습니다'
+        case 'insecure-remote':
+          return '원격 서버는 HTTPS / WSS를 사용해야 하며 평문 연결은 루프백에서만 허용됩니다'
+        case 'not-connected':
+          return '방을 폐기하려면 먼저 연결하세요'
+        case 'revoke-unconfirmed':
+          return '릴레이가 폐기를 확인하지 않았습니다. 방이 아직 유효할 수 있습니다'
         default:
           return `실패: ${code}`
       }

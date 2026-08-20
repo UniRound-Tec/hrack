@@ -363,13 +363,34 @@ export type RemoteDesktopPhase =
   | 'connecting'
   | 'waiting-phone'
   | 'peer-online'
+  | 'revoking'
   | 'error'
+
+export type RemoteDesktopError =
+  | 'invalid-url'
+  | 'invalid-scheme'
+  | 'insecure-remote'
+  | 'invalid-room'
+  | 'missing-room'
+  | 'occupied'
+  | 'bad-key'
+  | 'revoked'
+  | 'connect-failed'
+  | 'not-connected'
+  | 'revoke-unconfirmed'
 
 export interface RemoteDesktopState {
   phase: RemoteDesktopPhase
   href: string | null
   origin: string | null
-  error: string | null
+  error: RemoteDesktopError | null
+}
+
+export const REMOTE_DESKTOP_IDLE_STATE: RemoteDesktopState = {
+  phase: 'idle',
+  href: null,
+  origin: null,
+  error: null
 }
 
 export const RemoteInvokeChannel = {

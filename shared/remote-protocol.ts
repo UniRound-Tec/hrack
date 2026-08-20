@@ -8,9 +8,32 @@
 export const REMOTE_PROTOCOL_VERSION = 1 as const
 export type RemoteProtocolVersion = typeof REMOTE_PROTOCOL_VERSION
 
-export type RemoteParseResult<T> =
+export const REMOTE_PROTOCOL_LIMITS = {
+  frameBytes: 1_048_576,
+  idChars: 128,
+  detailChars: 4_096,
+  workspaceChars: 32_768,
+  args: 128,
+  argChars: 4_096,
+  sessions: 1_024,
+  launchable: 256,
+  installations: 256,
+  historyEvents: 20_000,
+  ptyChunkBytes: 256 * 1_024,
+  ptyAckBytes: 16 * 1_024 * 1_024,
+  terminalDimension: 10_000
+} as const
+
+export type RemoteParseResult<T, E extends string = string> =
   | { ok: true; value: T }
-  | { ok: false; reason: string }
+  | { ok: false; reason: E }
+
+export type RemoteJoinUrlError =
+  | 'invalid-url'
+  | 'invalid-scheme'
+  | 'insecure-remote'
+  | 'invalid-room'
+  | 'missing-room'
 
 export type RemoteRole = 'desktop' | 'phone'
 
@@ -29,6 +52,13 @@ export type RemoteRuntime =
   | { kind: 'wsl'; distro: string }
 
 export type RemoteDriveRejectReason = 'not-found' | 'exited' | 'busy'
+
+export type RemoteCreateRejectReason =
+  | 'invalid-workspace'
+  | 'installation-not-found'
+  | 'launch-failed'
+  | 'busy'
+  | 'duplicate-mismatch'
 
 export type RemoteUndrivenReason =
   | 'reclaim'
@@ -172,6 +202,7 @@ export interface RemoteCatalog {
 export interface RemoteDriveOk {
   v: 1
   type: 'drive-ok'
+  requestId: string
   sessionId: string
   cols: number
   rows: number
@@ -181,6 +212,8 @@ export interface RemoteDriveOk {
 export interface RemoteDriveReject {
   v: 1
   type: 'drive-reject'
+  requestId: string
+  sessionId: string
   reason: RemoteDriveRejectReason
 }
 
@@ -194,13 +227,15 @@ export interface RemoteUndriven {
 export interface RemoteCreateOk {
   v: 1
   type: 'create-ok'
+  requestId: string
   sessionId: string
 }
 
 export interface RemoteCreateReject {
   v: 1
   type: 'create-reject'
-  reason: string
+  requestId: string
+  reason: RemoteCreateRejectReason
   detail?: string
 }
 
@@ -208,11 +243,13 @@ export interface RemoteNotImplemented {
   v: 1
   type: 'not-implemented'
   for: string
+  requestId?: string
 }
 
 export interface RemoteDrive {
   v: 1
   type: 'drive'
+  requestId: string
   sessionId: string
   cols: number
   rows: number
@@ -227,6 +264,8 @@ export interface RemoteUndrive {
 export interface RemoteCreate {
   v: 1
   type: 'create'
+  /** 重试必须复用；桌面在房间生命周期内以它作为幂等键。 */
+  requestId: string
   installationId: string
   workspace: string
   skipApproval?: boolean
@@ -299,6 +338,38 @@ export type RemoteMessage =
   | RemotePtyAck
   | RemotePtyExit
 
+export type RemoteRelayRequest = RemoteHello | RemoteRevoke
+export type RemoteRelayEvent =
+  | RemoteHelloOk
+  | RemotePeerJoin
+  | RemotePeerLeave
+  | RemoteOccupied
+  | RemoteBadKey
+  | RemoteRevoked
+export type RemoteDesktopToPhoneMessage =
+  | RemoteSessionsSnapshot
+  | RemoteSessionUpsert
+  | RemoteSessionRemoved
+  | RemoteCatalog
+  | RemoteDriveOk
+  | RemoteDriveReject
+  | RemoteUndriven
+  | RemoteCreateOk
+  | RemoteCreateReject
+  | RemoteNotImplemented
+  | RemotePtyOut
+  | RemotePtyExit
+export type RemotePhoneToDesktopMessage =
+  | RemoteDrive
+  | RemoteUndrive
+  | RemoteCreate
+  | RemotePtyResize
+  | RemotePtyIn
+  | RemotePtyAck
+export type RemoteDesktopInboundMessage =
+  | RemoteRelayEvent
+  | RemotePhoneToDesktopMessage
+
 export interface JoinUrl {
   origin: string
   base: string
@@ -334,8 +405,48 @@ const SESSION_STATUSES = new Set<string>([
   'exited'
 ])
 
-const SESSION_FORBIDDEN_KEYS = new Set(['correlation', 'resolvedExecutable'])
-const INSTALLATION_FORBIDDEN_KEYS = new Set(['resolvedExecutable'])
+const SESSION_FORBIDDEN_KEYS = new Set([
+  'correlation',
+  'resolvedExecutable',
+  'adapterSessionId',
+  'terminalId',
+  'installationId',
+  'observerHealth',
+  'usage',
+  'capabilities',
+  'lastSeq',
+  'activeTurnId'
+])
+const LAUNCHABLE_FORBIDDEN_KEYS = new Set(['hint', 'resolvedExecutable'])
+const DEFINITION_FORBIDDEN_KEYS = new Set(['hint', 'resolvedExecutable'])
+const INSTALLATION_FORBIDDEN_KEYS = new Set([
+  'resolvedExecutable',
+  'detectedVia',
+  'verification',
+  'definitionId'
+])
+const PHONE_TO_DESKTOP_TYPES = new Set<RemotePhoneToDesktopMessage['type']>([
+  'drive',
+  'undrive',
+  'create',
+  'pty-resize',
+  'pty-in',
+  'pty-ack'
+])
+const DESKTOP_TO_PHONE_TYPES = new Set<RemoteDesktopToPhoneMessage['type']>([
+  'sessions-snapshot',
+  'session-upsert',
+  'session-removed',
+  'catalog',
+  'drive-ok',
+  'drive-reject',
+  'undriven',
+  'create-ok',
+  'create-reject',
+  'not-implemented',
+  'pty-out',
+  'pty-exit'
+])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -343,6 +454,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0
+}
+
+function isBoundedNonEmptyString(value: unknown, max: number): value is string {
+  return isNonEmptyString(value) && value.length <= max && !value.includes('\0')
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -355,6 +470,34 @@ function isNonNegInt(value: unknown): value is number {
 
 function isPosInt(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1
+}
+
+function isBoundedPosInt(value: unknown, max: number): value is number {
+  return isPosInt(value) && value <= max
+}
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength
+}
+
+function decodedBase64Length(value: string): number | null {
+  if (value.length === 0) return 0
+  if (
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+      value
+    )
+  ) {
+    return null
+  }
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0
+  return (value.length / 4) * 3 - padding
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  if (host === 'localhost' || host === '::1') return true
+  const match = /^(\d{1,3})(?:\.\d{1,3}){3}$/.exec(host)
+  return match?.[1] === '127'
 }
 
 function isRemoteRole(value: unknown): value is RemoteRole {
@@ -373,6 +516,16 @@ function isDriveRejectReason(value: unknown): value is RemoteDriveRejectReason {
   return value === 'not-found' || value === 'exited' || value === 'busy'
 }
 
+function isCreateRejectReason(value: unknown): value is RemoteCreateRejectReason {
+  return (
+    value === 'invalid-workspace' ||
+    value === 'installation-not-found' ||
+    value === 'launch-failed' ||
+    value === 'busy' ||
+    value === 'duplicate-mismatch'
+  )
+}
+
 function isUndrivenReason(value: unknown): value is RemoteUndrivenReason {
   return (
     value === 'reclaim' ||
@@ -383,7 +536,7 @@ function isUndrivenReason(value: unknown): value is RemoteUndrivenReason {
   )
 }
 
-function fail(reason: string): { ok: false; reason: string } {
+function fail<E extends string>(reason: E): { ok: false; reason: E } {
   return { ok: false, reason }
 }
 
@@ -410,7 +563,9 @@ function originOf(url: URL): string {
  * 加入 URL → origin / base / roomId / wsUrl。
  * http↔ws、https↔wss；ws/wss 保持（P1 测试中继）。短 roomId 合法。
  */
-export function parseJoinUrl(input: string): RemoteParseResult<JoinUrl> {
+export function parseJoinUrl(
+  input: string
+): RemoteParseResult<JoinUrl, RemoteJoinUrlError> {
   const trimmed = input.trim()
   let url: URL
   try {
@@ -428,6 +583,9 @@ export function parseJoinUrl(input: string): RemoteParseResult<JoinUrl> {
   ) {
     return fail('invalid-scheme')
   }
+  if ((protocol === 'http:' || protocol === 'ws:') && !isLoopbackHost(url.hostname)) {
+    return fail('insecure-remote')
+  }
 
   let path = url.pathname
   while (path.length > 1 && path.endsWith('/')) {
@@ -438,6 +596,9 @@ export function parseJoinUrl(input: string): RemoteParseResult<JoinUrl> {
 
   const roomId = segments[segments.length - 1]
   if (!roomId) return fail('missing-room')
+  if (!isBoundedNonEmptyString(roomId, REMOTE_PROTOCOL_LIMITS.idChars)) {
+    return fail('invalid-room')
+  }
   const baseSegments = segments.slice(0, -1)
   const base = baseSegments.length === 0 ? '' : `/${baseSegments.join('/')}`
   const origin = originOf(url)
@@ -472,16 +633,30 @@ function parseSession(value: unknown): RemoteSession | null {
   for (const key of SESSION_FORBIDDEN_KEYS) {
     if (key in value) return null
   }
-  if (!isNonEmptyString(value.sessionId)) return null
-  if (typeof value.name !== 'string') return null
-  if (!isNonEmptyString(value.adapterId)) return null
+  if (!isBoundedNonEmptyString(value.sessionId, REMOTE_PROTOCOL_LIMITS.idChars)) {
+    return null
+  }
+  if (typeof value.name !== 'string' || value.name.length > 256) return null
+  if (!isBoundedNonEmptyString(value.adapterId, REMOTE_PROTOCOL_LIMITS.idChars)) {
+    return null
+  }
   if (!isSessionStatus(value.status)) return null
   if (!isStatusConfidence(value.statusConfidence)) return null
   if (!isNonNegInt(value.pendingAttentionCount)) return null
   if (!isNonNegInt(value.activeToolCount)) return null
-  if (!isFiniteNumber(value.lastActivityAt)) return null
-  if (value.detail !== undefined && typeof value.detail !== 'string') return null
-  if (value.workspace !== undefined && typeof value.workspace !== 'string') {
+  if (!isNonNegInt(value.lastActivityAt)) return null
+  if (
+    value.detail !== undefined &&
+    (typeof value.detail !== 'string' ||
+      value.detail.length > REMOTE_PROTOCOL_LIMITS.detailChars)
+  ) {
+    return null
+  }
+  if (
+    value.workspace !== undefined &&
+    (typeof value.workspace !== 'string' ||
+      value.workspace.length > REMOTE_PROTOCOL_LIMITS.workspaceChars)
+  ) {
     return null
   }
 
@@ -516,12 +691,23 @@ function parseInstallation(value: unknown): RemoteInstallation | null {
 
 function parseLaunchable(value: unknown): RemoteLaunchable | null {
   if (!isRecord(value) || !isRecord(value.definition)) return null
+  for (const key of LAUNCHABLE_FORBIDDEN_KEYS) {
+    if (key in value) return null
+  }
   const definition = value.definition
+  for (const key of DEFINITION_FORBIDDEN_KEYS) {
+    if (key in definition) return null
+  }
   if (!isNonEmptyString(definition.id)) return null
   if (!isNonEmptyString(definition.adapterId)) return null
   if (typeof definition.displayName !== 'string') return null
   if (!isNonEmptyString(definition.iconId)) return null
-  if (!Array.isArray(value.installations)) return null
+  if (
+    !Array.isArray(value.installations) ||
+    value.installations.length > REMOTE_PROTOCOL_LIMITS.installations
+  ) {
+    return null
+  }
 
   let skipApproval: { label: string } | undefined
   if (value.skipApproval !== undefined) {
@@ -555,7 +741,13 @@ function parseHistoryEvent(value: unknown): RemotePtyHistoryEvent | null {
   if (!isRecord(value) || !isNonNegInt(value.sequence)) return null
   if (value.kind === 'output') {
     if (typeof value.data !== 'string') return null
-    if (!isNonNegInt(value.byteLength)) return null
+    if (
+      !isNonNegInt(value.byteLength) ||
+      value.byteLength > REMOTE_PROTOCOL_LIMITS.ptyChunkBytes ||
+      utf8ByteLength(value.data) !== value.byteLength
+    ) {
+      return null
+    }
     return {
       sequence: value.sequence,
       kind: 'output',
@@ -564,7 +756,12 @@ function parseHistoryEvent(value: unknown): RemotePtyHistoryEvent | null {
     }
   }
   if (value.kind === 'resize') {
-    if (!isPosInt(value.cols) || !isPosInt(value.rows)) return null
+    if (
+      !isBoundedPosInt(value.cols, REMOTE_PROTOCOL_LIMITS.terminalDimension) ||
+      !isBoundedPosInt(value.rows, REMOTE_PROTOCOL_LIMITS.terminalDimension)
+    ) {
+      return null
+    }
     return {
       sequence: value.sequence,
       kind: 'resize',
@@ -581,7 +778,12 @@ function parseHistory(value: unknown): RemotePtyHistorySnapshot | null {
   if (!isNonNegInt(value.retainedOutputBytes)) return null
   if (!isNonNegInt(value.droppedOutputBytes)) return null
   if (!isNonNegInt(value.droppedEvents)) return null
-  if (!Array.isArray(value.events)) return null
+  if (
+    !Array.isArray(value.events) ||
+    value.events.length > REMOTE_PROTOCOL_LIMITS.historyEvents
+  ) {
+    return null
+  }
   const events: RemotePtyHistoryEvent[] = []
   for (const item of value.events) {
     const parsed = parseHistoryEvent(item)
@@ -598,10 +800,18 @@ function parseHistory(value: unknown): RemotePtyHistorySnapshot | null {
 }
 
 function parseStringArray(value: unknown): string[] | null {
-  if (!Array.isArray(value)) return null
+  if (!Array.isArray(value) || value.length > REMOTE_PROTOCOL_LIMITS.args) {
+    return null
+  }
   const items: string[] = []
   for (const item of value) {
-    if (typeof item !== 'string') return null
+    if (
+      typeof item !== 'string' ||
+      item.length > REMOTE_PROTOCOL_LIMITS.argChars ||
+      item.includes('\0')
+    ) {
+      return null
+    }
     items.push(item)
   }
   return items
@@ -619,7 +829,10 @@ export function parseRemoteMessage(
 
   switch (raw.type) {
     case 'hello': {
-      if (!isRemoteRole(raw.role) || !isNonEmptyString(raw.roomId)) {
+      if (
+        !isRemoteRole(raw.role) ||
+        !isBoundedNonEmptyString(raw.roomId, REMOTE_PROTOCOL_LIMITS.idChars)
+      ) {
         return fail('invalid-hello')
       }
       return ok({ v: 1, type: 'hello', role: raw.role, roomId: raw.roomId })
@@ -648,17 +861,27 @@ export function parseRemoteMessage(
     case 'bad-key':
       return ok({ v: 1, type: 'bad-key' })
     case 'revoke': {
-      if (!isNonEmptyString(raw.roomId)) return fail('invalid-revoke')
+      if (!isBoundedNonEmptyString(raw.roomId, REMOTE_PROTOCOL_LIMITS.idChars)) {
+        return fail('invalid-revoke')
+      }
       return ok({ v: 1, type: 'revoke', roomId: raw.roomId })
     }
     case 'revoked':
       return ok({ v: 1, type: 'revoked' })
     case 'sessions-snapshot': {
-      if (!Array.isArray(raw.sessions)) return fail('invalid-sessions-snapshot')
+      if (
+        !Array.isArray(raw.sessions) ||
+        raw.sessions.length > REMOTE_PROTOCOL_LIMITS.sessions
+      ) {
+        return fail('invalid-sessions-snapshot')
+      }
       const sessions: RemoteSession[] = []
+      const sessionIds = new Set<string>()
       for (const item of raw.sessions) {
         const session = parseSession(item)
         if (!session) return fail('invalid-session')
+        if (sessionIds.has(session.sessionId)) return fail('duplicate-session')
+        sessionIds.add(session.sessionId)
         sessions.push(session)
       }
       return ok({ v: 1, type: 'sessions-snapshot', sessions })
@@ -669,11 +892,18 @@ export function parseRemoteMessage(
       return ok({ v: 1, type: 'session-upsert', session })
     }
     case 'session-removed': {
-      if (!isNonEmptyString(raw.sessionId)) return fail('invalid-session-removed')
+      if (!isBoundedNonEmptyString(raw.sessionId, REMOTE_PROTOCOL_LIMITS.idChars)) {
+        return fail('invalid-session-removed')
+      }
       return ok({ v: 1, type: 'session-removed', sessionId: raw.sessionId })
     }
     case 'catalog': {
-      if (!Array.isArray(raw.launchable)) return fail('invalid-catalog')
+      if (
+        !Array.isArray(raw.launchable) ||
+        raw.launchable.length > REMOTE_PROTOCOL_LIMITS.launchable
+      ) {
+        return fail('invalid-catalog')
+      }
       const recentWorkspaces = parseStringArray(raw.recentWorkspaces)
       if (!recentWorkspaces) return fail('invalid-catalog')
       const launchable: RemoteLaunchable[] = []
@@ -685,13 +915,24 @@ export function parseRemoteMessage(
       return ok({ v: 1, type: 'catalog', launchable, recentWorkspaces })
     }
     case 'drive-ok': {
-      if (!isNonEmptyString(raw.sessionId)) return fail('invalid-drive-ok')
-      if (!isPosInt(raw.cols) || !isPosInt(raw.rows)) return fail('invalid-drive-ok')
+      if (
+        !isBoundedNonEmptyString(raw.requestId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isBoundedNonEmptyString(raw.sessionId, REMOTE_PROTOCOL_LIMITS.idChars)
+      ) {
+        return fail('invalid-drive-ok')
+      }
+      if (
+        !isBoundedPosInt(raw.cols, REMOTE_PROTOCOL_LIMITS.terminalDimension) ||
+        !isBoundedPosInt(raw.rows, REMOTE_PROTOCOL_LIMITS.terminalDimension)
+      ) {
+        return fail('invalid-drive-ok')
+      }
       const history = parseHistory(raw.history)
       if (!history) return fail('invalid-history')
       return ok({
         v: 1,
         type: 'drive-ok',
+        requestId: raw.requestId,
         sessionId: raw.sessionId,
         cols: raw.cols,
         rows: raw.rows,
@@ -699,11 +940,26 @@ export function parseRemoteMessage(
       })
     }
     case 'drive-reject': {
-      if (!isDriveRejectReason(raw.reason)) return fail('invalid-drive-reject')
-      return ok({ v: 1, type: 'drive-reject', reason: raw.reason })
+      if (
+        !isBoundedNonEmptyString(raw.requestId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isBoundedNonEmptyString(raw.sessionId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isDriveRejectReason(raw.reason)
+      ) {
+        return fail('invalid-drive-reject')
+      }
+      return ok({
+        v: 1,
+        type: 'drive-reject',
+        requestId: raw.requestId,
+        sessionId: raw.sessionId,
+        reason: raw.reason
+      })
     }
     case 'undriven': {
-      if (!isNonEmptyString(raw.sessionId) || !isUndrivenReason(raw.reason)) {
+      if (
+        !isBoundedNonEmptyString(raw.sessionId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isUndrivenReason(raw.reason)
+      ) {
         return fail('invalid-undriven')
       }
       return ok({
@@ -714,50 +970,113 @@ export function parseRemoteMessage(
       })
     }
     case 'create-ok': {
-      if (!isNonEmptyString(raw.sessionId)) return fail('invalid-create-ok')
-      return ok({ v: 1, type: 'create-ok', sessionId: raw.sessionId })
+      if (
+        !isBoundedNonEmptyString(raw.requestId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isBoundedNonEmptyString(raw.sessionId, REMOTE_PROTOCOL_LIMITS.idChars)
+      ) {
+        return fail('invalid-create-ok')
+      }
+      return ok({
+        v: 1,
+        type: 'create-ok',
+        requestId: raw.requestId,
+        sessionId: raw.sessionId
+      })
     }
     case 'create-reject': {
-      if (typeof raw.reason !== 'string') return fail('invalid-create-reject')
-      if (raw.detail !== undefined && typeof raw.detail !== 'string') {
+      if (
+        !isBoundedNonEmptyString(raw.requestId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isCreateRejectReason(raw.reason)
+      ) {
+        return fail('invalid-create-reject')
+      }
+      if (
+        raw.detail !== undefined &&
+        (typeof raw.detail !== 'string' ||
+          raw.detail.length > REMOTE_PROTOCOL_LIMITS.detailChars)
+      ) {
         return fail('invalid-create-reject')
       }
       const message: RemoteCreateReject = {
         v: 1,
         type: 'create-reject',
+        requestId: raw.requestId,
         reason: raw.reason
       }
       if (typeof raw.detail === 'string') message.detail = raw.detail
       return ok(message)
     }
     case 'not-implemented': {
-      if (typeof raw.for !== 'string') return fail('invalid-not-implemented')
-      return ok({ v: 1, type: 'not-implemented', for: raw.for })
-    }
-    case 'drive':
-    case 'pty-resize': {
+      if (!isBoundedNonEmptyString(raw.for, 64)) {
+        return fail('invalid-not-implemented')
+      }
       if (
-        !isNonEmptyString(raw.sessionId) ||
-        !isPosInt(raw.cols) ||
-        !isPosInt(raw.rows)
+        raw.requestId !== undefined &&
+        !isBoundedNonEmptyString(raw.requestId, REMOTE_PROTOCOL_LIMITS.idChars)
       ) {
-        return fail(`invalid-${raw.type}`)
+        return fail('invalid-not-implemented')
+      }
+      const message: RemoteNotImplemented = {
+        v: 1,
+        type: 'not-implemented',
+        for: raw.for
+      }
+      if (typeof raw.requestId === 'string') message.requestId = raw.requestId
+      return ok(message)
+    }
+    case 'drive': {
+      if (
+        !isBoundedNonEmptyString(raw.requestId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isBoundedNonEmptyString(raw.sessionId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isBoundedPosInt(raw.cols, REMOTE_PROTOCOL_LIMITS.terminalDimension) ||
+        !isBoundedPosInt(raw.rows, REMOTE_PROTOCOL_LIMITS.terminalDimension)
+      ) {
+        return fail('invalid-drive')
       }
       return ok({
         v: 1,
-        type: raw.type,
+        type: 'drive',
+        requestId: raw.requestId,
+        sessionId: raw.sessionId,
+        cols: raw.cols,
+        rows: raw.rows
+      })
+    }
+    case 'pty-resize': {
+      if (
+        !isBoundedNonEmptyString(raw.sessionId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isBoundedPosInt(raw.cols, REMOTE_PROTOCOL_LIMITS.terminalDimension) ||
+        !isBoundedPosInt(raw.rows, REMOTE_PROTOCOL_LIMITS.terminalDimension)
+      ) {
+        return fail('invalid-pty-resize')
+      }
+      return ok({
+        v: 1,
+        type: 'pty-resize',
         sessionId: raw.sessionId,
         cols: raw.cols,
         rows: raw.rows
       })
     }
     case 'undrive': {
-      if (!isNonEmptyString(raw.sessionId)) return fail('invalid-undrive')
+      if (!isBoundedNonEmptyString(raw.sessionId, REMOTE_PROTOCOL_LIMITS.idChars)) {
+        return fail('invalid-undrive')
+      }
       return ok({ v: 1, type: 'undrive', sessionId: raw.sessionId })
     }
     case 'create': {
-      if (!isNonEmptyString(raw.installationId)) return fail('invalid-create')
-      if (typeof raw.workspace !== 'string' || raw.workspace.length === 0) {
+      if (
+        !isBoundedNonEmptyString(raw.requestId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isBoundedNonEmptyString(raw.installationId, REMOTE_PROTOCOL_LIMITS.idChars)
+      ) {
+        return fail('invalid-create')
+      }
+      if (
+        typeof raw.workspace !== 'string' ||
+        raw.workspace.trim().length === 0 ||
+        raw.workspace.length > REMOTE_PROTOCOL_LIMITS.workspaceChars ||
+        raw.workspace.includes('\0')
+      ) {
         return fail('invalid-create')
       }
       if (
@@ -771,6 +1090,7 @@ export function parseRemoteMessage(
       const message: RemoteCreate = {
         v: 1,
         type: 'create',
+        requestId: raw.requestId,
         installationId: raw.installationId,
         workspace: raw.workspace
       }
@@ -781,10 +1101,15 @@ export function parseRemoteMessage(
       return ok(message)
     }
     case 'pty-out': {
+      const decodedLength =
+        typeof raw.data === 'string' ? decodedBase64Length(raw.data) : null
       if (
-        !isNonEmptyString(raw.sessionId) ||
+        !isBoundedNonEmptyString(raw.sessionId, REMOTE_PROTOCOL_LIMITS.idChars) ||
         typeof raw.data !== 'string' ||
-        !isNonNegInt(raw.byteLength)
+        decodedLength === null ||
+        !isNonNegInt(raw.byteLength) ||
+        raw.byteLength > REMOTE_PROTOCOL_LIMITS.ptyChunkBytes ||
+        decodedLength !== raw.byteLength
       ) {
         return fail('invalid-pty-out')
       }
@@ -797,7 +1122,11 @@ export function parseRemoteMessage(
       })
     }
     case 'pty-in': {
-      if (!isNonEmptyString(raw.sessionId) || typeof raw.data !== 'string') {
+      if (
+        !isBoundedNonEmptyString(raw.sessionId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        typeof raw.data !== 'string' ||
+        utf8ByteLength(raw.data) > REMOTE_PROTOCOL_LIMITS.ptyChunkBytes
+      ) {
         return fail('invalid-pty-in')
       }
       return ok({
@@ -808,7 +1137,11 @@ export function parseRemoteMessage(
       })
     }
     case 'pty-ack': {
-      if (!isNonEmptyString(raw.sessionId) || !isNonNegInt(raw.bytes)) {
+      if (
+        !isBoundedNonEmptyString(raw.sessionId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isNonNegInt(raw.bytes) ||
+        raw.bytes > REMOTE_PROTOCOL_LIMITS.ptyAckBytes
+      ) {
         return fail('invalid-pty-ack')
       }
       return ok({
@@ -819,11 +1152,13 @@ export function parseRemoteMessage(
       })
     }
     case 'pty-exit': {
-      if (!isNonEmptyString(raw.sessionId)) return fail('invalid-pty-exit')
-      if (raw.code !== undefined && !isFiniteNumber(raw.code)) {
+      if (!isBoundedNonEmptyString(raw.sessionId, REMOTE_PROTOCOL_LIMITS.idChars)) {
         return fail('invalid-pty-exit')
       }
-      if (raw.signal !== undefined && !isFiniteNumber(raw.signal)) {
+      if (raw.code !== undefined && !Number.isInteger(raw.code)) {
+        return fail('invalid-pty-exit')
+      }
+      if (raw.signal !== undefined && !Number.isInteger(raw.signal)) {
         return fail('invalid-pty-exit')
       }
       const message: RemotePtyExit = {
@@ -838,6 +1173,37 @@ export function parseRemoteMessage(
     default:
       return fail('unknown-type')
   }
+}
+
+/** 文本 WebSocket 帧的唯一解析入口；在 JSON.parse 前先限制内存。 */
+export function parseRemoteFrame(text: string): RemoteParseResult<RemoteMessage> {
+  if (
+    text.length > REMOTE_PROTOCOL_LIMITS.frameBytes ||
+    utf8ByteLength(text) > REMOTE_PROTOCOL_LIMITS.frameBytes
+  ) {
+    return fail('frame-too-large')
+  }
+  let raw: unknown
+  try {
+    raw = JSON.parse(text) as unknown
+  } catch {
+    return fail('invalid-json')
+  }
+  return parseRemoteMessage(raw)
+}
+
+export function isRemotePhoneToDesktopMessage(
+  message: RemoteMessage
+): message is RemotePhoneToDesktopMessage {
+  return PHONE_TO_DESKTOP_TYPES.has(message.type as RemotePhoneToDesktopMessage['type'])
+}
+
+export function isRemoteDesktopToPhoneMessage(
+  message: RemoteMessage
+): message is RemoteDesktopToPhoneMessage {
+  return DESKTOP_TO_PHONE_TYPES.has(
+    message.type as RemoteDesktopToPhoneMessage['type']
+  )
 }
 
 export function emptyRooms(): RoomTable {
@@ -863,6 +1229,27 @@ export function hello(
       rooms,
       replies: [
         { connectionId: input.connectionId, message: { v: 1, type: 'bad-key' } }
+      ]
+    }
+  }
+
+  const existingSeats: Array<{ roomId: string; role: RemoteRole }> = []
+  for (const [existingRoomId, existingRoom] of Object.entries(rooms)) {
+    if (existingRoom.status !== 'open') continue
+    for (const existingRole of ['desktop', 'phone'] as const) {
+      if (existingRoom[existingRole] !== input.connectionId) continue
+      existingSeats.push({ roomId: existingRoomId, role: existingRole })
+    }
+  }
+  const repeatsExistingHello =
+    existingSeats.length === 1 &&
+    existingSeats[0].roomId === input.roomId &&
+    existingSeats[0].role === input.role
+  if (existingSeats.length > 0 && !repeatsExistingHello) {
+    return {
+      rooms,
+      replies: [
+        { connectionId: input.connectionId, message: { v: 1, type: 'occupied' } }
       ]
     }
   }
@@ -906,28 +1293,27 @@ export function disconnect(
   rooms: RoomTable,
   connectionId: string
 ): SeatOutcome {
+  let nextRooms = rooms
+  const replies: RoomReply[] = []
   for (const [roomId, room] of Object.entries(rooms)) {
     if (room.status !== 'open') continue
+    let nextRoom = room
+    let changed = false
     for (const role of ['desktop', 'phone'] as const) {
       if (room[role] !== connectionId) continue
-      const nextRoom = { ...room, [role]: null }
+      nextRoom = { ...nextRoom, [role]: null }
+      changed = true
       const peerId = room[otherRole(role)]
-      const replies: RoomReply[] =
-        peerId === null
-          ? []
-          : [
-              {
-                connectionId: peerId,
-                message: { v: 1, type: 'peer-leave', role }
-              }
-            ]
-      return {
-        rooms: { ...rooms, [roomId]: nextRoom },
-        replies
+      if (peerId !== null && peerId !== connectionId) {
+        replies.push({
+          connectionId: peerId,
+          message: { v: 1, type: 'peer-leave', role }
+        })
       }
     }
+    if (changed) nextRooms = { ...nextRooms, [roomId]: nextRoom }
   }
-  return { rooms, replies: [] }
+  return { rooms: nextRooms, replies }
 }
 
 export function revoke(rooms: RoomTable, roomId: string): SeatOutcome {

@@ -1,22 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { RemoteDesktopState } from '../../shared/ipc-contract'
+import {
+  REMOTE_DESKTOP_IDLE_STATE,
+  type RemoteDesktopState
+} from '../../shared/ipc-contract'
 import { parseJoinUrl } from '../../shared/remote-protocol'
 import { useSettingsStore } from '../state/settingsStore'
 import { useStrings } from './i18n'
 import RemoteJoinQr from './RemoteJoinQr'
 
-const IDLE: RemoteDesktopState = {
-  phase: 'idle',
-  href: null,
-  origin: null,
-  error: null
-}
-
 export default function RemoteSettingsSection() {
   const strings = useStrings()
   const joinUrl = useSettingsStore((state) => state.remoteJoinUrl)
   const setRemoteJoinUrl = useSettingsStore((state) => state.setRemoteJoinUrl)
-  const [state, setState] = useState<RemoteDesktopState>(IDLE)
+  const [state, setState] = useState<RemoteDesktopState>(
+    REMOTE_DESKTOP_IDLE_STATE
+  )
   const [confirming, setConfirming] = useState(false)
 
   useEffect(() => {
@@ -26,11 +24,12 @@ export default function RemoteSettingsSection() {
 
   const parsed = useMemo(() => parseJoinUrl(joinUrl), [joinUrl])
   const canConnect = parsed.ok
-  const busy = state.phase === 'connecting'
+  const busy = state.phase === 'connecting' || state.phase === 'revoking'
   const connected =
     state.phase === 'connecting' ||
     state.phase === 'waiting-phone' ||
-    state.phase === 'peer-online'
+    state.phase === 'peer-online' ||
+    state.phase === 'revoking'
 
   const statusText = (() => {
     switch (state.phase) {
@@ -40,8 +39,12 @@ export default function RemoteSettingsSection() {
         return strings.settings.remoteStatusWaitingPhone
       case 'peer-online':
         return strings.settings.remoteStatusPeerOnline
+      case 'revoking':
+        return strings.settings.remoteStatusRevoking
       case 'error':
-        return strings.settings.remoteError(state.error ?? 'error')
+        return state.error
+          ? strings.settings.remoteError(state.error)
+          : strings.settings.remoteStatusIdle
       default:
         return strings.settings.remoteStatusIdle
     }
@@ -87,7 +90,7 @@ export default function RemoteSettingsSection() {
           <button
             type="button"
             data-testid="settings-remote-disconnect"
-            disabled={!connected}
+            disabled={!connected || busy}
             onClick={() => {
               void window.remoteApi.disconnect().then(setState)
             }}
@@ -98,7 +101,7 @@ export default function RemoteSettingsSection() {
           <button
             type="button"
             data-testid="settings-remote-revoke"
-            disabled={!connected}
+            disabled={!connected || busy}
             onClick={() => {
               void window.remoteApi.revoke().then(setState)
             }}

@@ -1,3 +1,5 @@
+import type { RemoteDesktopError } from '../../../shared/ipc-contract'
+
 /**
  * zh-CN 是类型基准：`AppStrings = typeof zhCN`，其余 locale 以
  * `satisfies AppStrings` 保证 key 完整性（含函数型条目逐语言实现）。
@@ -417,7 +419,8 @@ export const zhCN = {
     remoteStatusConnecting: '连接中',
     remoteStatusWaitingPhone: '已出站，等待手机',
     remoteStatusPeerOnline: '手机已占座',
-    remoteError: (code: string) => {
+    remoteStatusRevoking: '正在吊销房间',
+    remoteError: (code: RemoteDesktopError) => {
       switch (code) {
         case 'occupied':
           return '该座位已有电脑，未踢掉原连接'
@@ -429,8 +432,15 @@ export const zhCN = {
           return '无法连上中继'
         case 'invalid-url':
         case 'invalid-scheme':
+        case 'invalid-room':
         case 'missing-room':
           return '无法解析这条 URL'
+        case 'insecure-remote':
+          return '远程服务器必须使用 HTTPS / WSS；明文连接仅允许本机回环地址'
+        case 'not-connected':
+          return '尚未连接，无法吊销房间'
+        case 'revoke-unconfirmed':
+          return '中继没有确认吊销，房间可能仍然有效'
         default:
           return `失败：${code}`
       }

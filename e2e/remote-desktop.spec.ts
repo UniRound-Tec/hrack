@@ -106,6 +106,20 @@ test.describe('remote desktop client', () => {
     client.dispose()
   })
 
+  test('connects through a deployment base path', async () => {
+    await relay.close()
+    relay = await RemoteTestRelay.listen(0, '/remote')
+    relay.openRoom('aK3')
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      broadcast: () => {}
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    expect(relay.hellos).toEqual([{ role: 'desktop', roomId: 'aK3' }])
+    client.dispose()
+  })
+
   test('sends a two-session snapshot after the phone joins', async () => {
     const sessions = new MemorySessions()
     sessions.upsert(remoteSession({ sessionId: 's1', status: 'idle' }))
@@ -218,6 +232,7 @@ test.describe('remote desktop client', () => {
       JSON.stringify({
         v: 1,
         type: 'drive',
+        requestId: 'drive-1',
         sessionId: 's1',
         cols: 40,
         rows: 18
@@ -227,8 +242,88 @@ test.describe('remote desktop client', () => {
       .poll(() =>
         phone.messages.find((msg) => msg.type === 'not-implemented')
       )
-      .toEqual({ v: 1, type: 'not-implemented', for: 'drive' })
+      .toEqual({
+        v: 1,
+        type: 'not-implemented',
+        for: 'drive',
+        requestId: 'drive-1'
+      })
     phone.ws.close()
+    client.dispose()
+  })
+
+  test('relay drops phone frames that impersonate relay control messages', async () => {
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      broadcast: () => {}
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    const phone = await openPhone(relay, 'aK3')
+    await expect.poll(() => client.getState().phase).toBe('peer-online')
+
+    phone.ws.send(JSON.stringify({ v: 1, type: 'revoked' }))
+    phone.ws.send(
+      JSON.stringify({
+        v: 1,
+        type: 'drive',
+        requestId: 'direction-barrier',
+        sessionId: 's1',
+        cols: 40,
+        rows: 18
+      })
+    )
+    await expect
+      .poll(() =>
+        phone.messages.find(
+          (message) =>
+            message.type === 'not-implemented' &&
+            message.requestId === 'direction-barrier'
+        )
+      )
+      .toBeTruthy()
+    expect(client.getState().phase).toBe('peer-online')
+    expect(relay.fromPhone.map((message) => message.type)).toEqual(['drive'])
+    phone.ws.close()
+    client.dispose()
+  })
+
+  test('waits for revoked confirmation before becoming idle', async () => {
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      broadcast: () => {},
+      revokeTimeoutMs: 500
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+
+    const result = await client.revoke()
+
+    expect(result).toEqual({
+      phase: 'idle',
+      href: null,
+      origin: null,
+      error: null
+    })
+    expect(relay.revokes).toEqual(['aK3'])
+    client.dispose()
+  })
+
+  test('reports an error when the relay does not confirm revocation', async () => {
+    relay.confirmRevokes = false
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      broadcast: () => {},
+      revokeTimeoutMs: 10
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+
+    expect(await client.revoke()).toMatchObject({
+      phase: 'error',
+      error: 'revoke-unconfirmed'
+    })
+    expect(relay.revokes).toEqual(['aK3'])
     client.dispose()
   })
 })

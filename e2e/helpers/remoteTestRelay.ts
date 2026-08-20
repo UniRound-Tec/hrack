@@ -5,8 +5,10 @@ import {
   disconnect,
   emptyRooms,
   hello,
+  isRemoteDesktopToPhoneMessage,
+  isRemotePhoneToDesktopMessage,
   openRoom,
-  parseRemoteMessage,
+  parseRemoteFrame,
   revoke,
   type RemoteMessage,
   type RemoteRole,
@@ -26,14 +28,17 @@ export class RemoteTestRelay {
   readonly hellos: Array<{ role: RemoteRole; roomId: string }> = []
   readonly fromDesktop: RemoteMessage[] = []
   readonly fromPhone: RemoteMessage[] = []
+  readonly revokes: string[] = []
+  confirmRevokes = true
 
   private constructor(
     private readonly http: Server,
     private readonly wss: WebSocketServer,
-    readonly port: number
+    readonly port: number,
+    readonly base: string
   ) {}
 
-  static listen(port = 0): Promise<RemoteTestRelay> {
+  static listen(port = 0, base = ''): Promise<RemoteTestRelay> {
     const http = createServer((_req, res) => {
       res.statusCode = 404
       res.end()
@@ -42,7 +47,7 @@ export class RemoteTestRelay {
     http.on('upgrade', (request, socket, head) => {
       const host = request.headers.host ?? '127.0.0.1'
       const pathname = new URL(request.url ?? '/', `http://${host}`).pathname
-      if (pathname !== '/v1/ws') {
+      if (pathname !== `${base}/v1/ws`) {
         socket.destroy()
         return
       }
@@ -59,7 +64,7 @@ export class RemoteTestRelay {
           reject(new Error('test relay has no TCP port'))
           return
         }
-        const relay = new RemoteTestRelay(http, wss, address.port)
+        const relay = new RemoteTestRelay(http, wss, address.port, base)
         wss.on('connection', (ws) => relay.accept(ws))
         resolve(relay)
       })
@@ -71,7 +76,7 @@ export class RemoteTestRelay {
   }
 
   joinUrl(roomId: string): string {
-    return `${this.origin}/${roomId}`
+    return `${this.origin}${this.base}/${roomId}`
   }
 
   openRoom(roomId: string): void {
@@ -104,13 +109,7 @@ export class RemoteTestRelay {
   }
 
   private onMessage(connectionId: string, text: string): void {
-    let raw: unknown
-    try {
-      raw = JSON.parse(text) as unknown
-    } catch {
-      return
-    }
-    const parsed = parseRemoteMessage(raw)
+    const parsed = parseRemoteFrame(text)
     if (!parsed.ok) return
     const message = parsed.value
     const info = this.meta.get(connectionId)
@@ -138,14 +137,30 @@ export class RemoteTestRelay {
     }
 
     if (message.type === 'revoke') {
+      if (info.role !== 'desktop' || info.roomId !== message.roomId) return
+      this.revokes.push(message.roomId)
+      if (!this.confirmRevokes) return
       const outcome = revoke(this.rooms, message.roomId)
       this.rooms = outcome.rooms
       this.dispatch(outcome.replies)
+      for (const reply of outcome.replies) {
+        const socket = this.sockets.get(reply.connectionId)
+        if (socket?.readyState === WebSocket.OPEN) {
+          socket.close(4001, 'revoked')
+        }
+      }
       return
     }
 
-    if (info.role === 'desktop') this.fromDesktop.push(message)
-    if (info.role === 'phone') this.fromPhone.push(message)
+    if (info.role === 'desktop') {
+      if (!isRemoteDesktopToPhoneMessage(message)) return
+      this.fromDesktop.push(message)
+    } else if (info.role === 'phone') {
+      if (!isRemotePhoneToDesktopMessage(message)) return
+      this.fromPhone.push(message)
+    } else {
+      return
+    }
 
     const peerId = this.peerOf(info)
     if (!peerId) return

@@ -6,13 +6,15 @@ export function runtimeSessionSource(
   runtime: AgentSessionRuntime
 ): RemoteSessionSource {
   return {
-    list: () => runtime.listRecords().map(toRemoteSession),
+    list: () =>
+      runtime.listRecords({ includeExited: true }).map(toRemoteSession),
     subscribe: (listener) =>
       runtime.subscribe((record, phase) => {
-        if (phase === 'finalized') {
+        if (phase === 'removed') {
           listener({ kind: 'removed', sessionId: record.sessionId })
           return
         }
+        if (phase === 'finalized') return
         listener({ kind: 'upsert', session: toRemoteSession(record) })
       })
   }

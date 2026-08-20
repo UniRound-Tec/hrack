@@ -1,6 +1,7 @@
 {
   "v": 1,
   "type": "drive-ok",
+  "requestId": "drive-1",
   "sessionId": "sess-1",
   "cols": 40,
   "rows": 18,

@@ -1,20 +1,16 @@
-import type { RemoteDesktopState } from '../../shared/ipc-contract'
 import {
+  REMOTE_DESKTOP_IDLE_STATE,
+  type RemoteDesktopError,
+  type RemoteDesktopState
+} from '../../shared/ipc-contract'
+import {
+  isRemotePhoneToDesktopMessage,
   parseJoinUrl,
-  parseRemoteMessage,
+  parseRemoteFrame,
   type JoinUrl,
   type RemoteMessage,
   type RemoteSession
 } from '../../shared/remote-protocol'
-
-const UNIMPLEMENTED_FROM_PHONE = new Set([
-  'drive',
-  'undrive',
-  'create',
-  'pty-in',
-  'pty-resize',
-  'pty-ack'
-])
 
 export type RemoteSessionChange =
   | { kind: 'upsert'; session: RemoteSession }
@@ -25,26 +21,24 @@ export interface RemoteSessionSource {
   subscribe(listener: (change: RemoteSessionChange) => void): () => void
 }
 
-const IDLE: RemoteDesktopState = {
-  phase: 'idle',
-  href: null,
-  origin: null,
-  error: null
-}
-
 export class RemoteDesktopClient {
   private socket: WebSocket | null = null
   private join: JoinUrl | null = null
   private userClosed = false
-  private phoneSeated = false
   private snapshotSent = false
   private unsubscribe: (() => void) | null = null
-  private state: RemoteDesktopState = IDLE
+  private state: RemoteDesktopState = REMOTE_DESKTOP_IDLE_STATE
+  private pendingRevoke: {
+    promise: Promise<RemoteDesktopState>
+    resolve: (state: RemoteDesktopState) => void
+    timer: ReturnType<typeof setTimeout>
+  } | null = null
 
   constructor(
     private readonly deps: {
       sessions: RemoteSessionSource
       broadcast: (state: RemoteDesktopState) => void
+      revokeTimeoutMs?: number
     }
   ) {}
 
@@ -53,6 +47,7 @@ export class RemoteDesktopClient {
   }
 
   connect(rawUrl: string): RemoteDesktopState {
+    this.cancelPendingRevoke(REMOTE_DESKTOP_IDLE_STATE)
     this.tearDownSocket()
     const parsed = parseJoinUrl(rawUrl)
     if (!parsed.ok) {
@@ -100,10 +95,13 @@ export class RemoteDesktopClient {
     socket.onclose = () => {
       if (this.socket !== socket) return
       this.socket = null
-      this.phoneSeated = false
       this.snapshotSent = false
       this.unsubscribe?.()
       this.unsubscribe = null
+      if (this.pendingRevoke) {
+        this.finishRevoke(false)
+        return
+      }
       if (this.userClosed) return
       if (this.state.phase === 'error') return
       this.setState({
@@ -118,16 +116,39 @@ export class RemoteDesktopClient {
 
   disconnect(): RemoteDesktopState {
     this.tearDownSocket()
-    this.setState(IDLE)
+    this.setState(REMOTE_DESKTOP_IDLE_STATE)
+    this.cancelPendingRevoke(this.state)
     return this.state
   }
 
-  revoke(): RemoteDesktopState {
+  revoke(): Promise<RemoteDesktopState> {
+    if (this.pendingRevoke) return this.pendingRevoke.promise
     const roomId = this.join?.roomId
-    if (roomId && this.socket?.readyState === WebSocket.OPEN) {
-      this.send({ v: 1, type: 'revoke', roomId })
+    if (!roomId || this.socket?.readyState !== WebSocket.OPEN) {
+      const href = this.join?.href ?? this.state.href
+      const origin = this.join?.origin ?? this.state.origin
+      this.setState({ phase: 'error', href, origin, error: 'not-connected' })
+      return Promise.resolve(this.state)
     }
-    return this.disconnect()
+    const join = this.join
+    if (!join) return Promise.resolve(this.state)
+    let resolvePromise!: (state: RemoteDesktopState) => void
+    const promise = new Promise<RemoteDesktopState>((resolve) => {
+      resolvePromise = resolve
+    })
+    const timer = setTimeout(
+      () => this.finishRevoke(false),
+      this.deps.revokeTimeoutMs ?? 3_000
+    )
+    this.pendingRevoke = { promise, resolve: resolvePromise, timer }
+    this.setState({
+      phase: 'revoking',
+      href: join.href,
+      origin: join.origin,
+      error: null
+    })
+    this.send({ v: 1, type: 'revoke', roomId })
+    return promise
   }
 
   dispose(): void {
@@ -135,18 +156,11 @@ export class RemoteDesktopClient {
   }
 
   private onFrame(text: string): void {
-    let raw: unknown
-    try {
-      raw = JSON.parse(text) as unknown
-    } catch {
-      return
-    }
-    const parsed = parseRemoteMessage(raw)
+    const parsed = parseRemoteFrame(text)
     if (!parsed.ok) return
     const message = parsed.value
     switch (message.type) {
       case 'hello-ok':
-        this.phoneSeated = message.peer.phone
         this.setState({
           phase: message.peer.phone ? 'peer-online' : 'waiting-phone',
           href: this.join?.href ?? this.state.href,
@@ -157,7 +171,6 @@ export class RemoteDesktopClient {
         return
       case 'peer-join':
         if (message.role !== 'phone') return
-        this.phoneSeated = true
         this.setState({
           phase: 'peer-online',
           href: this.join?.href ?? this.state.href,
@@ -168,7 +181,6 @@ export class RemoteDesktopClient {
         return
       case 'peer-leave':
         if (message.role !== 'phone') return
-        this.phoneSeated = false
         this.snapshotSent = false
         this.setState({
           phase: 'waiting-phone',
@@ -184,11 +196,21 @@ export class RemoteDesktopClient {
         this.fail('bad-key')
         return
       case 'revoked':
+        if (this.pendingRevoke) {
+          this.finishRevoke(true)
+          return
+        }
         this.fail('revoked')
         return
       default:
-        if (UNIMPLEMENTED_FROM_PHONE.has(message.type)) {
-          this.send({ v: 1, type: 'not-implemented', for: message.type })
+        if (isRemotePhoneToDesktopMessage(message)) {
+          const reply: RemoteMessage = {
+            v: 1,
+            type: 'not-implemented',
+            for: message.type
+          }
+          if ('requestId' in message) reply.requestId = message.requestId
+          this.send(reply)
         }
     }
   }
@@ -211,11 +233,12 @@ export class RemoteDesktopClient {
     this.snapshotSent = true
   }
 
-  private fail(error: string): void {
+  private fail(error: RemoteDesktopError): void {
     const href = this.join?.href ?? this.state.href
     const origin = this.join?.origin ?? this.state.origin
     this.tearDownSocket()
     this.setState({ phase: 'error', href, origin, error })
+    this.cancelPendingRevoke(this.state)
   }
 
   private send(message: RemoteMessage): void {
@@ -227,7 +250,6 @@ export class RemoteDesktopClient {
     this.userClosed = true
     this.unsubscribe?.()
     this.unsubscribe = null
-    this.phoneSeated = false
     this.snapshotSent = false
     const socket = this.socket
     this.socket = null
@@ -239,6 +261,30 @@ export class RemoteDesktopClient {
     ) {
       socket.close()
     }
+  }
+
+  private finishRevoke(confirmed: boolean): void {
+    const pending = this.pendingRevoke
+    if (!pending) return
+    this.pendingRevoke = null
+    clearTimeout(pending.timer)
+    const href = this.join?.href ?? this.state.href
+    const origin = this.join?.origin ?? this.state.origin
+    this.tearDownSocket()
+    this.setState(
+      confirmed
+        ? REMOTE_DESKTOP_IDLE_STATE
+        : { phase: 'error', href, origin, error: 'revoke-unconfirmed' }
+    )
+    pending.resolve(this.state)
+  }
+
+  private cancelPendingRevoke(state: RemoteDesktopState): void {
+    const pending = this.pendingRevoke
+    if (!pending) return
+    this.pendingRevoke = null
+    clearTimeout(pending.timer)
+    pending.resolve(state)
   }
 
   private setState(state: RemoteDesktopState): void {

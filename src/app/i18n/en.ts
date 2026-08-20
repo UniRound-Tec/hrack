@@ -1,4 +1,5 @@
 import type { AppStrings } from './zh-CN'
+import type { RemoteDesktopError } from '../../../shared/ipc-contract'
 
 /** English. Prototype English micro-labels stay English (same baseline as zh-CN). */
 export const en = {
@@ -416,7 +417,8 @@ export const en = {
     remoteStatusConnecting: 'Connecting',
     remoteStatusWaitingPhone: 'Outbound, waiting for the phone',
     remoteStatusPeerOnline: 'Phone is seated',
-    remoteError: (code: string) => {
+    remoteStatusRevoking: 'Revoking the room',
+    remoteError: (code: RemoteDesktopError) => {
       switch (code) {
         case 'occupied':
           return 'That seat already has a desktop; the first connection was not kicked'
@@ -428,8 +430,15 @@ export const en = {
           return 'Could not reach the relay'
         case 'invalid-url':
         case 'invalid-scheme':
+        case 'invalid-room':
         case 'missing-room':
           return 'Could not parse this URL'
+        case 'insecure-remote':
+          return 'Remote servers must use HTTPS / WSS; plaintext is limited to loopback'
+        case 'not-connected':
+          return 'Connect before revoking the room'
+        case 'revoke-unconfirmed':
+          return 'The relay did not confirm revocation; the room may still be valid'
         default:
           return `Failed: ${code}`
       }

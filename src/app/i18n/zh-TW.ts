@@ -1,4 +1,5 @@
 import type { AppStrings } from './zh-CN'
+import type { RemoteDesktopError } from '../../../shared/ipc-contract'
 
 /** 繁體中文。原型英文微标签保持英文（与 zh-CN 基准一致）。 */
 export const zhTW = {
@@ -414,7 +415,8 @@ export const zhTW = {
     remoteStatusConnecting: '連線中',
     remoteStatusWaitingPhone: '已出站，等待手機',
     remoteStatusPeerOnline: '手機已占座',
-    remoteError: (code: string) => {
+    remoteStatusRevoking: '正在撤銷房間',
+    remoteError: (code: RemoteDesktopError) => {
       switch (code) {
         case 'occupied':
           return '該座位已有電腦，未踢掉原連線'
@@ -426,8 +428,15 @@ export const zhTW = {
           return '無法連上中繼'
         case 'invalid-url':
         case 'invalid-scheme':
+        case 'invalid-room':
         case 'missing-room':
           return '無法解析這條 URL'
+        case 'insecure-remote':
+          return '遠端伺服器必須使用 HTTPS / WSS；明文連線僅允許本機回環位址'
+        case 'not-connected':
+          return '尚未連線，無法撤銷房間'
+        case 'revoke-unconfirmed':
+          return '中繼沒有確認撤銷，房間可能仍然有效'
         default:
           return `失敗：${code}`
       }

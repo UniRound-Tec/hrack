@@ -22,7 +22,10 @@ import {
 } from '../electron/agents/AgentEventReducer'
 import { normalizeAdapterEvent } from '../electron/agents/AgentEventNormalizer'
 import { AgentEventQueue } from '../electron/agents/AgentEventQueue'
-import { AgentSessionRuntime } from '../electron/agents/AgentSessionRuntime'
+import {
+  AgentSessionRuntime,
+  type AgentSessionPhase
+} from '../electron/agents/AgentSessionRuntime'
 import { ObserverRegistry } from '../electron/agents/ObserverRegistry'
 import type {
   AdapterEvent,
@@ -1319,6 +1322,12 @@ test.describe('AgentSessionRuntime (interface gates)', () => {
     expect(harness.killed).not.toContain('pty-1')
     // finalize 内含真实 I/O（rm），需要轮询等待。
     await expect.poll(() => harness.runtime.listActive().length).toBe(0)
+    await expect
+      .poll(() => harness.runtime.listRecords({ includeExited: true }))
+      .toHaveLength(1)
+    expect(
+      harness.runtime.listRecords({ includeExited: true })[0]?.projection.status
+    ).toBe('exited')
 
     // 低敏历史投影：每个稳定键只计一次。
     const kinds = harness.historyEvents.map((event) => event.kind)
@@ -1341,6 +1350,8 @@ test.describe('AgentSessionRuntime (interface gates)', () => {
     // observer-runs/<sessionId> 已被清理。
     const leftovers = join(harness.runDirRoot, started.sessionId)
     await expect.poll(() => existsSync(leftovers)).toBe(false)
+    await harness.runtime.stop(started.sessionId)
+    expect(harness.runtime.listRecords({ includeExited: true })).toHaveLength(0)
   })
 
   test('passes adapter args into the provider before a Windows verbatim command is serialized', async () => {
@@ -1384,6 +1395,10 @@ test.describe('AgentSessionRuntime (interface gates)', () => {
 
   test('natural pty exit produces a single exited projection', async () => {
     const harness = createRuntimeHarness({})
+    const phases: AgentSessionPhase[] = []
+    const unsubscribe = harness.runtime.subscribe((_record, phase) => {
+      phases.push(phase)
+    })
     const started = await harness.runtime.start({
       terminalId: 't1',
       selection: { installationId: 'codex:test', workspace: '', args: [] },
@@ -1407,6 +1422,15 @@ test.describe('AgentSessionRuntime (interface gates)', () => {
     expect(harness.killed).not.toContain(started.ptyId)
     // finalize 内含真实 I/O（rm），需要轮询等待。
     await expect.poll(() => harness.runtime.listActive().length).toBe(0)
+    await expect
+      .poll(() => harness.runtime.listRecords({ includeExited: true }))
+      .toHaveLength(1)
+    await expect.poll(() => phases.includes('finalized')).toBe(true)
+
+    await harness.runtime.stop(started.sessionId)
+    expect(harness.runtime.listRecords({ includeExited: true })).toHaveLength(0)
+    expect(phases.filter((phase) => phase === 'removed')).toHaveLength(1)
+    unsubscribe()
   })
 
   test('hook handshake requires two unanswered submit windows before degrading', async () => {

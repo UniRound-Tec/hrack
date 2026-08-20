@@ -7,6 +7,7 @@ import {
   hello,
   openRoom,
   parseJoinUrl,
+  parseRemoteFrame,
   parseRemoteMessage,
   revoke,
   type JoinUrl,
@@ -72,6 +73,9 @@ test.describe('join URL', () => {
       wsUrl: 'ws://127.0.0.1:9/v1/ws',
       href: 'ws://127.0.0.1:9/aK3'
     })
+    expect(expectJoin('http://localhost:9/aK3').wsUrl).toBe(
+      'ws://localhost:9/v1/ws'
+    )
   })
 
   test('treats a trailing slash as the same join URL', () => {
@@ -85,6 +89,18 @@ test.describe('join URL', () => {
     expect(parseJoinUrl('https://hrack.dev/').ok).toBe(false)
     expect(parseJoinUrl('ftp://hrack.dev/aK3').ok).toBe(false)
     expect(parseJoinUrl('not a url').ok).toBe(false)
+    expect(parseJoinUrl(`https://hrack.dev/${'a'.repeat(129)}`)).toEqual({
+      ok: false,
+      reason: 'invalid-room'
+    })
+    expect(parseJoinUrl('ws://relay.example.com/aK3')).toEqual({
+      ok: false,
+      reason: 'insecure-remote'
+    })
+    expect(parseJoinUrl('http://192.168.1.8/aK3')).toEqual({
+      ok: false,
+      reason: 'insecure-remote'
+    })
   })
 
   test('ignores query and hash and keeps deeper bases', () => {
@@ -135,6 +151,21 @@ test.describe('message guards', () => {
     const withExe = structuredClone(fixture)
     withExe.sessions[0].resolvedExecutable = 'C:\\\\Program Files\\\\claude.exe'
     expect(parseRemoteMessage(withExe).ok).toBe(false)
+
+    for (const key of [
+      'terminalId',
+      'installationId',
+      'adapterSessionId',
+      'observerHealth',
+      'usage',
+      'capabilities',
+      'lastSeq',
+      'activeTurnId'
+    ]) {
+      const withSensitiveField = structuredClone(fixture)
+      withSensitiveField.sessions[0][key] = 'local-only'
+      expect(parseRemoteMessage(withSensitiveField).ok, key).toBe(false)
+    }
   })
 
   test('rejects an empty create workspace and accepts not-implemented', () => {
@@ -142,6 +173,7 @@ test.describe('message guards', () => {
       parseRemoteMessage({
         v: 1,
         type: 'create',
+        requestId: 'create-1',
         installationId: 'inst-1',
         workspace: ''
       }).ok
@@ -149,6 +181,68 @@ test.describe('message guards', () => {
     expect(
       expectMessage({ v: 1, type: 'not-implemented', for: 'drive' })
     ).toEqual({ v: 1, type: 'not-implemented', for: 'drive' })
+  })
+
+  test('requires request correlation for drive/create and preserves it in replies', () => {
+    expect(
+      parseRemoteMessage({
+        v: 1,
+        type: 'drive',
+        sessionId: 's1',
+        cols: 40,
+        rows: 18
+      }).ok
+    ).toBe(false)
+    expect(
+      expectMessage({
+        v: 1,
+        type: 'create-reject',
+        requestId: 'create-1',
+        reason: 'invalid-workspace'
+      })
+    ).toMatchObject({ requestId: 'create-1' })
+  })
+
+  test('validates pty base64, decoded byteLength, and frame size before JSON parsing', () => {
+    expect(
+      expectMessage({
+        v: 1,
+        type: 'pty-out',
+        sessionId: 's1',
+        data: 'aGVsbG8=',
+        byteLength: 5
+      }).type
+    ).toBe('pty-out')
+    expect(
+      parseRemoteMessage({
+        v: 1,
+        type: 'pty-out',
+        sessionId: 's1',
+        data: 'not-base64!!!',
+        byteLength: 5
+      }).ok
+    ).toBe(false)
+    expect(
+      parseRemoteMessage({
+        v: 1,
+        type: 'pty-out',
+        sessionId: 's1',
+        data: 'aGVsbG8=',
+        byteLength: 999
+      }).ok
+    ).toBe(false)
+    expect(parseRemoteFrame('{not json')).toEqual({
+      ok: false,
+      reason: 'invalid-json'
+    })
+    expect(parseRemoteFrame(' '.repeat(1_048_577))).toEqual({
+      ok: false,
+      reason: 'frame-too-large'
+    })
+    expect(parseRemoteFrame('你'.repeat(400_000))).toEqual({
+      ok: false,
+      reason: 'frame-too-large'
+    })
   })
 })
 
@@ -222,6 +316,45 @@ test.describe('room seats', () => {
     })
     expect(again.replies[0]?.message.type).toBe('hello-ok')
     expect(again.rooms[roomId]).toMatchObject({ desktop: 'd2' })
+  })
+
+  test('one connection cannot change role, and defensive disconnect clears every legacy seat', () => {
+    let rooms = openRoom(emptyRooms(), roomId)
+    rooms = hello(rooms, {
+      roomId,
+      role: 'desktop',
+      connectionId: 'same-socket'
+    }).rooms
+    const secondRole = hello(rooms, {
+      roomId,
+      role: 'phone',
+      connectionId: 'same-socket'
+    })
+    expect(secondRole.replies[0]?.message.type).toBe('occupied')
+    expect(secondRole.rooms[roomId]).toMatchObject({
+      desktop: 'same-socket',
+      phone: null
+    })
+
+    const legacyRooms = {
+      [roomId]: {
+        status: 'open' as const,
+        desktop: 'same-socket',
+        phone: 'same-socket'
+      }
+    }
+    expect(
+      hello(legacyRooms, {
+        roomId,
+        role: 'desktop',
+        connectionId: 'same-socket'
+      }).replies[0]?.message.type
+    ).toBe('occupied')
+    expect(disconnect(legacyRooms, 'same-socket').rooms[roomId]).toEqual({
+      status: 'open',
+      desktop: null,
+      phone: null
+    })
   })
 
   test('phone join notifies the seated desktop', () => {

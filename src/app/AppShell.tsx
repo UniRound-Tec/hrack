@@ -143,6 +143,7 @@ export default function AppShell() {
   const restoreTerminals = useTerminalsStore((state) => state.restoreTerminals)
   const activateTerminal = useTerminalsStore((state) => state.activateTerminal)
   const closeTerminal = useTerminalsStore((state) => state.closeTerminal)
+  const markTerminalExited = useTerminalsStore((state) => state.markExited)
 
   useEffect(() => {
     let cancelled = false
@@ -774,36 +775,17 @@ export default function AppShell() {
           (session) => item.parentSessionId === session.sessionId
         )
       )
-      const activePageTerminalId = terminalIdFromPage(pageId)
-      const wasActive =
-        activePageTerminalId === terminalId ||
-        children.some((child) => child.id === activePageTerminalId)
       for (const child of children) {
         void window.ptyApi.killTerminal(child.id)
         closeTerminal(child.id)
       }
 
-      // 进程已经自行退出，不再调用 agent:stop。这里只释放 PTYManager
-      // 为回看输出保留的描述符，并用墓碑阻止迟到投影复活卡片。
-      void window.ptyApi.killTerminal(terminalId)
-      closeTerminal(terminalId)
-      useSessionsStore
-        .getState()
-        .removeSessions(linkedSessions.map((session) => session.sessionId))
-      setPendingCloseSession((pending) =>
-        linkedSessions.some(
-          (session) => session.sessionId === pending?.sessionId
-        )
-          ? null
-          : pending
-      )
-
-      if (wasActive) {
-        const nextTerminalId = useTerminalsStore.getState().activeTerminalId
-        setPageId(nextTerminalId ? terminalPage(nextTerminalId) : 'home')
-      }
+      // 退出与关闭是两个事实：保留 tab、PTY 历史和 exited 投影供本机/手机回看。
+      // 用户显式关闭 tab 时 closeTerminalAndRoute 才调用 agent:stop，主进程随后
+      // 发布 removed，远程列表也在同一时刻移除。
+      markTerminalExited(terminalId)
     },
-    [closeTerminal, pageId]
+    [closeTerminal, markTerminalExited]
   )
 
   const requestCloseSession = useCallback((session: SessionEntry): void => {
