@@ -133,13 +133,20 @@ async function connectHrack(page: Page, joinUrl: string): Promise<void> {
   )
 }
 
-async function launchSession(page: Page, name: string): Promise<{
+async function launchSession(
+  page: Page,
+  name: string,
+  adapterId = 'codex'
+): Promise<{
   sessionId: string
   terminalId: string
   ptyId: string
 }> {
   await page.evaluate(() => window.__hrackDebugShell?.navigate('home'))
-  await page.getByTestId('home-quick-codex').click()
+  await expect(page.getByTestId(`home-quick-${adapterId}`)).toBeVisible({
+    timeout: 45_000
+  })
+  await page.getByTestId(`home-quick-${adapterId}`).click()
   await page.getByTestId('cli-session-name').fill(name)
   await page.getByTestId('cli-workspace').fill(process.cwd())
   await page.getByTestId('cli-launch').click()
@@ -393,6 +400,134 @@ test.describe('remote P8 Android terminal live relay', () => {
       await expect
         .poll(() => hrackPage.evaluate(() => window.remoteApi.getDriveState()))
         .toMatchObject({ phase: 'idle', sessionId: null })
+
+      await relayPage.getByTestId('revoke-room').click()
+      await expect(relayPage.getByTestId('status')).toHaveText('Room revoked.')
+      roomRevoked = true
+      await waitForUi((xml) => xml.includes('房间已经关闭'), 'room revoked')
+    } finally {
+      if (roomCreated && !roomRevoked) {
+        const revoke = relayPage.getByTestId('revoke-room')
+        if (await revoke.isVisible().catch(() => false)) {
+          await revoke.click().catch(() => {})
+        }
+      }
+      await app?.close().catch(() => {})
+      await adb('shell', 'settings', 'put', 'system', 'user_rotation', '0').catch(
+        () => {}
+      )
+      await adb('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '1').catch(
+        () => {}
+      )
+    }
+  })
+
+  test('renders real Claude Code and Codex TUIs through the installed App', async ({
+    page: relayPage
+  }, testInfo) => {
+    test.skip(process.platform !== 'win32', 'current Android/Electron gate is Windows')
+    test.skip(
+      process.env.HRACK_REMOTE_P8_REAL_AI !== '1',
+      'set HRACK_REMOTE_P8_REAL_AI=1 to launch installed authenticated AI CLIs'
+    )
+    test.setTimeout(300_000)
+    if (!targetUrl) throw new Error('missing live relay target')
+
+    let app: ElectronApplication | undefined
+    let roomCreated = false
+    let roomRevoked = false
+    try {
+      const response = await relayPage.goto(targetUrl)
+      if (!response?.ok()) throw new Error('relay generate page did not load')
+      await relayPage.getByTestId('create-room').click()
+      await expect(relayPage.getByTestId('join-url')).toBeVisible()
+      roomCreated = true
+      const joinUrl = await relayPage.getByTestId('join-url').innerText()
+
+      const launched = await launchApp({
+        createDefaultTerminal: false,
+        cliFixture: false
+      })
+      app = launched.app
+      const hrackPage = launched.window
+      const targets = [
+        {
+          adapterId: 'claude',
+          name: 'P8 real Claude Code',
+          screenshot: 'p8-android-real-claude.png'
+        },
+        {
+          adapterId: 'codex',
+          name: 'P8 real Codex',
+          screenshot: 'p8-android-real-codex.png'
+        }
+      ] as const
+      const sessions = []
+      for (const target of targets) {
+        sessions.push({
+          ...target,
+          ...(await launchSession(hrackPage, target.name, target.adapterId))
+        })
+      }
+
+      await hrackPage.evaluate(
+        (workspace) => window.remoteApi.setRecentWorkspaces([workspace]),
+        process.cwd()
+      )
+      await connectHrack(hrackPage, joinUrl)
+
+      await adb('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0')
+      await adb('shell', 'settings', 'put', 'system', 'user_rotation', '0')
+      await startAndroid()
+      await pairAndroid(joinUrl)
+      await waitForUi(
+        (xml) => sessions.every((session) => xml.includes(session.name)),
+        'real Claude Code and Codex session list',
+        60_000
+      )
+
+      for (const session of sessions) {
+        await tapResource(`session-${session.sessionId}`)
+        const initialXml = await waitForUi(
+          (xml) =>
+            xml.includes('手机正在控制这一个终端') && terminalMetrics(xml) !== null,
+          `${session.adapterId} driven terminal`,
+          60_000
+        )
+        const initial = terminalMetrics(initialXml)
+        if (!initial) throw new Error(`missing ${session.adapterId} metrics`)
+        expect(initial.renderer).toBe('DOM')
+        expect(initial.parsedBytes).toBeGreaterThan(0)
+        await expect
+          .poll(() => hrackPage.evaluate(() => window.remoteApi.getDriveState()))
+          .toMatchObject({ phase: 'driven', sessionId: session.sessionId })
+
+        await tapResource('terminal-command-input')
+        await adb('shell', 'input', 'text', '/help')
+        await waitForUi((xml) => xml.includes('/help'), `${session.adapterId} help draft`)
+        await adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+        await tapResource('terminal-command-send')
+        await waitForUi(
+          (xml) => {
+            const metrics = terminalMetrics(xml)
+            return !!metrics && metrics.parsedBytes > initial.parsedBytes
+          },
+          `${session.adapterId} help output parsed`,
+          60_000
+        )
+        await screenshot(testInfo, session.screenshot)
+
+        await tapResource('terminal-back')
+        await waitForUi(
+          (xml) =>
+            boundsFor(xml, 'sessions-create') !== null &&
+            sessions.every((candidate) => xml.includes(candidate.name)),
+          `${session.adapterId} returned to list`
+        )
+        await expect
+          .poll(() => hrackPage.evaluate(() => window.remoteApi.getDriveState()))
+          .toMatchObject({ phase: 'idle', sessionId: null })
+      }
 
       await relayPage.getByTestId('revoke-room').click()
       await expect(relayPage.getByTestId('status')).toHaveText('Room revoked.')
