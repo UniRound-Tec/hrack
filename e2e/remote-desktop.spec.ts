@@ -2,16 +2,20 @@ import { expect, test } from '@playwright/test'
 import { createInitialAgentProjection } from '../electron/agents/AgentEventReducer'
 import {
   RemoteDesktopClient,
+  type RemoteDriveObserver,
+  type RemotePtyHost,
   type RemoteSessionChange
 } from '../electron/remote/RemoteDesktopClient'
 import { toRemoteSession } from '../electron/remote/toRemoteSession'
 import type { AgentSessionRecord } from '../electron/agents/AgentSessionRuntime'
 import {
+  REMOTE_PROTOCOL_LIMITS,
   parseRemoteMessage,
   type RemoteMessage,
   type RemoteSession
 } from '../shared/remote-protocol'
 import { RemoteTestRelay } from './helpers/remoteTestRelay'
+import { REMOTE_DRIVE_IDLE_STATE } from '../shared/ipc-contract'
 
 class MemorySessions {
   private readonly sessions = new Map<string, RemoteSession>()
@@ -37,6 +41,62 @@ class MemorySessions {
     this.sessions.delete(sessionId)
     for (const listener of this.listeners) {
       listener({ kind: 'removed', sessionId })
+    }
+  }
+}
+
+class MemoryRemotePtyHost implements RemotePtyHost {
+  readonly opens: Array<{
+    sessionId: string
+    cols: number
+    rows: number
+  }> = []
+  readonly writes: string[] = []
+  readonly resizes: Array<{ cols: number; rows: number }> = []
+  readonly acknowledgements: number[] = []
+  releases = 0
+  observer: RemoteDriveObserver | null = null
+  historyData = 'ready>'
+
+  open(
+    input: { sessionId: string; cols: number; rows: number },
+    observer: RemoteDriveObserver
+  ) {
+    this.opens.push(input)
+    if (input.sessionId === 'missing') {
+      return { ok: false as const, reason: 'not-found' as const }
+    }
+    if (input.sessionId === 'exited') {
+      return { ok: false as const, reason: 'exited' as const }
+    }
+    this.observer = observer
+    return {
+      ok: true as const,
+      target: {
+        sessionId: input.sessionId,
+        terminalId: 'terminal-1',
+        history: {
+          complete: true,
+          retainedOutputBytes: Buffer.byteLength(this.historyData),
+          droppedOutputBytes: 0,
+          droppedEvents: 0,
+          events: [
+            {
+              sequence: 1,
+              kind: 'output' as const,
+              data: this.historyData,
+              byteLength: Buffer.byteLength(this.historyData)
+            }
+          ]
+        },
+        write: (data: string) => this.writes.push(data),
+        resize: (cols: number, rows: number) =>
+          this.resizes.push({ cols, rows }),
+        acknowledge: (bytes: number) => this.acknowledgements.push(bytes),
+        release: () => {
+          this.releases += 1
+        }
+      }
     }
   }
 }
@@ -215,10 +275,13 @@ test.describe('remote desktop client', () => {
     second.dispose()
   })
 
-  test('replies not-implemented for drive', async () => {
+  test('opens a PTY drive and replies with correlated history', async () => {
+    const pty = new MemoryRemotePtyHost()
     const client = new RemoteDesktopClient({
       sessions: new MemorySessions(),
-      broadcast: () => {}
+      broadcast: () => {},
+      pty,
+      broadcastDrive: () => {}
     })
     client.connect(relay.joinUrl('aK3'))
     await expect.poll(() => client.getState().phase).toBe('waiting-phone')
@@ -240,16 +303,358 @@ test.describe('remote desktop client', () => {
     )
     await expect
       .poll(() =>
-        phone.messages.find((msg) => msg.type === 'not-implemented')
+        phone.messages.find((msg) => msg.type === 'drive-ok')
       )
       .toEqual({
         v: 1,
-        type: 'not-implemented',
-        for: 'drive',
-        requestId: 'drive-1'
+        type: 'drive-ok',
+        requestId: 'drive-1',
+        sessionId: 's1',
+        cols: 40,
+        rows: 18,
+        history: {
+          complete: true,
+          retainedOutputBytes: 6,
+          droppedOutputBytes: 0,
+          droppedEvents: 0,
+          events: [
+            {
+              sequence: 1,
+              kind: 'output',
+              data: 'ready>',
+              byteLength: 6
+            }
+          ]
+        }
       })
+    expect(pty.opens).toEqual([{ sessionId: 's1', cols: 40, rows: 18 }])
     phone.ws.close()
     client.dispose()
+  })
+
+  test('bounds drive history to the protocol frame and marks truncation', async () => {
+    const pty = new MemoryRemotePtyHost()
+    pty.historyData = '\u001b'.repeat(256 * 1024)
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      broadcast: () => {},
+      pty
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    const phone = await openPhone(relay, 'aK3')
+    await expect.poll(() => client.getState().phase).toBe('peer-online')
+    phone.ws.send(
+      JSON.stringify({
+        v: 1,
+        type: 'drive',
+        requestId: 'drive-large-history',
+        sessionId: 's1',
+        cols: 40,
+        rows: 18
+      })
+    )
+    await expect
+      .poll(
+        () => phone.messages.find((message) => message.type === 'drive-ok'),
+        { timeout: 1_000 }
+      )
+      .toBeTruthy()
+    const reply = phone.messages.find((message) => message.type === 'drive-ok')
+    if (!reply || reply.type !== 'drive-ok') throw new Error('missing drive-ok')
+    expect(Buffer.byteLength(JSON.stringify(reply))).toBeLessThanOrEqual(
+      REMOTE_PROTOCOL_LIMITS.frameBytes
+    )
+    expect(reply.history).toMatchObject({
+      complete: false,
+      retainedOutputBytes: 0,
+      droppedOutputBytes: 256 * 1024,
+      droppedEvents: 1,
+      events: []
+    })
+    phone.ws.close()
+    client.dispose()
+  })
+
+  test('routes the driven PTY data plane and lets desktop reclaim it', async () => {
+    const pty = new MemoryRemotePtyHost()
+    const driveStates: string[] = []
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      broadcast: () => {},
+      pty,
+      broadcastDrive: (state) => driveStates.push(state.phase)
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    const phone = await openPhone(relay, 'aK3')
+    await expect.poll(() => client.getState().phase).toBe('peer-online')
+    phone.ws.send(
+      JSON.stringify({
+        v: 1,
+        type: 'drive',
+        requestId: 'drive-data',
+        sessionId: 's1',
+        cols: 40,
+        rows: 18
+      })
+    )
+    await expect.poll(() => client.getDriveState().phase).toBe('driven')
+
+    phone.ws.send(
+      JSON.stringify({ v: 1, type: 'pty-in', sessionId: 'wrong', data: 'bad\r' })
+    )
+    phone.ws.send(
+      JSON.stringify({
+        v: 1,
+        type: 'pty-resize',
+        sessionId: 'wrong',
+        cols: 70,
+        rows: 30
+      })
+    )
+    phone.ws.send(
+      JSON.stringify({ v: 1, type: 'pty-ack', sessionId: 'wrong', bytes: 99 })
+    )
+    phone.ws.send(
+      JSON.stringify({ v: 1, type: 'undrive', sessionId: 'wrong' })
+    )
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(pty.writes).toEqual([])
+    expect(pty.resizes).toEqual([])
+    expect(pty.acknowledgements).toEqual([])
+    expect(client.getDriveState().phase).toBe('driven')
+
+    phone.ws.send(
+      JSON.stringify({ v: 1, type: 'pty-in', sessionId: 's1', data: 'whoami\r' })
+    )
+    phone.ws.send(
+      JSON.stringify({
+        v: 1,
+        type: 'pty-resize',
+        sessionId: 's1',
+        cols: 52,
+        rows: 20
+      })
+    )
+    phone.ws.send(
+      JSON.stringify({ v: 1, type: 'pty-ack', sessionId: 's1', bytes: 13 })
+    )
+    await expect.poll(() => pty.writes).toEqual(['whoami\r'])
+    expect(pty.resizes).toEqual([{ cols: 52, rows: 20 }])
+    expect(pty.acknowledgements).toEqual([13])
+
+    pty.observer?.onOutput(new TextEncoder().encode('desktop-output'))
+    await expect
+      .poll(() => phone.messages.find((message) => message.type === 'pty-out'))
+      .toMatchObject({
+        type: 'pty-out',
+        sessionId: 's1',
+        data: Buffer.from('desktop-output').toString('base64'),
+        byteLength: 14
+      })
+
+    expect(client.reclaim('s1')).toEqual(REMOTE_DRIVE_IDLE_STATE)
+    await expect
+      .poll(() => phone.messages.find((message) => message.type === 'undriven'))
+      .toMatchObject({ type: 'undriven', sessionId: 's1', reason: 'reclaim' })
+    expect(pty.releases).toBe(1)
+    expect(driveStates).toEqual(['driven', 'driven', 'idle'])
+    phone.ws.close()
+    client.dispose()
+  })
+
+  test('rejects unknown, exited, and concurrent drive requests', async () => {
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      broadcast: () => {},
+      pty: new MemoryRemotePtyHost()
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    const phone = await openPhone(relay, 'aK3')
+    await expect.poll(() => client.getState().phase).toBe('peer-online')
+    for (const [requestId, sessionId] of [
+      ['missing-request', 'missing'],
+      ['exited-request', 'exited'],
+      ['active-request', 's1'],
+      ['busy-request', 's2']
+    ]) {
+      phone.ws.send(
+        JSON.stringify({
+          v: 1,
+          type: 'drive',
+          requestId,
+          sessionId,
+          cols: 40,
+          rows: 18
+        })
+      )
+    }
+    await expect
+      .poll(() =>
+        phone.messages
+          .filter((message) => message.type === 'drive-reject')
+          .map((message) =>
+            message.type === 'drive-reject'
+              ? [message.requestId, message.reason]
+              : []
+          )
+      )
+      .toEqual([
+        ['missing-request', 'not-found'],
+        ['exited-request', 'exited'],
+        ['busy-request', 'busy']
+      ])
+    phone.ws.close()
+    client.dispose()
+  })
+
+  test('releases when the phone returns from the driven terminal', async () => {
+    const pty = new MemoryRemotePtyHost()
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      broadcast: () => {},
+      pty
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    const phone = await openPhone(relay, 'aK3')
+    await expect.poll(() => client.getState().phase).toBe('peer-online')
+    phone.ws.send(
+      JSON.stringify({
+        v: 1,
+        type: 'drive',
+        requestId: 'drive-left',
+        sessionId: 's1',
+        cols: 40,
+        rows: 18
+      })
+    )
+    await expect.poll(() => client.getDriveState().phase).toBe('driven')
+    phone.ws.send(JSON.stringify({ v: 1, type: 'undrive', sessionId: 's1' }))
+    await expect
+      .poll(() => phone.messages.find((message) => message.type === 'undriven'))
+      .toMatchObject({ type: 'undriven', sessionId: 's1', reason: 'left' })
+    expect(client.getDriveState()).toEqual(REMOTE_DRIVE_IDLE_STATE)
+    expect(pty.releases).toBe(1)
+    phone.ws.close()
+    client.dispose()
+  })
+
+  test('keeps a drive through a short phone reconnect and times out after grace', async () => {
+    const pty = new MemoryRemotePtyHost()
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      broadcast: () => {},
+      pty,
+      phoneGraceMs: 500
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    let phone = await openPhone(relay, 'aK3')
+    await expect.poll(() => client.getState().phase).toBe('peer-online')
+    phone.ws.send(
+      JSON.stringify({
+        v: 1,
+        type: 'drive',
+        requestId: 'drive-grace',
+        sessionId: 's1',
+        cols: 40,
+        rows: 18
+      })
+    )
+    await expect.poll(() => client.getDriveState().phase).toBe('driven')
+
+    phone.ws.close()
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    expect(client.getDriveState().phase).toBe('driven')
+
+    phone = await openPhone(relay, 'aK3')
+    await expect.poll(() => client.getState().phase).toBe('peer-online')
+    await new Promise((resolve) => setTimeout(resolve, 550))
+    expect(client.getDriveState().phase).toBe('driven')
+
+    phone.ws.close()
+    await expect.poll(() => client.getDriveState().phase).toBe('idle')
+    expect(pty.releases).toBe(1)
+    client.dispose()
+  })
+
+  test('reports PTY exit before releasing the drive', async () => {
+    const pty = new MemoryRemotePtyHost()
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      broadcast: () => {},
+      pty
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    const phone = await openPhone(relay, 'aK3')
+    await expect.poll(() => client.getState().phase).toBe('peer-online')
+    phone.ws.send(
+      JSON.stringify({
+        v: 1,
+        type: 'drive',
+        requestId: 'drive-exit',
+        sessionId: 's1',
+        cols: 40,
+        rows: 18
+      })
+    )
+    await expect.poll(() => client.getDriveState().phase).toBe('driven')
+    pty.observer?.onExit({ code: 23, signal: 9 })
+    await expect
+      .poll(() =>
+        phone.messages
+          .filter(
+            (message) => message.type === 'pty-exit' || message.type === 'undriven'
+          )
+          .map((message) => message.type)
+      )
+      .toEqual(['pty-exit', 'undriven'])
+    expect(phone.messages.find((message) => message.type === 'pty-exit')).toMatchObject(
+      { type: 'pty-exit', sessionId: 's1', code: 23, signal: 9 }
+    )
+    expect(phone.messages.find((message) => message.type === 'undriven')).toMatchObject(
+      { type: 'undriven', sessionId: 's1', reason: 'session-exit' }
+    )
+    expect(client.getDriveState()).toEqual(REMOTE_DRIVE_IDLE_STATE)
+    phone.ws.close()
+    client.dispose()
+  })
+
+  test('releases the drive when the desktop WebSocket drops', async () => {
+    const pty = new MemoryRemotePtyHost()
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      broadcast: () => {},
+      pty
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    const phone = await openPhone(relay, 'aK3')
+    await expect.poll(() => client.getState().phase).toBe('peer-online')
+    phone.ws.send(
+      JSON.stringify({
+        v: 1,
+        type: 'drive',
+        requestId: 'drive-drop',
+        sessionId: 's1',
+        cols: 40,
+        rows: 18
+      })
+    )
+    await expect.poll(() => client.getDriveState().phase).toBe('driven')
+
+    await relay.close()
+    await expect.poll(() => client.getState().phase).toBe('error')
+    expect(client.getDriveState()).toEqual(REMOTE_DRIVE_IDLE_STATE)
+    expect(pty.releases).toBe(1)
+    phone.ws.close()
+    client.dispose()
+    relay = await RemoteTestRelay.listen()
   })
 
   test('relay drops phone frames that impersonate relay control messages', async () => {

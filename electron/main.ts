@@ -65,6 +65,7 @@ import { BridgeStateStore } from './bridge/state'
 import { BridgeError } from './bridge/errors'
 import { RemoteDesktopClient } from './remote/RemoteDesktopClient'
 import { runtimeSessionSource } from './remote/runtimeSessionSource'
+import { runtimeRemotePtyHost } from './remote/runtimeRemotePtyHost'
 
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
@@ -222,7 +223,10 @@ function completeBridgeLaunch(ack: BridgeLaunchAck): void {
 const remoteClient = new RemoteDesktopClient({
   sessions: runtimeSessionSource(agentRuntime),
   broadcast: (state) =>
-    broadcastToAllWindows(RemoteEventChannel.StateChanged, state)
+    broadcastToAllWindows(RemoteEventChannel.StateChanged, state),
+  pty: runtimeRemotePtyHost(agentRuntime, manager),
+  broadcastDrive: (state) =>
+    broadcastToAllWindows(RemoteEventChannel.DriveChanged, state)
 })
 
 const updateService = new UpdateService({

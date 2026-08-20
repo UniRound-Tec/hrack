@@ -223,7 +223,9 @@ export const zhCN = {
     copied: '已复制',
     newTab: '新建标签页',
     closeTab: '关闭标签页',
-    exited: '已退出'
+    exited: '已退出',
+    remoteDriven: '手机正在控制',
+    remoteReclaim: '抢回'
   },
   home: {
     greetings: [

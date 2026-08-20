@@ -7,6 +7,7 @@ import {
   Pencil,
   Plus,
   SquareTerminal,
+  Smartphone,
   Terminal as TerminalIcon,
   X
 } from 'lucide-react'
@@ -27,6 +28,7 @@ interface TopTabBarProps {
   pageId: PageId
   sessions: readonly SessionEntry[]
   terminals: readonly TerminalEntry[]
+  drivenSessionId: string | null
   onNavigate: (pageId: PageId) => void
   onOpenNewSession: () => void
   onRenameSession: (sessionId: string, name: string) => void
@@ -60,6 +62,7 @@ export default function TopTabBar({
   pageId,
   sessions,
   terminals,
+  drivenSessionId,
   onNavigate,
   onOpenNewSession,
   onRenameSession,
@@ -212,6 +215,9 @@ export default function TopTabBar({
                   type="button"
                   data-testid="toptab-session-item"
                   data-session-id={session.sessionId}
+                  data-remote-driven={
+                    drivenSessionId === session.sessionId ? 'true' : 'false'
+                  }
                   aria-current={active ? 'page' : undefined}
                   onClick={() => onNavigate(sessionPage(session))}
                   className={`${tabButtonClass(active)} pr-1`}
@@ -220,6 +226,13 @@ export default function TopTabBar({
                     className={`size-1.5 shrink-0 rounded-full ${statusDot[session.status]}`}
                   />
                   <Icon size={13} className="size-[13px] shrink-0" />
+                  {drivenSessionId === session.sessionId && (
+                    <Smartphone
+                      aria-label={strings.terminal.remoteDriven}
+                      className="size-3 shrink-0 text-brand"
+                      strokeWidth={1.75}
+                    />
+                  )}
                   <span className="max-w-[96px] truncate">{session.name}</span>
                 </button>
                 <button

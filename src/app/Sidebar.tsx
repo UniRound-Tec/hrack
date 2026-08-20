@@ -8,6 +8,7 @@ import {
   Pencil,
   SquareTerminal,
   SquarePen,
+  Smartphone,
   Terminal as TerminalIcon,
   X
 } from 'lucide-react'
@@ -33,6 +34,7 @@ interface SidebarProps {
   sessions: readonly SessionEntry[]
   terminals: readonly TerminalEntry[]
   childTerminals: readonly TerminalEntry[]
+  drivenSessionId: string | null
   onNavigate: (pageId: PageId) => void
   onOpenNewSession: () => void
   onCollapse: () => void
@@ -66,6 +68,7 @@ export default function Sidebar({
   sessions,
   terminals,
   childTerminals,
+  drivenSessionId,
   onNavigate,
   onOpenNewSession,
   onCollapse,
@@ -252,6 +255,9 @@ export default function Sidebar({
                   type="button"
                   data-testid="sidebar-session-item"
                   data-session-id={session.sessionId}
+                  data-remote-driven={
+                    drivenSessionId === session.sessionId ? 'true' : 'false'
+                  }
                   aria-current={active ? 'page' : undefined}
                   onPointerDown={(event) =>
                     sessionDrag.begin(
@@ -281,6 +287,13 @@ export default function Sidebar({
                     <span
                       className={`size-1.5 shrink-0 rounded-full ${statusDot[session.status]}`}
                     />
+                    {drivenSessionId === session.sessionId && (
+                      <Smartphone
+                        aria-label={strings.terminal.remoteDriven}
+                        className="size-3 shrink-0 text-brand"
+                        strokeWidth={1.75}
+                      />
+                    )}
                     <span className="ml-auto shrink-0 text-[11px] text-text-faint transition-opacity group-hover:opacity-0">
                       {relativeTime(strings, session.lastActivityAt)}
                     </span>

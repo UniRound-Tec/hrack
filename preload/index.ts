@@ -46,6 +46,7 @@ import {
   type PtyResizeCursorSync,
   type RecordEventInput,
   type RemoteApi,
+  type RemoteDriveState,
   type RemoteDesktopState,
   type ShellApi,
   type SpawnOptions,
@@ -357,6 +358,9 @@ const remoteApi: RemoteApi = {
   disconnect: () => ipcRenderer.invoke(RemoteInvokeChannel.Disconnect),
   revoke: () => ipcRenderer.invoke(RemoteInvokeChannel.Revoke),
   getState: () => ipcRenderer.invoke(RemoteInvokeChannel.GetState),
+  getDriveState: () => ipcRenderer.invoke(RemoteInvokeChannel.GetDriveState),
+  reclaim: (sessionId) =>
+    ipcRenderer.invoke(RemoteInvokeChannel.Reclaim, sessionId),
   onStateChange: (cb) => {
     const handler = (
       _event: IpcRendererEvent,
@@ -369,6 +373,23 @@ const remoteApi: RemoteApi = {
     ipcRenderer.on(RemoteEventChannel.StateChanged, handler)
     return () =>
       ipcRenderer.removeListener(RemoteEventChannel.StateChanged, handler)
+  },
+  onDriveStateChange: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      state: RemoteDriveState
+    ): void => {
+      if (
+        state &&
+        typeof state === 'object' &&
+        (state.phase === 'idle' || state.phase === 'driven')
+      ) {
+        cb(state)
+      }
+    }
+    ipcRenderer.on(RemoteEventChannel.DriveChanged, handler)
+    return () =>
+      ipcRenderer.removeListener(RemoteEventChannel.DriveChanged, handler)
   }
 }
 

@@ -219,7 +219,9 @@ export const ja = {
     copied: 'コピーしました',
     newTab: '新しいタブ',
     closeTab: 'タブを閉じる',
-    exited: '終了'
+    exited: '終了',
+    remoteDriven: 'スマートフォンが操作中',
+    remoteReclaim: '操作を取り戻す'
   },
   home: {
     greetings: [

@@ -1,6 +1,6 @@
 # HRack 远程控制 — Spec
 
-> 状态：**P0–P3 已实现并经真实接口验收（2026-08-20），P4 计划完成、实施中。** P2 已部署到公网 HTTPS/WSS 单副本环境，P3 已证明真实 HRack/PTY 列表能进入公网房间；落地仍按 [§11](#11-分批实施-p0p8) P0–P8 分模块关门，整份契约都有效，但未到期的报文必须 `not-implemented`，不得假装成功。
+> 状态：**P0–P4 已实现并经真实接口验收（2026-08-20），下一阶段为 P5。** P2 已部署到公网 HTTPS/WSS 单副本环境，P3 已证明真实 HRack/PTY 列表能进入公网房间，P4 已证明该公网房间能真实驾驶、输入、回传输出并由桌面抢回同一 PTY；落地仍按 [§11](#11-分批实施-p0p8) P0–P8 分模块关门，整份契约都有效，但未到期的报文必须 `not-implemented`，不得假装成功。
 > 范围：一部手机远程看见、新建、驾驶 HRack 里已经在跑（或由手机新建）的 CLI 会话。
 > 父文档：[SPEC.md](./SPEC.md)、[SPEC-S.md](./SPEC-S.md)。
 > 本机 OpenCode Bridge 仍只活在本机，见 [SPEC-OPENCODE-BRIDGE.md](./SPEC-OPENCODE-BRIDGE.md)。远程不走那条套接字。
@@ -138,7 +138,7 @@ HRack 填入 URL 时必须确认：这会把终端字节送到该 URL 所在的�
 
 ## 6. 报文
 
-协议版本 `v = 1`。文本帧，每条一个 JSON 对象；传输层和解析入口都把单帧限制为 1 MiB（UTF-8）。`pty-out` 字节用标准 base64，`byteLength` 必须等于解码后的字节数；`pty-in.data` 固定为 UTF-8 文本。后续可用二进制帧替换 payload，但那属于新协议版本。
+协议版本 `v = 1`。文本帧，每条一个 JSON 对象；传输层和解析入口都把单帧限制为 1 MiB（UTF-8）。`drive-ok.history` 也受这个整帧上限约束：发送端保留最新的完整 history 事件，按实际 JSON UTF-8 大小截断，并同步更新 `complete`、`retainedOutputBytes`、`droppedOutputBytes`、`droppedEvents`，不得把本机 16 MiB 历史上限直接塞进一帧。`pty-out` 字节用标准 base64，`byteLength` 必须等于解码后的字节数；`pty-in.data` 固定为 UTF-8 文本。后续可用二进制帧替换 payload，但那属于新协议版本。
 
 中继只解析版本、`type`、房间/角色与方向，不解析 PTY 正文，也不写入日志。占座后只允许“电脑 → 手机”和“手机 → 电脑”各自的白名单报文；客户端伪造 `hello-ok` / `occupied` / `bad-key` / `revoked` 等中继控制帧必须丢弃。`hello` / `revoke` 由中继消费，不转发。
 
@@ -206,7 +206,7 @@ hello 限流，防止扫 `roomId`。
 
 背压：复用主进程 `PtyDataQueue`。手机 ack 之前电脑不得无界堆积到中继。中继对单房间缓冲有上限，超出则断开该房间（优于撑爆内存）。
 
-历史：`drive-ok.history` 复用现有 PTY 历史上限；`complete: false` 表示已截断。手机 xterm 先 replay 再接 `pty-out`。
+历史：`drive-ok.history` 来自主进程现有 PTY 权威历史，但远程快照必须再按 1 MiB 整帧上限保留最新的完整事件；本机保留上限不因此降低。`complete: false` 和累计 dropped 字段表示本机历史或远程帧预算已经截断。手机 xterm 先 replay 再接 `pty-out`。
 
 边界：id ≤ 128 字符，终端行列为 1–10000，单个 PTY 数据块 ≤ 256 KiB；snapshot 最多 1024 个 session，catalog 最多 256 个 launchable，每项最多 256 个 installation，history 最多 20000 个事件。守卫会重建安全对象并丢弃一般未知字段；若出现 `correlation`、`resolvedExecutable`、`terminalId`、`installationId`、`observerHealth`、`usage`、`capabilities` 等明确禁止的本机内部字段，则整条报文拒绝。
 
@@ -459,6 +459,8 @@ P3 关门 = 「电脑把列表送到公网房间」成立。此后 App 和驾驶
 ### P4 — HRack 驾驶
 
 依赖 P1（连接）。验收可用测试中继或 P2。
+
+**状态（2026-08-20）：已关门。** 真实 Electron/`AgentSessionRuntime`/PTY 在独立本机 P2 与公网 `https://hrack.modplex.app/` 均完成驾驶、双向字节和桌面抢回；15 秒离线释放与进程退出另以真实 PTY 门禁验证。详细证据见 [PLAN-REMOTE-P4.md](./PLAN-REMOTE-P4.md#7-实现与验证记录)。
 
 **做**
 

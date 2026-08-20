@@ -1,14 +1,20 @@
 import {
+  REMOTE_DRIVE_IDLE_STATE,
   REMOTE_DESKTOP_IDLE_STATE,
+  type ExitPayload,
+  type RemoteDriveState,
   type RemoteDesktopError,
   type RemoteDesktopState
 } from '../../shared/ipc-contract'
 import {
+  REMOTE_PROTOCOL_LIMITS,
   isRemotePhoneToDesktopMessage,
   parseJoinUrl,
   parseRemoteFrame,
   type JoinUrl,
+  type RemoteDriveRejectReason,
   type RemoteMessage,
+  type RemotePtyHistorySnapshot,
   type RemoteSession
 } from '../../shared/remote-protocol'
 
@@ -21,6 +27,110 @@ export interface RemoteSessionSource {
   subscribe(listener: (change: RemoteSessionChange) => void): () => void
 }
 
+export interface RemoteDriveObserver {
+  onOutput(data: Uint8Array): void
+  onExit(payload: ExitPayload): void
+  onOverflow(): void
+}
+
+export interface RemoteDrivenPty {
+  readonly sessionId: string
+  readonly terminalId: string
+  readonly history: RemotePtyHistorySnapshot
+  write(data: string): void
+  resize(cols: number, rows: number): void
+  acknowledge(bytes: number): void
+  release(): void
+}
+
+export type RemotePtyOpenResult =
+  | { ok: true; target: RemoteDrivenPty }
+  | { ok: false; reason: RemoteDriveRejectReason }
+
+export interface RemotePtyHost {
+  open(
+    input: { sessionId: string; cols: number; rows: number },
+    observer: RemoteDriveObserver
+  ): RemotePtyOpenResult
+}
+
+function driveOkMessage(
+  request: Extract<RemoteMessage, { type: 'drive' }>,
+  history: RemotePtyHistorySnapshot
+): Extract<RemoteMessage, { type: 'drive-ok' }> {
+  return {
+    v: 1,
+    type: 'drive-ok',
+    requestId: request.requestId,
+    sessionId: request.sessionId,
+    cols: request.cols,
+    rows: request.rows,
+    history
+  }
+}
+
+/** Keep the newest complete history events while guaranteeing one valid v1 frame. */
+function boundedDriveOkMessage(
+  request: Extract<RemoteMessage, { type: 'drive' }>,
+  history: RemotePtyHistorySnapshot
+): Extract<RemoteMessage, { type: 'drive-ok' }> {
+  const full = driveOkMessage(request, history)
+  if (
+    history.retainedOutputBytes <=
+      REMOTE_PROTOCOL_LIMITS.frameBytes - 32 * 1024 &&
+    Buffer.byteLength(JSON.stringify(full)) <=
+    REMOTE_PROTOCOL_LIMITS.frameBytes
+  ) {
+    return full
+  }
+
+  const selected = [] as RemotePtyHistorySnapshot['events']
+  let selectedJsonBytes = 0
+  const eventBudget = REMOTE_PROTOCOL_LIMITS.frameBytes - 32 * 1024
+  for (let index = history.events.length - 1; index >= 0; index--) {
+    const event = history.events[index]
+    if (!event) continue
+    const encodedBytes = Buffer.byteLength(JSON.stringify(event)) + 1
+    if (selectedJsonBytes + encodedBytes > eventBudget) break
+    selected.push(event)
+    selectedJsonBytes += encodedBytes
+  }
+  selected.reverse()
+
+  const build = (): Extract<RemoteMessage, { type: 'drive-ok' }> => {
+    const omittedCount = history.events.length - selected.length
+    const omitted = history.events.slice(0, omittedCount)
+    const droppedOutputBytes = omitted.reduce(
+      (total, event) =>
+        total + (event.kind === 'output' ? event.byteLength : 0),
+      0
+    )
+    const retainedOutputBytes = selected.reduce(
+      (total, event) =>
+        total + (event.kind === 'output' ? event.byteLength : 0),
+      0
+    )
+    return driveOkMessage(request, {
+      complete: history.complete && omittedCount === 0,
+      retainedOutputBytes,
+      droppedOutputBytes: history.droppedOutputBytes + droppedOutputBytes,
+      droppedEvents: history.droppedEvents + omittedCount,
+      events: [...selected]
+    })
+  }
+
+  let bounded = build()
+  while (
+    selected.length > 0 &&
+    Buffer.byteLength(JSON.stringify(bounded)) >
+      REMOTE_PROTOCOL_LIMITS.frameBytes
+  ) {
+    selected.shift()
+    bounded = build()
+  }
+  return bounded
+}
+
 export class RemoteDesktopClient {
   private socket: WebSocket | null = null
   private join: JoinUrl | null = null
@@ -28,6 +138,9 @@ export class RemoteDesktopClient {
   private snapshotSent = false
   private unsubscribe: (() => void) | null = null
   private state: RemoteDesktopState = REMOTE_DESKTOP_IDLE_STATE
+  private driveState: RemoteDriveState = REMOTE_DRIVE_IDLE_STATE
+  private driven: RemoteDrivenPty | null = null
+  private phoneGraceTimer: ReturnType<typeof setTimeout> | null = null
   private pendingRevoke: {
     promise: Promise<RemoteDesktopState>
     resolve: (state: RemoteDesktopState) => void
@@ -38,12 +151,26 @@ export class RemoteDesktopClient {
     private readonly deps: {
       sessions: RemoteSessionSource
       broadcast: (state: RemoteDesktopState) => void
+      pty?: RemotePtyHost
+      broadcastDrive?: (state: RemoteDriveState) => void
       revokeTimeoutMs?: number
+      phoneGraceMs?: number
     }
   ) {}
 
   getState(): RemoteDesktopState {
     return this.state
+  }
+
+  getDriveState(): RemoteDriveState {
+    return this.driveState
+  }
+
+  reclaim(sessionId: string): RemoteDriveState {
+    if (this.driven?.sessionId === sessionId) {
+      this.releaseDrive('reclaim')
+    }
+    return this.driveState
   }
 
   connect(rawUrl: string): RemoteDesktopState {
@@ -95,6 +222,8 @@ export class RemoteDesktopClient {
     socket.onclose = () => {
       if (this.socket !== socket) return
       this.socket = null
+      this.cancelPhoneGrace()
+      this.releaseDrive()
       this.snapshotSent = false
       this.unsubscribe?.()
       this.unsubscribe = null
@@ -161,6 +290,7 @@ export class RemoteDesktopClient {
     const message = parsed.value
     switch (message.type) {
       case 'hello-ok':
+        if (message.peer.phone) this.cancelPhoneGrace()
         this.setState({
           phase: message.peer.phone ? 'peer-online' : 'waiting-phone',
           href: this.join?.href ?? this.state.href,
@@ -171,6 +301,7 @@ export class RemoteDesktopClient {
         return
       case 'peer-join':
         if (message.role !== 'phone') return
+        this.cancelPhoneGrace()
         this.setState({
           phase: 'peer-online',
           href: this.join?.href ?? this.state.href,
@@ -188,6 +319,7 @@ export class RemoteDesktopClient {
           origin: this.join?.origin ?? this.state.origin,
           error: null
         })
+        this.startPhoneGrace()
         return
       case 'occupied':
         this.fail('occupied')
@@ -201,6 +333,32 @@ export class RemoteDesktopClient {
           return
         }
         this.fail('revoked')
+        return
+      case 'drive':
+        this.startDrive(message)
+        return
+      case 'undrive':
+        if (this.driven?.sessionId !== message.sessionId) return
+        this.releaseDrive('left')
+        return
+      case 'pty-resize':
+        if (this.driven?.sessionId !== message.sessionId) return
+        this.driven.resize(message.cols, message.rows)
+        this.setDriveState({
+          phase: 'driven',
+          sessionId: this.driven.sessionId,
+          terminalId: this.driven.terminalId,
+          cols: message.cols,
+          rows: message.rows
+        })
+        return
+      case 'pty-in':
+        if (this.driven?.sessionId !== message.sessionId) return
+        this.driven.write(message.data)
+        return
+      case 'pty-ack':
+        if (this.driven?.sessionId !== message.sessionId) return
+        this.driven.acknowledge(message.bytes)
         return
       default:
         if (isRemotePhoneToDesktopMessage(message)) {
@@ -222,6 +380,85 @@ export class RemoteDesktopClient {
       return
     }
     this.send({ v: 1, type: 'session-upsert', session: change.session })
+  }
+
+  private startDrive(
+    message: Extract<RemoteMessage, { type: 'drive' }>
+  ): void {
+    if (this.driven) {
+      this.send({
+        v: 1,
+        type: 'drive-reject',
+        requestId: message.requestId,
+        sessionId: message.sessionId,
+        reason: 'busy'
+      })
+      return
+    }
+    const opened = this.deps.pty?.open(
+      {
+        sessionId: message.sessionId,
+        cols: message.cols,
+        rows: message.rows
+      },
+      {
+        onOutput: (data) => {
+          if (this.driven?.sessionId !== message.sessionId) return
+          this.send({
+            v: 1,
+            type: 'pty-out',
+            sessionId: message.sessionId,
+            data: Buffer.from(data).toString('base64'),
+            byteLength: data.byteLength
+          })
+        },
+        onExit: (payload) => {
+          if (this.driven?.sessionId !== message.sessionId) return
+          const exit: RemoteMessage = {
+            v: 1,
+            type: 'pty-exit',
+            sessionId: message.sessionId
+          }
+          if (typeof payload.code === 'number') exit.code = payload.code
+          if (typeof payload.signal === 'number') exit.signal = payload.signal
+          this.send(exit)
+          this.releaseDrive('session-exit')
+        },
+        onOverflow: () => {
+          if (this.driven?.sessionId !== message.sessionId) return
+          this.releaseDrive('desktop-offline')
+        }
+      }
+    )
+    if (!opened) {
+      const reply: RemoteMessage = {
+        v: 1,
+        type: 'not-implemented',
+        for: message.type,
+        requestId: message.requestId
+      }
+      this.send(reply)
+      return
+    }
+    if (!opened.ok) {
+      this.send({
+        v: 1,
+        type: 'drive-reject',
+        requestId: message.requestId,
+        sessionId: message.sessionId,
+        reason: opened.reason
+      })
+      return
+    }
+    this.driven = opened.target
+    this.setDriveState({
+      phase: 'driven',
+      sessionId: opened.target.sessionId,
+      terminalId: opened.target.terminalId,
+      cols: message.cols,
+      rows: message.rows
+    })
+    this.send(boundedDriveOkMessage(message, opened.target.history))
   }
 
   private sendSnapshot(): void {
@@ -248,6 +485,8 @@ export class RemoteDesktopClient {
 
   private tearDownSocket(): void {
     this.userClosed = true
+    this.cancelPhoneGrace()
+    this.releaseDrive('desktop-offline')
     this.unsubscribe?.()
     this.unsubscribe = null
     this.snapshotSent = false
@@ -261,6 +500,53 @@ export class RemoteDesktopClient {
     ) {
       socket.close()
     }
+  }
+
+  private releaseDrive(
+    reason?: Extract<RemoteMessage, { type: 'undriven' }>['reason']
+  ): void {
+    this.cancelPhoneGrace()
+    const driven = this.driven
+    this.driven = null
+    driven?.release()
+    this.setDriveState(REMOTE_DRIVE_IDLE_STATE)
+    if (driven && reason) {
+      this.send({
+        v: 1,
+        type: 'undriven',
+        sessionId: driven.sessionId,
+        reason
+      })
+    }
+  }
+
+  private setDriveState(state: RemoteDriveState): void {
+    if (
+      state.phase === this.driveState.phase &&
+      state.sessionId === this.driveState.sessionId &&
+      state.terminalId === this.driveState.terminalId &&
+      state.cols === this.driveState.cols &&
+      state.rows === this.driveState.rows
+    ) {
+      return
+    }
+    this.driveState = state
+    this.deps.broadcastDrive?.(state)
+  }
+
+  private startPhoneGrace(): void {
+    this.cancelPhoneGrace()
+    if (!this.driven) return
+    this.phoneGraceTimer = setTimeout(() => {
+      this.phoneGraceTimer = null
+      this.releaseDrive('phone-timeout')
+    }, this.deps.phoneGraceMs ?? 15_000)
+  }
+
+  private cancelPhoneGrace(): void {
+    if (!this.phoneGraceTimer) return
+    clearTimeout(this.phoneGraceTimer)
+    this.phoneGraceTimer = null
   }
 
   private finishRevoke(confirmed: boolean): void {

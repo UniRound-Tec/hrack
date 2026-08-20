@@ -219,7 +219,9 @@ export const en = {
     copied: 'Copied',
     newTab: 'New tab',
     closeTab: 'Close tab',
-    exited: 'Exited'
+    exited: 'Exited',
+    remoteDriven: 'Phone is controlling this terminal',
+    remoteReclaim: 'Reclaim'
   },
   home: {
     greetings: [

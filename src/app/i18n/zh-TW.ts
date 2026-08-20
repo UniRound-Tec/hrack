@@ -219,7 +219,9 @@ export const zhTW = {
     copied: '已複製',
     newTab: '新增分頁',
     closeTab: '關閉分頁',
-    exited: '已結束'
+    exited: '已結束',
+    remoteDriven: '手機正在控制',
+    remoteReclaim: '取回控制'
   },
   home: {
     greetings: [

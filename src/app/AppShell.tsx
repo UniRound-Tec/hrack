@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import type {
   CliScanReport,
+  RemoteDriveState,
   ShellOption,
   UpdateSnapshot
 } from '../../shared/ipc-contract'
+import { REMOTE_DRIVE_IDLE_STATE } from '../../shared/ipc-contract'
 import type { AgentEvent } from '../../shared/agent-events'
 import type { DshRuntimeScanReport } from '../../shared/dsh-ipc'
 import TitleBar from './TitleBar'
@@ -87,6 +89,9 @@ export default function AppShell() {
   const [updateModalDismissedVersion, setUpdateModalDismissedVersion] =
     useState<string | null>(null)
   const [newSessionOpen, setNewSessionOpen] = useState(false)
+  const [remoteDrive, setRemoteDrive] = useState<RemoteDriveState>(
+    REMOTE_DRIVE_IDLE_STATE
+  )
   const [pendingCloseSession, setPendingCloseSession] =
     useState<SessionEntry | null>(null)
   const [newSessionIntent, setNewSessionIntent] = useState<
@@ -152,6 +157,20 @@ export default function AppShell() {
     })
     return () => {
       cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const unsubscribe = window.remoteApi.onDriveStateChange((state) => {
+      if (!cancelled) setRemoteDrive(state)
+    })
+    void window.remoteApi.getDriveState().then((state) => {
+      if (!cancelled) setRemoteDrive(state)
+    })
+    return () => {
+      cancelled = true
+      unsubscribe()
     }
   }, [])
 
@@ -875,6 +894,7 @@ export default function AppShell() {
                 sessions={navigationSessions}
                 terminals={standaloneTerminals}
                 childTerminals={childTerminals}
+                drivenSessionId={remoteDrive.sessionId}
                 onNavigate={navigate}
                 onOpenNewSession={openNewSession}
                 onCollapse={() => setNavMode('rail')}
@@ -900,6 +920,7 @@ export default function AppShell() {
                 pageId={pageId}
                 sessions={navigationSessions}
                 terminals={nonSessionTerminals}
+                drivenSessionId={remoteDrive.sessionId}
                 onNavigate={navigate}
                 onOpenNewSession={openNewSession}
                 onExpand={() => setNavMode('sidebar')}
@@ -955,6 +976,7 @@ export default function AppShell() {
               pageId={pageId}
               sessions={navigationSessions}
               terminals={nonSessionTerminals}
+              drivenSessionId={remoteDrive.sessionId}
               onNavigate={navigate}
               onOpenNewSession={openNewSession}
               onRenameSession={renameSession}
@@ -1019,6 +1041,7 @@ export default function AppShell() {
                 key={terminal.id}
                 terminal={terminal}
                 active={activeTerminalId === terminal.id}
+                remoteDrive={remoteDrive}
                 onInitialSpawn={handleInitialTerminalSpawn}
                 onExit={handleTerminalExit}
               />

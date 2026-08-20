@@ -712,6 +712,10 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     requireMainWindow(event, ctx)
     return ctx.remoteClient.getState()
   })
+  ipcMain.handle(RemoteInvokeChannel.GetDriveState, (event) => {
+    requireMainWindow(event, ctx)
+    return ctx.remoteClient.getDriveState()
+  })
   ipcMain.handle(RemoteInvokeChannel.Connect, (event, url: unknown) => {
     requireMainWindow(event, ctx)
     if (typeof url !== 'string' || url.length === 0 || url.length > 4_096) {
@@ -726,6 +730,17 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(RemoteInvokeChannel.Revoke, (event) => {
     requireMainWindow(event, ctx)
     return ctx.remoteClient.revoke()
+  })
+  ipcMain.handle(RemoteInvokeChannel.Reclaim, (event, sessionId: unknown) => {
+    requireMainWindow(event, ctx)
+    if (
+      typeof sessionId !== 'string' ||
+      sessionId.length === 0 ||
+      sessionId.length > 128
+    ) {
+      return ctx.remoteClient.getDriveState()
+    }
+    return ctx.remoteClient.reclaim(sessionId)
   })
 
   // 诊断：渲染进程把 resize 前后的 buffer 快照写到 logs/resize-diag.log，供离线分析。

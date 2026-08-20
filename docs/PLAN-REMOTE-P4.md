@@ -1,8 +1,8 @@
 # P4 — HRack 远程驾驶
 
-> 状态：**计划已批准，实施中（2026-08-20）**。对应 [SPEC-REMOTE.md](./SPEC-REMOTE.md) §6.3、§7.2、§9、§11 P4。
+> 状态：**已实现并经本机/公网真实接口验收（2026-08-20）**。对应 [SPEC-REMOTE.md](./SPEC-REMOTE.md) §6.3、§7.2、§9、§11 P4。
 >
-> 前置：P0–P3 已关门。P4 只实现桌面驾驶，不实现手机 App、catalog 或远程新建。
+> 前置：P0–P4 已关门，下一阶段为 P5。P4 只实现桌面驾驶，不实现手机 App、catalog 或远程新建。
 
 **人能验收什么：** 手机 WebSocket 夹具点进真实 HRack AI CLI 会话后，拿到已有 PTY 历史并把该 PTY 改成手机行列；手机输入和 PTY 输出双向真实流动。本机对应 tab 锁输入并显示“手机正在控制”，可点“抢回”；其它 tab 不受影响。返回、断线超时和会话退出都能释放驾驶。
 
@@ -147,7 +147,7 @@ idle --drive(valid)--> driven --undrive--------> idle (left)
 $env:HRACK_REMOTE_P4_URL = 'http://127.0.0.1:8788/remote/'
 npx playwright test e2e/remote-p4-live.spec.ts
 
-$env:HRACK_REMOTE_P4_URL = 'https://hrack.modplex.app/remote/'
+$env:HRACK_REMOTE_P4_URL = 'https://hrack.modplex.app/'
 npx playwright test e2e/remote-p4-live.spec.ts
 ```
 
@@ -172,4 +172,32 @@ P4 关门后进入 P5（HRack 远程新建）；React Native App 仍从 P6 开�
 
 ## 7. 实现与验证记录
 
-待执行后填写。未完成真实 PTY 双向字节和生命周期门禁前，不得把 P4 标为完成。
+2026-08-20 已完成 P4 并关门。实现保持计划中的模块边界：`RemoteDesktopClient` 持有驾驶状态机，`runtimeRemotePtyHost` 只把 `AgentSessionRuntime` 的 session 映射到 `PTYManager` 的真实 PTY；renderer 只消费收窄后的 `RemoteDriveState`，没有读取主进程私有状态。
+
+实现结果：
+
+- `drive` 对真实、未知、已退出和并发会话分别产生 `drive-ok`、`not-found`、`exited`、`busy`；`requestId` 原样返回。
+- 远程尺寸所有权落在 `PTYManager`。被驾驶 PTY 忽略本机 fit，手机 `pty-resize` 是唯一 winsize 来源；其它 PTY 不受影响，释放后 renderer 立即按当前窗口重新 fit。
+- `pty-in` 写入同一个 node-pty，原始输出经独立 `PtyDataQueue` 变成 base64 `pty-out`，手机 `pty-ack` 归还额度。renderer 与手机的 pause 使用独立租约，只有最后一个租约释放才 resume。
+- 远程队列沿用 256 KiB/64 KiB/1 MiB 水位；release/dispose 会清空在途与排队字节。单块不超过 256 KiB。
+- `drive-ok.history` 取主进程权威历史的最新完整事件，并按实际 JSON UTF-8 大小保证整帧不超过 1 MiB；远程额外截断会正确累计 dropped 字段。由此修正了“本机历史可到 16 MiB、协议单帧只有 1 MiB”的原计划歧义。
+- 被驾驶 tab 有全屏输入遮罩和「抢回」，sidebar/rail/tabs 均显示手机角标。本机 xterm 输入、图片粘贴和 resize 在源头阻断，主进程尺寸所有权再做第二道保护。
+- 手机 `undrive`、桌面抢回、短线重连、15 秒离线、PTY 退出、桌面 WSS 意外断开和主动断开均释放输出/退出订阅、队列、pause 租约、尺寸所有权和 UI 锁。PTY 退出严格先发 `pty-exit`，再发 `undriven reason=session-exit`。
+
+TDD 记录没有跳过失败：最初 `drive` 仍回 `not-implemented`；真实 PTY 用例随后分别因缺少数据面、缺少 UI 遮罩/抢回、缺少 WebSocket 意外断开释放，以及长 history 超出 1 MiB 后被中继丢弃而失败。每项只补对应 seam 后定向转绿。
+
+真实接口证据：
+
+- `e2e/remote-driving.spec.ts` 使用真实构建后的 Electron、正常 UI 创建的两个 Agent session、`AgentSessionRuntime`、两个真实 `cmd.exe` PTY 和 localhost WebSocket 中继。门禁确认 40×18/52×20 只作用于目标 PTY、history 非空、手机合成输入进入真实 PTY、真实输出回手机、本机输入被挡、抢回后 fit 与本机输入恢复、真实 `exit` 的 `pty-exit → undriven` 顺序；目标用例通过（约 6.6s）。
+- 同文件的独立生命周期门禁关闭手机真实 WebSocket，1 秒时仍保持驾驶，完整 15 秒宽限后自动释放真实 PTY；目标用例通过（约 16.7s）。
+- 独立本机生产 P2：`http://127.0.0.1:8788/remote/`。`e2e/remote-p4-live.spec.ts` 通过网页真实建房、Electron 真实 Agent/PTY、手机 WS 驾驶、双向合成字节、桌面抢回和网页吊销，`1 passed`（测试体约 3.1s）。
+- 公网生产 P2：`https://hrack.modplex.app/`。同一 live gate 真实经过公网 CA、HTTPS、反向代理和 WSS，`1 passed`（测试体约 5.6s）。没有打印或提交 roomId、加入 URL、PTY 正文或吊销 token；房间由成功路径或 `finally` 吊销。
+
+最终门禁：
+
+- `npm run typecheck`：通过。
+- `npm run build`：通过，包含 DSH surface 与字体体积门禁。
+- 相关定向回归：protocol、queue、pause lease、desktop state machine、remote settings、真实 Electron driving 共 `47 passed`（约 36.9s）。
+- 另行执行本机和公网 live gate，各 `1 passed`。遵循 `AGENTS.md`，没有用反复运行完整 `npm run e2e` 代替失败定位。
+
+结论：SPEC P4 六项验收与补充的整帧历史边界均有自动化和真实接口证据，P4 可以进入 P5（HRack 远程新建）；React Native App 仍从 P6 开始。

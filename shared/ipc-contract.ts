@@ -397,19 +397,49 @@ export const RemoteInvokeChannel = {
   Connect: 'remote:connect',
   Disconnect: 'remote:disconnect',
   Revoke: 'remote:revoke',
-  GetState: 'remote:get-state'
+  GetState: 'remote:get-state',
+  GetDriveState: 'remote:get-drive-state',
+  Reclaim: 'remote:reclaim'
 } as const
 
 export const RemoteEventChannel = {
-  StateChanged: 'remote:state-changed'
+  StateChanged: 'remote:state-changed',
+  DriveChanged: 'remote:drive-changed'
 } as const
+
+export type RemoteDriveState =
+  | {
+      phase: 'idle'
+      sessionId: null
+      terminalId: null
+      cols: null
+      rows: null
+    }
+  | {
+      phase: 'driven'
+      sessionId: string
+      terminalId: string
+      cols: number
+      rows: number
+    }
+
+export const REMOTE_DRIVE_IDLE_STATE: RemoteDriveState = {
+  phase: 'idle',
+  sessionId: null,
+  terminalId: null,
+  cols: null,
+  rows: null
+}
 
 export interface RemoteApi {
   connect: (joinUrl: string) => Promise<RemoteDesktopState>
   disconnect: () => Promise<RemoteDesktopState>
   revoke: () => Promise<RemoteDesktopState>
   getState: () => Promise<RemoteDesktopState>
+  getDriveState: () => Promise<RemoteDriveState>
+  reclaim: (sessionId: string) => Promise<RemoteDriveState>
   onStateChange: (cb: (state: RemoteDesktopState) => void) => () => void
+  onDriveStateChange: (cb: (state: RemoteDriveState) => void) => () => void
 }
 
 export const AppInvokeChannel = {

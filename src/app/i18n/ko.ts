@@ -219,7 +219,9 @@ export const ko = {
     copied: '복사됨',
     newTab: '새 탭',
     closeTab: '탭 닫기',
-    exited: '종료됨'
+    exited: '종료됨',
+    remoteDriven: '휴대폰에서 제어 중',
+    remoteReclaim: '제어권 회수'
   },
   home: {
     greetings: [

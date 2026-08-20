@@ -119,3 +119,27 @@ test('reattach drops stale delivery accounting and resumes the PTY', () => {
   })
   expect(resumeCount).toBe(1)
 })
+
+test('dispose releases a paused remote consumer and drops retained bytes', () => {
+  let resumeCount = 0
+  const queue = new PtyDataQueue({
+    highWaterMarkBytes: 8,
+    lowWaterMarkBytes: 2,
+    maxBufferedBytes: 16,
+    send: () => {},
+    pause: () => {},
+    resume: () => resumeCount++
+  })
+  queue.push(bytes(8))
+  queue.push(bytes(8))
+
+  queue.dispose()
+
+  expect(queue.snapshot()).toMatchObject({
+    unackedBytes: 0,
+    queuedBytes: 0,
+    bufferedBytes: 0,
+    paused: false
+  })
+  expect(resumeCount).toBe(1)
+})

@@ -1,6 +1,7 @@
 import {
   Home,
   PanelLeftOpen,
+  Smartphone,
   SquarePen,
   Terminal as TerminalIcon
 } from 'lucide-react'
@@ -21,6 +22,7 @@ interface IconRailProps {
   pageId: PageId
   sessions: readonly SessionEntry[]
   terminals: readonly TerminalEntry[]
+  drivenSessionId: string | null
   onNavigate: (pageId: PageId) => void
   onOpenNewSession: () => void
   onExpand: () => void
@@ -38,6 +40,7 @@ export default function IconRail({
   pageId,
   sessions,
   terminals,
+  drivenSessionId,
   onNavigate,
   onOpenNewSession,
   onExpand
@@ -88,6 +91,9 @@ export default function IconRail({
               key={session.sessionId}
               type="button"
               data-testid="rail-session-item"
+              data-remote-driven={
+                drivenSessionId === session.sessionId ? 'true' : 'false'
+              }
               title={`${session.name} · ${session.detail ?? ''}`}
               onClick={() => onNavigate(sessionPage(session))}
               className={`cursor-target relative flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
@@ -104,6 +110,13 @@ export default function IconRail({
               <span
                 className={`absolute top-1 right-1 size-1.5 rounded-full ring-2 ring-app ${statusDot[session.status]}`}
               />
+              {drivenSessionId === session.sessionId && (
+                <Smartphone
+                  aria-label={strings.terminal.remoteDriven}
+                  className="absolute right-0.5 bottom-0.5 size-3 rounded bg-app text-brand"
+                  strokeWidth={2}
+                />
+              )}
             </button>
           )
         })}
