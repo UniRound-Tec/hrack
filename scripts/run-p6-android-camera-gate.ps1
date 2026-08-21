@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $appArtifacts = [IO.Path]::GetFullPath(
-  (Join-Path $PSScriptRoot '..\..\hrack-remote-app\artifacts\android')
+  (Join-Path $PSScriptRoot '..\remotes\app\artifacts\android')
 )
 $qrPath = [IO.Path]::GetFullPath(
   (Join-Path $appArtifacts 'p6-private-camera-qr.png')

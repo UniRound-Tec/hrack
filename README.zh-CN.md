@@ -145,6 +145,14 @@ HRack 还可以扫描并启动 Devin CLI、Cline、Qwen Code、Amp、Aider、Goo
 
 ## 本地开发
 
+克隆 HRack 时一并取得远程 App 和中继服务：
+
+```bash
+git clone --recurse-submodules https://github.com/UniRound-Tec/hrack.git
+```
+
+已有工作区可运行 `git submodule update --init --recursive` 完成初始化。两者的源码分别位于 `remotes/app` 和 `remotes/server`，便于在主仓库内索引，同时仍保留各自独立的版本历史。
+
 ```bash
 npm install
 npm run dev

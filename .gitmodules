@@ -1,0 +1,8 @@
+[submodule "remotes/app"]
+	path = remotes/app
+	url = https://github.com/UniRound-Tec/hrack-remote-app.git
+	branch = master
+[submodule "remotes/server"]
+	path = remotes/server
+	url = https://github.com/UniRound-Tec/hrack-remote-server.git
+	branch = main
