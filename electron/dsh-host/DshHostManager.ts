@@ -23,6 +23,8 @@ import {
   DSH_WSL_PID_MARKER,
   buildDshExternalSpawnSpec,
   dshCandidateFromInstallation,
+  dshRejectedNoOpenOption,
+  dshWebOpensBrowserByDefault,
   selectDshRuntimeCandidates
 } from './DshRuntime'
 
@@ -88,6 +90,8 @@ export interface DshHostManagerOptions {
   broadcast: (channel: string, payload: DshHostStatus) => void
   onBecameReady?: () => void
   onLeftReady?: () => void
+  /** Host is stopping only to start again; keep HRack slots and the surface. */
+  onRestarting?: () => void
 }
 
 /** 预分配一个 Windows/当前主机 loopback 空闲端口。 */
@@ -134,6 +138,7 @@ export class DshHostManager {
   private activeWslProcess: { distro: string; pid: number } | null = null
   private activeWindowsProcessTreePid: number | null = null
   private activePosixProcessGroupPid: number | null = null
+  private restarting = false
 
   constructor(private readonly options: DshHostManagerOptions) {}
 
@@ -211,8 +216,13 @@ export class DshHostManager {
   }
 
   async restart(): Promise<DshHostStatus> {
-    await this.stop()
-    return this.ensureStarted()
+    this.restarting = true
+    try {
+      await this.stop()
+      return await this.ensureStarted()
+    } finally {
+      this.restarting = false
+    }
   }
 
   /** 幂等启动；starting 中的并发调用共享同一个 Promise。 */
@@ -246,7 +256,8 @@ export class DshHostManager {
     if (previous !== 'ready' && next.state === 'ready') {
       this.options.onBecameReady?.()
     } else if (previous === 'ready' && next.state !== 'ready') {
-      this.options.onLeftReady?.()
+      if (this.restarting) this.options.onRestarting?.()
+      else this.options.onLeftReady?.()
     }
   }
 
@@ -347,8 +358,29 @@ export class DshHostManager {
   private async startTarget(target: DshLaunchTarget): Promise<DshHostStatus> {
     const dshHome = this.resolveTargetHome(target)
     const port = await allocatePort()
+    const preferNoOpen = dshWebOpensBrowserByDefault(target.candidate.version)
+    try {
+      return await this.bootTarget(target, port, dshHome, preferNoOpen)
+    } catch (error) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      if (!preferNoOpen || !dshRejectedNoOpenOption(this.outputTail)) {
+        throw error
+      }
+      console.warn('[dsh-host] --no-open rejected; retrying without it')
+      await this.stopChild()
+      this.outputTail = ''
+      return this.bootTarget(target, port, dshHome, false)
+    }
+  }
+
+  private async bootTarget(
+    target: DshLaunchTarget,
+    port: number,
+    dshHome: string,
+    noOpen: boolean
+  ): Promise<DshHostStatus> {
     const baseUrl = `http://127.0.0.1:${port}`
-    const child = this.spawnTarget(target, port, dshHome)
+    const child = this.spawnTarget(target, port, dshHome, noOpen)
     this.child = child
     this.activeWslProcess = null
     this.activeWindowsProcessTreePid =
@@ -440,7 +472,8 @@ export class DshHostManager {
   private spawnTarget(
     target: DshLaunchTarget,
     port: number,
-    dshHome: string
+    dshHome: string,
+    noOpen?: boolean
   ): ManagedDshChild {
     if (!target.installation) {
       throw new Error('selected DSH installation is missing')
@@ -452,7 +485,8 @@ export class DshHostManager {
       environmentPath:
         this.options.discovery.runtimeEnvironment(target.installation).PATH,
       commandInterpreter: process.env.ComSpec,
-      inheritedEnv: process.env
+      inheritedEnv: process.env,
+      noOpen
     })
     const detached =
       target.candidate.runtime.kind === 'host' &&

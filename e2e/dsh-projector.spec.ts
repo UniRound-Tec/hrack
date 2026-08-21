@@ -352,3 +352,28 @@ test('DSH projector treats a watched running→idle flip as turn completion', as
     restore()
   }
 })
+
+test('pausing the projector keeps HRack slots across a host restart', async () => {
+  const { bridge, projector, restore } = await startLiveProjector([
+    {
+      sessionId: 'session-a',
+      running: false,
+      cwd: 'C:\\workspace',
+      updatedAt: 123
+    }
+  ])
+  try {
+    expect(bridge.find('slot-1')?.adapterSessionId).toBe('session-a')
+    projector.pause()
+    expect(bridge.find('slot-1')?.adapterSessionId).toBe('session-a')
+    projector.start()
+    await expect
+      .poll(() => bridge.find('slot-1')?.adapterSessionId, {
+        timeout: 1_000,
+        intervals: [25, 50, 100]
+      })
+      .toBe('session-a')
+  } finally {
+    restore()
+  }
+})

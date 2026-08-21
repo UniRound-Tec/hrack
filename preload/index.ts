@@ -480,6 +480,7 @@ const appThemeApi: AppThemeApi = {
 const dshApi: DshApi = {
   getStatus: () => ipcRenderer.invoke(DshInvokeChannel.GetStatus),
   ensureStarted: () => ipcRenderer.invoke(DshInvokeChannel.EnsureStarted),
+  restart: () => ipcRenderer.invoke(DshInvokeChannel.Restart),
   stop: () => ipcRenderer.invoke(DshInvokeChannel.Stop),
   getConfig: () => ipcRenderer.invoke(DshInvokeChannel.GetConfig),
   scanRuntimes: (force = false) =>
@@ -561,6 +562,7 @@ const dshSurfaceApi: DshSurfaceApi = {
   setBounds: (bounds) =>
     ipcRenderer.invoke(DshInvokeChannel.SurfaceSetBounds, bounds),
   hide: () => ipcRenderer.invoke(DshInvokeChannel.SurfaceHide),
+  restart: () => ipcRenderer.invoke(DshInvokeChannel.SurfaceRestart),
   unfollow: (slotId) =>
     ipcRenderer.invoke(DshInvokeChannel.SurfaceUnfollow, slotId)
 }

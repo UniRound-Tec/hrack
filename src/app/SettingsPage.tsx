@@ -1,4 +1,4 @@
-import { Check, Copy, Minus, Plus, RefreshCw, Save } from 'lucide-react'
+import { Check, Copy, Minus, Plus, RefreshCw, RotateCcw, Save } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type {
   CliRuntimeError,
@@ -97,6 +97,7 @@ export default function SettingsPage({
   const strings = useStrings()
   const [dshConfig, setDshConfig] = useState<DshRuntimeConfig | null>(null)
   const [dshRuntimeChanging, setDshRuntimeChanging] = useState(false)
+  const [dshRestarting, setDshRestarting] = useState(false)
   const [dshRuntimeActionError, setDshRuntimeActionError] =
     useState<string | null>(null)
   const [updateSnapshot, setUpdateSnapshot] =
@@ -126,7 +127,7 @@ export default function SettingsPage({
   useEffect(() => {
     setCategory(initialCategory)
   }, [initialCategory])
-  const dshRuntimeBusy = dshRuntimeScanning || dshRuntimeChanging
+  const dshRuntimeBusy = dshRuntimeScanning || dshRuntimeChanging || dshRestarting
   const dshRuntimeError = dshRuntimeActionError ?? dshRuntimeScanError
   const themeRegistryVersion = useThemeRegistryVersion((state) => state.version)
   const registry = getUiThemeRegistry()
@@ -502,6 +503,23 @@ export default function SettingsPage({
         setDshRuntimeActionError(error instanceof Error ? error.message : String(error))
       })
       .finally(() => setDshRuntimeChanging(false))
+  }
+
+  const restartDshHost = (): void => {
+    setDshRestarting(true)
+    setDshRuntimeActionError(null)
+    void window.dshApi.restart()
+      .then((status) => {
+        if (status.state === 'failed') {
+          throw new Error(status.error ?? strings.dsh.runtimeScanFailed)
+        }
+      })
+      .catch((error) => {
+        setDshRuntimeActionError(
+          error instanceof Error ? error.message : String(error)
+        )
+      })
+      .finally(() => setDshRestarting(false))
   }
 
   const updateStatus = (() => {
@@ -1093,9 +1111,29 @@ export default function SettingsPage({
                   }}
                   className="inline-flex size-[30px] items-center justify-center rounded-lg border border-border-default bg-input text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary disabled:cursor-wait disabled:opacity-70"
                 >
-                  <RefreshCw className={`size-3 ${dshRuntimeBusy ? 'animate-spin' : ''}`} strokeWidth={1.75} />
+                  <RefreshCw className={`size-3 ${dshRuntimeScanning ? 'animate-spin' : ''}`} strokeWidth={1.75} />
                 </button>
               </div>
+            </Row>
+            <Row
+              label={strings.dsh.restartHost}
+              hint={strings.dsh.restartHostHint}
+            >
+              <button
+                type="button"
+                data-testid="dsh-host-restart"
+                disabled={dshRuntimeBusy}
+                aria-busy={dshRestarting}
+                title={strings.dsh.restartHostHint}
+                onClick={restartDshHost}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border-default bg-input px-2.5 py-1.5 font-pingfang text-[11px] font-medium text-text-muted transition-colors hover:bg-input-hover hover:text-text-secondary disabled:cursor-wait disabled:opacity-70"
+              >
+                <RotateCcw
+                  className={`size-3 ${dshRestarting ? 'animate-spin' : ''}`}
+                  strokeWidth={1.75}
+                />
+                {strings.dsh.restartHost}
+              </button>
             </Row>
             {!dshRuntimeBusy && (dshRuntimeReport?.runtimeErrors.length ?? 0) > 0 && (
               <details data-testid="dsh-runtime-errors" className="border-b border-border-faint py-3 font-pingfang text-[11px]">

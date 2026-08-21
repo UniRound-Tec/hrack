@@ -152,6 +152,9 @@ const dshHost = new DshHostManager({
   onLeftReady: () => {
     dshProjector.stop()
     dshSurfaceController?.hostStopped()
+  },
+  onRestarting: () => {
+    dshProjector.pause()
   }
 })
 const dshProjections = new DshProjectionBridge({

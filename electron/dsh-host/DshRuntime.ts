@@ -59,6 +59,64 @@ function quoteCmdArg(value: string): string {
   return `"${value.replace(/"/g, '""')}"`
 }
 
+/**
+ * `dsh web` started opening the OS browser in 0.1.0-rc.7. HRack embeds the
+ * official page in a WebContentsView, so those versions need `--no-open`.
+ * Older web CLIs reject the flag.
+ */
+export function dshWebOpensBrowserByDefault(version?: string): boolean {
+  if (!version) return false
+  const parts = dshVersionParts(version)
+  if (!parts) return false
+  const minimum: [number, number, number, number] = [0, 1, 0, 7]
+  for (let index = 0; index < 4; index += 1) {
+    if (parts[index] > minimum[index]) return true
+    if (parts[index] < minimum[index]) return false
+  }
+  return true
+}
+
+function dshVersionParts(
+  version: string
+): [number, number, number, number] | null {
+  const rcMatch = version.match(/(\d+)\.(\d+)\.(\d+)-rc\.(\d+)/i)
+  if (rcMatch) {
+    return [
+      Number(rcMatch[1]),
+      Number(rcMatch[2]),
+      Number(rcMatch[3]),
+      Number(rcMatch[4])
+    ]
+  }
+  const stable = version.match(/(\d+)\.(\d+)\.(\d+)/)
+  if (!stable) return null
+  return [
+    Number(stable[1]),
+    Number(stable[2]),
+    Number(stable[3]),
+    Number.POSITIVE_INFINITY
+  ]
+}
+
+export function dshWebRuntimeArgs(
+  port: number,
+  version?: string,
+  noOpen?: boolean
+): string[] {
+  const args = [
+    'web',
+    '--host', '127.0.0.1',
+    '--port', String(port)
+  ]
+  if (noOpen ?? dshWebOpensBrowserByDefault(version)) args.push('--no-open')
+  return args
+}
+
+/** CLI version is not the web-app flag set; WSL rc.7 still rejects `--no-open`. */
+export function dshRejectedNoOpenOption(output: string): boolean {
+  return /unknown option ['"]?--no-open['"]?/i.test(output)
+}
+
 /** 只负责把已验证安装变成精确 argv；不做路径搜索或 shell 字符串插值。 */
 export function buildDshExternalSpawnSpec(options: {
   candidate: DshRuntimeCandidate
@@ -67,13 +125,11 @@ export function buildDshExternalSpawnSpec(options: {
   environmentPath?: string
   commandInterpreter?: string
   inheritedEnv?: NodeJS.ProcessEnv
+  /** When set, overrides the version heuristic for `--no-open`. */
+  noOpen?: boolean
 }): DshExternalSpawnSpec {
   const { candidate, port, dshHome } = options
-  const runtimeArgs = [
-    'web',
-    '--host', '127.0.0.1',
-    '--port', String(port)
-  ]
+  const runtimeArgs = dshWebRuntimeArgs(port, candidate.version, options.noOpen)
   const telemetry = options.inheritedEnv?.['DSH_TELEMETRY_DISABLED'] ?? '1'
 
   if (candidate.runtime.kind === 'wsl') {

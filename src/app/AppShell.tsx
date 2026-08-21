@@ -6,7 +6,10 @@ import type {
   UpdateSnapshot
 } from '../../shared/ipc-contract'
 import type { AgentEvent } from '../../shared/agent-events'
-import type { DshRuntimeScanReport } from '../../shared/dsh-ipc'
+import type {
+  DshRuntimeScanReport,
+  DshSurfaceSnapshot
+} from '../../shared/dsh-ipc'
 import TitleBar from './TitleBar'
 import Sidebar from './Sidebar'
 import IconRail from './IconRail'
@@ -101,6 +104,9 @@ export default function AppShell() {
   const [dshRuntimeScanning, setDshRuntimeScanning] = useState(true)
   const [dshRuntimeScanError, setDshRuntimeScanError] =
     useState<string | null>(null)
+  const [dshRestarting, setDshRestarting] = useState(false)
+  const [dshRestartSnapshot, setDshRestartSnapshot] =
+    useState<DshSurfaceSnapshot | null>(null)
   const pendingCliLaunches = useRef(new Map<string, PendingCliLaunch>())
   const pendingBridgeLaunches = useRef(new Map<string, PendingBridgeLaunch>())
   const navMode = useSettingsStore((state) => state.navMode)
@@ -177,6 +183,24 @@ export default function AppShell() {
       setDshRuntimeScanning(false)
     }
   }, [])
+
+  const restartDshHost = useCallback(async (): Promise<void> => {
+    if (dshRestarting) return
+    setDshRestarting(true)
+    try {
+      const snapshot = await window.dshSurfaceApi.restart()
+      setDshRestartSnapshot(snapshot)
+    } catch (error) {
+      setDshRestartSnapshot({
+        phase: 'failed',
+        visible: false,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      console.error('[dsh] host restart failed', error)
+    } finally {
+      setDshRestarting(false)
+    }
+  }, [dshRestarting])
 
   useEffect(() => {
     void scanClis(false)
@@ -950,6 +974,10 @@ export default function AppShell() {
             : undefined
         }
         codeOpen={activeReaderOpen}
+        onRestartDsh={
+          isDshPage(pageId) ? () => void restartDshHost() : undefined
+        }
+        dshRestarting={dshRestarting}
       />
 
       <div className="relative flex min-h-0 flex-1">
@@ -1013,6 +1041,8 @@ export default function AppShell() {
               adapterSessionId={activeDshAdapterSessionId}
               active={isDshPage(pageId)}
               obscured={newSessionOpen || pendingCloseSession !== null}
+              hostRestarting={dshRestarting}
+              restartSnapshot={dshRestartSnapshot}
             />
             {pageId === 'settings' && (
               <SettingsPage

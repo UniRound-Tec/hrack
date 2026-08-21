@@ -14,6 +14,7 @@ import type { CliRuntime, CliRuntimeError } from './ipc-contract'
 export enum DshInvokeChannel {
   GetStatus = 'dsh:get-status',
   EnsureStarted = 'dsh:ensure-started',
+  Restart = 'dsh:restart',
   Stop = 'dsh:stop',
   /** wire 转发：上行 HTTP（POST /api/<method> 与 /api/respond）。 */
   WireFetch = 'dsh:wire-fetch',
@@ -32,6 +33,8 @@ export enum DshInvokeChannel {
   SurfaceShow = 'dsh:surface-show',
   SurfaceSetBounds = 'dsh:surface-set-bounds',
   SurfaceHide = 'dsh:surface-hide',
+  /** Kill the dsh process, spawn a new one, and reload the official page. */
+  SurfaceRestart = 'dsh:surface-restart',
   /** 只移除 HRack 的当前投影，不修改或归档 DSH 会话。 */
   SurfaceUnfollow = 'dsh:surface-unfollow'
 }
@@ -158,6 +161,8 @@ export interface DshApi {
   getStatus(): Promise<DshHostStatus>
   /** 幂等：已 ready/starting 时直接返回当前状态（starting 会等待结果）。 */
   ensureStarted(): Promise<DshHostStatus>
+  /** 停掉当前 host 再冷启动，用于安装插件后重新加载官方页面。 */
+  restart(): Promise<DshHostStatus>
   stop(): Promise<DshHostStatus>
   getConfig(): Promise<DshRuntimeConfig>
   scanRuntimes(force?: boolean): Promise<DshRuntimeScanReport>
@@ -227,6 +232,8 @@ export interface DshSurfaceApi {
   show(request: DshSurfaceShowRequest): Promise<DshSurfaceSnapshot>
   setBounds(bounds: DshSurfaceBounds): Promise<void>
   hide(): Promise<void>
+  /** Kill the dsh process, spawn a new host, and reload the official page. */
+  restart(): Promise<DshSurfaceSnapshot>
   /** Stop projecting one HRack slot locally; official DSH state is untouched. */
   unfollow(slotId: string): Promise<void>
 }
