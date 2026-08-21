@@ -8,6 +8,7 @@ import {
   cliDefinitions
 } from '../electron/ai-cli-discovery'
 import {
+  DSH_EMBED_SSH_CONNECTION,
   DSH_WSL_PID_MARKER,
   buildDshExternalSpawnSpec,
   dshRejectedNoOpenOption,
@@ -58,7 +59,7 @@ test('dsh web suppresses the OS browser from 0.1.0-rc.7 onward', () => {
   expect(dshWebOpensBrowserByDefault('0.1.0-rc.8')).toBe(true)
   expect(dshWebOpensBrowserByDefault('0.1.0')).toBe(true)
   expect(dshWebRuntimeArgs(43123, '0.1.0-rc.6')).toEqual([
-    'web', '--host', '127.0.0.1', '--port', '43123'
+    'web', '--host', '127.0.0.1', '--port', '43123', '--no-open'
   ])
   expect(dshWebRuntimeArgs(43123, '0.1.0-rc.8')).toEqual([
     'web', '--host', '127.0.0.1', '--port', '43123', '--no-open'
@@ -121,8 +122,9 @@ test('external launch preserves native and WSL runtime boundaries', () => {
   expect(windows.args.slice(0, 3)).toEqual(['/d', '/v:off', '/c'])
   expect(windows.args[3]).toContain('dsh.cmd')
   expect(windows.args[3]).toContain('"--port" "43123"')
-  expect(windows.args[3]).not.toContain('--no-open')
+  expect(windows.args[3]).toContain('"--no-open"')
   expect(windows.env.DSH_HOME).toBe('C:\\HRack Data\\dsh-home')
+  expect(windows.env.SSH_CONNECTION).toBe(DSH_EMBED_SSH_CONNECTION)
 
   const rc8Windows = buildDshExternalSpawnSpec({
     candidate: { ...windowsCandidate, version: '0.1.0-rc.8' },
@@ -149,6 +151,7 @@ test('external launch preserves native and WSL runtime boundaries', () => {
     noOpen: false
   })
   expect(rc7Wsl.args).not.toContain('--no-open')
+  expect(rc7Wsl.args).toContain(`SSH_CONNECTION=${DSH_EMBED_SSH_CONNECTION}`)
 
   const wsl = buildDshExternalSpawnSpec({
     candidate: wslCandidate,
@@ -165,11 +168,13 @@ test('external launch preserves native and WSL runtime boundaries', () => {
     'DSH_HOME=/home/test/.local/share/hrack/dsh-home',
     '/home/test/.local/bin/dsh',
     '--port',
-    '43124'
+    '43124',
+    '--no-open',
+    `SSH_CONNECTION=${DSH_EMBED_SSH_CONNECTION}`
   ]))
   expect(wsl.args.join(' ')).toContain(DSH_WSL_PID_MARKER)
-  expect(wsl.args).not.toContain('--no-open')
   expect(wsl.env.DSH_HOME).toBeUndefined()
+  expect(wsl.env.SSH_CONNECTION).toBeUndefined()
 })
 
 test('Home hides DSH when the scan finds no installation', async () => {

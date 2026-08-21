@@ -24,7 +24,6 @@ import {
   buildDshExternalSpawnSpec,
   dshCandidateFromInstallation,
   dshRejectedNoOpenOption,
-  dshWebOpensBrowserByDefault,
   selectDshRuntimeCandidates
 } from './DshRuntime'
 
@@ -358,12 +357,11 @@ export class DshHostManager {
   private async startTarget(target: DshLaunchTarget): Promise<DshHostStatus> {
     const dshHome = this.resolveTargetHome(target)
     const port = await allocatePort()
-    const preferNoOpen = dshWebOpensBrowserByDefault(target.candidate.version)
     try {
-      return await this.bootTarget(target, port, dshHome, preferNoOpen)
+      return await this.bootTarget(target, port, dshHome, true)
     } catch (error) {
       await new Promise((resolve) => setTimeout(resolve, 50))
-      if (!preferNoOpen || !dshRejectedNoOpenOption(this.outputTail)) {
+      if (!dshRejectedNoOpenOption(this.outputTail)) {
         throw error
       }
       console.warn('[dsh-host] --no-open rejected; retrying without it')
