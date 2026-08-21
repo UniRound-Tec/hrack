@@ -1,6 +1,8 @@
 import { execFile } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { promisify } from 'node:util'
+import { PNG } from 'pngjs'
 import {
   expect,
   test,
@@ -15,6 +17,10 @@ const targetUrl = process.env.HRACK_REMOTE_P8_URL
 const adbExecutable = process.env.HRACK_ANDROID_ADB
 const appPackage =
   process.env.HRACK_ANDROID_APP_PACKAGE ?? 'app.modplex.hrack.remote'
+const realAiTarget = process.env.HRACK_REMOTE_P8_REAL_AI_TARGET ?? ''
+if (realAiTarget && !['claude', 'codex'].includes(realAiTarget)) {
+  throw new Error('HRACK_REMOTE_P8_REAL_AI_TARGET must be claude or codex')
+}
 const chineseImeDriver = process.env.HRACK_REMOTE_P8_CHINESE_IME ?? ''
 if (chineseImeDriver && !['gboard', 'fcitx5'].includes(chineseImeDriver)) {
   throw new Error('HRACK_REMOTE_P8_CHINESE_IME must be gboard or fcitx5')
@@ -121,10 +127,91 @@ async function tapResource(resourceId: string): Promise<void> {
   await adb('shell', 'input', 'tap', String(point[0]), String(point[1]))
 }
 
-async function screenshot(testInfo: TestInfo, name: string): Promise<void> {
+async function screenshot(testInfo: TestInfo, name: string): Promise<string> {
   const remotePath = `/sdcard/${name}`
+  const localPath = testInfo.outputPath(name)
   await adb('shell', 'screencap', '-p', remotePath)
-  await adb('pull', remotePath, testInfo.outputPath(name))
+  await adb('pull', remotePath, localPath)
+  return localPath
+}
+
+function terminalGlyphGeometry(path: string): {
+  components: number
+  tallRatio: number
+} {
+  const image = PNG.sync.read(readFileSync(path))
+  const minX = Math.floor(image.width * 0.04)
+  const maxX = Math.ceil(image.width * 0.96)
+  const minY = Math.floor(image.height * 0.15)
+  const maxY = Math.ceil(image.height * 0.83)
+  const seen = new Uint8Array(image.width * image.height)
+  const heights: number[] = []
+
+  const isTextPixel = (offset: number): boolean => {
+    const pixel = offset * 4
+    return (
+      image.data[pixel] >= 145 &&
+      image.data[pixel + 1] >= 145 &&
+      image.data[pixel + 2] >= 145
+    )
+  }
+
+  for (let y = minY; y < maxY; y += 1) {
+    for (let x = minX; x < maxX; x += 1) {
+      const start = y * image.width + x
+      if (seen[start] || !isTextPixel(start)) continue
+      const stack = [start]
+      seen[start] = 1
+      let pixels = 0
+      let left = x
+      let right = x
+      let top = y
+      let bottom = y
+      while (stack.length > 0) {
+        const current = stack.pop()
+        if (current === undefined) break
+        const currentY = Math.floor(current / image.width)
+        const currentX = current - currentY * image.width
+        pixels += 1
+        left = Math.min(left, currentX)
+        right = Math.max(right, currentX)
+        top = Math.min(top, currentY)
+        bottom = Math.max(bottom, currentY)
+        for (let deltaY = -1; deltaY <= 1; deltaY += 1) {
+          for (let deltaX = -1; deltaX <= 1; deltaX += 1) {
+            if (deltaX === 0 && deltaY === 0) continue
+            const nextX = currentX + deltaX
+            const nextY = currentY + deltaY
+            if (
+              nextX < minX ||
+              nextX >= maxX ||
+              nextY < minY ||
+              nextY >= maxY
+            ) {
+              continue
+            }
+            const next = nextY * image.width + nextX
+            if (seen[next] || !isTextPixel(next)) continue
+            seen[next] = 1
+            stack.push(next)
+          }
+        }
+      }
+      const width = right - left + 1
+      const height = bottom - top + 1
+      if (pixels >= 3 && pixels < 500 && width < 80 && height < 80) {
+        heights.push(height)
+      }
+    }
+  }
+
+  return {
+    components: heights.length,
+    tallRatio:
+      heights.length === 0
+        ? 0
+        : heights.filter((height) => height >= 20).length / heights.length
+  }
 }
 
 async function isImeShown(): Promise<boolean> {
@@ -226,7 +313,13 @@ async function pairAndroid(joinUrl: string): Promise<void> {
   } catch {
     throw new Error('Android failed to enter the pairing URL')
   }
-  await adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+  // ADB text injection does not guarantee that the soft keyboard opened. Use
+  // Escape when it did: Android dismisses the IME without delivering Back to
+  // the Activity, so the pairing form and typed URL stay mounted.
+  if (await isImeShown()) {
+    await adb('shell', 'input', 'keyevent', 'KEYCODE_ESCAPE')
+    await expect.poll(isImeShown, { timeout: 5_000 }).toBe(false)
+  }
   await tapResource('pairing-connect')
 }
 
@@ -883,6 +976,7 @@ test.describe('remote P8 Android terminal live relay', () => {
         {
           adapterId: 'claude',
           name: 'P8 real Claude Code',
+          startupScreenshot: 'p8-android-real-claude-startup.png',
           screenshot: 'p8-android-real-claude.png',
           helpEvidence: 'For more help: https://code.claude.co',
           localCommand: '/help',
@@ -891,12 +985,13 @@ test.describe('remote P8 Android terminal live relay', () => {
         {
           adapterId: 'codex',
           name: 'P8 real Codex',
+          startupScreenshot: 'p8-android-real-codex-startup.png',
           screenshot: 'p8-android-real-codex.png',
           helpEvidence: '/status',
           localCommand: '/status',
           args: '-c check_for_update_on_startup=false'
         }
-      ] as const
+      ].filter((target) => !realAiTarget || target.adapterId === realAiTarget)
       const sessions = []
       for (const target of targets) {
         sessions.push({
@@ -944,13 +1039,30 @@ test.describe('remote P8 Android terminal live relay', () => {
         )
         const initial = terminalMetrics(initialXml)
         if (!initial) throw new Error(`missing ${session.adapterId} metrics`)
-        expect(initial.renderer).toBe('DOM')
+        // Claude/Codex use box and block glyphs that xterm's DOM renderer
+        // rasterizes through the font. On Android that visibly breaks the
+        // cell grid, so the real-TUI gate must exercise WebGL custom glyphs.
+        expect(initial.renderer).toBe('WEBGL')
         expect(initial.parsedBytes).toBeGreaterThan(0)
         await expect
           .poll(() =>
             hrackPage.evaluate(() => window.remoteApi.getDriveState())
           )
           .toMatchObject({ phase: 'driven', sessionId: session.sessionId })
+        await new Promise((resolveWait) => setTimeout(resolveWait, 750))
+        const startupScreenshotPath = await screenshot(
+          testInfo,
+          session.startupScreenshot
+        )
+        const startupGeometry = terminalGlyphGeometry(startupScreenshotPath)
+        expect(
+          startupGeometry.components,
+          `${session.adapterId} startup did not contain enough terminal glyphs`
+        ).toBeGreaterThan(50)
+        expect(
+          startupGeometry.tallRatio,
+          `${session.adapterId} startup glyphs were vertically sliced in the final Android composition`
+        ).toBeGreaterThan(0.7)
 
         await tapResource('terminal-command-input')
         await adb('shell', 'input', 'text', session.localCommand)
@@ -958,7 +1070,8 @@ test.describe('remote P8 Android terminal live relay', () => {
           (xml) => xml.includes(session.localCommand),
           `${session.adapterId} local command draft`
         )
-        await adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+        await adb('shell', 'input', 'keyevent', 'KEYCODE_ESCAPE')
+        await expect.poll(isImeShown, { timeout: 5_000 }).toBe(false)
         await tapResource('terminal-command-send')
         await expect
           .poll(() => historyText(hrackPage, session.ptyId), {
@@ -974,7 +1087,16 @@ test.describe('remote P8 Android terminal live relay', () => {
           60_000
         )
         await new Promise((resolveWait) => setTimeout(resolveWait, 1_500))
-        await screenshot(testInfo, session.screenshot)
+        const screenshotPath = await screenshot(testInfo, session.screenshot)
+        const geometry = terminalGlyphGeometry(screenshotPath)
+        expect(
+          geometry.components,
+          `${session.adapterId} screenshot did not contain enough terminal glyphs`
+        ).toBeGreaterThan(100)
+        expect(
+          geometry.tallRatio,
+          `${session.adapterId} glyphs were vertically sliced in the final Android composition`
+        ).toBeGreaterThan(0.7)
 
         await tapResource('terminal-back')
         await waitForUi(

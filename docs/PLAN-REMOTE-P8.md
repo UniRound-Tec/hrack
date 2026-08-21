@@ -59,7 +59,7 @@ WebView → 原生事件：
 
 所有 envelope 先做类型、长度、sessionId 与阶段校验。注入脚本只使用 `JSON.stringify` 的数据字面量，不执行来自 PTY 的代码；CSP 继续禁止网络、内联脚本和外部字体。
 
-Android 和 Safari/WKWebView 实际会话当前固定使用 xterm DOM fallback。P6 孤立夹具的 WebGL 能力仍在 Android/Chromium 保留，但真实 history/reset/resize 后的 Android 模拟器画面出现可重复字形裁切，Safari 26.5 系列 WebGL 也有已知画面损坏风险；不能用 `renderer=WEBGL` 或数据面绿灯掩盖。各平台物理机视觉门禁通过前不重新启用；原因、性能与截图见 §8。
+Android/Chromium 实际会话使用与 HRack 浏览器控制页一致的 xterm WebGL 自定义 glyph 路径；DOM 只保留为初始化失败/context loss 后仍可操作和释放的故障降级，不能给 Claude/Codex 的块字符与框线做视觉放行。Android 模拟器还必须使用可验证的硬件 GPU 后端：`swiftshader_indirect` 会让复杂 WebGL TUI 产生稳定水平切片，而同一 AVD、APK 和公网会话切换到 `-gpu host` 后正确。Safari/WKWebView 因已知 WebGL 风险仍从启动使用 DOM，因此当前 iOS 引擎证据只放行资源、桥接和辅助层边界，不放行真实 AI CLI 块字符视觉；原因、性能与截图见 §8。
 
 本地资源按平台装载但不分叉终端逻辑：Android 继续使用 `android_asset` 中的相对多文件 Vite 产物；iOS 使用 Expo/Metro 的本地 HTML asset，把同一产物的 JS、CSS 和四字体折叠成约 1.04 MB 的单文件，避免 WKWebView 只找到入口却丢失相对资源目录。脚本/样式由内容 SHA-256 CSP hash 约束，字体使用 data URI；平台后缀入口保证 Android bundle/APK 不携带这份 iOS 文件。
 
@@ -160,8 +160,8 @@ Android 和 Safari/WKWebView 实际会话当前固定使用 xterm DOM fallback�
 
 ```text
 [p8-terminal-keyboard] portrait=43x31 keyboard=43x16 restored=43x31
-[p8-terminal-burst] renderer=DOM bytes=886540 elapsedMs=19882
-1 passed (1.7m)
+[p8-terminal-burst] renderer=WEBGL bytes=886220 elapsedMs=13538
+2 passed (2.2m)
 ```
 
 App `d3fcb3f` 重新生成并安装 release APK 后，定向公网旋转门禁再次得到：
@@ -171,21 +171,21 @@ App `d3fcb3f` 重新生成并安装 release APK 后，定向公网旋转门禁�
 1 passed (42.9s)
 ```
 
-验证使用 Android 16 / API 36 Pixel 6 x86_64 模拟器上的 release APK，停止 Metro 后冷启动，经 `https://hrack.modplex.app/` 的 HTTPS/WSS 和当前公网 relay。已有 PTY 先写 history marker，App 以 43 × 31 驾驶；Gboard 英文键盘弹出后 App 与桌面唯一 PTY 同步收缩为 43 × 16。随后切换到离线 Fcitx5 Pinyin，逐键点按 `zhongwen` 时 `zhong wen` 和候选“中文”只存在于 IME，App 草稿与 PTY history 均没有裸拼音；选择候选后 App 草稿出现“中文”，点击发送后 PTY history 只含最终中文。键盘隐藏后尺寸恢复 43 × 31；6,000 行真实 PTY burst 被 xterm 解析并 ack 886,540 字节，约 43.5 KiB/s。键盘开关之后旋转得到稳定的 97 × 15，App 和桌面权威尺寸一致且完整界面没有向下溢出；返回后 drive state 为 idle。App 新建第二个真实 PTY 后又以 43 × 31 直接进入终端。房间最终已撤销。
+验证使用 Android 16 / API 36 Pixel 6 x86_64 模拟器上的 release APK，停止 Metro 后冷启动，经 `https://hrack.modplex.app/` 的 HTTPS/WSS 和当前公网 relay。最终视觉门禁以 `-gpu host` 启动 AVD，SurfaceFlinger 确认 GLES 由 NVIDIA RTX 3090 提供。已有 PTY 先写 history marker，App 以 43 × 31 驾驶；Gboard 英文键盘弹出后 App 与桌面唯一 PTY 同步收缩为 43 × 16。随后切换到离线 Fcitx5 Pinyin，逐键点按 `zhongwen` 时 `zhong wen` 和候选“中文”只存在于 IME，App 草稿与 PTY history 均没有裸拼音；选择候选后 App 草稿出现“中文”，点击发送后 PTY history 只含最终中文。键盘隐藏后尺寸恢复 43 × 31；6,000 行真实 PTY burst 被 WebGL xterm 解析并 ack 886,220 字节，用时 13.538 秒，约 63.9 KiB/s。键盘开关之后旋转得到稳定的 97 × 15/16，App 和桌面权威尺寸一致且完整界面没有向下溢出；返回后 drive state 为 idle。App 新建第二个真实 PTY 后又以 43 × 31 直接进入终端。房间最终已撤销。
 
-iOS 资源门禁另用 Windows 上可执行的发布输入/引擎验证：生成资源在磁盘上约 1.04 MB，`expo export --platform ios` 列出 1 个 HTML asset，Android 导出 asset 列表为空，release APK 只包含 Android 多文件目录。Playwright 分别以 Chromium 和 WebKit 从本地文件加载同一单文件页面，复读故意乱序的三段 history，把同时注入的 live 严格排在 `history-ready` 后解析，核对字节数，并把真实键盘输入 `ios-input\r` 回传到 Native bridge；字体、块元素、CJK 双宽、DOM fallback、零网络和像素截图同时通过，最终 `2 passed (2.1s)`。这不是 iOS 模拟器或真机结果。
+iOS 资源门禁另用 Windows 上可执行的发布输入/引擎验证：生成资源在磁盘上约 1.04 MB，`expo export --platform ios` 列出 1 个 HTML asset，Android 导出 asset 列表为空，release APK 只包含 Android 多文件目录。Playwright 分别以 Chromium 和 WebKit 从本地文件加载同一单文件页面，复读故意乱序的三段 history，把同时注入的 live 严格排在 `history-ready` 后解析，核对字节数，并把真实键盘输入 `ios-input\r` 回传到 Native bridge；字体装载、CJK 双宽、DOM fallback、零网络、helper 边界和像素截图同时通过，最终 `2 passed (2.1s)`。由于 Android 已证明 DOM 会误画真实 Claude/Codex 块元素，这项固定夹具不能继续被描述为 iOS 真实 TUI 视觉放行；它也不是 iOS 模拟器或真机结果。
 
 App 同时通过协议/终端 parity、TypeScript、8 suites / 31 tests、Expo Doctor 20/20、相对离线 bundle 检查和 Android release 构建。完整截图与失败过程记录在 App 仓库 `docs/P8-ANDROID-VALIDATION.md`。
 
-真实 AI CLI 门禁另以同一 release App 和公网房间启动本机真实安装的 Claude Code 2.1.220 与 Codex CLI 0.146.0，最终 `1 passed (1.2m)`。Claude 提交本地 `/help`，Codex 提交官方本地 `/status`；两者均验证 PTY 权威 history、解析字节增长、真实 TUI 截图和返回 `undrive`，没有提交业务 prompt 或发起模型请求。Codex 用单次 `-c check_for_update_on_startup=false` 关闭启动更新检查，不修改用户安装。两张截图已固化到 App 仓库。
+真实 AI CLI 门禁另以同一 release App 和公网房间启动本机真实安装的 Claude Code 2.1.220 与 Codex CLI 0.146.0，最终 `1 passed (1.3m)`。Claude 提交本地 `/help`，Codex 提交官方本地 `/status`；两者均要求 `renderer=WEBGL`，保存启动首屏与命令后画面，验证 PTY 权威 history、解析字节增长、最终合成字形高度和返回 `undrive`，没有提交业务 prompt 或发起模型请求。Codex 用单次 `-c check_for_update_on_startup=false` 关闭启动更新检查，不修改用户安装。四张截图已固化到 App 仓库。
 
 准备提交时又执行了一次 HRack 检查点完整回归：`328 passed / 18 skipped`，耗时 3.5 分钟，无失败。18 个 skip 均有显式外部环境条件；新增的 Chromium/WebKit 两个 iOS 单文件门禁已在带 App 路径的环境中定向得到 `2 passed`，公网 P7/P8、Android 预检/真实旋转和 P8 完整终端也已按各自条件定向真实运行，不能把完整回归中的条件跳过误读成未测。物理设备矩阵完成后仍要再做 P8 最终关门回归。
 
 ### 8.3 视觉事故与性能结论
 
-第一次数据面定向门禁在历史、drive 和尺寸处通过，但 ADB 无法把键盘事件可靠送进 WebView 隐藏 textarea；改用提交式原生输入后输入链路通过。随后人工看截图发现 WebGL 字形裁切，而自动断言仍为绿色。尝试 `preserveDrawingBuffer`、最终 fit 后清 atlas，以及 history 前释放/后重建 WebGL，均未修复。切换到 HRack 已有的 xterm DOM fallback 后，竖屏、横屏 burst 尾部和新建终端截图字形均完整。
+第一次数据面定向门禁在历史、drive 和尺寸处通过，但 ADB 无法把键盘事件可靠送进 WebView 隐藏 textarea；改用提交式原生输入后输入链路通过。随后人工看截图发现 WebGL 字形裁切，而自动断言仍为绿色。尝试 `lineHeight`、`preserveDrawingBuffer`、最终 fit 后清 atlas，以及 history 前释放/后重建 WebGL，均未修复；当时切到 DOM 后普通 ASCII 看似完整，于是错误地写成了“DOM 视觉完成”。用户后续真实 Claude Code 截图显示块状 logo 变成错位大白矩形，回看旧归档图确认旧结论本身就是假绿灯：DOM 没有复用 WebGL addon 的 Box Drawing / Block Elements 自定义 glyph，不能作为真实 TUI 视觉路径。
 
-DOM 多次公网实测约为 43.5–49.4 KiB/s，足以作为当前交互式 AI CLI 的 Android 预发布检查点，但不是最终高吞吐目标。后续只能在 Android 物理机真实 PTY 视觉门禁通过后恢复 WebGL；若物理机同样失败，则保持 DOM 并针对串行写入/scrollback 做性能优化，不能牺牲字形正确性。
+恢复 WebGL 后，裁切只在 AVD 的 `-gpu swiftshader_indirect` 下出现；同一 AVD、release APK、公网房间和真实 CLI 改为 `-gpu host`，并确认 GLES 由 NVIDIA RTX 3090 提供后，Claude/Codex 启动与交互截图均完整。最终实现与 HRack 浏览器控制页一样在 Android/Chromium 真实会话启用 WebGL，DOM 只作可操作/可释放的故障降级。真实 AI 门禁新增 `WEBGL` 状态断言、启动截图和最终像素结构检查；软件 GPU 坏图的完整高度字形比例约 0.153，门禁要求大于 0.7。WebGL 最新公网 burst 为 886,220 字节/13.538 秒，约 63.9 KiB/s；旧 DOM 43.5–49.4 KiB/s 仅保留作诊断数据，不再是 Android 正常路径的性能结论。
 
 WebKit 门禁还复现了另一类“数据面全绿、画面仍错”的事故：终端 buffer、`.xterm-rows`、history/live 顺序、ACK 和输入回传均正确，但画面顶部出现 32 个连续 `W`。隐藏真实第 0 行后它们仍存在，最终定位为 xterm 在 WebKit 缺少完整 OffscreenCanvas font metrics 时创建的 `.xterm-char-measure-element`；固定 beta CSS 没有把探针隐藏。App 把探针绝对定位到屏幕外并设为 `visibility:hidden`，保留尺寸测量；测试则在不少于四个文字带之外，增加少于 20 cells 的夹具不得把非背景像素画到 200 px 以外。修复前 WebKit 稳定为 268 px，修复后双内核通过。此后手机端不能只检查 xterm 行/canvas，字宽、IME、无障碍 helper 也必须纳入最终合成截图。
 

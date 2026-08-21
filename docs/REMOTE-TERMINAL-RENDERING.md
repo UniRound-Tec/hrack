@@ -55,7 +55,7 @@ App 至少先支持 HRack Dark，并完整复用 `background`、`foreground`、`
 
 - WebView/xterm 路线优先尝试 WebGL；不支持 WebGL2、初始化抛错或 context loss 时必须自动退回 DOM/软件 renderer，终端和释放按钮仍可用。
 - 原生终端路线必须提供等价的 fallback 和可观测状态，至少能区分“首选 renderer 已启用”和“已降级”。
-- renderer 是实现细节。端到端测试不能依赖 `.xterm-rows`、`canvas` 数量或某个 renderer 私有 DOM；应断言终端 buffer/已解析字节和真实 PTY 权威历史。
+- renderer 的内部 DOM 是实现细节。协议门禁不能依赖 `.xterm-rows`、`canvas` 数量或其它私有结构；平台视觉门禁则必须同时断言公开的 renderer 状态与最终合成像素，因为 buffer/已解析字节和真实 PTY 权威历史都不能证明块字符、框线或 GPU 合成正确。
 
 ### 4.4 初始化与数据时序
 
@@ -101,18 +101,21 @@ P6 Android 预检已经复现过一次“原生外壳正常、WebView 纯黑且�
 4. 在没有 macOS 时应分别用 Chromium 和 Playwright WebKit 真实离线加载该单文件，除字体、块元素、CJK 双宽、renderer fallback 和零网络外，还要走完整 `open/history/live/parsed/input` 桥接并截图最终合成画面；记录仍必须写成“iOS 发布输入/引擎检查点”，不能写成 WKWebView 或真机通过；
 5. iOS 最终仍需在 Metro 停止后的安装包上冷启动，并覆盖 safe area、旋转、系统 IME、内容进程终止和真实 PTY。
 
-### 4.7 静态 WebGL 预检不能替代真实 PTY 视觉门禁
+### 4.7 Renderer 标签、DOM fallback 与静态预检都不能替代真实像素
 
-P8 Android 实现再次暴露了一个不同层次的陷阱：同一 release APK、同一 WebView、同一 Maple Mono 和同一固定 xterm 版本，P6 静态夹具在 WebGL 上字形完整；接入真实 history、`terminal.reset()`、记录的 resize 和 live output 后，模拟器截图却出现稳定的 ASCII 纵向裁切。此时协议字节、xterm buffer、输入、解析后 ack、唯一 winsize 和返回释放自动断言全部通过，`renderer` 状态也仍是 `WEBGL`。
+P8 Android 先后出现了两个相反方向的假结论。第一次把真实会话强制降级为 DOM 后，协议、history、输入、ACK、resize 和文字可见性全部正确，但 Claude Code 的 Block Elements logo 被字体栅格化为错位的大白矩形；xterm WebGL addon 默认提供的 Box Drawing / Block Elements 自定义 glyph 才是 HRack 浏览器和 Android/Chromium 正常路径。DOM 因此只保证紧急可操作与可返回，不能给含块字符/框线的真实 TUI 做视觉放行。
+
+恢复 WebGL 后，同一 release APK 在以 `-gpu swiftshader_indirect` 启动的 Android 16 AVD 上又把复杂 TUI 稳定裁成水平切片；renderer 状态仍为 `WEBGL`，全部数据面断言仍为绿色。`lineHeight`、`preserveDrawingBuffer`、最终 fit、清 glyph atlas 和 history 前后重建 addon 的单变量探针都未改变结果。把同一 AVD 改为 `-gpu host`，确认 GLES 由 NVIDIA RTX 3090 提供后，同一 APK、同一公网 relay 和同一真实 Claude/Codex 会话正确显示，根因由此定位为模拟器软件 GPU 合成路径，而不是协议、history 或 App 初始化顺序。
 
 因此增加以下纪律：
 
 1. WebGL 预检必须分成“孤立固定夹具”和“真实 PTY history + live + resize 后画面”两类；前者不能替代后者；
-2. 必须人工或像素基线检查至少 history 首屏、持续输出尾部和旋转后的画面；`renderer=WEBGL` 不是视觉正确证明；
-3. `preserveDrawingBuffer`、清 glyph atlas 或重建 addon 只能作为待验证假设，不能在没有截图证据时写成已修复；
-4. 若真实画面损坏，立即走 xterm DOM fallback 并保留可观测原因；数据面、解析后 ack 和 React 外字节通道不得随 renderer 降级改变；
-5. DOM fallback 必须附真实 burst 性能数据。2026-08-21 Android 16 模拟器经公网真实 ConPTY 多次实测约为 43.5–49.4 KiB/s；其中键盘旋转修复后的最终门禁解析并 ack 886,540 字节/19.882 秒，可作为交互式预发布范围，但不等于物理机最终性能结论；
-6. 重新启用 WebGL 必须由 Android 物理机真实 PTY 视觉门禁授权，不能只恢复静态 P6 截图。
+2. Android/Chromium 正常路径应与 HRack 浏览器实现一致使用 WebGL 自定义 glyph；DOM fallback 必须可观测并保留释放能力，但不得宣称 Claude/Codex 块字符视觉正确；
+3. Android 模拟器视觉验收必须记录 GPU 后端。`swiftshader_indirect` 只可承担非视觉协议检查；当前复杂 TUI 的模拟器放行证据使用 `-gpu host`；
+4. 必须至少保存真实 AI 启动首屏、交互后画面、持续输出尾部和旋转画面，并同时检查 renderer 状态与最终像素；`renderer=WEBGL` 不是视觉正确证明；
+5. 当前真实 AI 像素门禁在终端区域统计连通字形高度：软件 GPU 裁切样本的完整高度比例约 0.153，门禁要求大于 0.7，并要求存在足够多的终端字形；
+6. `preserveDrawingBuffer`、清 glyph atlas 或重建 addon 只能作为待验证假设，不能在没有红色复现和截图证据时写成已修复；
+7. renderer 降级不得改变数据面、history/live 顺序、解析后 ACK 或 React 外字节通道；Android 物理机仍需复跑同一真实 PTY/AI CLI 视觉门禁。
 
 手机输入也必须有可验证的组合安全路径。WebView 隐藏 textarea 在自动化环境中可能无法稳定接收系统键盘事件；允许提供原生提交式输入框，组合期间只编辑本地草稿、显式提交后一次发送最终文本和回车。它不能删除 xterm 原生输入，但可以作为中文 IME 安全入口与真实接口自动门禁入口。
 
@@ -128,7 +131,7 @@ P8 Android 实现再次暴露了一个不同层次的陷阱：同一 release APK
 2. 视觉门禁必须同时验证预期内容与禁止区域/异常延伸，不能只数行或只做事件断言；
 3. 升级 xterm 核心或 CSS 时，必须重新检查 helper 隐藏规则；App 自有补丁要保留可测量性，不能用 `display: none` 让 cell measurement 归零；
 4. Playwright WebKit 能提前发现 WebKit 引擎问题，但不能替代 iPhone/iPad 安装版 WKWebView 的 safe area、系统 IME、旋转和内容进程恢复；
-5. 当前 Safari/WKWebView 从启动即走 DOM，Android/Chromium 仍可在孤立预检覆盖 WebGL；任何平台的真实会话恢复 WebGL，都要由物理设备真实 PTY 截图授权。
+5. 当前 Safari/WKWebView 从启动即走 DOM，因此现有 WebKit 证据只放行资源、桥接与 helper 边界，不能放行 Claude/Codex 块字符视觉；Android/Chromium 真实会话使用 WebGL，并已在 host GPU 模拟器通过真实 PTY 截图与像素门禁，仍需 Android 物理机复验。
 
 ### 4.9 软键盘避让必须同步唯一 winsize
 
@@ -178,7 +181,7 @@ P8 应保留一个确定性 PTY 夹具，至少输出：
 - 8 色与 bright 8 色；
 - alternate screen 的真实 TUI 刷新、清屏和退出。
 
-结构性断言检查终端 buffer 中的字符、列宽和样式；视觉截图检查字形、基线、裁切与颜色。截图允许按平台维护基线，但不能用大面积容差掩盖一格错位。emoji 不作为跨平台列宽权威夹具，因为平台字体和 Unicode 宽度策略差异过大。
+结构性断言检查终端 buffer 中的字符、列宽和样式；视觉截图检查字形、基线、裁切、实心异常块与颜色。截图允许按平台维护基线，但不能用大面积容差掩盖一格错位。emoji 不作为跨平台列宽权威夹具，因为平台字体和 Unicode 宽度策略差异过大。
 
 ## 7. P8 关门门禁
 
@@ -189,7 +192,7 @@ P8 必须同时满足以下四层证据：
 3. **真实功能链路：** 真机 App → 公网 HTTPS/WSS/反向代理 → HRack Electron → 真实 PTY。手机输入必须出现在 PTY 权威历史，真实输出必须被手机终端解析后才 ack；旋转只改变被驾驶 PTY，返回列表后桌面解锁并 fit。
 4. **真实 AI CLI：** 至少用 Claude Code 和另一个全屏/彩色 AI CLI 各完成一次可见 smoke：logo/box drawing 无错格，历史与 live output 不乱序，中文 IME 不逐键发送，长时间输出没有因错误 ack 造成无界堆积或停顿。
 
-自动门禁应保持 renderer 无关。一次人工真机视觉验收不能替代自动化；自动化也不能替代真实设备与真实公网接口测试。验证记录必须写明设备/系统、App commit、HRack commit、中继版本、renderer 状态、是否走公网，以及真实接口结果。
+协议和数据面自动门禁应保持 renderer 无关；视觉门禁必须明确期望 renderer，并对最终合成像素做正向/负向检查。一次人工真机视觉验收不能替代自动化；自动化也不能替代真实设备与真实公网接口测试。验证记录必须写明设备/系统、App commit、HRack commit、中继版本、renderer 状态、GPU 后端、是否走公网，以及真实接口结果。
 
 ## 8. P6 关门前的 P8 技术预检
 
