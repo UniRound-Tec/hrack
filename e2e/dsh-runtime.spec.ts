@@ -10,6 +10,9 @@ import {
 import {
   DSH_WSL_PID_MARKER,
   buildDshExternalSpawnSpec,
+  dshRejectedNoOpenOption,
+  dshWebOpensBrowserByDefault,
+  dshWebRuntimeArgs,
   selectDshRuntimeCandidates
 } from '../electron/dsh-host/DshRuntime'
 import type { DshRuntimeCandidate } from '../shared/dsh-ipc'
@@ -45,7 +48,26 @@ test('DSH is discovered as a hidden runtime with a version-reporting probe', () 
   expect(definition).toMatchObject({ allowWslWindowsInterop: false })
   expect(definition?.probes[0].outputPattern.test(DSH_COMPATIBLE_VERSION)).toBe(true)
   expect(definition?.probes[0].outputPattern.test('0.1.0-rc.7')).toBe(true)
+  expect(definition?.probes[0].outputPattern.test('0.1.0-rc.8')).toBe(true)
   expect(definition?.probes[0].outputPattern.test('command not found')).toBe(false)
+})
+
+test('dsh web suppresses the OS browser from 0.1.0-rc.7 onward', () => {
+  expect(dshWebOpensBrowserByDefault('0.1.0-rc.6')).toBe(false)
+  expect(dshWebOpensBrowserByDefault('0.1.0-rc.7')).toBe(true)
+  expect(dshWebOpensBrowserByDefault('0.1.0-rc.8')).toBe(true)
+  expect(dshWebOpensBrowserByDefault('0.1.0')).toBe(true)
+  expect(dshWebRuntimeArgs(43123, '0.1.0-rc.6')).toEqual([
+    'web', '--host', '127.0.0.1', '--port', '43123'
+  ])
+  expect(dshWebRuntimeArgs(43123, '0.1.0-rc.8')).toEqual([
+    'web', '--host', '127.0.0.1', '--port', '43123', '--no-open'
+  ])
+  expect(dshWebRuntimeArgs(43123, '0.1.0-rc.8', false)).toEqual([
+    'web', '--host', '127.0.0.1', '--port', '43123'
+  ])
+  expect(dshRejectedNoOpenOption("error: unknown option '--no-open'")).toBe(true)
+  expect(dshRejectedNoOpenOption('dsh web: http://127.0.0.1:8080')).toBe(false)
 })
 
 test('HRack paths use the new brand and share an existing DSH home', () => {
@@ -99,7 +121,34 @@ test('external launch preserves native and WSL runtime boundaries', () => {
   expect(windows.args.slice(0, 3)).toEqual(['/d', '/v:off', '/c'])
   expect(windows.args[3]).toContain('dsh.cmd')
   expect(windows.args[3]).toContain('"--port" "43123"')
+  expect(windows.args[3]).not.toContain('--no-open')
   expect(windows.env.DSH_HOME).toBe('C:\\HRack Data\\dsh-home')
+
+  const rc8Windows = buildDshExternalSpawnSpec({
+    candidate: { ...windowsCandidate, version: '0.1.0-rc.8' },
+    port: 43123,
+    dshHome: 'C:\\HRack Data\\dsh-home',
+    commandInterpreter: 'C:\\Windows\\System32\\cmd.exe',
+    inheritedEnv: { SystemRoot: 'C:\\Windows' }
+  })
+  expect(rc8Windows.args[3]).toContain('"--no-open"')
+  const rc8WindowsRetry = buildDshExternalSpawnSpec({
+    candidate: { ...windowsCandidate, version: '0.1.0-rc.8' },
+    port: 43123,
+    dshHome: 'C:\\HRack Data\\dsh-home',
+    commandInterpreter: 'C:\\Windows\\System32\\cmd.exe',
+    inheritedEnv: { SystemRoot: 'C:\\Windows' },
+    noOpen: false
+  })
+  expect(rc8WindowsRetry.args[3]).not.toContain('--no-open')
+
+  const rc7Wsl = buildDshExternalSpawnSpec({
+    candidate: { ...wslCandidate, version: '0.1.0-rc.7' },
+    port: 43124,
+    dshHome: '/home/test/.dsh',
+    noOpen: false
+  })
+  expect(rc7Wsl.args).not.toContain('--no-open')
 
   const wsl = buildDshExternalSpawnSpec({
     candidate: wslCandidate,
@@ -119,6 +168,7 @@ test('external launch preserves native and WSL runtime boundaries', () => {
     '43124'
   ]))
   expect(wsl.args.join(' ')).toContain(DSH_WSL_PID_MARKER)
+  expect(wsl.args).not.toContain('--no-open')
   expect(wsl.env.DSH_HOME).toBeUndefined()
 })
 

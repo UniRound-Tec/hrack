@@ -59,6 +59,12 @@ const [preloadSource, mainSource] = await Promise.all([
 if (!preloadSource.includes('__HRACK_DSH_EMBED__')) {
   throw new Error('Official DSH surface preload bridge is missing from the build')
 }
+if (!preloadSource.includes('__ModuleLoader__')) {
+  throw new Error('Official DSH surface preload is missing the rc.7+ module-loader capture')
+}
+if (!preloadSource.includes('--no-open') && !mainSource.includes('--no-open')) {
+  throw new Error('DSH host spawn is missing --no-open for official web embedding')
+}
 if (!mainSource.includes('persist:hrack-dsh-surface')) {
   throw new Error('Official DSH WebContentsView controller is missing from the build')
 }

@@ -23,6 +23,8 @@ import {
   DSH_WSL_PID_MARKER,
   buildDshExternalSpawnSpec,
   dshCandidateFromInstallation,
+  dshRejectedNoOpenOption,
+  dshWebOpensBrowserByDefault,
   selectDshRuntimeCandidates
 } from './DshRuntime'
 
@@ -347,8 +349,29 @@ export class DshHostManager {
   private async startTarget(target: DshLaunchTarget): Promise<DshHostStatus> {
     const dshHome = this.resolveTargetHome(target)
     const port = await allocatePort()
+    const preferNoOpen = dshWebOpensBrowserByDefault(target.candidate.version)
+    try {
+      return await this.bootTarget(target, port, dshHome, preferNoOpen)
+    } catch (error) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      if (!preferNoOpen || !dshRejectedNoOpenOption(this.outputTail)) {
+        throw error
+      }
+      console.warn('[dsh-host] --no-open rejected; retrying without it')
+      await this.stopChild()
+      this.outputTail = ''
+      return this.bootTarget(target, port, dshHome, false)
+    }
+  }
+
+  private async bootTarget(
+    target: DshLaunchTarget,
+    port: number,
+    dshHome: string,
+    noOpen: boolean
+  ): Promise<DshHostStatus> {
     const baseUrl = `http://127.0.0.1:${port}`
-    const child = this.spawnTarget(target, port, dshHome)
+    const child = this.spawnTarget(target, port, dshHome, noOpen)
     this.child = child
     this.activeWslProcess = null
     this.activeWindowsProcessTreePid =
@@ -440,7 +463,8 @@ export class DshHostManager {
   private spawnTarget(
     target: DshLaunchTarget,
     port: number,
-    dshHome: string
+    dshHome: string,
+    noOpen?: boolean
   ): ManagedDshChild {
     if (!target.installation) {
       throw new Error('selected DSH installation is missing')
@@ -452,7 +476,8 @@ export class DshHostManager {
       environmentPath:
         this.options.discovery.runtimeEnvironment(target.installation).PATH,
       commandInterpreter: process.env.ComSpec,
-      inheritedEnv: process.env
+      inheritedEnv: process.env,
+      noOpen
     })
     const detached =
       target.candidate.runtime.kind === 'host' &&
