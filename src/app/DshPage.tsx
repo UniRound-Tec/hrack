@@ -28,6 +28,10 @@ interface DshPageProps {
   active: boolean
   /** Native child views sit above renderer portals, so dialogs explicitly hide it. */
   obscured: boolean
+  /** Host restart is in flight; keep the loading overlay above the empty native view. */
+  hostRestarting?: boolean
+  /** Snapshot returned after a host kill-and-relaunch finishes. */
+  restartSnapshot?: DshSurfaceSnapshot | null
 }
 
 function sameBounds(
@@ -142,7 +146,9 @@ export default function DshPage({
   slotId,
   adapterSessionId,
   active,
-  obscured
+  obscured,
+  hostRestarting = false,
+  restartSnapshot = null
 }: DshPageProps) {
   const strings = useStrings()
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -242,7 +248,14 @@ export default function DshPage({
     // `bounds` is deliberately represented by hasBounds here; later geometry
     // updates flow through setBounds without reopening the DSH session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldShow, slotId, adapterSessionId, hasBounds, appearance, retry])
+  }, [
+    shouldShow,
+    slotId,
+    adapterSessionId,
+    hasBounds,
+    appearance,
+    retry
+  ])
 
   useEffect(() => {
     if (!shouldShow || !bounds) return
@@ -255,6 +268,20 @@ export default function DshPage({
     setSnapshot({ phase: 'hidden', visible: false })
     void window.dshSurfaceApi.hide()
   }, [shouldShow])
+
+  useEffect(() => {
+    if (!hostRestarting || !shouldShow) return
+    setSnapshot({
+      phase: 'loading',
+      visible: false,
+      slotId: slotId ?? undefined,
+      sessionId: adapterSessionId
+    })
+  }, [hostRestarting, shouldShow, slotId, adapterSessionId])
+
+  useEffect(() => {
+    if (restartSnapshot) setSnapshot(restartSnapshot)
+  }, [restartSnapshot])
 
   useEffect(
     () => () => {
@@ -281,9 +308,9 @@ export default function DshPage({
         data-testid="dsh-surface-frame"
         className="min-h-0 flex-1 overflow-hidden"
       />
-      {shouldShow && snapshot.phase !== 'ready' && (
+      {shouldShow && (hostRestarting || snapshot.phase !== 'ready') && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-content">
-          {snapshot.phase === 'failed' ? (
+          {snapshot.phase === 'failed' && !hostRestarting ? (
             <>
               <span className="text-sm text-status-exited">
                 {strings.dsh.bootFailed}
@@ -302,7 +329,9 @@ export default function DshPage({
             </>
           ) : (
             <DshBootScreen
-              label={strings.dsh.booting}
+              label={
+                hostRestarting ? strings.dsh.restarting : strings.dsh.booting
+              }
               detail={strings.dsh.bootHostInit}
             />
           )}

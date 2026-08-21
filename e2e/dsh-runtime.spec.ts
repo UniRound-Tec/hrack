@@ -202,6 +202,7 @@ test('settings scans DSH runtimes and persists an explicit local choice', async 
     const select = first.window.getByTestId('dsh-runtime-select')
     await expect(select).toBeEnabled({ timeout: 20_000 })
     await expect(select).toHaveAttribute('data-value', 'auto')
+    await expect(first.window.getByTestId('dsh-host-restart')).toBeEnabled()
     await select.click()
     const localOption = first.window.locator(
       '[data-testid^="dsh-runtime-select-option-"]:not([data-testid="dsh-runtime-select-option-auto"])'
@@ -270,7 +271,7 @@ test('Home exposes a discovered local DSH runtime', async () => {
 
 test('auto starts a discovered Windows DSH installation through its real shim', async () => {
   test.skip(process.platform !== 'win32', 'Windows npm shim coverage')
-  test.setTimeout(120_000)
+  test.setTimeout(180_000)
   const executable = e2eDshExecutable()
   expect(existsSync(executable)).toBe(true)
   const appState = await launchApp({
@@ -293,6 +294,46 @@ test('auto starts a discovered Windows DSH installation through its real shim', 
     await expect(
       appState.window.evaluate(() => window.dshApi.getBootManifest())
     ).resolves.toBeTruthy()
+    const before = await appState.window.evaluate(() => window.dshApi.getStatus())
+    const restarted = await appState.window.evaluate(() => window.dshApi.restart())
+    expect(restarted.state).toBe('ready')
+    expect(restarted.baseUrl).toBeTruthy()
+    expect(restarted.baseUrl).not.toBe(before.baseUrl)
+  } finally {
+    await appState.app.close()
+  }
+})
+
+test('titlebar restart kills the DSH process and reloads the official surface', async () => {
+  test.setTimeout(180_000)
+  const executable = e2eDshExecutable()
+  test.skip(!existsSync(executable), 'local dsh-runtime fixture is required')
+  const appState = await launchApp({
+    createDefaultTerminal: false,
+    localDsh: true
+  })
+  try {
+    await expect(appState.window.getByTestId('home-quick-dsh')).toBeVisible({
+      timeout: 20_000
+    })
+    await appState.window.getByTestId('home-quick-dsh').click()
+    await expect(appState.window.getByTestId('dsh-page')).toHaveAttribute(
+      'data-dsh-surface-phase',
+      'ready',
+      { timeout: 120_000 }
+    )
+    const before = await appState.window.evaluate(() => window.dshApi.getStatus())
+    await expect(appState.window.getByTestId('titlebar-dsh-restart')).toBeEnabled()
+    await appState.window.getByTestId('titlebar-dsh-restart').click()
+    await expect(appState.window.getByTestId('dsh-page')).toHaveAttribute(
+      'data-dsh-surface-phase',
+      'ready',
+      { timeout: 120_000 }
+    )
+    const after = await appState.window.evaluate(() => window.dshApi.getStatus())
+    expect(after.state).toBe('ready')
+    expect(after.baseUrl).toBeTruthy()
+    expect(after.baseUrl).not.toBe(before.baseUrl)
   } finally {
     await appState.app.close()
   }

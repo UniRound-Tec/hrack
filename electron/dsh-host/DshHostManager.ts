@@ -90,6 +90,8 @@ export interface DshHostManagerOptions {
   broadcast: (channel: string, payload: DshHostStatus) => void
   onBecameReady?: () => void
   onLeftReady?: () => void
+  /** Host is stopping only to start again; keep HRack slots and the surface. */
+  onRestarting?: () => void
 }
 
 /** 预分配一个 Windows/当前主机 loopback 空闲端口。 */
@@ -136,6 +138,7 @@ export class DshHostManager {
   private activeWslProcess: { distro: string; pid: number } | null = null
   private activeWindowsProcessTreePid: number | null = null
   private activePosixProcessGroupPid: number | null = null
+  private restarting = false
 
   constructor(private readonly options: DshHostManagerOptions) {}
 
@@ -213,8 +216,13 @@ export class DshHostManager {
   }
 
   async restart(): Promise<DshHostStatus> {
-    await this.stop()
-    return this.ensureStarted()
+    this.restarting = true
+    try {
+      await this.stop()
+      return await this.ensureStarted()
+    } finally {
+      this.restarting = false
+    }
   }
 
   /** 幂等启动；starting 中的并发调用共享同一个 Promise。 */
@@ -248,7 +256,8 @@ export class DshHostManager {
     if (previous !== 'ready' && next.state === 'ready') {
       this.options.onBecameReady?.()
     } else if (previous === 'ready' && next.state !== 'ready') {
-      this.options.onLeftReady?.()
+      if (this.restarting) this.options.onRestarting?.()
+      else this.options.onLeftReady?.()
     }
   }
 

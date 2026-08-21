@@ -273,6 +273,7 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(DshInvokeChannel.EnsureStarted, () =>
     ctx.dshHost.ensureStarted()
   )
+  ipcMain.handle(DshInvokeChannel.Restart, () => ctx.dshHost.restart())
   ipcMain.handle(DshInvokeChannel.Stop, () => ctx.dshHost.stop())
   ipcMain.handle(DshInvokeChannel.GetConfig, () => ctx.dshHost.getConfig())
   ipcMain.handle(DshInvokeChannel.ScanRuntimes, (_e, force: unknown) =>
@@ -314,6 +315,9 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   ipcMain.handle(DshInvokeChannel.SurfaceHide, (event) => {
     dshSurfaceController(event, ctx).hide()
   })
+  ipcMain.handle(DshInvokeChannel.SurfaceRestart, (event) =>
+    dshSurfaceController(event, ctx).restartHost()
+  )
   ipcMain.handle(DshInvokeChannel.SurfaceUnfollow, (event, sessionId: unknown) => {
     dshSurfaceController(event, ctx).unfollow(sessionId)
   })

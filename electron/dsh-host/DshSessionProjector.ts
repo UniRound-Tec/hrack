@@ -244,6 +244,20 @@ export class DshSessionProjector {
   }
 
   stop(): void {
+    this.disconnect()
+    this.bridge.clear()
+    this.sessions.clear()
+    this.slots.clear()
+    this.closedSlotIds.clear()
+    this.activeSlotId = undefined
+  }
+
+  /** Close host streams without unfollowing HRack slots. Used for host restart. */
+  pause(): void {
+    this.disconnect()
+  }
+
+  private disconnect(): void {
     this.running = false
     ++this.lifecycleGeneration
     if (this.bootstrapRetryTimer) {
@@ -254,11 +268,6 @@ export class DshSessionProjector {
     this.muxSocket?.close()
     this.hostSocket = null
     this.muxSocket = null
-    this.bridge.clear()
-    this.sessions.clear()
-    this.slots.clear()
-    this.closedSlotIds.clear()
-    this.activeSlotId = undefined
   }
 
   /** Activate one Home-created slot without importing any official history. */
