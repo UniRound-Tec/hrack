@@ -71,6 +71,20 @@ function textForResource(xml: string, resourceId: string): string | null {
   return node?.match(/\btext="([^"]*)"/)?.[1] ?? null
 }
 
+function resourceIsFocused(xml: string, resourceId: string): boolean {
+  const node = xml.match(
+    new RegExp(`<node[^>]*resource-id="${quoteRegex(resourceId)}"[^>]*>`)
+  )?.[0]
+  return node?.includes('focused="true"') === true
+}
+
+function resourceIsEnabled(xml: string, resourceId: string): boolean {
+  const node = xml.match(
+    new RegExp(`<node[^>]*resource-id="${quoteRegex(resourceId)}"[^>]*>`)
+  )?.[0]
+  return node?.includes('enabled="true"') === true
+}
+
 interface TerminalMetrics {
   renderer: string
   cols: number
@@ -219,6 +233,35 @@ async function isImeShown(): Promise<boolean> {
   return /mInputShown=true/.test(state)
 }
 
+async function enableSoftKeyboardWithHardwareKeyboard(): Promise<void> {
+  await adb(
+    'shell',
+    'settings',
+    'put',
+    'secure',
+    'stylus_handwriting_enabled',
+    '0'
+  )
+  await adb(
+    'shell',
+    'settings',
+    'put',
+    'secure',
+    'show_ime_with_hard_keyboard',
+    '1'
+  )
+  const enabled = await adb(
+    'shell',
+    'settings',
+    'get',
+    'secure',
+    'show_ime_with_hard_keyboard'
+  )
+  if (enabled.trim() !== '1') {
+    throw new Error('Android soft keyboard is disabled for hardware input')
+  }
+}
+
 async function ensureGboardSubtype(
   name: 'English (US)' | '简体中文 (拼音)',
   locale: 'en_US' | 'zh_CN'
@@ -313,13 +356,23 @@ async function pairAndroid(joinUrl: string): Promise<void> {
   } catch {
     throw new Error('Android failed to enter the pairing URL')
   }
-  // ADB text injection does not guarantee that the soft keyboard opened. Use
-  // Escape when it did: Android dismisses the IME without delivering Back to
-  // the Activity, so the pairing form and typed URL stay mounted.
   if (await isImeShown()) {
-    await adb('shell', 'input', 'keyevent', 'KEYCODE_ESCAPE')
-    await expect.poll(isImeShown, { timeout: 5_000 }).toBe(false)
+    await adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+    await expect.poll(isImeShown, { timeout: 8_000 }).toBe(false)
   }
+  const pairingUi = await dumpUi()
+  if (boundsFor(pairingUi, 'pairing-connect') === null) {
+    // Some IMEs deliver Back to the Activity after dismissing themselves,
+    // which also collapses the optional panel. The URL remains in React state.
+    await tapResource('pairing-manual-toggle')
+  }
+  await waitForUi(
+    (xml) =>
+      textForResource(xml, 'pairing-url') === joinUrl &&
+      resourceIsEnabled(xml, 'pairing-connect'),
+    'complete pairing URL and enabled connect button',
+    8_000
+  )
   await tapResource('pairing-connect')
 }
 
@@ -509,6 +562,7 @@ test.describe('remote P8 Android terminal live relay', () => {
         '0'
       )
       await adb('shell', 'settings', 'put', 'system', 'user_rotation', '0')
+      await enableSoftKeyboardWithHardwareKeyboard()
       await selectIme(gboardIme)
       await startAndroid()
       await pairAndroid(joinUrl)
@@ -526,8 +580,16 @@ test.describe('remote P8 Android terminal live relay', () => {
       const portrait = terminalMetrics(portraitXml)
       if (!portrait) throw new Error('missing rotation probe portrait metrics')
 
-      await tapResource('terminal-command-input')
+      // A terminal tap is the primary mobile entry gesture. It must focus the
+      // composition-safe native command draft and open the system IME.
+      await tapResource('terminal-webview')
+      await waitForUi(
+        (xml) => resourceIsFocused(xml, 'terminal-command-input'),
+        'terminal tap focused the native command input',
+        5_000
+      )
       await expect.poll(isImeShown, { timeout: 15_000 }).toBe(true)
+      await screenshot(testInfo, 'p8-android-rotation-probe-ime.png')
       await waitForUi(
         (xml) => {
           const metrics = terminalMetrics(xml)
@@ -661,6 +723,7 @@ test.describe('remote P8 Android terminal live relay', () => {
         '0'
       )
       await adb('shell', 'settings', 'put', 'system', 'user_rotation', '0')
+      await enableSoftKeyboardWithHardwareKeyboard()
       await startAndroid()
       await pairAndroid(joinUrl)
       await waitForUi(
@@ -690,7 +753,14 @@ test.describe('remote P8 Android terminal live relay', () => {
       await screenshot(testInfo, 'p8-android-terminal-portrait.png')
 
       const inputMarker = `p8input${Date.now()}`
-      await tapResource('terminal-command-input')
+      // The terminal surface is the primary mobile entry gesture. It must
+      // focus the composition-safe native draft before accepting input.
+      await tapResource('terminal-webview')
+      await waitForUi(
+        (xml) => resourceIsFocused(xml, 'terminal-command-input'),
+        'terminal tap focused the native command input',
+        5_000
+      )
       await expect.poll(isImeShown, { timeout: 15_000 }).toBe(true)
       const keyboardXml = await waitForUi((xml) => {
         const metrics = terminalMetrics(xml)
@@ -1020,6 +1090,7 @@ test.describe('remote P8 Android terminal live relay', () => {
         '0'
       )
       await adb('shell', 'settings', 'put', 'system', 'user_rotation', '0')
+      await enableSoftKeyboardWithHardwareKeyboard()
       await startAndroid()
       await pairAndroid(joinUrl)
       await waitForUi(

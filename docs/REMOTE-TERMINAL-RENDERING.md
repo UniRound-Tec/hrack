@@ -157,6 +157,14 @@ Android 终端输入框不能沿用普通 shell 输入常见的 `autoCorrect={fa
 2. 组合串可能显示在 IME 自己的 preedit 区，而不进入受控 `TextInput`。门禁不能要求 App 草稿一定出现裸拼音；应证明候选提交前 PTY 没有拼音、候选提交后 App 草稿出现最终中文、显式发送后 PTY 只出现最终中文；
 3. 输入法语言包缺失是测试设备前置失败，不是 App 协议失败。2026-08-21 预装 Gboard 拼音持续等待下载且 MDD 数据缺失，最终改用核对官方 SHA-256 的离线 Fcitx5 Android 0.1.3 内置 Pinyin 完成证据；验证记录必须写明实际 IME，不能只写“中文键盘已选中”。
 
+### 4.11 点击终端必须进入原生组合安全输入路径
+
+移动端用户的主要输入手势是点击终端画面，不能要求先准确点击屏幕底部的命令框。xterm 会在 pointer down 时聚焦 WebView 内的隐藏 textarea；若 App 的组合安全入口是原生 `TextInput`，两者之间必须有显式、带当前 `sessionId` 的本地桥接，Native 还必须复核会话仍为 `driven`，不能接受旧页面或旧会话的聚焦请求。
+
+桥接同时要保留终端手势：不要在 WebView 外盖住终端，也不要取消 xterm 的 pointer 事件。当前 App 将真实会话的隐藏 textarea 设为 `inputMode=none`，并在捕获阶段把小位移、短时长的 pointer down/up 识别为轻点；拖动继续用于滚动/选择，实体键盘输入也不被禁用。轻点后由 Native 聚焦原生命令草稿，中文仍按“组合只进草稿、显式提交才进 PTY”的规则处理。
+
+Android 门禁必须从点击 `terminal-webview` 开始，至少证明：原生命令框获得焦点、真实 IME 有非零布局影响、WebView/桌面唯一 PTY 的 rows 同步减少，以及最终输入进入同一 PTY。单独的 `mInputShown=true` 不足以放行：模拟器关闭“实体键盘下显示软键盘”时只会出现零 inset 的侧边工具条；Gboard 首次手写引导也会让 IME 标记可见但不产生普通键盘布局事件。测试设备需固定 `show_ime_with_hard_keyboard=1` 和 `stylus_handwriting_enabled=0`，并以焦点、截图和实际 rows 变化交叉验证。
+
 ## 5. 禁止的捷径
 
 - 用页面/UI 的 sans-serif 或系统默认 `monospace` 代替打包字体。

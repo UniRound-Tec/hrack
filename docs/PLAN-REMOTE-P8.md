@@ -175,7 +175,7 @@ App `d3fcb3f` 重新生成并安装 release APK 后，定向公网旋转门禁�
 
 iOS 资源门禁另用 Windows 上可执行的发布输入/引擎验证：生成资源在磁盘上约 1.04 MB，`expo export --platform ios` 列出 1 个 HTML asset，Android 导出 asset 列表为空，release APK 只包含 Android 多文件目录。Playwright 分别以 Chromium 和 WebKit 从本地文件加载同一单文件页面，复读故意乱序的三段 history，把同时注入的 live 严格排在 `history-ready` 后解析，核对字节数，并把真实键盘输入 `ios-input\r` 回传到 Native bridge；字体装载、CJK 双宽、DOM fallback、零网络、helper 边界和像素截图同时通过，最终 `2 passed (2.1s)`。由于 Android 已证明 DOM 会误画真实 Claude/Codex 块元素，这项固定夹具不能继续被描述为 iOS 真实 TUI 视觉放行；它也不是 iOS 模拟器或真机结果。
 
-App 同时通过协议/终端 parity、TypeScript、8 suites / 31 tests、Expo Doctor 20/20、相对离线 bundle 检查和 Android release 构建。完整截图与失败过程记录在 App 仓库 `docs/P8-ANDROID-VALIDATION.md`。
+App 同时通过协议/终端 parity、TypeScript、8 suites / 32 tests、Expo Doctor 20/20、相对离线 bundle 检查和 Android release 构建。完整截图与失败过程记录在 App 仓库 `docs/P8-ANDROID-VALIDATION.md`。
 
 真实 AI CLI 门禁另以同一 release App 和公网房间启动本机真实安装的 Claude Code 2.1.220 与 Codex CLI 0.146.0，最终 `1 passed (1.3m)`。Claude 提交本地 `/help`，Codex 提交官方本地 `/status`；两者均要求 `renderer=WEBGL`，保存启动首屏与命令后画面，验证 PTY 权威 history、解析字节增长、最终合成字形高度和返回 `undrive`，没有提交业务 prompt 或发起模型请求。Codex 用单次 `-c check_for_update_on_startup=false` 关闭启动更新检查，不修改用户安装。四张截图已固化到 App 仓库。
 
@@ -192,6 +192,10 @@ WebKit 门禁还复现了另一类“数据面全绿、画面仍错”的事故�
 软键盘门禁又发现另一处只看数据面无法发现的问题：`minHeight: 260` 阻止 Android 16 edge-to-edge 页面收缩；直接使用 `KeyboardAvoidingView(height)` 又在 `keyboardDidHide` 后残留收缩高度。第一版用真实 show/hide 状态切换 `enabled`，确实在竖屏完成了 43 × 31 → 43 × 16 → 43 × 31，却遗漏了“随后旋转”：React Native 0.83 仍会因旧 `state.bottom > 0` 套用 `_initialFrameHeight` / `flex: 0`，产生 97 × 31 的竖屏高度锁定。最终实现不再切 `enabled`；Android 仅在键盘显示时设置 `behavior=height`，隐藏时移除 behavior 以恢复 flex 布局，同时保持 WebView 不重挂。最小公网复现由红色 `43 × 31 → 97 × 31` 变为 `43 × 31 → 97 × 16`，完整中文/burst 门禁最终得到 97 × 15。门禁必须同时断言横屏列数增加、行数减少，并人工查看界面没有溢出。Fcitx5 的 43 × 15 仍沿用同一尺寸通道。
 
 中文门禁先暴露了两类外部前置问题：中文子类型会把 ADB 注入的配对 URL 改成全角标点，所以配对必须先固定英文；预装 Gboard 拼音则因模拟器镜像语言包缺失持续等待下载，不能把这个外部失败误判为 App 组合失败。最终门禁安装并核对官方 SHA-256 的 Fcitx5 Android 0.1.3 x86_64 APK，只保留内置 Pinyin，并用真实键盘逐键/候选点击证明组合串在最终 App 提交前从未进入 PTY。Android 命令框不设置 `autoCorrect=false`，避免 React Native 映射为 `TYPE_TEXT_FLAG_NO_SUGGESTIONS`；同时不设置 `true`，避免请求英文 shell 命令自动纠正。
+
+用户复测又发现点击终端画面不能弹出原生命令输入。根因是 xterm 只聚焦 WebView 隐藏 textarea，而组合安全输入属于 React Native `TextInput`；两者此前没有明确的轻点桥接。当前实现保留 xterm 物理键盘和拖动手势，真实会话把隐藏 textarea 设为 `inputMode=none`，短距离 pointer 轻点才发送带当前 `sessionId` 的 `input-request`，Native 仅在同一会话仍为 `driven` 时聚焦命令草稿。真实门禁改为从点击 `terminal-webview` 开始，证明原生焦点、IME、43 × 31 → 43 × 16、桌面 winsize、输入、中文组合、886,316 字节 burst、恢复、旋转、释放与新建全链路通过。
+
+定位过程中还抓到两种设备假阳性：模拟器 `show_ime_with_hard_keyboard=0` 时只出现零 inset 的侧边工具条；清理 Gboard 后首次聚焦可能出现 “Try out your stylus” 引导层。两者都会让 `mInputShown=true`，却不是普通软键盘。Android 门禁现在固定 `show_ime_with_hard_keyboard=1`、`stylus_handwriting_enabled=0`，并要求原生命令框焦点与终端 rows 实际减少，不能只看 IME 标志。
 
 ### 8.4 未关门项
 
