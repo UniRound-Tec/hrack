@@ -177,6 +177,8 @@ export const zhCN = {
     booting: '正在启动 DeepSeek Harness…',
     bootHostInit: 'dsh host 首次启动需要初始化 profile',
     bootFailed: 'DSH 启动失败',
+    copyError: '复制错误信息',
+    errorCopied: '已复制',
     bootReload: '重新加载窗口',
     homeHint: '自动选择 · 本机优先'
   },

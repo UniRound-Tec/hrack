@@ -174,6 +174,8 @@ export const ko = {
     booting: 'DeepSeek Harness 시작하는 중…',
     bootHostInit: '첫 host 시작 시 profile 초기화가 필요합니다',
     bootFailed: 'DSH 시작 실패',
+    copyError: '오류 복사',
+    errorCopied: '복사됨',
     bootReload: '창 다시 로드',
     homeHint: '자동 선택 · 로컬 우선'
   },

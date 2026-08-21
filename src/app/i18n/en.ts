@@ -174,6 +174,8 @@ export const en = {
     booting: 'Starting DeepSeek Harness…',
     bootHostInit: 'First host start needs to initialize the profile',
     bootFailed: 'DSH failed to start',
+    copyError: 'Copy error',
+    errorCopied: 'Copied',
     bootReload: 'Reload window',
     homeHint: 'Auto-select · local preferred'
   },

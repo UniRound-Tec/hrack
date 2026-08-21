@@ -174,6 +174,8 @@ export const zhTW = {
     booting: '正在啟動 DeepSeek Harness…',
     bootHostInit: 'dsh host 首次啟動需要初始化 profile',
     bootFailed: 'DSH 啟動失敗',
+    copyError: '複製錯誤訊息',
+    errorCopied: '已複製',
     bootReload: '重新載入視窗',
     homeHint: '自動選擇 · 本機優先'
   },

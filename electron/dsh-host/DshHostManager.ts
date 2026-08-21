@@ -328,30 +328,45 @@ export class DshHostManager {
     this.outputTail = ''
     this.setStatus({ state: 'starting' })
     try {
-      const targets = await this.resolveLaunchTargets()
-      const failures: string[] = []
-      for (const target of targets) {
-        try {
-          return await this.startTarget(target)
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : String(error)
-          failures.push(`${target.candidate.id}: ${detail}`)
-          this.appendOutput(`\n[${target.candidate.id}] ${detail}\n`)
-          await this.stopChild()
-        }
-      }
-      throw new Error(failures.join('\n'))
+      return await this.attemptStart()
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      console.warn(
+        '[dsh-host] start failed; killing and retrying once:',
+        error instanceof Error ? error.message : error
+      )
       await this.stopChild()
-      this.setStatus({
-        state: 'failed',
-        dshHome: this.status.dshHome,
-        activeRuntime: this.status.activeRuntime,
-        error: `${message}\n${this.outputTail.slice(-2048)}`
-      })
-      return this.status
+      this.outputTail = ''
+      try {
+        return await this.attemptStart()
+      } catch (retryError) {
+        const message =
+          retryError instanceof Error ? retryError.message : String(retryError)
+        await this.stopChild()
+        this.setStatus({
+          state: 'failed',
+          dshHome: this.status.dshHome,
+          activeRuntime: this.status.activeRuntime,
+          error: `${message}\n${this.outputTail.slice(-2048)}`
+        })
+        return this.status
+      }
     }
+  }
+
+  private async attemptStart(): Promise<DshHostStatus> {
+    const targets = await this.resolveLaunchTargets()
+    const failures: string[] = []
+    for (const target of targets) {
+      try {
+        return await this.startTarget(target)
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error)
+        failures.push(`${target.candidate.id}: ${detail}`)
+        this.appendOutput(`\n[${target.candidate.id}] ${detail}\n`)
+        await this.stopChild()
+      }
+    }
+    throw new Error(failures.join('\n'))
   }
 
   private async startTarget(target: DshLaunchTarget): Promise<DshHostStatus> {

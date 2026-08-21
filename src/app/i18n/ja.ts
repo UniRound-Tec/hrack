@@ -174,6 +174,8 @@ export const ja = {
     booting: 'DeepSeek Harness を起動しています…',
     bootHostInit: '初回の host 起動では profile の初期化が必要です',
     bootFailed: 'DSH の起動に失敗しました',
+    copyError: 'エラーをコピー',
+    errorCopied: 'コピーしました',
     bootReload: 'ウィンドウを再読み込み',
     homeHint: '自動選択 · ローカル優先'
   },
