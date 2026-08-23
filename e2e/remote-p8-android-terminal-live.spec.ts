@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { delimiter, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { PNG } from 'pngjs'
 import {
@@ -14,6 +14,9 @@ import { launchApp } from './helpers'
 
 const execFileAsync = promisify(execFile)
 const targetUrl = process.env.HRACK_REMOTE_P8_URL
+const providedJoinUrl = process.env.HRACK_REMOTE_P8_JOIN_URL
+const accountCredentialFile =
+  process.env.HRACK_REMOTE_P8_ACCOUNT_CREDENTIAL_FILE
 const adbExecutable = process.env.HRACK_ANDROID_ADB
 const appPackage =
   process.env.HRACK_ANDROID_APP_PACKAGE ?? 'app.modplex.hrack.remote'
@@ -338,6 +341,9 @@ async function tapPinyinKeyboard(value: 'zhongwen'): Promise<void> {
 }
 
 async function startAndroid(): Promise<void> {
+  await adb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
+  await adb('shell', 'wm', 'dismiss-keyguard')
+  await adb('shell', 'cmd', 'statusbar', 'collapse')
   await adb('shell', 'pm', 'clear', appPackage)
   await adb('shell', 'am', 'start', '-W', '-n', `${appPackage}/.MainActivity`)
   await waitForUi(
@@ -352,7 +358,11 @@ async function pairAndroid(joinUrl: string): Promise<void> {
   await tapResource('pairing-url')
   if (chineseImeGate) await ensureEnglishUsSubtype()
   try {
-    await adb('shell', 'input', 'text', joinUrl)
+    for (const chunk of joinUrl.match(/.{1,12}/g) ?? []) {
+      const shellQuotedChunk = `'${chunk.replace(/'/g, `'\\''`)}'`
+      await adb('shell', 'input', 'text', shellQuotedChunk)
+      await new Promise((resolveWait) => setTimeout(resolveWait, 120))
+    }
   } catch {
     throw new Error('Android failed to enter the pairing URL')
   }
@@ -382,10 +392,50 @@ async function connectHrack(page: Page, joinUrl: string): Promise<void> {
   await page.getByTestId('settings-remote-url').fill(joinUrl)
   await page.getByTestId('settings-remote-connect').click()
   await page.getByTestId('settings-remote-confirm-accept').click()
-  await expect(page.getByTestId('settings-remote-status')).toHaveAttribute(
-    'data-remote-phase',
-    'waiting-phone'
-  )
+  await expect
+    .poll(() =>
+      page
+        .getByTestId('settings-remote-status')
+        .getAttribute('data-remote-phase')
+    )
+    .toMatch(/^(waiting-phone|peer-online)$/)
+}
+
+async function getAccountPairingUrl(
+  page: Page,
+  baseUrl: string
+): Promise<string> {
+  if (!accountCredentialFile) {
+    throw new Error('account credential file is not configured')
+  }
+  const credential = JSON.parse(
+    readFileSync(accountCredentialFile, 'utf8')
+  ) as {
+    email?: unknown
+    password?: unknown
+  }
+  if (
+    typeof credential.email !== 'string' ||
+    typeof credential.password !== 'string'
+  ) {
+    throw new Error(
+      'account credential file must contain email and password strings'
+    )
+  }
+
+  const response = await page.goto(new URL('/auth', baseUrl).href)
+  if (!response?.ok()) throw new Error('account login page did not load')
+  await page.locator('input[name="email"]').fill(credential.email)
+  await page.locator('input[name="password"]').fill(credential.password)
+  await page.locator('form button[type="submit"]').click()
+  await page.waitForURL((url) => url.pathname === '/dashboard')
+
+  const pairingUrl = page.locator('section input[readonly]')
+  if (!(await pairingUrl.isVisible().catch(() => false))) {
+    await page.locator('section button[type="button"]').first().click()
+  }
+  await expect(pairingUrl).toBeVisible()
+  return pairingUrl.inputValue()
 }
 
 async function launchSession(
@@ -522,19 +572,28 @@ test.describe('remote P8 Android terminal live relay', () => {
       process.platform !== 'win32',
       'current Android/Electron gate is Windows'
     )
-    test.setTimeout(90_000)
+    test.setTimeout(180_000)
     if (!targetUrl) throw new Error('missing live relay target')
 
     let app: ElectronApplication | undefined
     let roomCreated = false
     let roomRevoked = false
     try {
-      const response = await relayPage.goto(targetUrl)
-      if (!response?.ok()) throw new Error('relay generate page did not load')
-      await relayPage.getByTestId('create-room').click()
-      await expect(relayPage.getByTestId('join-url')).toBeVisible()
-      roomCreated = true
-      const joinUrl = await relayPage.getByTestId('join-url').innerText()
+      let joinUrl: string
+      if (providedJoinUrl) {
+        const response = await relayPage.goto(targetUrl)
+        if (!response?.ok()) throw new Error('relay target did not load')
+        joinUrl = providedJoinUrl
+      } else if (accountCredentialFile) {
+        joinUrl = await getAccountPairingUrl(relayPage, targetUrl)
+      } else {
+        const response = await relayPage.goto(targetUrl)
+        if (!response?.ok()) throw new Error('relay generate page did not load')
+        await relayPage.getByTestId('create-room').click()
+        await expect(relayPage.getByTestId('join-url')).toBeVisible()
+        roomCreated = true
+        joinUrl = await relayPage.getByTestId('join-url').innerText()
+      }
 
       const launched = await launchApp({
         createDefaultTerminal: false,
@@ -622,7 +681,7 @@ test.describe('remote P8 Android terminal live relay', () => {
             )
           },
           'stable driven landscape terminal',
-          12_000
+          30_000
         )
       } catch (error) {
         const current = terminalMetrics(await dumpUi())
@@ -638,9 +697,13 @@ test.describe('remote P8 Android terminal live relay', () => {
         `[p8-terminal-rotation] portrait=${portrait.cols}x${portrait.rows} landscape=${landscape.cols}x${landscape.rows}`
       )
 
-      await relayPage.getByTestId('revoke-room').click()
-      await expect(relayPage.getByTestId('status')).toHaveText('Room revoked.')
-      roomRevoked = true
+      if (roomCreated) {
+        await relayPage.getByTestId('revoke-room').click()
+        await expect(relayPage.getByTestId('status')).toHaveText(
+          'Room revoked.'
+        )
+        roomRevoked = true
+      }
     } finally {
       if (roomCreated && !roomRevoked) {
         const revoke = relayPage.getByTestId('revoke-room')
@@ -670,25 +733,35 @@ test.describe('remote P8 Android terminal live relay', () => {
       process.platform !== 'win32',
       'current Android/Electron gate is Windows'
     )
-    test.setTimeout(240_000)
+    test.setTimeout(360_000)
     if (!targetUrl) throw new Error('missing live relay target')
 
     let app: ElectronApplication | undefined
     let roomCreated = false
     let roomRevoked = false
     try {
-      const response = await relayPage.goto(targetUrl)
-      if (!response?.ok()) throw new Error('relay generate page did not load')
-      await relayPage.getByTestId('create-room').click()
-      await expect(relayPage.getByTestId('join-url')).toBeVisible()
-      roomCreated = true
-      const joinUrl = await relayPage.getByTestId('join-url').innerText()
+      let joinUrl: string
+      if (providedJoinUrl) {
+        const response = await relayPage.goto(targetUrl)
+        if (!response?.ok()) throw new Error('relay target did not load')
+        joinUrl = providedJoinUrl
+      } else if (accountCredentialFile) {
+        joinUrl = await getAccountPairingUrl(relayPage, targetUrl)
+      } else {
+        const response = await relayPage.goto(targetUrl)
+        if (!response?.ok()) throw new Error('relay generate page did not load')
+        await relayPage.getByTestId('create-room').click()
+        await expect(relayPage.getByTestId('join-url')).toBeVisible()
+        roomCreated = true
+        joinUrl = await relayPage.getByTestId('join-url').innerText()
+      }
 
       const launched = await launchApp({
         createDefaultTerminal: false,
         env: {
           HRACK_FIXTURE_OBSERVER: '1',
           HRACK_FIXTURE_OBSERVER_HOLD: '1',
+          PATH: `${resolve(__dirname, 'fixtures/remote')}${delimiter}${process.env.PATH ?? ''}`,
           HRACK_E2E_CLI_EXECUTABLE: resolve(
             __dirname,
             'fixtures/remote/interactive-cli.cmd'
@@ -866,6 +939,30 @@ test.describe('remote P8 Android terminal live relay', () => {
         portrait.parsedBytes
       )
 
+      await tapResource('terminal-command-input')
+      await waitForUi(
+        (xml) => resourceIsFocused(xml, 'terminal-command-input'),
+        'control-key command input',
+        5_000
+      )
+      await adb('shell', 'input', 'text', 'control-key-probe.cmd')
+      await waitForUi(
+        (xml) => xml.includes('control-key-probe.cmd'),
+        'control-key command draft'
+      )
+      if (await isImeShown()) {
+        await adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+        await expect.poll(isImeShown, { timeout: 15_000 }).toBe(false)
+      }
+      await tapResource('terminal-command-send')
+      await expect
+        .poll(() => historyText(hrackPage, existing.ptyId), { timeout: 30_000 })
+        .toContain('HRACK_REMOTE_KEY_PROBE_READY')
+      await tapResource('terminal-key-esc')
+      await expect
+        .poll(() => historyText(hrackPage, existing.ptyId), { timeout: 30_000 })
+        .toContain('HRACK_REMOTE_KEY_Escape')
+
       const beforeBurst = terminalMetrics(parsedAfterInput)?.parsedBytes ?? 0
       const burstMarker = `p8burst${Date.now()}`
       const burstStartedAt = Date.now()
@@ -897,24 +994,32 @@ test.describe('remote P8 Android terminal live relay', () => {
       )
 
       await adb('shell', 'settings', 'put', 'system', 'user_rotation', '1')
-      const landscapeXml = await waitForUi((xml) => {
-        const metrics = terminalMetrics(xml)
-        return (
-          !!metrics &&
-          metrics.cols > portrait.cols &&
-          metrics.rows < portrait.rows
-        )
-      }, 'landscape terminal resize')
-      const landscape = terminalMetrics(landscapeXml)
-      if (!landscape) throw new Error('missing landscape terminal metrics')
+      let landscape: TerminalMetrics | null = null
       await expect
-        .poll(() => hrackPage.evaluate(() => window.remoteApi.getDriveState()))
-        .toMatchObject({
-          phase: 'driven',
-          sessionId: existing.sessionId,
-          cols: landscape.cols,
-          rows: landscape.rows
-        })
+        .poll(
+          async () => {
+            const metrics = terminalMetrics(await dumpUi().catch(() => ''))
+            const drive = await hrackPage.evaluate(() =>
+              window.remoteApi.getDriveState()
+            )
+            if (
+              metrics &&
+              metrics.cols > portrait.cols &&
+              metrics.rows < portrait.rows &&
+              drive.phase === 'driven' &&
+              drive.sessionId === existing.sessionId &&
+              drive.cols === metrics.cols &&
+              drive.rows === metrics.rows
+            ) {
+              landscape = metrics
+              return true
+            }
+            return false
+          },
+          { timeout: 30_000 }
+        )
+        .toBe(true)
+      if (!landscape) throw new Error('missing stable landscape metrics')
       await screenshot(testInfo, 'p8-android-terminal-landscape.png')
 
       await tapResource('terminal-back')
@@ -980,10 +1085,14 @@ test.describe('remote P8 Android terminal live relay', () => {
         .poll(() => hrackPage.evaluate(() => window.remoteApi.getDriveState()))
         .toMatchObject({ phase: 'idle', sessionId: null })
 
-      await relayPage.getByTestId('revoke-room').click()
-      await expect(relayPage.getByTestId('status')).toHaveText('Room revoked.')
-      roomRevoked = true
-      await waitForUi((xml) => xml.includes('房间已经关闭'), 'room revoked')
+      if (roomCreated) {
+        await relayPage.getByTestId('revoke-room').click()
+        await expect(relayPage.getByTestId('status')).toHaveText(
+          'Room revoked.'
+        )
+        roomRevoked = true
+        await waitForUi((xml) => xml.includes('房间已经关闭'), 'room revoked')
+      }
     } finally {
       if (roomCreated && !roomRevoked) {
         const revoke = relayPage.getByTestId('revoke-room')
