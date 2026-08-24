@@ -47,6 +47,37 @@ test('DSH capability and surface frames are strict and backwards-optional', () =
       iconId: 'dsh', state: 'ready', generation: 1
     }
   })).toMatchObject({ ok: true })
+  expect(parseRemoteMessage({
+    v: 1,
+    type: 'dsh-ticket-request',
+    requestId: 'ticket-1'
+  })).toMatchObject({ ok: true })
+  expect(parseRemoteMessage({
+    v: 1,
+    type: 'dsh-ticket-ok',
+    requestId: 'ticket-1',
+    url: 'https://dsh.example.test/_connect/opaque',
+    expiresAt: 1_800_000_000_000
+  })).toMatchObject({ ok: true })
+  expect(parseRemoteMessage({
+    v: 1,
+    type: 'dsh-ticket-reject',
+    requestId: 'ticket-1',
+    reason: 'tunnel-offline'
+  })).toMatchObject({ ok: true })
+  for (const url of [
+    'http://dsh.example.test/_connect/opaque',
+    'https://dsh.example.test/not-connect/opaque',
+    'https://dsh.example.test/_connect/opaque?room=secret'
+  ]) {
+    expect(parseRemoteMessage({
+      v: 1,
+      type: 'dsh-ticket-ok',
+      requestId: 'ticket-1',
+      url,
+      expiresAt: 1_800_000_000_000
+    }).ok, url).toBe(false)
+  }
 })
 
 test('DSH tunnel framing enforces exact controls, sequence coordinates and bounds', () => {

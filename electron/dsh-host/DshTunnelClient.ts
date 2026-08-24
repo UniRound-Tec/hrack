@@ -55,6 +55,7 @@ type Stream = HttpStream | WsStream
 
 const REQUEST_HEADER_ALLOWLIST = new Set([
   'accept',
+  'accept-encoding',
   'accept-language',
   'cache-control',
   'content-type',

@@ -1,6 +1,6 @@
 # HRack Remote DSH Web Tunnel — Spec
 
-> 状态：**D0 Spec/真实安全原型与 D1 Desktop 已关门（2026-08-24）；下一阶段为 D2 Server。** 本文定义 P0–P8 之后的独立 DSH 远程扩展轨，不表示 Remote P8 已关门。
+> 状态：**D0 Spec/真实安全原型、D1 Desktop 与 D2 Server 已关门（2026-08-24）；下一阶段为 D3 App。** 本文定义 P0–P8 之后的独立 DSH 远程扩展轨，不表示 Remote P8 已关门。
 > 父文档：[HRack 远程控制 Spec](./SPEC-REMOTE.md)、[DSH 官方 Web Surface 隔离嵌入计划](./PLAN-DSH-OFFICIAL-WEB-SURFACE.md)。
 > 范围：手机 App 通过现有 1:1:1 房间，打开并操作电脑上真实运行的 DSH 官方 Web UI；不重做 DSH UI，不把 DSH loopback 端口直接暴露到公网。
 
@@ -501,3 +501,26 @@ npx playwright test e2e/remote-dsh-d1.spec.ts -g "D1 Desktop carries real DSH"
 ```
 
 D1 真实复跑还捕获并修复了三个不能由普通 mock 暴露的问题：产品 overlay 必须是顶层 patch 数组；`ws` 必须作为产品依赖被 externalize，不能由主进程 bundler 错误内联 optional buffer adapter；最后一个 response frame 的反向 credit 可能晚于 `http-end` 到达，必须由 TIME_WAIT stream 吸收，不能误判成未知流关闭整条 tunnel。
+
+## 17. D2 Server 实现与验证记录
+
+D2 已在 `hrack-remote-server` 完成独立 Server carrier：
+
+- `DSH_PUBLIC_ORIGIN` 为显式可选、规范 HTTPS 且必须不同于平台 origin；未配置时旧客户端、旧房间和 PTY Relay 行为不变，也不发布 DSH capability；
+- Desktop 主 seat 获得短期、绑定当前 connection 的随机 `dshSeatToken`，专用 `{base}/v1/dsh-tunnel` 第一帧完成 room/seat/token/唯一 tunnel 校验；
+- Phone 的 `dsh-ticket-request` 由 Relay 自己消费，不转发 Desktop；ticket 为 256-bit CSPRNG、摘要存储、一次性且最长 30 秒；
+- 独立 DSH virtual host 的 `/_connect/<ticket>` 设置 `__Host-hrack-dsh`（`Secure; HttpOnly; SameSite=Strict; Path=/`）并 303 到根页面；Cookie 同时绑定 Phone connection、Room、Desktop connection、tunnel generation 和 DSH surface generation，掉线、generation 变化与 revoke 都立即失效；
+- 公网 route/method/header 为双层 allowlist；匿名只开放 `/_healthz`，绝对 URL、重复编码穿越、反斜杠、NUL、`CONNECT`/`TRACE` 和未知 route fail closed；Cookie、Authorization、Forwarded 与本地 `Set-Cookie`/Server 不穿 tunnel；
+- HTTP、SSE 和两条 event WebSocket 经独立二进制 tunnel 多路复用，落实 32 KiB control、64 KiB frame、sequence、credit、16 MiB request、32 MiB普通 response、16 HTTP/1 SSE/2 WS、512 KiB/stream、2 MiB/room 及 header/idle/首响应超时；
+- 带 content revision 的静态资源只允许 `private, immutable`，其余根页面/API 为 `no-store`、SSE 为 `no-cache`；`Accept-Encoding` 可穿透到真实 DSH，正文保持流式而不在 Relay 聚合；
+- Compose/TLS 示例增加第二 DSH virtual host；宿主反代模式使用独立 8789 loopback 入口，整段 access log off，不能把 DSH 退回 `/remote/...` 子路径。
+
+构建后真实进程门禁不是进程内 mock：它启动 `dist/server/cli.js`，建立主 Desktop/Phone seat 和独立 tunnel，消费一次性 ticket/Cookie，经 tunnel 传输与 D1 实测首屏同量级的 4,541,867 字节正文，建立两条公网 event WebSocket，随后 revoke 并扫描日志：
+
+```text
+[dsh-d2] process=dist httpBytes=4541867 websocket=2 ticket=one-use revoke=closed logs=clean
+```
+
+合并门禁结果：Server `npm test` 为 Relay 37 项、Web 131 项、Nginx 5 项、Ops 4 项全绿；Server `npm run typecheck`、完整 build、`docker compose --profile host-edge config --quiet`、真实 Nginx `-t` 与根仓 DSH protocol 3 项门禁均通过。Nginx 第一次隔离校验因测试容器没有 `relay` DNS 记录失败，使用同一配置并只补测试解析后 `nginx -t` 成功；没有通过改写配置掩盖问题。
+
+D2 证明的是 Server carrier 和边界，不把 fixture Desktop 冒充真实 DSH。真实 DSH HTML/API/SSE/两条 WS/privileged denial 已由 D1 关门；Server + Desktop + App 的完整手机链留给 D3/D4。

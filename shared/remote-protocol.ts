@@ -180,6 +180,37 @@ export interface RemoteDshSurfaceState {
   surface: RemoteWebSurface
 }
 
+export interface RemoteDshTicketRequest {
+  v: 1
+  type: 'dsh-ticket-request'
+  requestId: string
+}
+
+export interface RemoteDshTicketOk {
+  v: 1
+  type: 'dsh-ticket-ok'
+  requestId: string
+  /** One-use, short-lived URL on the configured DSH public origin. */
+  url: string
+  expiresAt: number
+}
+
+export type RemoteDshTicketRejectReason =
+  | 'unsupported'
+  | 'disabled'
+  | 'desktop-offline'
+  | 'tunnel-offline'
+  | 'busy'
+  | 'revoked'
+  | 'unavailable'
+
+export interface RemoteDshTicketReject {
+  v: 1
+  type: 'dsh-ticket-reject'
+  requestId: string
+  reason: RemoteDshTicketRejectReason
+}
+
 export interface RemotePeerJoin {
   v: 1
   type: 'peer-join'
@@ -420,8 +451,11 @@ export type RemoteMessage =
   | RemotePtyAck
   | RemotePtyExit
   | RemoteDshSurfaceState
+  | RemoteDshTicketRequest
+  | RemoteDshTicketOk
+  | RemoteDshTicketReject
 
-export type RemoteRelayRequest = RemoteHello | RemoteRevoke
+export type RemoteRelayRequest = RemoteHello | RemoteRevoke | RemoteDshTicketRequest
 export type RemoteRelayEvent =
   | RemoteHelloOk
   | RemotePeerJoin
@@ -429,6 +463,8 @@ export type RemoteRelayEvent =
   | RemoteOccupied
   | RemoteBadKey
   | RemoteRevoked
+  | RemoteDshTicketOk
+  | RemoteDshTicketReject
 export type RemoteDesktopToPhoneMessage =
   | RemoteSessionsSnapshot
   | RemoteSessionUpsert
@@ -1492,6 +1528,66 @@ export function parseRemoteMessage(
           state: surface.state,
           generation: surface.generation
         }
+      })
+    }
+    case 'dsh-ticket-request': {
+      if (!isBoundedNonEmptyString(raw.requestId, REMOTE_PROTOCOL_LIMITS.idChars)) {
+        return fail('invalid-dsh-ticket-request')
+      }
+      return ok({ v: 1, type: 'dsh-ticket-request', requestId: raw.requestId })
+    }
+    case 'dsh-ticket-ok': {
+      if (
+        !isBoundedNonEmptyString(raw.requestId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isBoundedNonEmptyString(raw.url, 2_048) ||
+        !isNonNegInt(raw.expiresAt)
+      ) {
+        return fail('invalid-dsh-ticket-ok')
+      }
+      let url: URL
+      try {
+        url = new URL(raw.url)
+      } catch {
+        return fail('invalid-dsh-ticket-ok')
+      }
+      if (
+        url.protocol !== 'https:' ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash ||
+        !url.pathname.startsWith('/_connect/')
+      ) {
+        return fail('invalid-dsh-ticket-ok')
+      }
+      return ok({
+        v: 1,
+        type: 'dsh-ticket-ok',
+        requestId: raw.requestId,
+        url: raw.url,
+        expiresAt: raw.expiresAt
+      })
+    }
+    case 'dsh-ticket-reject': {
+      if (
+        !isBoundedNonEmptyString(raw.requestId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        (
+          raw.reason !== 'unsupported' &&
+          raw.reason !== 'disabled' &&
+          raw.reason !== 'desktop-offline' &&
+          raw.reason !== 'tunnel-offline' &&
+          raw.reason !== 'busy' &&
+          raw.reason !== 'revoked' &&
+          raw.reason !== 'unavailable'
+        )
+      ) {
+        return fail('invalid-dsh-ticket-reject')
+      }
+      return ok({
+        v: 1,
+        type: 'dsh-ticket-reject',
+        requestId: raw.requestId,
+        reason: raw.reason
       })
     }
     default:
