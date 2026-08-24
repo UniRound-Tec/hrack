@@ -677,23 +677,34 @@ test.describe('remote P8 Android terminal live relay', () => {
       )
       await expect.poll(isImeShown, { timeout: 15_000 }).toBe(true)
       await screenshot(testInfo, 'p8-android-rotation-probe-ime.png')
-      await waitForUi(
-        (xml) => {
-          const metrics = terminalMetrics(xml)
-          return !!metrics && metrics.rows < portrait.rows
-        },
-        'rotation probe soft keyboard resize',
-        12_000
-      )
+      await new Promise((resolveWait) => setTimeout(resolveWait, 2_000))
+      const keyboard = terminalMetrics(await dumpUi())
+      expect(keyboard).toMatchObject({
+        cols: portrait.cols,
+        rows: portrait.rows
+      })
+      await expect
+        .poll(() => hrackPage.evaluate(() => window.remoteApi.getDriveState()))
+        .toMatchObject({
+          phase: 'driven',
+          sessionId: existing.sessionId,
+          cols: portrait.cols,
+          rows: portrait.rows
+        })
       await screenshot(testInfo, 'p8-android-rotation-probe-keyboard.png')
       await adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
       await expect.poll(isImeShown, { timeout: 15_000 }).toBe(false)
+      await new Promise((resolveWait) => setTimeout(resolveWait, 1_000))
       await waitForUi(
         (xml) => {
           const metrics = terminalMetrics(xml)
-          return !!metrics && metrics.rows >= portrait.rows - 1
+          return (
+            !!metrics &&
+            metrics.cols === portrait.cols &&
+            metrics.rows === portrait.rows
+          )
         },
-        'rotation probe soft keyboard restore',
+        'rotation probe fixed terminal after soft keyboard closed',
         12_000
       )
 
@@ -860,23 +871,21 @@ test.describe('remote P8 Android terminal live relay', () => {
         5_000
       )
       await expect.poll(isImeShown, { timeout: 15_000 }).toBe(true)
-      const keyboardXml = await waitForUi((xml) => {
-        const metrics = terminalMetrics(xml)
-        return (
-          !!metrics &&
-          metrics.cols === portrait.cols &&
-          metrics.rows < portrait.rows
-        )
-      }, 'terminal resized above the Android soft keyboard')
+      await new Promise((resolveWait) => setTimeout(resolveWait, 2_000))
+      const keyboardXml = await dumpUi()
       const keyboard = terminalMetrics(keyboardXml)
       if (!keyboard) throw new Error('missing soft-keyboard terminal metrics')
+      expect(keyboard).toMatchObject({
+        cols: portrait.cols,
+        rows: portrait.rows
+      })
       await expect
         .poll(() => hrackPage.evaluate(() => window.remoteApi.getDriveState()))
         .toMatchObject({
           phase: 'driven',
           sessionId: existing.sessionId,
-          cols: keyboard.cols,
-          rows: keyboard.rows
+          cols: portrait.cols,
+          rows: portrait.rows
         })
       await adb('shell', 'input', 'text', `echo%s${inputMarker}`)
       await waitForUi(
@@ -924,15 +933,15 @@ test.describe('remote P8 Android terminal live relay', () => {
       await screenshot(testInfo, 'p8-android-terminal-soft-keyboard.png')
       await adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
       await expect.poll(isImeShown, { timeout: 15_000 }).toBe(false)
+      await new Promise((resolveWait) => setTimeout(resolveWait, 1_000))
       const restoredXml = await waitForUi((xml) => {
         const metrics = terminalMetrics(xml)
         return (
           !!metrics &&
           metrics.cols === portrait.cols &&
-          metrics.rows > keyboard.rows &&
-          metrics.rows >= portrait.rows - 1
+          metrics.rows === portrait.rows
         )
-      }, 'terminal restored after the Android soft keyboard closed')
+      }, 'terminal stayed fixed after the Android soft keyboard closed')
       const restored = terminalMetrics(restoredXml)
       if (!restored) throw new Error('missing restored terminal metrics')
       console.log(

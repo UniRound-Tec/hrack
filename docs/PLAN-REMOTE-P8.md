@@ -1,6 +1,6 @@
 # HRack Remote P8 计划：App 真实终端
 
-> 状态：2026-08-21 已完成 Android 16 模拟器 + 安装版 release App + 公网真实 PTY 检查点，包含真实软键盘避让/尺寸恢复、键盘开关后旋转、离线 Fcitx5 拼音组合提交和 Claude Code/Codex CLI 基础视觉 smoke；iOS 占位路径也已替换为共用终端 runtime 的本地单文件资源，并通过 CSP、Metro iOS 导出、Android 包隔离及 Chromium/Playwright WebKit 的零网络全桥接与像素截图门禁。Android 物理真机、iOS 真机及两款 CLI 的物理设备复验仍未完成，P8 尚未全平台关门。
+> 状态：2026-08-21 已完成 Android 16 模拟器 + 安装版 release App + 公网真实 PTY 检查点；2026-08-24 又把终端软键盘更新为整页平移、PTY 尺寸不变并完成公网真实复验。检查点还包含键盘开关后旋转、离线 Fcitx5 拼音组合提交和 Claude Code/Codex CLI 基础视觉 smoke；iOS 占位路径也已替换为共用终端 runtime 的本地单文件资源，并通过 CSP、Metro iOS 导出、Android 包隔离及 Chromium/Playwright WebKit 的零网络全桥接与像素截图门禁。Android 物理真机、iOS 真机及两款 CLI 的物理设备复验仍未完成，P8 尚未全平台关门。
 
 ## 1. 目标与关门定义
 
@@ -196,6 +196,8 @@ WebKit 门禁还复现了另一类“数据面全绿、画面仍错”的事故�
 用户复测又发现点击终端画面不能弹出原生命令输入。根因是 xterm 只聚焦 WebView 隐藏 textarea，而组合安全输入属于 React Native `TextInput`；两者此前没有明确的轻点桥接。当前实现保留 xterm 物理键盘和拖动手势，真实会话把隐藏 textarea 设为 `inputMode=none`，短距离 pointer 轻点才发送带当前 `sessionId` 的 `input-request`，Native 仅在同一会话仍为 `driven` 时聚焦命令草稿。真实门禁改为从点击 `terminal-webview` 开始，证明原生焦点、IME、43 × 31 → 43 × 16、桌面 winsize、输入、中文组合、886,316 字节 burst、恢复、旋转、释放与新建全链路通过。
 
 定位过程中还抓到两种设备假阳性：模拟器 `show_ime_with_hard_keyboard=0` 时只出现零 inset 的侧边工具条；清理 Gboard 后首次聚焦可能出现 “Try out your stylus” 引导层。两者都会让 `mInputShown=true`，却不是普通软键盘。Android 门禁现在固定 `show_ime_with_hard_keyboard=1`、`stylus_handwriting_enabled=0`，并要求原生命令框焦点与终端 rows 实际减少，不能只看 IME 标志。
+
+**2026-08-24 键盘与横向 fit 勘误：** 上述 43 × 31 → 43 × 16 与 rows 减少是 2026-08-21 `adjustResize` 策略的历史验收，不再约束当前实现。用户确认终端页应保持原尺寸并由系统整体上移后，Android 改为 Expo SDK 55 `softwareKeyboardLayoutMode="pan"` / 原生 `adjustPan`，移除 Android `KeyboardAvoidingView(height)` 和键盘态终端 padding，命令附件保留固定底部坐标。随后 OpenCode 截图发现 xterm 6 beta 已隐藏滚动条，但 FitAddon 0.11 仍按旧 API 预留 14 px；锁版本兼容补丁让 FitAddon 尊重 `scrollbar.showScrollbar=false`，并增加“host 与网格余量小于一个字符格”的 Chromium/WebKit 门禁。安装版 release App 又经公网真实 HRack、Codex CLI、ConPTY 和 Gboard 定向验证，修复前为 45 × 38，修复后键盘前/中/后 App 与桌面唯一 PTY 均保持 47 × 38，Activity 内容发生上移并在隐藏后回位。后续门禁应断言 IME 可见、窗口坐标上移、横向网格余量和 winsize 不变；旋转仍按真实容器 resize 单独验证。
 
 ### 8.4 未关门项
 

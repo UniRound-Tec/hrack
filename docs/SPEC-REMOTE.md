@@ -1,6 +1,6 @@
 # HRack 远程控制 — Spec
 
-> 状态：**P0–P7 已关门；P8 Android 模拟器公网真实 PTY 检查点与 iOS 本地 bundle 实现/导出及 WebKit 引擎检查点已完成（2026-08-21），当前仍处于 P8 设备关门阶段。** P2 已部署到公网 HTTPS/WSS 单副本环境；P3–P5 已证明真实 HRack/PTY 的列表、驾驶和远程新建链；P6/P7 已由安装版 Android release App 完成相机配对、实时列表与真实 PTY 新建；P8 已完成 history/live、解析后 ack、输入、真实软键盘避让/尺寸恢复、键盘开关后旋转、离线 Fcitx5 拼音组合提交、`undrive`、新建后直入终端，以及真实 Claude Code/Codex CLI 的模拟器基础视觉 smoke。iOS 已移除占位页，能由 Metro 导出自包含离线终端资源，并在 Chromium/Playwright WebKit 通过完整 history/live/ACK/input、零网络与像素截图门禁；但还没有在 React Native UIKit 容器、设备 WKWebView 或 iPhone/iPad 真机运行。Android 物理真机、iOS 真机和两款 CLI 的物理设备复验尚未完成，因此不能宣布 P8 全部关门或进入 P8 之后的阶段。
+> 状态：**P0–P7 已关门；P8 Android 模拟器公网真实 PTY 检查点与 iOS 本地 bundle 实现/导出及 WebKit 引擎检查点已完成（2026-08-21，Android 键盘策略于 2026-08-24 更新并复验），当前仍处于 P8 设备关门阶段。** P2 已部署到公网 HTTPS/WSS 单副本环境；P3–P5 已证明真实 HRack/PTY 的列表、驾驶和远程新建链；P6/P7 已由安装版 Android release App 完成相机配对、实时列表与真实 PTY 新建；P8 已完成 history/live、解析后 ack、输入、真实软键盘整页平移且 PTY 尺寸不变、键盘开关后旋转、离线 Fcitx5 拼音组合提交、`undrive`、新建后直入终端，以及真实 Claude Code/Codex CLI 的模拟器基础视觉 smoke。iOS 已移除占位页，能由 Metro 导出自包含离线终端资源，并在 Chromium/Playwright WebKit 通过完整 history/live/ACK/input、零网络与像素截图门禁；但还没有在 React Native UIKit 容器、设备 WKWebView 或 iPhone/iPad 真机运行。Android 物理真机、iOS 真机和两款 CLI 的物理设备复验尚未完成，因此不能宣布 P8 全部关门或进入 P8 之后的阶段。
 > 范围：一部手机远程看见、新建、驾驶 HRack 里已经在跑（或由手机新建）的 CLI 会话。
 > 父文档：[SPEC.md](./SPEC.md)、[SPEC-S.md](./SPEC-S.md)。
 > 本机 OpenCode Bridge 仍只活在本机，见 [SPEC-OPENCODE-BRIDGE.md](./SPEC-OPENCODE-BRIDGE.md)。远程不走那条套接字。
@@ -553,6 +553,8 @@ P3 关门 = 「电脑把列表送到公网房间」成立。此后 App 和驾驶
 详细落地与性能边界见 [PLAN-REMOTE-P8.md](./PLAN-REMOTE-P8.md)。
 
 **状态（2026-08-21）：Android 模拟器实现检查点与 iOS bundle 实现/导出/WebKit 引擎检查点完成，P8 尚未全平台关门。** 安装版 release App 已经公网 WSS 驾驶真实 Electron/`AgentSessionRuntime`/ConPTY，复读 history、提交输入、在 xterm 解析后 ack；点击终端画面会通过带当前 `sessionId` 的本地桥接聚焦组合安全的原生命令草稿，拖动仍保留给 xterm 滚动/选择。竖屏、Gboard 英文键盘、Fcitx5 Pinyin 和键盘开关后的稳定横屏分别以 43 × 31、43 × 16、43 × 15、97 × 15/16 更新唯一 winsize，键盘隐藏后恢复 43 × 31。Fcitx5 逐键组合 `zhongwen` 时 App 草稿与 PTY 均无裸拼音，选择候选后 App 草稿才出现“中文”，点击发送后 PTY 只收到最终中文。返回 `undrive`，并用实测尺寸新建后直入终端。Android/Chromium 真实会话现与 HRack 浏览器控制页一致使用 WebGL 自定义块/框线 glyph；DOM 只作初始化失败/context loss 后仍可操作和释放的故障降级，不能给 Claude/Codex 块字符视觉放行。Android 模拟器 `swiftshader_indirect` 会把复杂 WebGL TUI 稳定裁成水平切片；同一 AVD、release APK 和公网会话切为 `-gpu host`，确认 GLES 由 NVIDIA RTX 3090 提供后，真实 Claude Code 2.1.220 与 Codex CLI 0.146.0 的启动/交互画面、字形像素门禁、历史、字节解析和释放 smoke 全部通过。WebGL 公网 6,000 行 burst 最新复测为 886,316 字节/14.606 秒；iOS 使用同一 runtime 的约 1.04 MB 单文件本地 HTML，内容 hash CSP、Metro iOS asset 导出和 Android 包隔离均已通过；Chromium 与 Playwright WebKit 又完成乱序 history、并发 live、解析后 ACK、输入回传、零网络和 helper 像素边界门禁，并锁定 xterm 隐藏字宽探针不得泄漏 32 个测量用 `W`。Safari/WKWebView 当前从启动即使用 DOM；鉴于 DOM 已在真实 Claude 画面证明会误画块元素，这些引擎级证据只放行资源与桥接，不能替代真实 AI TUI 的安装版 WKWebView/iPhone 真机视觉门禁。物理 Android、iOS 真机及两款 CLI 在这些设备上的中文与长输出复验仍按验收第 4 项保留，详见计划的实现记录。
+
+**增量勘误（2026-08-24）：** 上段 43 × 31 → 43 × 16 是旧 `adjustResize` 行为的历史实测，不再是当前键盘规范。终端页现使用 Android `adjustPan` 整体上移 Activity，软键盘不得改变 WebView、xterm 或桌面唯一 PTY 的 winsize。手机 xterm 同时关闭可视滚动条，FitAddon 通过锁版本兼容补丁不再为旧 overview ruler 扣除 14 px；安装版 release App 已经公网真实 HRack/Codex/ConPTY + Gboard 复验，横向尺寸从修复前 45 列增加到 47 列，键盘前、键盘中、键盘后均保持 47 × 38，输入附件在键盘上方且隐藏后整页回位；旋转仍作为真实容器变化独立触发 resize。
 
 **做：** xterm 或经 P6 预检证明等价的终端组件复读 history + `pty-out`；附加键 Esc/Ctrl/Tab/方向；IME 组字后再 `pty-in`；返回列表 `undrive`。呈现层完整执行 [远程终端呈现契约](REMOTE-TERMINAL-RENDERING.md)，与桌面端共用/校验固定版本、字体资源、完整 palette、renderer fallback、初始化及解析后 ack 时序。
 

@@ -34,6 +34,12 @@ interface NativeMessage {
   message?: unknown
 }
 
+interface TerminalViewportGeometry {
+  hostWidth: number
+  screenWidth: number
+  scrollbarWidth: number
+}
+
 function visibleTextMetrics(screenshot: Buffer): {
   bands: number
   maxInkX: number
@@ -92,6 +98,24 @@ async function installNativeBridge(page: Page): Promise<void> {
   })
 }
 
+async function terminalViewportGeometry(
+  page: Page
+): Promise<TerminalViewportGeometry> {
+  return page.evaluate(() => {
+    const host = document.querySelector<HTMLElement>('#terminal')
+    const viewport = document.querySelector<HTMLElement>('.xterm-viewport')
+    const screen = document.querySelector<HTMLElement>('.xterm-screen')
+    if (!host || !viewport || !screen) {
+      throw new Error('terminal viewport geometry is unavailable')
+    }
+    return {
+      hostWidth: host.getBoundingClientRect().width,
+      screenWidth: screen.getBoundingClientRect().width,
+      scrollbarWidth: viewport.offsetWidth - viewport.clientWidth
+    }
+  })
+}
+
 async function runTerminalBundleGate(
   page: Page,
   browserName: BrowserName,
@@ -136,6 +160,13 @@ async function runTerminalBundleGate(
   if (browserName === 'webkit') expect(ready.renderer).toBe('dom')
   expect(ready.cols).toBeGreaterThan(20)
   expect(ready.rows).toBeGreaterThan(10)
+
+  const viewport = await terminalViewportGeometry(page)
+  const cellWidth = viewport.screenWidth / ready.cols
+  expect(viewport.scrollbarWidth).toBeLessThanOrEqual(1)
+  // FitAddon may leave less than one fractional cell, but it must not reserve
+  // an additional desktop scrollbar gutter on the phone surface.
+  expect(viewport.hostWidth - viewport.screenWidth).toBeLessThan(cellWidth + 1)
 
   const sessionId = `ios-${browserName}`
   const historyParts = [

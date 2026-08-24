@@ -68,12 +68,12 @@ App 至少先支持 HRack Dark，并完整复用 `background`、`foreground`、`
 5. 收到 `drive-ok` 后按事件顺序 replay history；replay 期间到达的 live `pty-out` 先排队，不能越过 history。
 6. `pty-out.data` 从标准 base64 解为 `Uint8Array` 后直接写入终端。不得把每个网络块先单独解成 JavaScript 字符串，否则跨块 UTF-8 字符可能损坏。
 7. 只有终端解析回调完成后才发送对应 `pty-ack.bytes`；收到 WebSocket 帧或把数据放入 UI 队列不等于已消费。
-8. 旋转屏幕、键盘展开或容器变化时先重新 fit，再发送一个 `pty-resize`。驾驶期间手机是该 PTY 的唯一 winsize 权威。
+8. 旋转屏幕、缩放或终端容器实际变化时先重新 fit，再发送一个 `pty-resize`。软键盘不得改变终端容器：Android 通过 `adjustPan` 整体上移窗口，键盘展开/隐藏期间不发送 `pty-resize`。驾驶期间手机仍是该 PTY 的唯一 winsize 权威。
 9. 返回列表、掉线、会话退出和错误路径都必须释放 renderer、监听器与驾驶状态；返回列表必须发送 `undrive`。
 
 ### 4.5 手机交互
 
-- safe area、软键盘和横竖屏变化必须进入同一套尺寸计算；不得另建第二套“显示尺寸”和 PTY winsize。
+- safe area、横竖屏和缩放造成的真实容器变化必须进入同一套尺寸计算；软键盘只平移窗口，不进入 fit，也不得另建第二套“显示尺寸”和 PTY winsize。
 - 缩放只能改变同一格子的显示比例；若缩放导致实际可见行列变化，就必须以新的唯一行列发送一次 `pty-resize`。
 - IME 组合阶段不发 `pty-in`，只在 composition commit 后发送最终文本；必须用真实系统中文 IME 验证，不能只模拟 `insertText`，发布前还要在物理设备复验。
 - Esc、Ctrl、Tab 和四方向键必须生成与桌面终端一致的输入序列；Ctrl 的锁定/单次模式要有明确反馈。
@@ -133,21 +133,37 @@ P8 Android 先后出现了两个相反方向的假结论。第一次把真实会
 4. Playwright WebKit 能提前发现 WebKit 引擎问题，但不能替代 iPhone/iPad 安装版 WKWebView 的 safe area、系统 IME、旋转和内容进程恢复；
 5. 当前 Safari/WKWebView 从启动即走 DOM，因此现有 WebKit 证据只放行资源、桥接与 helper 边界，不能放行 Claude/Codex 块字符视觉；Android/Chromium 真实会话使用 WebGL，并已在 host GPU 模拟器通过真实 PTY 截图与像素门禁，仍需 Android 物理机复验。
 
-### 4.9 软键盘避让必须同步唯一 winsize
+### 4.9 手机 xterm 不得为隐藏滚动条预留字符列
 
-Android 的 `adjustResize`、edge-to-edge 和 React Native `KeyboardAvoidingView` 不是“配置过就算完成”。2026-08-21 的安装版 Android 16 门禁先后发现：过大的终端 `minHeight` 会让系统已显示 IME 但 WebView 不收缩；直接使用 `KeyboardAvoidingView(height)` 又可能在 `keyboardDidHide` 后残留收缩高度。
+2026-08-24 的 OpenCode 实机截图暴露出右侧约 20–30 px 黑带。它不是 React Native 或 `adjustPan` 的横向偏移：OpenCode 为 alternate screen 填充了自己的深灰背景，才让 xterm 网格右边的默认终端背景显现出来。根因是当前 xterm 6 beta 使用新的 `scrollbar.showScrollbar`，而固定的 FitAddon 0.11 仍读取旧 `overviewRuler` API；即使手机端已隐藏滚动条，FitAddon 仍无条件扣除 14 px，再叠加不足一个字符格的正常取整余量。
 
-因此终端页还必须满足：
+手机终端必须满足：
+
+1. xterm 设置 `scrollbar.showScrollbar=false`，保留触摸/滚轮滚动与 5,000 行 scrollback，不得用 `scrollback=0` 换取宽度；
+2. FitAddon 必须识别隐藏滚动条，不得继续扣除旧 overview ruler 宽度；当前锁定组合通过 App 自有 `patch-package` 兼容补丁实现；
+3. 自动门禁同时检查滚动槽宽度不超过 1 px，并要求 `hostWidth - screenWidth` 小于一个字符格；不能只看 WebView 或 xterm buffer；
+4. 字号缩放、旋转和首次 drive 都必须走同一修正后的 fit，随后同步唯一 PTY winsize。
+
+修复前同一 Android release、公网 HRack/Codex/ConPTY 得到 45 × 38；修复后可用宽度变为 47 × 38，键盘前/中/后均保持 47 × 38。Chromium 与 WebKit 的固定几何门禁也从 16/20 px 额外余量失败变为全部通过。
+
+### 4.10 软键盘只允许平移窗口，不得改变唯一 winsize
+
+Android 终端采用 `softwareKeyboardLayoutMode=pan`（原生 `adjustPan`）。软键盘出现时，系统把同一个终端窗口整体上移，使固定坐标的原生命令输入与附加键位于键盘上方；React Native 根视图、WebView 和 xterm 的测量尺寸保持不变。不得再使用 `adjustResize`、`KeyboardAvoidingView(height)` 或键盘态 padding 缩小终端。
+
+因此终端页必须满足：
 
 1. 用系统真实 IME 可见状态证明键盘确实打开/关闭，不能只调用 focus/blur；
-2. 键盘打开后 WebView 必须重新 fit，并把新 cols/rows 作为同一个被驾驶 PTY 的唯一 winsize；隐藏后再次 fit 和恢复；
-3. App 显示格子、桌面权威 drive state 与截图三者在打开和恢复两个时点一致；
-4. 修复避让时不得重挂 WebView，否则会清空 xterm buffer、破坏 history/live 顺序；
-5. Gboard 英文键盘证明 43 × 31 → 43 × 16 → 43 × 31；较高的 Fcitx5 Pinyin 又证明 43 × 15。模拟器中文组合通过后仍要在物理设备输入法上复验最终提交前没有 `pty-in`。
+2. 键盘打开前、打开后、隐藏后三个时点的 xterm cols/rows 与桌面权威 drive state 完全一致，期间不得发送新的 `pty-resize`；
+3. 截图必须证明输入框与附加键可见，且是整棵终端界面被平移，不是终端内部内容被压缩；
+4. 命令输入框在隐藏态保持固定底部坐标，只切换透明度与触控，避免先聚焦屏幕外节点造成系统计算错误；
+5. 修复避让时不得重挂 WebView，否则会清空 xterm buffer、破坏 history/live 顺序；
+6. Gboard 英文与中文 IME 都要复验；候选提交前不得产生裸拼音 `pty-in`。
 
-键盘打开/关闭通过后还必须继续旋转一次。React Native 0.83 Android 的 `KeyboardAvoidingView(height)` 会在内部 `state.bottom > 0` 时套用 `_initialFrameHeight` 和 `flex: 0`；把 `enabled` 切成 false 只会把本次计算的 `bottomHeight` 变成 0，并不保证旧 state 已清除。实际事故表现为竖屏看似恢复 43 × 31，随后横屏只更新宽度到 97 列，高度仍锁在 31 行并让界面向下溢出。当前 App 仅在 Android 键盘可见时设置 `behavior=height`，隐藏时移除 behavior 来恢复 flex 布局，不重挂 WebView。自动门禁必须等到横屏同时满足“列数增加、行数减少”，人工截图还要确认终端、命令栏和附加键没有溢出屏幕。
+2026-08-24 的安装版 Android release App 已通过公网真实 HRack、Codex CLI 和 ConPTY 门禁：Gboard 显示前、显示中和隐藏后，App 指标与桌面权威 drive state 均保持 `47 × 38`；截图证明 Activity 内容整体上移且恢复。旧文档中的 `43 × 31 → 43 × 16 → 43 × 31` 仅是已废弃 `adjustResize` 策略的历史事故证据。
 
-### 4.10 原生命令输入必须保留 IME 组合能力
+键盘打开/关闭后还必须继续旋转一次。旋转仍是真实容器尺寸变化，必须重新 fit 并同步新的唯一 winsize；门禁要同时满足横屏列数增加、行数减少。键盘平移和旋转 resize 是两条独立路径，不能用其中一条的结果替代另一条。
+
+### 4.11 原生命令输入必须保留 IME 组合能力
 
 Android 终端输入框不能沿用普通 shell 输入常见的 `autoCorrect={false}`。React Native 0.83 会把它映射为 Android `TYPE_TEXT_FLAG_NO_SUGGESTIONS`，可能同时关闭中文 IME 的候选/组合能力。也不能简单改成 `true`，否则会请求输入法自动纠正英文 shell 命令。Android 应不设置该标志；iOS 可以继续显式关闭纠错。
 
@@ -157,13 +173,13 @@ Android 终端输入框不能沿用普通 shell 输入常见的 `autoCorrect={fa
 2. 组合串可能显示在 IME 自己的 preedit 区，而不进入受控 `TextInput`。门禁不能要求 App 草稿一定出现裸拼音；应证明候选提交前 PTY 没有拼音、候选提交后 App 草稿出现最终中文、显式发送后 PTY 只出现最终中文；
 3. 输入法语言包缺失是测试设备前置失败，不是 App 协议失败。2026-08-21 预装 Gboard 拼音持续等待下载且 MDD 数据缺失，最终改用核对官方 SHA-256 的离线 Fcitx5 Android 0.1.3 内置 Pinyin 完成证据；验证记录必须写明实际 IME，不能只写“中文键盘已选中”。
 
-### 4.11 点击终端必须进入原生组合安全输入路径
+### 4.12 点击终端必须进入原生组合安全输入路径
 
 移动端用户的主要输入手势是点击终端画面，不能要求先准确点击屏幕底部的命令框。xterm 会在 pointer down 时聚焦 WebView 内的隐藏 textarea；若 App 的组合安全入口是原生 `TextInput`，两者之间必须有显式、带当前 `sessionId` 的本地桥接，Native 还必须复核会话仍为 `driven`，不能接受旧页面或旧会话的聚焦请求。
 
 桥接同时要保留终端手势：不要在 WebView 外盖住终端，也不要取消 xterm 的 pointer 事件。当前 App 将真实会话的隐藏 textarea 设为 `inputMode=none`，并在捕获阶段把小位移、短时长的 pointer down/up 识别为轻点；拖动继续用于滚动/选择，实体键盘输入也不被禁用。轻点后由 Native 聚焦原生命令草稿，中文仍按“组合只进草稿、显式提交才进 PTY”的规则处理。
 
-Android 门禁必须从点击 `terminal-webview` 开始，至少证明：原生命令框获得焦点、真实 IME 有非零布局影响、WebView/桌面唯一 PTY 的 rows 同步减少，以及最终输入进入同一 PTY。单独的 `mInputShown=true` 不足以放行：模拟器关闭“实体键盘下显示软键盘”时只会出现零 inset 的侧边工具条；Gboard 首次手写引导也会让 IME 标记可见但不产生普通键盘布局事件。测试设备需固定 `show_ime_with_hard_keyboard=1` 和 `stylus_handwriting_enabled=0`，并以焦点、截图和实际 rows 变化交叉验证。
+Android 门禁必须从点击 `terminal-webview` 开始，至少证明：原生命令框获得焦点、真实 IME 可见、输入附件出现在键盘上方、WebView/桌面唯一 PTY 的 cols/rows 保持不变，以及最终输入进入同一 PTY。单独的 `mInputShown=true` 不足以放行：模拟器关闭“实体键盘下显示软键盘”时只会出现零 inset 的侧边工具条；Gboard 首次手写引导也会让 IME 标记可见但没有正常键盘。测试设备需固定 `show_ime_with_hard_keyboard=1` 和 `stylus_handwriting_enabled=0`，并以焦点、截图、窗口平移和不变的权威 winsize 交叉验证。
 
 ## 5. 禁止的捷径
 

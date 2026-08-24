@@ -58,6 +58,53 @@ function nodeBounds(
   return [Math.round((left + right) / 2), Math.round((top + bottom) / 2)];
 }
 
+interface NodeRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+function nodeRect(xml: string, resourceId: string): NodeRect | null {
+  const match = xml.match(
+    new RegExp(
+      `<node[^>]*resource-id="${quoteRegex(resourceId)}"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`,
+    ),
+  );
+  if (!match) return null;
+  return {
+    left: Number(match[1]),
+    top: Number(match[2]),
+    right: Number(match[3]),
+    bottom: Number(match[4]),
+  };
+}
+
+function resourceIsFocused(xml: string, resourceId: string): boolean {
+  const node = xml.match(
+    new RegExp(`<node[^>]*resource-id="${quoteRegex(resourceId)}"[^>]*>`),
+  )?.[0];
+  return node?.includes('focused="true"') === true;
+}
+
+interface TerminalMetrics {
+  cols: number;
+  rows: number;
+  parsedBytes: number;
+}
+
+function terminalMetrics(xml: string): TerminalMetrics | null {
+  const match = xml.match(
+    /text="(?:WEBGL|DOM) · (\d+) × (\d+) · (?:已解析\s*)?(\d+) B"/,
+  );
+  if (!match) return null;
+  return {
+    cols: Number(match[1]),
+    rows: Number(match[2]),
+    parsedBytes: Number(match[3]),
+  };
+}
+
 async function waitForUi(
   predicate: (xml: string) => boolean,
   label: string,
@@ -219,6 +266,40 @@ async function screenshot(testInfo: TestInfo, name: string): Promise<void> {
   await adb("pull", remotePath, testInfo.outputPath(name));
 }
 
+async function isImeShown(): Promise<boolean> {
+  const state = await adb("shell", "dumpsys", "input_method");
+  return /mInputShown=true/.test(state);
+}
+
+async function enableSoftKeyboardWithHardwareKeyboard(): Promise<void> {
+  await adb(
+    "shell",
+    "settings",
+    "put",
+    "secure",
+    "stylus_handwriting_enabled",
+    "0",
+  );
+  await adb(
+    "shell",
+    "settings",
+    "put",
+    "secure",
+    "show_ime_with_hard_keyboard",
+    "1",
+  );
+  const enabled = await adb(
+    "shell",
+    "settings",
+    "get",
+    "secure",
+    "show_ime_with_hard_keyboard",
+  );
+  if (enabled.trim() !== "1") {
+    throw new Error("Android soft keyboard is disabled for hardware input");
+  }
+}
+
 async function connectHrack(page: Page, url: string): Promise<void> {
   await page.evaluate(() => window.__hrackDebugShell?.navigate("settings"));
   await page.getByTestId("settings-category-remote").click();
@@ -273,6 +354,7 @@ test.describe("remote workspace picker Android live relay", () => {
         "0",
       );
       await adb("shell", "settings", "put", "system", "user_rotation", "0");
+      await enableSoftKeyboardWithHardwareKeyboard();
       // Release the phone seat before Electron joins the persistent public room.
       await adb("shell", "pm", "clear", appPackage);
 
@@ -420,14 +502,85 @@ test.describe("remote workspace picker Android live relay", () => {
         .toBeGreaterThan(0);
 
       await tapResource("terminal-hud-details");
-      await waitForUi(
+      const portraitXml = await waitForUi(
         (xml) => {
-          const parsed = xml.match(/(?:已解析\s*)?(\d+) B/);
-          return parsed !== null && Number(parsed[1]) > 0;
+          const metrics = terminalMetrics(xml);
+          return metrics !== null && metrics.parsedBytes > 0;
         },
         "Android terminal parsed real Codex PTY bytes",
         60_000,
       );
+      const portrait = terminalMetrics(portraitXml);
+      const terminalBeforeKeyboard = nodeRect(portraitXml, "terminal-webview");
+      if (!portrait || !terminalBeforeKeyboard) {
+        throw new Error("missing terminal metrics or terminal surface bounds");
+      }
+
+      await expect
+        .poll(() => hrackPage.evaluate(() => window.remoteApi.getDriveState()))
+        .toMatchObject({
+          phase: "driven",
+          cols: portrait.cols,
+          rows: portrait.rows,
+        });
+
+      await tapResource("terminal-webview");
+      await waitForUi(
+        (xml) => resourceIsFocused(xml, "terminal-command-input"),
+        "terminal tap focused the native command input",
+        5_000,
+      );
+      await expect.poll(isImeShown, { timeout: 15_000 }).toBe(true);
+      // Give adjustPan and any delayed terminal ResizeObserver a chance to settle.
+      await new Promise((resolveWait) => setTimeout(resolveWait, 2_000));
+      const keyboardXml = await dumpUi();
+      const keyboard = terminalMetrics(keyboardXml);
+      const terminalWithKeyboard = nodeRect(keyboardXml, "terminal-webview");
+      expect(keyboard).toMatchObject({
+        cols: portrait.cols,
+        rows: portrait.rows,
+      });
+      if (!terminalWithKeyboard) {
+        throw new Error(
+          "terminal surface disappeared while the keyboard was open",
+        );
+      }
+      expect(terminalWithKeyboard.top).toBeLessThan(terminalBeforeKeyboard.top);
+      await expect
+        .poll(() => hrackPage.evaluate(() => window.remoteApi.getDriveState()))
+        .toMatchObject({
+          phase: "driven",
+          cols: portrait.cols,
+          rows: portrait.rows,
+        });
+      await screenshot(testInfo, "workspace-picker-terminal-keyboard-pan.png");
+
+      await adb("shell", "input", "keyevent", "KEYCODE_BACK");
+      await expect.poll(isImeShown, { timeout: 15_000 }).toBe(false);
+      await new Promise((resolveWait) => setTimeout(resolveWait, 1_000));
+      const restoredXml = await dumpUi();
+      const restored = terminalMetrics(restoredXml);
+      const restoredTerminal = nodeRect(restoredXml, "terminal-webview");
+      expect(restored).toMatchObject({
+        cols: portrait.cols,
+        rows: portrait.rows,
+      });
+      expect(restoredTerminal?.top).toBe(terminalBeforeKeyboard.top);
+      console.log(
+        `[workspace-terminal-fit] before=${portrait.cols}x${portrait.rows} keyboard=${keyboard?.cols ?? 0}x${keyboard?.rows ?? 0} restored=${restored?.cols ?? 0}x${restored?.rows ?? 0}`,
+      );
+      await expect
+        .poll(() => hrackPage.evaluate(() => window.remoteApi.getDriveState()))
+        .toMatchObject({
+          phase: "driven",
+          cols: portrait.cols,
+          rows: portrait.rows,
+        });
+      await screenshot(
+        testInfo,
+        "workspace-picker-terminal-keyboard-restored.png",
+      );
+
       await tapResource("terminal-hud-details");
       await new Promise((resolveWait) => setTimeout(resolveWait, 750));
       await screenshot(testInfo, "workspace-picker-real-codex-terminal.png");
