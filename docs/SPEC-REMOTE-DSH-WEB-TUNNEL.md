@@ -587,7 +587,7 @@ D5 的可自动化与可远程验证部分已在 2026-08-24 完成，逐项状�
 - 现网 TLS ALPN 协商为 `h2`，运行中的 OpenResty 配置在 server/location 两层均为 `access_log off`，并关闭 request/response buffering、保留一小时流超时；D4 已在同一入口真实承载约 4.54 MB boot graph 与两条 event WebSocket；
 - 新增重启组合门禁：恢复同一持久房间后，上一代未消费 ticket 为 404、Cookie 为 401，重连 Desktop/Phone/Tunnel 后新 ticket 为 303；生产又创建 32,597 字节备份并在隔离卷通过 SHA-256、SQLite `integrity_check=ok` 与 11 张表检查；
 - 当前账号轮换后的稳定房间在新 Relay 与协调器恢复后仍进入有效配对页，完整地址未写入文档或日志。
-- App `1c427d0` 修复了后台生命周期：进入后台不再无条件销毁仍有效的 DSH WebView，回到前台只在主 Phone 状态、Desktop seat、origin、surface state 或 generation 已失效时退出。重新构建安装的 Android release 在真实生产公网完成同一全链，Home 退后台再恢复到同一 WebView/工作区为 2,899 ms；本轮首次加载 18,508 ms、列表重进 4,510 ms，仍按真实结果记录，不把模拟器冒充物理真机。
+- App `1c427d0` 修复了后台生命周期：进入后台不再无条件销毁仍有效的 DSH WebView，回到前台只在主 Phone 状态、Desktop seat、origin、surface state 或 generation 已失效时退出；`6104b20` 又验证只有用户确认后才调用系统外链。重新构建安装的 Android release 在真实生产公网完成同一全链，增强门禁明确指定设备、确认官方路径框唤起软键盘，并以 `device=emulator` 标记证据；Home 退后台再恢复到同一 WebView/工作区为 2,945 ms，本轮首次加载 16,089 ms、列表重进 4,529 ms。物理模式会强制拒绝 `ro.kernel.qemu=1`，因此仍不把模拟器冒充物理真机。iOS Hermes/资源导出另已通过，共 5 个产物、3,638,632 字节；它只证明跨平台 bundle 可生成，不代替 Xcode 签名安装和 iOS 真机行为。
 
 D5 尚不能关门：当前工作环境只有 Android 模拟器，没有 Android 物理真机和 iPhone/iPad，
 因此不能用模拟器替代软键盘、safe area、后台恢复、外链和不同公网的实体设备验收；此外

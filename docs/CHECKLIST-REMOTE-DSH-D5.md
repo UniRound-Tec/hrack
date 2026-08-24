@@ -9,7 +9,7 @@ Cookie、Authorization、邮箱验证码、密钥、电脑路径或 DSH/PTY 正�
 ## A. 代码与配置
 
 - [x] Server `e5453ca` 已提交、推送并部署
-- [x] App `1c427d0` 已提交、推送并构建 Android release
+- [x] App `6104b20`（生命周期实现 `1c427d0`）已提交、推送并构建 Android release
 - [x] Relay 40、Web 131、Nginx 5、Ops 4 项通过
 - [x] App 51 项、typecheck、协议/终端/UI parity 与 Android release build 通过
 - [x] Server typecheck 与生产 build 通过
@@ -47,12 +47,27 @@ Cookie、Authorization、邮箱验证码、密钥、电脑路径或 DSH/PTY 正�
 
 ## E. 实体设备
 
-- [x] Android 模拟器真实公网全链复跑，后台恢复同一 WebView/工作区为 2,899 ms
-- [x] 本轮首次加载 18,508 ms、列表重进 4,510 ms，性能按实记录
+- [x] Android 模拟器真实公网全链复跑，软键盘已显示，后台恢复同一 WebView/工作区为 2,945 ms
+- [x] 本轮首次加载 16,089 ms、列表重进 4,529 ms，性能按实记录
+- [x] 外链只有用户确认后才交给系统浏览器
+- [x] iOS Hermes/资源导出通过：5 个产物、3,638,632 字节
+- [x] 物理模式要求显式设备序列号，并拒绝 `ro.kernel.qemu=1`
 - [ ] Android 物理真机从不同公网加载真实 DSH WebView
 - [ ] Android 物理真机验证软键盘、safe area、后台恢复和外链
 - [ ] iPhone/iPad 物理真机从不同公网加载真实 DSH WebView
 - [ ] iPhone/iPad 物理真机验证软键盘、safe area、后台恢复和外链
 - [ ] 两个平台均验证 browse picker、空白 session、双 event WS 与 PTY 并行
+
+真机运行同一公网门禁时必须额外设置：
+
+```text
+HRACK_ANDROID_SERIAL=<adb devices 显示的真机序列号>
+HRACK_DSH_REQUIRE_PHYSICAL=1
+HRACK_REMOTE_DSH_D4_JOIN_URL=<从 dashboard 临时注入，不写入文件>
+```
+
+门禁输出必须为 `device=physical`；任何 `device=emulator` 或未设置物理强制开关的结果都不能
+勾选本节真机条目。iOS 必须在受支持的 macOS/Xcode 签名环境安装到实体设备再执行人工矩阵，
+Windows 上的 Expo export 只能保留为 bundle 预检证据。
 
 只有 B 的正式域名两项和 E 的全部实体设备项完成后，才能把 D5 与整条 DSH 扩展轨改为“已关门”。

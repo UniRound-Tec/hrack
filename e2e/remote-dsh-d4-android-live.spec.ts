@@ -18,6 +18,8 @@ const joinUrl = process.env.HRACK_REMOTE_DSH_D4_JOIN_URL
 const dshOrigin = process.env.HRACK_REMOTE_DSH_D4_ORIGIN
 const dshExecutable = process.env.HRACK_E2E_REAL_DSH
 const adbExecutable = process.env.HRACK_ANDROID_ADB
+const androidSerial = process.env.HRACK_ANDROID_SERIAL
+const requirePhysicalAndroid = process.env.HRACK_DSH_REQUIRE_PHYSICAL === '1'
 const appPackage =
   process.env.HRACK_ANDROID_APP_PACKAGE ?? 'app.modplex.hrack.remote'
 const uiDumpPath = '/sdcard/hrack-dsh-d4-window.xml'
@@ -183,12 +185,28 @@ function quoteRegex(value: string): string {
 
 async function adb(...args: string[]): Promise<string> {
   if (!adbExecutable) throw new Error('HRACK_ANDROID_ADB is not configured')
-  const result = await execFileAsync(adbExecutable, args, {
+  const result = await execFileAsync(adbExecutable, [
+    ...(androidSerial ? ['-s', androidSerial] : []),
+    ...args
+  ], {
     encoding: 'utf8',
     maxBuffer: 4 * 1024 * 1024,
     windowsHide: true
   })
   return result.stdout
+}
+
+async function waitForSoftKeyboard(timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  let latest = ''
+  while (Date.now() < deadline) {
+    latest = await adb('shell', 'dumpsys', 'input_method')
+    if (/\bmInputShown=true\b|\bmIsInputViewShown=true\b|\binputShown=true\b/.test(latest)) {
+      return
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250))
+  }
+  throw new Error('Android soft keyboard did not become visible')
 }
 
 async function dumpUi(): Promise<string> {
@@ -463,6 +481,22 @@ test.describe('remote DSH D4 Android public relay', () => {
     expect(health.status).toBe(200)
     const anonymousRoot = await fetch(`${origin}/`, { redirect: 'manual' })
     expect([401, 404]).toContain(anonymousRoot.status)
+    const [qemu, hardware, characteristics, model] = await Promise.all([
+      adb('shell', 'getprop', 'ro.kernel.qemu'),
+      adb('shell', 'getprop', 'ro.hardware'),
+      adb('shell', 'getprop', 'ro.build.characteristics'),
+      adb('shell', 'getprop', 'ro.product.model')
+    ])
+    const emulatorDetected =
+      qemu.trim() === '1' ||
+      androidSerial?.startsWith('emulator-') === true ||
+      /emulator|goldfish|ranchu|sdk_gphone/i.test(
+        `${hardware}\n${characteristics}\n${model}`
+      )
+    if (requirePhysicalAndroid) {
+      expect(androidSerial, 'physical gate requires HRACK_ANDROID_SERIAL').toBeTruthy()
+      expect(emulatorDetected, 'physical gate rejected an emulator').toBe(false)
+    }
 
     let app: ElectronApplication | undefined
     let publicPhone: RemotePhoneClient | undefined
@@ -574,6 +608,7 @@ test.describe('remote DSH D4 Android public relay', () => {
 
       await tapText('Edit path')
       await new Promise((resolveWait) => setTimeout(resolveWait, 1_000))
+      await waitForSoftKeyboard()
       await dumpUi()
       await screenshot(testInfo, 'd4-android-real-dsh-edit-path.png')
 
@@ -781,7 +816,8 @@ test.describe('remote DSH D4 Android public relay', () => {
         .toMatchObject({ enabled: false, surface: { state: 'unavailable' } })
 
       console.log(
-        `[dsh-d4-red] origin=${origin} webview=ready accessibleBytes=${Buffer.byteLength(pageUi)} ` +
+        `[dsh-d4-red] origin=${origin} device=${emulatorDetected ? 'emulator' : 'physical'} ` +
+          `webview=ready accessibleBytes=${Buffer.byteLength(pageUi)} ` +
           `officialText=${pageUi.includes('DeepSeek Harness') ? 'visible' : 'not-exposed'} ` +
           `visibleTextCount=${visibleTextCount} homeBytes=${Buffer.byteLength(homeUi)} ` +
           `firstLoadMs=${firstLoadMs} cacheReentryMs=${reentryMs} backgroundResumeMs=${backgroundResumeMs} ` +
