@@ -91,6 +91,9 @@ export const ja = {
     runtimeRefresh: 'DSH を再検索',
     runtimeScanFailed: 'DSH の検索に失敗しました',
     runtimeMissing: 'ローカル DSH は利用できません',
+    restartHost: 'DSH を再起動',
+    restartHostHint: 'プラグインを入れたあと、プロセスを再起動して読み込みます。現在の DSH ページは開き直されます。',
+    restarting: 'DeepSeek Harness を再起動しています…',
     enterQueue: 'キュー',
     enterSteer: '割り込み',
     modelsIntro: 'API キーを入れると、次のプロバイダのモデルを使えます。',
@@ -172,6 +175,8 @@ export const ja = {
     booting: 'DeepSeek Harness を起動しています…',
     bootHostInit: '初回の host 起動では profile の初期化が必要です',
     bootFailed: 'DSH の起動に失敗しました',
+    copyError: 'エラーをコピー',
+    errorCopied: 'コピーしました',
     bootReload: 'ウィンドウを再読み込み',
     homeHint: '自動選択 · ローカル優先'
   },

@@ -91,6 +91,9 @@ export const en = {
     runtimeRefresh: 'Rescan DSH',
     runtimeScanFailed: 'DSH scan failed',
     runtimeMissing: 'Local DSH is unavailable',
+    restartHost: 'Restart DSH',
+    restartHostHint: 'Restart the process after installing plugins so they load. The current DSH page will reopen.',
+    restarting: 'Restarting DeepSeek Harness…',
     enterQueue: 'Queue',
     enterSteer: 'Steer',
     modelsIntro: 'Enter your API keys to use models from the following providers.',
@@ -172,6 +175,8 @@ export const en = {
     booting: 'Starting DeepSeek Harness…',
     bootHostInit: 'First host start needs to initialize the profile',
     bootFailed: 'DSH failed to start',
+    copyError: 'Copy error',
+    errorCopied: 'Copied',
     bootReload: 'Reload window',
     homeHint: 'Auto-select · local preferred'
   },

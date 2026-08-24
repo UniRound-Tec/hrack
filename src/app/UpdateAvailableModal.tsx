@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { motion } from 'motion/react'
 import { useStrings } from './i18n'
+import MarkdownBody from '../markdown/MarkdownBody'
 
 interface UpdateAvailableModalProps {
   version: string
@@ -71,9 +72,12 @@ export default function UpdateAvailableModal({
             </p>
             <div className="sidebar-scroll mt-1.5 max-h-[40vh] min-h-0 flex-1 overflow-y-auto rounded-lg border border-border-faint bg-surface-strong/40 p-3">
               {releaseNotes ? (
-                <p className="whitespace-pre-wrap font-pingfang text-[12px] leading-5 text-text-secondary">
-                  {releaseNotes}
-                </p>
+                <div
+                  data-testid="update-release-notes"
+                  className="select-text font-pingfang text-[12px] leading-5 text-text-secondary"
+                >
+                  <MarkdownBody text={releaseNotes} dense />
+                </div>
               ) : (
                 <p className="font-pingfang text-[12px] text-text-faint">
                   {strings.updateModal.noReleaseNotes}

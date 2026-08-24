@@ -44,6 +44,33 @@ test('shows update modal with release notes and can ignore this version', async 
   await expect(page.getByTestId('titlebar-update')).toHaveCount(0)
 })
 
+test('renders markdown release notes instead of raw text', async () => {
+  await forceUpdateAvailable(
+    app,
+    '9.9.9',
+    [
+      '# What is new',
+      '',
+      '- **Fixed** crash on startup',
+      '',
+      'See the [changelog](https://example.com/changelog)'
+    ].join('\n')
+  )
+
+  const modal = page.getByTestId('update-available-modal')
+  const notes = modal.getByTestId('update-release-notes')
+  await expect(notes).toBeVisible()
+  // 标题渲染为 h1，而不是字面 “#”。
+  await expect(notes.locator('h1')).toHaveText('What is new')
+  // 列表项与加粗渲染。
+  await expect(notes.locator('ul li')).toContainText('crash on startup')
+  await expect(notes.locator('ul li strong')).toHaveText('Fixed')
+  // 链接只展示不导航（外链交给系统浏览器的策略不变）。
+  await expect(notes.locator('span[title="https://example.com/changelog"]')).toHaveText(
+    'changelog'
+  )
+})
+
 test('later keeps the update entry visible for a future retry', async () => {
   await forceUpdateAvailable(app)
 

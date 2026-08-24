@@ -24,6 +24,7 @@ import {
   DSH_WSL_PID_MARKER,
   buildDshExternalSpawnSpec,
   dshCandidateFromInstallation,
+  dshRejectedNoOpenOption,
   selectDshRuntimeCandidates
 } from './DshRuntime'
 import { preflightRemoteDsh } from './RemoteDshPreflight'
@@ -120,6 +121,8 @@ export interface DshHostManagerOptions {
   broadcast: (channel: string, payload: DshHostStatus) => void
   onBecameReady?: () => void
   onLeftReady?: () => void
+  /** Host is stopping only to start again; keep HRack slots and the surface. */
+  onRestarting?: () => void
 }
 
 /** 预分配一个 Windows/当前主机 loopback 空闲端口。 */
@@ -168,6 +171,7 @@ export class DshHostManager {
   private activePosixProcessGroupPid: number | null = null
   private remoteConfig: RemoteDshHostConfig | null = null
   private activeRemoteConfigKey: string | null = null
+  private restarting = false
 
   constructor(private readonly options: DshHostManagerOptions) {}
 
@@ -261,8 +265,13 @@ export class DshHostManager {
   }
 
   async restart(): Promise<DshHostStatus> {
-    await this.stop()
-    return this.ensureStarted()
+    this.restarting = true
+    try {
+      await this.stop()
+      return await this.ensureStarted()
+    } finally {
+      this.restarting = false
+    }
   }
 
   /** 幂等启动；starting 中的并发调用共享同一个 Promise。 */
@@ -297,7 +306,8 @@ export class DshHostManager {
     if (previous !== 'ready' && next.state === 'ready') {
       this.options.onBecameReady?.()
     } else if (previous === 'ready' && next.state !== 'ready') {
-      this.options.onLeftReady?.()
+      if (this.restarting) this.options.onRestarting?.()
+      else this.options.onLeftReady?.()
     }
   }
 
@@ -369,38 +379,73 @@ export class DshHostManager {
     this.outputTail = ''
     this.setStatus({ state: 'starting' })
     try {
-      const targets = await this.resolveLaunchTargets()
-      const failures: string[] = []
-      for (const target of targets) {
-        try {
-          return await this.startTarget(target)
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : String(error)
-          failures.push(`${target.candidate.id}: ${detail}`)
-          this.appendOutput(`\n[${target.candidate.id}] ${detail}\n`)
-          await this.stopChild()
-        }
-      }
-      throw new Error(failures.join('\n'))
+      return await this.attemptStart()
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      console.warn(
+        '[dsh-host] start failed; killing and retrying once:',
+        error instanceof Error ? error.message : error
+      )
       await this.stopChild()
-      this.setStatus({
-        state: 'failed',
-        dshHome: this.status.dshHome,
-        activeRuntime: this.status.activeRuntime,
-        error: `${message}\n${this.outputTail.slice(-2048)}`
-      })
-      return this.status
+      this.outputTail = ''
+      try {
+        return await this.attemptStart()
+      } catch (retryError) {
+        const message =
+          retryError instanceof Error ? retryError.message : String(retryError)
+        await this.stopChild()
+        this.setStatus({
+          state: 'failed',
+          dshHome: this.status.dshHome,
+          activeRuntime: this.status.activeRuntime,
+          error: `${message}\n${this.outputTail.slice(-2048)}`
+        })
+        return this.status
+      }
     }
+  }
+
+  private async attemptStart(): Promise<DshHostStatus> {
+    const targets = await this.resolveLaunchTargets()
+    const failures: string[] = []
+    for (const target of targets) {
+      try {
+        return await this.startTarget(target)
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error)
+        failures.push(`${target.candidate.id}: ${detail}`)
+        this.appendOutput(`\n[${target.candidate.id}] ${detail}\n`)
+        await this.stopChild()
+      }
+    }
+    throw new Error(failures.join('\n'))
   }
 
   private async startTarget(target: DshLaunchTarget): Promise<DshHostStatus> {
     const dshHome = this.resolveTargetHome(target)
     const port = await allocatePort()
+    try {
+      return await this.bootTarget(target, port, dshHome, true)
+    } catch (error) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      if (!dshRejectedNoOpenOption(this.outputTail)) {
+        throw error
+      }
+      console.warn('[dsh-host] --no-open rejected; retrying without it')
+      await this.stopChild()
+      this.outputTail = ''
+      return this.bootTarget(target, port, dshHome, false)
+    }
+  }
+
+  private async bootTarget(
+    target: DshLaunchTarget,
+    port: number,
+    dshHome: string,
+    noOpen: boolean
+  ): Promise<DshHostStatus> {
     const baseUrl = `http://127.0.0.1:${port}`
     const remote = await this.resolveRemoteLaunch(target)
-    const child = this.spawnTarget(target, port, dshHome, remote)
+    const child = this.spawnTarget(target, port, dshHome, remote, noOpen)
     this.child = child
     this.activeWslProcess = null
     this.activeWindowsProcessTreePid =
@@ -499,7 +544,8 @@ export class DshHostManager {
     target: DshLaunchTarget,
     port: number,
     dshHome: string,
-    remote: RemoteDshHostConfig | null
+    remote: RemoteDshHostConfig | null,
+    noOpen?: boolean
   ): ManagedDshChild {
     if (!target.installation) {
       throw new Error('selected DSH installation is missing')
@@ -512,6 +558,7 @@ export class DshHostManager {
         this.options.discovery.runtimeEnvironment(target.installation).PATH,
       commandInterpreter: process.env.ComSpec,
       inheritedEnv: process.env,
+      noOpen,
       ...(remote ? { remote } : {})
     })
     const detached =

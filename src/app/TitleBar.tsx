@@ -3,6 +3,7 @@ import {
   Download,
   PanelRightClose,
   PanelRightOpen,
+  RotateCcw,
   Settings2,
   SquarePen
 } from 'lucide-react'
@@ -17,6 +18,8 @@ interface TitleBarProps {
   onOpenUpdate?: () => void
   onToggleCode?: () => void
   codeOpen?: boolean
+  onRestartDsh?: () => void
+  dshRestarting?: boolean
 }
 
 export default function TitleBar({
@@ -27,7 +30,9 @@ export default function TitleBar({
   updateBadge = null,
   onOpenUpdate,
   onToggleCode,
-  codeOpen = false
+  codeOpen = false,
+  onRestartDsh,
+  dshRestarting = false
 }: TitleBarProps) {
   const strings = useStrings()
   const [maximized, setMaximized] = useState(false)
@@ -106,6 +111,23 @@ export default function TitleBar({
               <Settings2 className="size-3.5" strokeWidth={1.75} />
               {strings.titlebar.settings}
             </button>
+            {onRestartDsh && (
+              <button
+                type="button"
+                data-testid="titlebar-dsh-restart"
+                disabled={dshRestarting}
+                title={strings.dsh.restartHostHint}
+                aria-label={strings.dsh.restartHost}
+                onClick={onRestartDsh}
+                className="titlebar-action cursor-target flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] transition-colors disabled:cursor-wait disabled:opacity-70"
+              >
+                <RotateCcw
+                  className={`size-3.5 ${dshRestarting ? 'animate-spin' : ''}`}
+                  strokeWidth={1.75}
+                />
+                {strings.dsh.restartHost}
+              </button>
+            )}
           </>
         )}
       </nav>

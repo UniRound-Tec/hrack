@@ -91,6 +91,9 @@ export const ko = {
     runtimeRefresh: 'DSH 다시 검색',
     runtimeScanFailed: 'DSH 검색 실패',
     runtimeMissing: '로컬 DSH를 사용할 수 없음',
+    restartHost: 'DSH 재시작',
+    restartHostHint: '플러그인을 설치한 뒤 프로세스를 재시작해 불러옵니다. 현재 DSH 페이지가 다시 열립니다.',
+    restarting: 'DeepSeek Harness를 다시 시작하는 중…',
     enterQueue: '대기열',
     enterSteer: '끼어들기',
     modelsIntro: 'API 키를 넣으면 아래 제공자의 모델을 쓸 수 있습니다.',
@@ -172,6 +175,8 @@ export const ko = {
     booting: 'DeepSeek Harness 시작하는 중…',
     bootHostInit: '첫 host 시작 시 profile 초기화가 필요합니다',
     bootFailed: 'DSH 시작 실패',
+    copyError: '오류 복사',
+    errorCopied: '복사됨',
     bootReload: '창 다시 로드',
     homeHint: '자동 선택 · 로컬 우선'
   },

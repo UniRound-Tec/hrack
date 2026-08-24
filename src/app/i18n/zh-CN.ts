@@ -95,6 +95,9 @@ export const zhCN = {
     runtimeRefresh: '重新扫描 DSH',
     runtimeScanFailed: 'DSH 扫描失败',
     runtimeMissing: '本机 DSH 已不可用',
+    restartHost: '重启 DSH',
+    restartHostHint: '安装插件后重启进程以加载新插件。当前 DSH 页面会重新打开。',
+    restarting: '正在重启 DeepSeek Harness…',
     enterQueue: '排队发送',
     enterSteer: '插队发送',
     modelsIntro: '填写 API 密钥后即可使用下列供应商的模型。',
@@ -176,6 +179,8 @@ export const zhCN = {
     booting: '正在启动 DeepSeek Harness…',
     bootHostInit: 'dsh host 首次启动需要初始化 profile',
     bootFailed: 'DSH 启动失败',
+    copyError: '复制错误信息',
+    errorCopied: '已复制',
     bootReload: '重新加载窗口',
     homeHint: '自动选择 · 本机优先'
   },

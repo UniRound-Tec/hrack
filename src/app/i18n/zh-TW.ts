@@ -91,6 +91,9 @@ export const zhTW = {
     runtimeRefresh: '重新掃描 DSH',
     runtimeScanFailed: 'DSH 掃描失敗',
     runtimeMissing: '本機 DSH 已無法使用',
+    restartHost: '重啟 DSH',
+    restartHostHint: '安裝外掛後重啟行程以載入新外掛。目前的 DSH 頁面會重新開啟。',
+    restarting: '正在重啟 DeepSeek Harness…',
     enterQueue: '排隊傳送',
     enterSteer: '插隊傳送',
     modelsIntro: '填寫 API 金鑰後即可使用下列供應商的模型。',
@@ -172,6 +175,8 @@ export const zhTW = {
     booting: '正在啟動 DeepSeek Harness…',
     bootHostInit: 'dsh host 首次啟動需要初始化 profile',
     bootFailed: 'DSH 啟動失敗',
+    copyError: '複製錯誤訊息',
+    errorCopied: '已複製',
     bootReload: '重新載入視窗',
     homeHint: '自動選擇 · 本機優先'
   },

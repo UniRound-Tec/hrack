@@ -60,8 +60,74 @@ export interface DshRemoteLaunchOptions {
 
 export const DSH_WSL_PID_MARKER = '__HRACK_DSH_PID__='
 
+/**
+ * DSH opens the OS browser when `openBrowser` is true and SSH_CONNECTION /
+ * SSH_TTY are unset. HRack embeds the official page, so the spawned host
+ * always carries this marker — including first profile boot, before `--no-open`
+ * is parsed, and WSL installs that reject the flag.
+ */
+export const DSH_EMBED_SSH_CONNECTION = 'hrack-embed'
+
 function quoteCmdArg(value: string): string {
   return `"${value.replace(/"/g, '""')}"`
+}
+
+/**
+ * `dsh web` started opening the OS browser in 0.1.0-rc.7. HRack embeds the
+ * official page in a WebContentsView, so those versions need `--no-open`.
+ * Older web CLIs reject the flag.
+ */
+export function dshWebOpensBrowserByDefault(version?: string): boolean {
+  if (!version) return false
+  const parts = dshVersionParts(version)
+  if (!parts) return false
+  const minimum: [number, number, number, number] = [0, 1, 0, 7]
+  for (let index = 0; index < 4; index += 1) {
+    if (parts[index] > minimum[index]) return true
+    if (parts[index] < minimum[index]) return false
+  }
+  return true
+}
+
+function dshVersionParts(
+  version: string
+): [number, number, number, number] | null {
+  const rcMatch = version.match(/(\d+)\.(\d+)\.(\d+)-rc\.(\d+)/i)
+  if (rcMatch) {
+    return [
+      Number(rcMatch[1]),
+      Number(rcMatch[2]),
+      Number(rcMatch[3]),
+      Number(rcMatch[4])
+    ]
+  }
+  const stable = version.match(/(\d+)\.(\d+)\.(\d+)/)
+  if (!stable) return null
+  return [
+    Number(stable[1]),
+    Number(stable[2]),
+    Number(stable[3]),
+    Number.POSITIVE_INFINITY
+  ]
+}
+
+export function dshWebRuntimeArgs(
+  port: number,
+  version?: string,
+  noOpen?: boolean
+): string[] {
+  const args = [
+    'web',
+    '--host', '127.0.0.1',
+    '--port', String(port)
+  ]
+  if (noOpen ?? true) args.push('--no-open')
+  return args
+}
+
+/** CLI version is not the web-app flag set; WSL rc.7 still rejects `--no-open`. */
+export function dshRejectedNoOpenOption(output: string): boolean {
+  return /unknown option ['"]?--no-open['"]?/i.test(output)
 }
 
 /** 只负责把已验证安装变成精确 argv；不做路径搜索或 shell 字符串插值。 */
@@ -73,6 +139,8 @@ export function buildDshExternalSpawnSpec(options: {
   commandInterpreter?: string
   inheritedEnv?: NodeJS.ProcessEnv
   remote?: DshRemoteLaunchOptions
+  /** When set, overrides the version heuristic for `--no-open`. */
+  noOpen?: boolean
 }): DshExternalSpawnSpec {
   const { candidate, port, dshHome } = options
   const runtimeArgs = options.remote
@@ -81,14 +149,10 @@ export function buildDshExternalSpawnSpec(options: {
         '--patch', options.remote.overlayPath,
         '--host', '127.0.0.1',
         '--port', String(port),
-        '--trusted-host', new URL(options.remote.publicOrigin).host,
-        '--no-open'
+        '--trusted-host', new URL(options.remote.publicOrigin).host
       ]
-    : [
-        'web',
-        '--host', '127.0.0.1',
-        '--port', String(port)
-      ]
+    : dshWebRuntimeArgs(port, candidate.version, false)
+  if (options.noOpen ?? true) runtimeArgs.push('--no-open')
   const telemetry = options.inheritedEnv?.['DSH_TELEMETRY_DISABLED'] ?? '1'
 
   if (candidate.runtime.kind === 'wsl') {
@@ -106,6 +170,7 @@ export function buildDshExternalSpawnSpec(options: {
           : []),
         `DSH_HOME=${dshHome}`,
         `DSH_TELEMETRY_DISABLED=${telemetry}`,
+        `SSH_CONNECTION=${DSH_EMBED_SSH_CONNECTION}`,
         candidate.resolvedExecutable,
         ...runtimeArgs
       ],
@@ -117,7 +182,8 @@ export function buildDshExternalSpawnSpec(options: {
   const env: NodeJS.ProcessEnv = {
     ...options.inheritedEnv,
     DSH_HOME: dshHome,
-    DSH_TELEMETRY_DISABLED: telemetry
+    DSH_TELEMETRY_DISABLED: telemetry,
+    SSH_CONNECTION: DSH_EMBED_SSH_CONNECTION
   }
   if (
     candidate.runtime.platform === 'windows' &&

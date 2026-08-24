@@ -279,6 +279,7 @@ export class DshWebSurfaceController {
   private activeSessionReported = false
   private nativeViewVisible = false
   private hideTransitionCount = 0
+  private lastRequest: DshSurfaceShowRequest | null = null
 
   constructor(
     private readonly owner: BrowserWindow,
@@ -303,6 +304,7 @@ export class DshWebSurfaceController {
       Boolean(this.view && !this.view.webContents.isDestroyed())
     this.phase = 'loading'
     this.visible = keepCurrentViewVisible
+    this.lastRequest = request
     this.slotId = request.slotId
     this.sessionId = request.sessionId
     this.projection.activateSlot(request.slotId, request.sessionId)
@@ -317,12 +319,19 @@ export class DshWebSurfaceController {
         try {
           await this.showNow(request, generation)
         } catch (error) {
-          if (generation === this.generation) {
-            this.phase = 'failed'
-            this.visible = false
-            this.error = errorMessage(error)
-            this.setViewVisible(false)
+          if (generation !== this.generation) return
+          if (this.host.getStatus().state === 'ready') {
+            console.warn(
+              '[dsh-surface] page failed; killing host and retrying once:',
+              errorMessage(error)
+            )
+            await this.restartHost()
+            return
           }
+          this.phase = 'failed'
+          this.visible = false
+          this.error = errorMessage(error)
+          this.setViewVisible(false)
         }
       })
       .then(() => this.snapshot())
@@ -360,6 +369,42 @@ export class DshWebSurfaceController {
     this.sessionId = undefined
     this.activeSessionId = undefined
     this.activeSessionReported = false
+  }
+
+  /**
+   * Kill the dsh OS process, spawn a new host, and reload the official page.
+   * Returns only after the surface is ready again (or failed).
+   */
+  async restartHost(): Promise<DshSurfaceSnapshot> {
+    const request = this.lastRequest
+    const reload = Boolean(request) && this.phase !== 'hidden'
+    const generation = ++this.generation
+    this.operation = Promise.resolve()
+    this.destroyView()
+    this.phase = reload ? 'loading' : 'hidden'
+    this.visible = false
+    this.error = undefined
+    this.activeSessionId = undefined
+    this.activeSessionReported = false
+
+    const status = await this.host.restart()
+    if (generation !== this.generation) return this.snapshot()
+    if (status.state !== 'ready' || !status.baseUrl) {
+      this.phase = 'failed'
+      this.error = status.error ?? 'DSH host is not ready'
+      return this.snapshot()
+    }
+    if (!reload || !request) return this.snapshot()
+    try {
+      await this.showNow(request, generation)
+    } catch (error) {
+      if (generation === this.generation) {
+        this.phase = 'failed'
+        this.error = errorMessage(error)
+        this.setViewVisible(false)
+      }
+    }
+    return this.snapshot()
   }
 
   dispose(): void {
@@ -803,6 +848,7 @@ export class DshWebSurfaceController {
   }
 
   private destroyView(): void {
+    this.operation = Promise.resolve()
     const view = this.view
     this.view = null
     this.nativeViewVisible = false

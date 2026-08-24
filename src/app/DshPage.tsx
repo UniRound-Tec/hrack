@@ -5,6 +5,7 @@ import {
   useRef,
   useState
 } from 'react'
+import { Check, Copy } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import DeepSeekText from '@lobehub/icons/es/DeepSeek/components/Text'
 import type {
@@ -28,6 +29,10 @@ interface DshPageProps {
   active: boolean
   /** Native child views sit above renderer portals, so dialogs explicitly hide it. */
   obscured: boolean
+  /** Host restart is in flight; keep the loading overlay above the empty native view. */
+  hostRestarting?: boolean
+  /** Snapshot returned after a host kill-and-relaunch finishes. */
+  restartSnapshot?: DshSurfaceSnapshot | null
 }
 
 function sameBounds(
@@ -142,7 +147,9 @@ export default function DshPage({
   slotId,
   adapterSessionId,
   active,
-  obscured
+  obscured,
+  hostRestarting = false,
+  restartSnapshot = null
 }: DshPageProps) {
   const strings = useStrings()
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -153,6 +160,7 @@ export default function DshPage({
     visible: false
   })
   const [retry, setRetry] = useState(0)
+  const [errorCopied, setErrorCopied] = useState(false)
   const uiThemeId = useSettingsStore((state) => state.uiThemeId)
   const language = useSettingsStore((state) => state.language)
   const dshScale = useSettingsStore((state) => state.dshScale)
@@ -242,7 +250,14 @@ export default function DshPage({
     // `bounds` is deliberately represented by hasBounds here; later geometry
     // updates flow through setBounds without reopening the DSH session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldShow, slotId, adapterSessionId, hasBounds, appearance, retry])
+  }, [
+    shouldShow,
+    slotId,
+    adapterSessionId,
+    hasBounds,
+    appearance,
+    retry
+  ])
 
   useEffect(() => {
     if (!shouldShow || !bounds) return
@@ -255,6 +270,20 @@ export default function DshPage({
     setSnapshot({ phase: 'hidden', visible: false })
     void window.dshSurfaceApi.hide()
   }, [shouldShow])
+
+  useEffect(() => {
+    if (!hostRestarting || !shouldShow) return
+    setSnapshot({
+      phase: 'loading',
+      visible: false,
+      slotId: slotId ?? undefined,
+      sessionId: adapterSessionId
+    })
+  }, [hostRestarting, shouldShow, slotId, adapterSessionId])
+
+  useEffect(() => {
+    if (restartSnapshot) setSnapshot(restartSnapshot)
+  }, [restartSnapshot])
 
   useEffect(
     () => () => {
@@ -281,28 +310,55 @@ export default function DshPage({
         data-testid="dsh-surface-frame"
         className="min-h-0 flex-1 overflow-hidden"
       />
-      {shouldShow && snapshot.phase !== 'ready' && (
+      {shouldShow && (hostRestarting || snapshot.phase !== 'ready') && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-content">
-          {snapshot.phase === 'failed' ? (
+          {snapshot.phase === 'failed' && !hostRestarting ? (
             <>
               <span className="text-sm text-status-exited">
                 {strings.dsh.bootFailed}
               </span>
-              <pre className="max-w-2xl overflow-auto rounded-lg bg-surface-strong p-3 text-xs text-text-muted">
+              <pre
+                data-testid="dsh-surface-error"
+                className="app-no-drag max-h-64 max-w-2xl overflow-auto rounded-lg bg-surface-strong p-3 text-left text-xs text-text-muted whitespace-pre-wrap break-all select-text cursor-text"
+              >
                 {snapshot.error}
               </pre>
-              <button
-                type="button"
-                data-testid="dsh-surface-retry"
-                className="rounded-md bg-surface-strong px-3 py-1.5 text-xs text-text-primary"
-                onClick={() => setRetry((value) => value + 1)}
-              >
-                {strings.dsh.refresh}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="dsh-surface-copy-error"
+                  disabled={!snapshot.error}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-surface-strong px-3 py-1.5 text-xs text-text-primary disabled:opacity-50"
+                  onClick={() => {
+                    if (!snapshot.error) return
+                    void window.clipboardApi.writeText(snapshot.error).then(() => {
+                      setErrorCopied(true)
+                      window.setTimeout(() => setErrorCopied(false), 1_500)
+                    })
+                  }}
+                >
+                  {errorCopied ? (
+                    <Check className="size-3 text-status-done" strokeWidth={1.75} />
+                  ) : (
+                    <Copy className="size-3" strokeWidth={1.75} />
+                  )}
+                  {errorCopied ? strings.dsh.errorCopied : strings.dsh.copyError}
+                </button>
+                <button
+                  type="button"
+                  data-testid="dsh-surface-retry"
+                  className="rounded-md bg-surface-strong px-3 py-1.5 text-xs text-text-primary"
+                  onClick={() => setRetry((value) => value + 1)}
+                >
+                  {strings.dsh.refresh}
+                </button>
+              </div>
             </>
           ) : (
             <DshBootScreen
-              label={strings.dsh.booting}
+              label={
+                hostRestarting ? strings.dsh.restarting : strings.dsh.booting
+              }
               detail={strings.dsh.bootHostInit}
             />
           )}
