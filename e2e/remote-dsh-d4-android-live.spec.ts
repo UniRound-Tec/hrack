@@ -645,6 +645,21 @@ test.describe('remote DSH D4 Android public relay', () => {
       const reentryMs = Date.now() - reentryStartedAt
       await screenshot(testInfo, 'd4-android-real-dsh-reentry.png')
 
+      await adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+      await new Promise((resolveWait) => setTimeout(resolveWait, 1_500))
+      const backgroundResumeStartedAt = Date.now()
+      await adb('shell', 'am', 'start', '-W', '-n', `${appPackage}/.MainActivity`)
+      await waitForUi(
+        (xml) =>
+          boundsFor(xml, 'dsh-back') !== null &&
+          boundsFor(xml, 'dsh-webview') !== null &&
+          xml.includes('d4-real-workspace'),
+        'same DSH WebView after Android background resume',
+        20_000
+      )
+      const backgroundResumeMs = Date.now() - backgroundResumeStartedAt
+      await screenshot(testInfo, 'd4-android-real-dsh-background-resume.png')
+
       // Hand the only Phone seat from Android to the product phone client so
       // the same real public room can prove ticket replay, public denial, SSE
       // and both event WebSockets without extracting the App's HttpOnly Cookie.
@@ -769,7 +784,7 @@ test.describe('remote DSH D4 Android public relay', () => {
         `[dsh-d4-red] origin=${origin} webview=ready accessibleBytes=${Buffer.byteLength(pageUi)} ` +
           `officialText=${pageUi.includes('DeepSeek Harness') ? 'visible' : 'not-exposed'} ` +
           `visibleTextCount=${visibleTextCount} homeBytes=${Buffer.byteLength(homeUi)} ` +
-          `firstLoadMs=${firstLoadMs} cacheReentryMs=${reentryMs} ` +
+          `firstLoadMs=${firstLoadMs} cacheReentryMs=${reentryMs} backgroundResumeMs=${backgroundResumeMs} ` +
           `blankSession=created ticket=one-use privileged=denied websocket=2 ` +
           `pty=driven ptyAckBytes=${terminalAckBytes} ptyInputAckMs=${ptyInputAckMs} ` +
           `invalidation=cookie+websocket+tunnel ptyAfterInvalidation=driven`

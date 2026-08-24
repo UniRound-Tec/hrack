@@ -9,7 +9,9 @@ Cookie、Authorization、邮箱验证码、密钥、电脑路径或 DSH/PTY 正�
 ## A. 代码与配置
 
 - [x] Server `e5453ca` 已提交、推送并部署
+- [x] App `1c427d0` 已提交、推送并构建 Android release
 - [x] Relay 40、Web 131、Nginx 5、Ops 4 项通过
+- [x] App 51 项、typecheck、协议/终端/UI parity 与 Android release build 通过
 - [x] Server typecheck 与生产 build 通过
 - [x] `DSH_PUBLIC_ORIGIN` 由环境配置并传入 Relay/monitor
 - [x] 生产 DSH 代码无 `modplex.app` 硬编码
@@ -45,6 +47,8 @@ Cookie、Authorization、邮箱验证码、密钥、电脑路径或 DSH/PTY 正�
 
 ## E. 实体设备
 
+- [x] Android 模拟器真实公网全链复跑，后台恢复同一 WebView/工作区为 2,899 ms
+- [x] 本轮首次加载 18,508 ms、列表重进 4,510 ms，性能按实记录
 - [ ] Android 物理真机从不同公网加载真实 DSH WebView
 - [ ] Android 物理真机验证软键盘、safe area、后台恢复和外链
 - [ ] iPhone/iPad 物理真机从不同公网加载真实 DSH WebView
