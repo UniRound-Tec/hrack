@@ -1,6 +1,6 @@
 # HRack Remote DSH Web Tunnel — Spec
 
-> 状态：**D0–D4 已关门（2026-08-24）；D5 发布关门进行中。** 本文定义 P0–P8 之后的独立 DSH 远程扩展轨，不表示 Remote P8 已关门。
+> 状态：**D0–D5 已关门（2026-08-24；D5 以正式域名 + Android release 模拟器验收，实体设备由项目所有者显式延期并接受风险）。** 本文定义 P0–P8 之后的独立 DSH 远程扩展轨，不表示 Remote P8 已关门或物理真机已经通过。
 > 父文档：[HRack 远程控制 Spec](./SPEC-REMOTE.md)、[DSH 官方 Web Surface 隔离嵌入计划](./PLAN-DSH-OFFICIAL-WEB-SURFACE.md)。
 > 范围：手机 App 通过现有 1:1:1 房间，打开并操作电脑上真实运行的 DSH 官方 Web UI；不重做 DSH UI，不把 DSH loopback 端口直接暴露到公网。
 
@@ -404,6 +404,11 @@ DSH 新建不进入现有原生 `CreateSessionScreen`。用户在官方 DSH 页�
 - 备份/恢复 Relay 后旧 ticket/Cookie 不复活，新 ticket 能连接恢复后的持久房间；
 - 生产监控只记录健康、并发、字节、buffer/timeout/error 类别，不含 secret/path/body。
 
+默认发布门槛仍要求 Android 与 iOS 物理真机。2026-08-24 项目所有者因当前无可用真机，明确将
+**本次 DSH D5** 的关门口径改为正式生产域名上的 Android release 模拟器全链，并接受 OEM WebView、
+safe area、物理软键盘、蜂窝网络切换、系统回收与 iOS 签名安装尚未覆盖的残余风险。真机项必须
+继续标为未完成，后续补测；此例外不修改父 Remote P8 的物理真机关门条件。
+
 不能用 `npm test`、静态截图、直接让手机访问同一局域网端口、把 DSH 改成 `0.0.0.0`、桌面浏览器本地页面或假的 filepicker 替代上述公网真实门槛。
 
 ## 13. 分段实施
@@ -415,7 +420,7 @@ DSH 新建不进入现有原生 `CreateSessionScreen`。用户在官方 DSH 页�
 3. **D2 — Server**：独立 origin、ticket/Cookie、tunnel seat、HTTP/WS multiplex、流控和部署路由；黑盒真实进程门槛通过。
 4. **D3 — App**：独立 DSH surface、ticket 状态机、隔离 WebView、导航/权限/生命周期；Android 构建与本机 Relay 门槛通过。
 5. **D4 — 公网 Android**：真实 TLS、真实 HRack/DSH、browse 工作区、空白 session、event stream、PTY 并行和 revoke 全链通过。
-6. **D5 — 发布关门**：Android/iOS 物理真机、自部署、监控/日志/备份恢复与发布清单完成。
+6. **D5 — 发布关门**：默认要求 Android/iOS 物理真机、自部署、监控/日志、备份恢复与发布清单完成；本次可按 12.4 的显式发布风险接受例外关门。
 
 每一阶段失败后遵守根仓库 `AGENTS.md`：记录失败用例，只定向复跑失败项；定向通过且准备合并/发布时才跑一次完整回归。
 
@@ -579,16 +584,30 @@ D4 真实复跑额外捕获并修复了普通 mock 无法暴露的协议问题�
 
 ## 20. D5 发布关门执行记录
 
-D5 的可自动化与可远程验证部分已在 2026-08-24 完成，逐项状态见
+D5 已在 2026-08-24 按 12.4 的显式发布风险接受例外关门，逐项状态见
 [D5 发布清单](./CHECKLIST-REMOTE-DSH-D5.md)。Server `e5453ca` 已部署到生产主机：
 
 - `production-monitor` 同时检查平台与独立 DSH origin 的受信 TLS/健康接口，现网连续报告 `ok=true`；Relay `runtime-metrics.dsh` 只含健康、并发、buffer、双向字节和五类错误计数，不含 origin/path/room/ticket/Cookie/body；
 - 使用与 `modplex.app` 无关的公开 sslip.io 域名、Let's Encrypt 证书和 `DSH_PUBLIC_ORIGIN` 完成另一组真实域名/TLS 配置验证；生产 DSH 实现未硬编码 `modplex.app`；
-- 现网 TLS ALPN 协商为 `h2`，运行中的 OpenResty 配置在 server/location 两层均为 `access_log off`，并关闭 request/response buffering、保留一小时流超时；D4 已在同一入口真实承载约 4.54 MB boot graph 与两条 event WebSocket；
+- `dsh.hrack.modplex.app` 公共 DNS 已指向生产主机，正式 ECDSA 证书有效期至 2026-11-22；主机名校验、ALPN `h2`、证书续期复制/配置检查/热重载钩子均实跑通过；
+- Relay 与生产监控已切换到正式 `DSH_PUBLIC_ORIGIN`；正式域名 `/_healthz` 返回 200，匿名根路径返回 401，监控的 `public-dsh-tls` 与 `public-dsh-health` 均为 `ok=true`；
+- 运行中的 OpenResty 配置在 server/location 两层均为 `access_log off`，并关闭 request/response buffering、保留一小时流超时；正式入口已真实承载完整 boot graph 与两条 event WebSocket；
 - 新增重启组合门禁：恢复同一持久房间后，上一代未消费 ticket 为 404、Cookie 为 401，重连 Desktop/Phone/Tunnel 后新 ticket 为 303；生产又创建 32,597 字节备份并在隔离卷通过 SHA-256、SQLite `integrity_check=ok` 与 11 张表检查；
 - 当前账号轮换后的稳定房间在新 Relay 与协调器恢复后仍进入有效配对页，完整地址未写入文档或日志。
-- App `1c427d0` 修复了后台生命周期：进入后台不再无条件销毁仍有效的 DSH WebView，回到前台只在主 Phone 状态、Desktop seat、origin、surface state 或 generation 已失效时退出；`6104b20` 又验证只有用户确认后才调用系统外链。重新构建安装的 Android release 在真实生产公网完成同一全链，增强门禁明确指定设备、确认官方路径框唤起软键盘，并以 `device=emulator` 标记证据；Home 退后台再恢复到同一 WebView/工作区为 2,945 ms，本轮首次加载 16,089 ms、列表重进 4,529 ms。物理模式会强制拒绝 `ro.kernel.qemu=1`，因此仍不把模拟器冒充物理真机。iOS Hermes/资源导出另已通过，共 5 个产物、3,638,632 字节；它只证明跨平台 bundle 可生成，不代替 Xcode 签名安装和 iOS 真机行为。
+- App `1c427d0` 修复了后台生命周期：进入后台不再无条件销毁仍有效的 DSH WebView，回到前台只在主 Phone 状态、Desktop seat、origin、surface state 或 generation 已失效时退出；`6104b20` 又验证只有用户确认后才调用系统外链。重新构建安装的 Android release 在正式生产公网完成同一全链，增强门禁明确指定设备、确认官方路径框唤起系统软键盘，并以 `device=emulator` 标记证据；Home 退后台再恢复到同一 WebView/工作区为 5,003 ms，本轮首次加载 18,378 ms、列表重进 4,519 ms；两条 event WebSocket 与真实 PTY 并行，PTY 输入 ACK 为 375 ms、385 字节。
+- 物理模式会强制拒绝 `ro.kernel.qemu=1`，因此仍不把模拟器冒充物理真机。iOS Hermes/资源导出另已通过，共 5 个产物、3,638,632 字节；它只证明跨平台 bundle 可生成，不代替 Xcode 签名安装和 iOS 真机行为。
 
-D5 尚不能关门：当前工作环境只有 Android 模拟器，没有 Android 物理真机和 iPhone/iPad，
-因此不能用模拟器替代软键盘、safe area、后台恢复、外链和不同公网的实体设备验收；此外
-`dsh.hrack.modplex.app` 在生产主机公共解析器上仍无 DNS 记录，正式域名证书与切流尚不能执行。
+正式域名最终门禁输出：
+
+```text
+[dsh-d4-red] origin=https://dsh.hrack.modplex.app device=emulator
+firstLoadMs=18378 cacheReentryMs=4519 backgroundResumeMs=5003
+blankSession=created ticket=one-use privileged=denied websocket=2
+pty=driven ptyAckBytes=385 ptyInputAckMs=375
+invalidation=cookie+websocket+tunnel ptyAfterInvalidation=driven
+1 passed (2.0m)
+```
+
+当前仍没有 Android 物理真机和 iPhone/iPad，实体设备条目保持未完成。项目所有者已明确要求本次以
+模拟器收尾并接受 12.4 所列残余风险，因此 D5 按发布决策关门；这不构成 Android/iOS 真机通过声明，
+也不改变父 Remote P8 的物理真机关门条件。后续取得设备后应补跑同一门禁和 iOS 人工矩阵。
