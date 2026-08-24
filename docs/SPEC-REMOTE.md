@@ -1,6 +1,6 @@
 # HRack 远程控制 — Spec
 
-> 状态：**P0–P7 已关门；P8 Android 模拟器公网真实 PTY 检查点与 iOS 本地 bundle 实现/导出及 WebKit 引擎检查点已完成（2026-08-21，Android 键盘策略于 2026-08-24 更新并复验），当前仍处于 P8 设备关门阶段。** P2 已部署到公网 HTTPS/WSS 单副本环境；P3–P5 已证明真实 HRack/PTY 的列表、驾驶和远程新建链；P6/P7 已由安装版 Android release App 完成相机配对、实时列表与真实 PTY 新建；P8 已完成 history/live、解析后 ack、输入、真实软键盘整页平移且 PTY 尺寸不变、键盘开关后旋转、离线 Fcitx5 拼音组合提交、`undrive`、新建后直入终端，以及真实 Claude Code/Codex CLI 的模拟器基础视觉 smoke。iOS 已移除占位页，能由 Metro 导出自包含离线终端资源，并在 Chromium/Playwright WebKit 通过完整 history/live/ACK/input、零网络与像素截图门禁；但还没有在 React Native UIKit 容器、设备 WKWebView 或 iPhone/iPad 真机运行。Android 物理真机、iOS 真机和两款 CLI 的物理设备复验尚未完成，因此不能宣布 P8 全部关门或进入 P8 之后的阶段。
+> 状态：**P0–P7 已关门；P8 Android 模拟器公网真实 PTY 检查点与 iOS 本地 bundle 实现/导出及 WebKit 引擎检查点已完成（2026-08-21，Android 键盘策略于 2026-08-24 更新并复验），当前仍处于 P8 设备关门阶段。** P2 已部署到公网 HTTPS/WSS 单副本环境；P3–P5 已证明真实 HRack/PTY 的列表、驾驶和远程新建链；P6/P7 已由安装版 Android release App 完成相机配对、实时列表与真实 PTY 新建；P8 已完成 history/live、解析后 ack、输入、真实软键盘整页平移且 PTY 尺寸不变、键盘开关后旋转、离线 Fcitx5 拼音组合提交、`undrive`、新建后直入终端，以及真实 Claude Code/Codex CLI 的模拟器基础视觉 smoke。iOS 已移除占位页，能由 Metro 导出自包含离线终端资源，并在 Chromium/Playwright WebKit 通过完整 history/live/ACK/input、零网络与像素截图门禁；但还没有在 React Native UIKit 容器、设备 WKWebView 或 iPhone/iPad 真机运行。Android 物理真机、iOS 真机和两款 CLI 的物理设备复验尚未完成，因此不能宣布 P8 全部关门。DSH 官方网页远程的独立 [Web Tunnel Spec](./SPEC-REMOTE-DSH-WEB-TUNNEL.md) 已完成 D0 安全原型，不改变 P8 状态。
 > 范围：一部手机远程看见、新建、驾驶 HRack 里已经在跑（或由手机新建）的 CLI 会话。
 > 父文档：[SPEC.md](./SPEC.md)、[SPEC-S.md](./SPEC-S.md)。
 > 本机 OpenCode Bridge 仍只活在本机，见 [SPEC-OPENCODE-BRIDGE.md](./SPEC-OPENCODE-BRIDGE.md)。远程不走那条套接字。
@@ -29,7 +29,7 @@
 - 账号体系、多电脑、多手机、围观座位。
 - 端到端加密（见 §8：TLS 卸掉后中继能看见终端）。
 - 后台/锁屏推送策略（在线能看到状态即可；响不响以后用设置调）。
-- 把 DSH 官方网页表面送到手机。
+- 在 P0–P8 PTY 协议中承载 DSH 官方网页；P8 之后的独立 Web Tunnel 扩展见 [DSH Web Tunnel Spec](./SPEC-REMOTE-DSH-WEB-TUNNEL.md)。
 - 把本机 OpenCode Bridge 暴露到公网。
 - 为 Claude / Codex / OpenCode 等各自重做一套假 UI。
 - 整窗远程桌面、文件传输、摄像头。
@@ -313,7 +313,7 @@ hello 限流，防止扫 `roomId`。
 | `CliScanReport` / `CliLaunchSelection` / `prepareLaunch` | 手机新建的目录与启动 |
 | 最近工作区 | 推到 App，供点选 |
 | 本机 OpenCode Bridge | **不动**。远程不是 Bridge 的公网版 |
-| DSH `WebContentsView` | **不进**本远程 |
+| DSH `WebContentsView` | **不进 P0–P8 的 PTY 远程**；后续只按独立 [DSH Web Tunnel Spec](./SPEC-REMOTE-DSH-WEB-TUNNEL.md) 复用官方 Web artifact，不伪装成 PTY |
 | 悬浮窗 attention | 与六态同源；本 spec 不规定推送，但 `needs-you` / `done` / `error` 已在列表里 |
 
 观察器事件很多。列表展示完整六态；不要把每条 `tool.started` 做成独立远程通知。
@@ -569,7 +569,7 @@ P3 关门 = 「电脑把列表送到公网房间」成立。此后 App 和驾驶
 
 ### 每期完成后再做的事
 
-P8 之后才考虑：后台推送、E2E 加密、普通 shell 驾驶、抽出共享协议包。不插入 P0–P8 中间。
+P8 之后才考虑：后台推送、E2E 加密、普通 shell 驾驶、抽出共享协议包，以及独立 [DSH Web Tunnel](./SPEC-REMOTE-DSH-WEB-TUNNEL.md) 扩展。不插入 P0–P8 中间；起草后续扩展不等于 P8 已完成。
 
 ---
 
@@ -583,7 +583,7 @@ P8 之后才考虑：后台推送、E2E 加密、普通 shell 驾驶、抽出共
 6. **只锁被驾驶的 tab**，其它 tab 电脑还能用；不是整窗 ToDesk。  
 7. **手机可新建 AI CLI**，工作区必填，走电脑现有启动链。  
 8. **不自动启动 HRack。**  
-9. **本机 Bridge 与 DSH 不进远程。**  
+9. **本机 Bridge 不进远程；DSH 不进 P0–P8 的 PTY 协议。** DSH 后续只能走独立 Web Tunnel、安全 ticket 和官方 browse picker。
 10. **后台推送策略后置**；在线必须能看到全部 AI CLI 会话状态。
 
 ---

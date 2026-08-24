@@ -15,7 +15,8 @@ src/assets/fonts/.subset/
 *.err
 .claude/
 .dev-shots/
-docs/
+docs/*
+!docs/SPEC-REMOTE-DSH-WEB-TUNNEL.md
 
 # 内置 dsh 运行时的隔离依赖树（dsh-runtime/package*.json 需提交）
 dsh-runtime/node_modules/

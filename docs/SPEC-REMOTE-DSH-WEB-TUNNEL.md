@@ -1,0 +1,465 @@
+# HRack Remote DSH Web Tunnel — Spec
+
+> 状态：**D0 Spec 与真实安全原型已关门（2026-08-24）；D1 尚未开始。** 本文定义 P0–P8 之后的独立 DSH 远程扩展轨，不表示 Remote P8 已关门。
+> 父文档：[HRack 远程控制 Spec](./SPEC-REMOTE.md)、[DSH 官方 Web Surface 隔离嵌入计划](./PLAN-DSH-OFFICIAL-WEB-SURFACE.md)。
+> 范围：手机 App 通过现有 1:1:1 房间，打开并操作电脑上真实运行的 DSH 官方 Web UI；不重做 DSH UI，不把 DSH loopback 端口直接暴露到公网。
+
+## 0. 一句话
+
+手机以顶层 WebView 打开一个有独立 HTTPS origin 的 DSH 网关；网关把官方页面的 HTTP、`POST /api/*` 与两条事件 WebSocket，经房间绑定的独立二进制隧道转到 HRack 桌面端，再由桌面端访问 `127.0.0.1:随机端口` 上的真实 `dsh web`。工作区选择使用 DSH 官方 browse picker，不能在远程手机上触发电脑的原生目录对话框。
+
+## 1. 已确认的事实与问题
+
+2026-08-24 对本机实际安装的 DSH `0.1.0-rc.7` 和 HRack 开发进程做了真实接口检查，不是测试夹具：
+
+- HRack 以 `dsh web --host 127.0.0.1 --port <random>` 启动 DSH，只监听 loopback；
+- 官方根页面由完整 Vite 页面、动态插件模块和样式组成，本次启动共读取 46 个启动资源，未压缩正文合计 4,495,522 字节；
+- 上行 RPC 是同源 `POST /api/<method>`；下行是 `/api/events.mux` 与 `/api/events.host` 两条只下行 WebSocket；插件热更新另有一条长期 `GET /plugins/events` SSE；
+- 用 412 × 915 的真实 Chromium 页面加载本机 DSH，全部官方/plugin bundle、上述 SSE 与两条 WebSocket 都实际建立，页面没有 runtime error；启动还会请求 `settings.describe`、`credentials.describe` 等本机特权 RPC，因此 D0 必须证明这些调用在公网 authority 下被拒绝时官方主页面仍能完成普通 session/workspace 流程；
+- 用 loopback authority 调用真实 `host.describe`、`session.list` 成功；把 Host/Origin 改成未受信公网 authority 后，静态根页面仍为 200，但 `/api` 为 403；因此“只反代网页文件”会得到不能工作的页面壳；
+- 当前 Windows/loopback 启动由 DSH auto picker 选择了 `directory-picker-native`。网页按钮会在电脑上打开 Windows 原生目录对话框，手机看不到也无法操作；
+- DSH 官方已经提供 `dsh-host-directory-picker-browse` 与 `dsh-client-ui-directory-picker-browse`，通过 `host.listDirectory` / `host.createDirectory` 在网页内完成目录浏览和创建，明确适用于 remote-browser deployment；
+- HRack 已有本地主进程 `DshWireProxy`，掌握 `/api`、插件 bundle 和两条 WebSocket 的真实 wire 形状，但它只服务 Electron IPC，不足以承载完整公网网页、静态资源和手机认证。
+
+本文据此选择“受认证的整站反向隧道”，而不是重做 DSH React UI、远程桌面截图或开放 LAN 监听。
+
+## 2. 目标与非目标
+
+### 2.1 目标
+
+1. 手机 App 的会话页出现一个独立的 **DeepSeek Harness** Web surface 入口；它不是 PTY 会话。
+2. 点击入口后加载电脑当前 DSH 版本实际提供的官方 HTML、CSS、JS 和用户插件 client bundle，避免 App 与桌面 DSH 版本错配。
+3. 官方页面能列出、打开、新建和操作真实 DSH 会话，接收真实 event stream。
+4. 新建工作区必须在手机网页中浏览电脑目录并选择；不得要求操作电脑屏幕上的系统对话框。
+5. DSH 进程继续只监听 loopback；电脑不开放入站端口，桌面端只建立到 Relay 的出站 WSS。
+6. 公网入口沿用现有房间的 1:1:1、吊销、掉线和 TLS 边界，并增加一次性 Web ticket 与短期 Cookie。
+7. 官方部署与自部署都通过显式 `dshPublicOrigin` 工作，不写死 `modplex.app`。
+8. DSH 网页流量与 PTY/会话控制流物理分离；加载约 4.5 MB 页面时不能阻塞终端 ACK、状态和输入。
+
+### 2.2 非目标
+
+- 不把 `127.0.0.1:<port>`、`0.0.0.0:<port>`、Cloudflare Tunnel 或任意临时公网端口直接交给手机。
+- 不做代理到任意电脑 URL、任意 loopback 服务、文件协议或局域网地址；目标只能来自 `DshHostManager` 当前 ready generation 的 `baseUrl`。
+- 不把 DSH 伪装成 xterm/PTY，不复用 `drive`、`pty-in`、`pty-out`、winsize 或 PTY history 协议。
+- 不在 App 中重写 DSH 的会话列表、对话、工具、设置和工作区 UI。
+- 第一版不支持网页下载、任意文件上传、相机附件、拖放、打印或弹出新窗口；核心文本会话与目录选择先关门。
+- 不承诺端到端加密。与现有远控相同，公网 TLS 在 Relay 终止后，Relay 能看到被转发的 HTTP/RPC 内容。
+- 不把 DSH 的本机特权配置面开放给手机；凭据读写、设置文件修改、打开电脑本地路径和原生目录选择继续由 DSH 的 trust fence 拒绝。
+- 不改变现有 Remote P8 的物理真机关门条件，也不借本扩展宣布 P8 完成。
+
+## 3. 总体架构
+
+```text
+HRack Remote App
+  ├─ 主 Remote WSS：配对、会话列表、PTY、DSH 状态与 ticket 请求
+  └─ 顶层 DSH WebView
+          │ HTTPS + WSS（短期 HttpOnly Cookie）
+          ▼
+https://<dsh-public-origin>/
+  DSH Gateway（Relay 的独立 virtual host）
+          │ 独立 dsh-tunnel WSS；HTTP/WS 多路复用、信用流控
+          ▼
+HRack Desktop DshTunnelClient
+          │ Node HTTP/WS；目标固定，保留公网 Host/Origin
+          ▼
+http://127.0.0.1:<random>/ 真实 dsh web
+```
+
+### 3.1 为什么必须是独立 origin
+
+DSH 根页面、启动 manifest、插件模块和运行时都使用 `/assets/*`、`/plugins/*`、`/api/*` 等根绝对路径。把它挂到现有 `/remote/<room>/dsh/` 会迫使 HRack 重写 HTML、动态插件 URL、`fetch`、WebSocket 和未来新增的 Worker/EventSource，版本升级极易失效。
+
+因此 DSH Gateway 必须独占一个 origin，例如 `https://dsh.hrack.modplex.app`。不要求每房间一个子域名，也不要求 wildcard 证书；房间映射由该 origin 上的短期 Cookie 完成。自部署者配置自己的单独 origin 和正式 TLS 即可。
+
+### 3.2 顶层页面而不是 iframe
+
+App 使用已经引入的 `react-native-webview` 直接打开 DSH Gateway 顶层页面。禁止把它 iframe 到 Relay dashboard：这样可以保持 DSH 的同源 API/WebSocket、Cookie、CSP、软键盘和 viewport 行为，也避免第三方 Cookie 与 frame-ancestor 差异。
+
+### 3.3 模块所有权
+
+| 仓库 | 所有权 |
+|---|---|
+| HRack Desktop | DSH 启动 overlay、trusted authority、能力预检、surface 状态、独立 tunnel client、固定目标 loopback proxy |
+| Remote Server | `dshPublicOrigin`、ticket/Cookie、专用 virtual host、HTTP/WS gateway、独立 tunnel seat、流控/配额/吊销 |
+| Remote App | DSH surface 入口、ticket 状态机、隔离 WebView、同源导航栅栏、退出与错误恢复 |
+| 三方协议副本 | 主 WSS 的 DSH capability/ticket 报文和 tunnel control/binary framing；继续由 sync/check 门禁保证一致 |
+
+## 4. 启用、身份与生命周期
+
+### 4.1 显式启用
+
+升级后桌面端的“允许当前远控房间打开 DSH”默认关闭。用户显式开启后，HRack 才能：
+
+1. 从 Relay 的能力响应取得规范 `dshPublicOrigin`；
+2. 以该 origin 的 authority 配置 DSH trust fence；
+3. 启动或重启 HRack 管理的 DSH Web host，并应用 browse picker overlay；
+4. 建立独立 DSH tunnel seat；
+5. 向手机发布 `dsh-surface-state: ready`。
+
+关闭开关会立即撤销当前 DSH ticket/Cookie、关闭 gateway streams 和 tunnel seat，但不删除、归档或修改 DSH 会话。现有 PTY 远控不受影响。
+
+### 4.2 Relay 能力
+
+Remote Relay 在现有主 WSS `hello-ok` 中携带可选的公开能力：
+
+```ts
+interface RemoteRelayCapabilities {
+  dshWebTunnel?: {
+    origin: string       // 规范 https origin；不得有 path/query/hash/userinfo
+    protocol: 1
+  }
+}
+```
+
+未配置、不是 HTTPS、与服务端实际 virtual host 不一致或当前部署不支持时省略该能力。App 与 Desktop 必须把省略解释为 unsupported，不能猜测 `dsh.<remote-host>`。
+
+### 4.3 Tunnel seat 认证
+
+主 Desktop seat 成功后，Relay 只向该桌面连接发一个随机、短期、单连接 `dshSeatToken`。Desktop 用它连接独立：
+
+```text
+wss://<relay-origin>/<base>/v1/dsh-tunnel
+```
+
+第一帧为 `dsh-tunnel-hello { roomId, dshSeatToken, protocol: 1 }`。Relay 必须同时确认：
+
+- room 仍为 open；
+- 颁发 token 的主 Desktop seat 仍是当前 occupant；
+- token 未过期、未使用在另一个 tunnel connection；
+- 没有第二个 DSH tunnel seat；
+- `dshPublicOrigin` 已配置且 authority 精确一致。
+
+主 Desktop seat 离线、被替换、房间吊销、功能关闭或 token generation 变化时，Tunnel seat 和所有 Web sessions 立即关闭。不能仅凭可复制的 roomId 建第二条桌面隧道。
+
+### 4.4 手机 ticket 与 Cookie
+
+手机只能在自己仍占据 Phone seat、Desktop seat 在线、DSH tunnel ready 且 surface generation 一致时，在主 WSS 发送：
+
+```ts
+{ v: 1, type: 'dsh-ticket-request', requestId: string }
+```
+
+这是 Relay 自己处理的控制报文，不转发给 Desktop。成功返回：
+
+```ts
+{
+  v: 1
+  type: 'dsh-ticket-ok'
+  requestId: string
+  url: string       // https://<dsh-origin>/_connect/<opaque-ticket>
+  expiresAt: number // 最多 30 秒
+}
+```
+
+失败返回 `dsh-ticket-reject`，reason 只能是 `unsupported`、`disabled`、`desktop-offline`、`tunnel-offline`、`busy`、`revoked` 或 `unavailable`，不得回传本机路径、端口、DSH stderr 或内部连接 id。
+
+`/_connect/<opaque-ticket>` 的 ticket：
+
+- 128 bit 以上 CSPRNG，服务端存摘要；URL 中不编码 roomId、端口或 seat token；
+- 一次性、30 秒内使用，使用后立即失效；
+- 只接受顶层 GET；响应设置 `Referrer-Policy: no-referrer`、`Cache-Control: no-store`；
+- 成功时设置 `__Host-hrack-dsh=<opaque-session>`，必须 `Secure; HttpOnly; SameSite=Strict; Path=/` 且无 Domain，然后 `303 Location: /`；
+- ticket 路径、Cookie、query、authorization 和完整 DSH API 路径关闭 access log，应用日志只记录无标识计数和错误类别。
+
+Cookie session 绑定原 Phone seat connection、Room、Desktop tunnel generation 与 DSH host generation。主 Phone WSS 一旦断开就立即停止新请求并失效 Cookie；DSH 第一版不跨连接恢复 Web session，App 重连主房间后必须取得新 ticket。现有 PTY 的 15 秒驾驶释放宽限保持原样，不能套用到权限更宽的 DSH 网页。Cookie 最长 12 小时，且不得写入 App SecureStore、共享浏览器或系统浏览器。
+
+## 5. DSH Host 启动与工作区选择
+
+### 5.1 Loopback 不变
+
+DSH 始终使用：
+
+```text
+dsh --profile web --patch <hrack-owned-overlay> \
+  --host 127.0.0.1 --port <random> \
+  --trusted-host <dsh-public-authority> --no-open
+```
+
+不能改成 `0.0.0.0`，不能把随机端口写进 App/Relay 协议，也不能把 `dshPublicOrigin` 写入用户的 `$DSH_HOME/profiles/web/cordis.patch.yml`。overlay 放在 HRack 自己的 userData/runtime 目录，由 HRack 随版本生成和验证；用户 DSH profile、插件和存储仍是权威来源。
+
+### 5.2 强制 browse picker
+
+HRack-owned overlay 必须把默认 `directory-picker` 的 auto backend 替换为官方 browse backend，并同时得到对应 client bundle。不能同时挂载 auto/native/browse 两套插件；发现重复 service 或缺少 client face 时启动失败并把 surface 标为 unavailable。
+
+这是启用远程 DSH 后的全 host 决策：同一个 DSH server 不能对本机 WebContentsView 使用 native picker、同时对手机使用 browse picker，因为 DSH 当前只在 boot 时选择一次 capability，尚无 per-connection picker。故 Desktop 的 DSH surface 也会改用官方网页 browse dialog。这一行为可见但可接受，优先保证本机和远程使用同一官方 Web artifact 与确定性能力。
+
+### 5.3 Ready 门槛
+
+只有以下真实检查全部通过，Desktop 才发布 `ready`：
+
+1. 根 HTML 200，并能解析 `window.__DSH_BOOT__`；
+2. boot manifest 含 directory-picker-browse 的 client face，不含 native picker face；
+3. `host.describe`、`session.list`、`workspace.list` 成功；
+4. `host.listDirectory` 的 schema/方法存在；
+5. 用公网 authority 语义做 trust probe：普通会话/工作区 API 可达，本机特权方法仍被拒绝；
+6. `/plugins/events` SSE 和两条本地 WebSocket 都能建立，且官方页面在预期的 privileged denial 下没有 fatal runtime error。
+
+静态首页可读但 `/api` 403、只有一条 WebSocket、目录选择仍是 native 或方法版本不兼容，都不能发布 ready。
+
+## 6. Web Gateway 路由与转发规则
+
+### 6.1 公网路由
+
+有有效 Cookie 的 DSH origin 只开放：
+
+| 方法/路径 | 行为 |
+|---|---|
+| `GET /` | 转发当前 DSH generation 的根 HTML |
+| `GET/HEAD /assets/*` | 转发官方前端静态资源 |
+| `GET /plugins/events` | 转发当前 profile 的长期 SSE；每个 Web session 最多一条 |
+| `GET/HEAD /plugins/*` | 转发当前 profile 的插件 client bundle；不包含上面的 SSE 特例 |
+| `GET/HEAD /manifest.webmanifest`、`/favicon.svg` | 转发官方静态文件 |
+| `POST /api/*` | 转发 DSH unary/respond RPC |
+| WebSocket `/api/events.mux`、`/api/events.host` | 转发两条只下行事件流 |
+| `GET /_healthz` | 无 Cookie 的最小 `{ "ok": true }`，不暴露房间/tunnel 数 |
+
+其余路径和方法返回 404/405；`CONNECT`、`TRACE`、任意绝对 URL、反斜杠、NUL、编码后路径穿越、重复解码得到的 `.`/`..` 均在 Relay 侧拒绝。第一版不把 DSH fallback 扩成任意路径代理，新增官方路由必须先进入显式 allowlist 和真实版本验证。
+
+### 6.2 Header 与 authority
+
+Desktop 连接 loopback 时必须保留 DSH 公网信任语义：
+
+- TCP 目标固定为 `DshHostManager.status.baseUrl`；
+- HTTP `Host` 设置为配置的 DSH public authority；浏览器存在 `Origin` 时精确保留同一 HTTPS origin；
+- 不得把 Host/Origin 重写成 `127.0.0.1:<port>` 来绕过 DSH 的 loopback-only 权限；
+- Gateway Cookie、ticket、Authorization、Proxy-*、Forwarded/X-Forwarded-* 和所有 hop-by-hop header 不进入 DSH；
+- 只转发显式 allowlist 的 `Accept`、`Accept-Language`、`Content-Type`、条件缓存、Range（若实现）和 DSH 必需请求头；
+- 本地响应的 `Set-Cookie` 一律丢弃，不能覆盖 Gateway Cookie；
+- `Location` 只允许同一 DSH public origin 或根相对路径，否则拒绝；
+- 响应移除 hop-by-hop、Server 和可能暴露 loopback 的诊断 header。
+
+### 6.3 DSH 特权面保持关闭
+
+DSH 将 `host.pickDirectory`、`host.openPath`、settings/credentials 修改和 agent preset authoring 等方法钉在 loopback authority。Gateway 必须让远程页面以配置的 trusted public authority 到达 DSH，使普通 session/workspace/browse API 可用，但上述 privileged methods 继续被 Host fence 拒绝。
+
+不得在 Relay 或 Desktop 重新实现一份易漂移的方法黑名单来替代 DSH 自己的 authority fence；HRack 只增加启动/运行时探针，证明 fence 没有因为 Host 重写而失效。若某个 DSH 版本无法同时满足 browse picker 和非 loopback privileged denial，则该版本不支持远程 DSH。
+
+## 7. 独立 Tunnel 协议与流控
+
+### 7.1 为什么不复用主 Remote WSS
+
+DSH 当前首屏约 4.5 MB，且会并发请求数十个 bundle。把这些正文 base64 塞进现有 JSON Remote WSS 会增加约 33% 体积，并让 PTY input/ACK、`session-upsert` 和吊销控制遭遇同一发送队列的 head-of-line blocking。因此 DSH tunnel 使用独立 WSS、独立字节上限和二进制 body frame。
+
+### 7.2 Control frame
+
+Tunnel 的 control frame 是有界 UTF-8 JSON，最大 32 KiB。至少包含：
+
+- `http-open { streamId, method, path, headers, bodyLength? }`
+- `http-head { streamId, status, headers }`
+- `http-end { streamId }`
+- `http-abort { streamId, reason }`
+- `ws-open { streamId, path, headers }`
+- `ws-open-ok { streamId, protocol? }`
+- `ws-open-reject { streamId, status }`
+- `ws-close { streamId, code, reason? }`
+- `credit { streamId, bytes }`
+- `ping` / `pong`
+
+`streamId` 是单 tunnel generation 内非零 uint32，不能复用仍存活或处于 TIME_WAIT 的 id。未知 type、未知 stream、重复 open/head/end、非法状态转换或多余字段按协议错误关闭 tunnel，不把未验证对象交给 Node HTTP/WS。
+
+### 7.3 Binary frame
+
+正文使用固定 header 的二进制 frame，不用 base64：
+
+```text
+byte 0      protocol = 1
+byte 1      kind: 1=http-body, 2=ws-text, 3=ws-binary
+byte 2..5   streamId uint32 big-endian
+byte 6..9   sequence uint32 big-endian
+byte 10..   payload，0..65536 bytes
+```
+
+HTTP body 双向可流；当前 DSH event WebSocket 只下行文本，公网客户端若发送应用数据，Gateway 直接以 1008 关闭，不转给 DSH。协议保留 `ws-binary` kind 只用于未来显式升级，第一版收到即 1003/协议错误。
+
+### 7.4 有界资源
+
+- 每个 Web session 最多 16 个并发 HTTP stream、最多 1 条 `/plugins/events` SSE、恰好最多 2 个 DSH event WebSocket；
+- 单 HTTP request body 最多 16 MiB，普通单 response body 最多 32 MiB；超过时返回 413/502 并 abort 对应 stream，不断开 PTY 主通道；SSE 不设累计正文上限，但继续受 credit、buffer、速率和 room 生命周期约束；
+- 每 frame payload 最多 64 KiB；初始每 stream credit 256 KiB；任一方向未获 credit 不得发送；
+- 单 stream 未消费缓冲最多 512 KiB，单 room tunnel 聚合未消费缓冲最多 2 MiB；达到上限先停读本地 socket/HTTP body，不能继续堆 Relay 内存；
+- header 总量 32 KiB、单 header 8 KiB、最多 64 项；
+- 建连/首 header 10 秒、普通 HTTP idle 60 秒；SSE 与 event WebSocket 生命周期跟随 Cookie/room，SSE 依赖字节/注释活动检查，WebSocket 继续做 ping/pong 和 90 秒无 transport 活动检查；
+- Relay 全局另有 room/tunnel/总内存上限和公平调度；一个房间持续下载不能饿死其它房间。
+
+## 8. App 行为
+
+### 8.1 Surface 而不是 PTY Session
+
+Desktop 通过主 Remote WSS 发布独立的：
+
+```ts
+interface RemoteWebSurface {
+  id: 'dsh'
+  kind: 'dsh-web'
+  displayName: 'DeepSeek Harness'
+  iconId: 'dsh'
+  state: 'starting' | 'ready' | 'unavailable' | 'failed'
+  generation: number
+}
+```
+
+App 把它渲染成带 DeepSeek 官方图标的单一入口。它不混进 `RemoteSession`，不伪造六态，不出现 `drive` 按钮，也不复制 DSH 内部会话列表；官方页面自己的 sidebar/workspace/session UI 是唯一 DSH 目录。
+
+### 8.2 WebView 状态机
+
+```text
+idle → requesting-ticket → loading → ready
+  └──────── reject/HTTP/renderer/tunnel loss ───────→ failed → retry
+```
+
+- 每次进入且没有仍有效的内存 Web session 时请求新 ticket；不得根据 roomId 自行拼 URL；
+- WebView 使用隔离、非共享且不落盘的 Cookie/storage；禁止第三方 Cookie，不与系统浏览器、Relay dashboard 或终端 WebView 共享数据目录；
+- 仅允许顶层导航到精确 `dshPublicOrigin`。其它 `http/https` 链接交系统浏览器前需用户点击；`file:`、`content:`、`intent:`、自定义 scheme 和跨 origin iframe 直接拒绝；
+- 禁用网页新窗口、下载、打印、摄像头、麦克风、定位、剪贴板自动读取和不必要权限；
+- 官方页面占据除 safe area 和一个最小返回/连接状态浮层外的全部屏幕；不加 HRack 文案卡、重复 header 或第二套工作区选择器；
+- 返回会话列表可以暂时隐藏同一个 WebView，保持当前 DSH page/session；主 room 断开、吊销、generation 变化或 App 明确退出 DSH 时销毁 WebView并清 Cookie；
+- App 后台时不假装在线。恢复时若主 Phone WSS 或 tunnel WebSocket 已失效，销毁旧 WebView并请求新 ticket；不能把旧页面的重试请求路由到新 room。
+
+### 8.3 新建 DSH 会话
+
+DSH 新建不进入现有原生 `CreateSessionScreen`。用户在官方 DSH 页面点击新建、打开官方 browse dialog、浏览电脑文件系统并确认目录，再由官方 `session.create`/workspace API 建立会话。HRack App 不再提交自己的 `installationId/workspace/skipApproval` payload，也不把现有 CLI filepicker 强套给 DSH。
+
+## 9. 安全边界
+
+1. **房间 URL 仍是控制权 bearer。** DSH ticket 只授予已经占据 Phone seat 的客户端，且进一步绑定 Desktop tunnel 和 DSH generation；它不是第二套账号登录。
+2. **专用 origin 不公开 DSH。** 无有效 Cookie 时 `/`、`/assets`、`/plugins`、`/api` 和 WebSocket 均为 401/404；只有最小 health 可匿名。
+3. **不做 SSRF。** path、method、headers 都先 guard；Desktop destination 永远由 ready DSH host 内部状态取得，客户端不得提交 scheme/host/port。
+4. **不冒充 loopback。** 公网 Host/Origin 贯穿到 DSH trust fence；真实门禁必须证明 privileged RPC 仍被拒绝。
+5. **用户插件代码按 DSH profile 原样送到手机。** 它与电脑本地官方页面具有同级普通 DSH API 权限，因此 bundle 只能私有缓存，不能在不同用户/房间之间共享 CDN cache。
+6. **秘密不进日志。** roomId、ticket、Cookie、seat token、本地端口、API request/response body、完整 session/workspace path 均禁止记录；错误只用 request-free 类别和计数。
+7. **HTML 与插件不是 Relay 自己的可信 UI。** Gateway 原样转发 DSH CSP/资源并补强 `Referrer-Policy`、`X-Content-Type-Options: nosniff`；不得注入 Relay dashboard token、App bridge secret 或任意管理能力。
+8. **Cookie 不送 DSH。** Gateway 身份只在 Relay 终止；Desktop 收不到 ticket/Cookie，DSH 收不到房间信息。
+9. **吊销必须贯穿所有层。** revoke 先让 App/Desktop 收到 `revoked`，同时终止 Cookie session、HTTP streams、event WebSocket 和 tunnel seat；旧 Cookie 不能等 TTL 自然过期。
+10. **版本 fail closed。** DSH 的 route、trust、picker 或 wire 形状不满足预检时只显示 unavailable，不能通过关闭 Host fence、改成 `0.0.0.0` 或回退原生 picker“修好”。
+
+## 10. 性能与缓存
+
+- DSH tunnel 与主 Remote WSS 使用不同 socket、队列、buffer budget 和 metrics；任何 DSH 限流/断线不得触发 PTY `undrive`。
+- Gateway 对可压缩静态正文支持流式 gzip/Brotli，但不能先把整个 4.5 MB 页面聚合进内存。
+- 带 `?rev=<content-rev>` 的 `/assets` 与普通 `/plugins/*` bundle 响应可以设置 `Cache-Control: private, max-age=31536000, immutable`；`/plugins/events`、无 rev、根 HTML 和 `/api` 必须 `no-store` 或服从官方 SSE no-cache。
+- ETag/If-None-Match 可以穿透，但缓存键至少包含 DSH public origin、Desktop tunnel generation、DSH boot revision 和完整 path；不得仅按包名跨房间缓存用户插件。
+- 公网 HTTP/2 可以并发承载 WebView 的资源请求，Relay 到 Desktop 的单条 tunnel WSS 由 streamId 公平轮转；连续大 response 每轮最多发送一个 credit window，避免小 RPC 饥饿。
+- 真实验证记录首次/缓存加载时间、传输字节、并发峰值、Relay/桌面最大缓冲和主 PTY ACK 延迟。首版目标是在既定公网实验环境中首次 15 秒内可操作、缓存后 5 秒内恢复；若网络条件不满足，结果必须记录环境与瓶颈，不能只延长测试 timeout。
+
+## 11. 失败与恢复
+
+| 情况 | 行为 |
+|---|---|
+| Desktop/Phone 主 seat 离线 | 立即关闭 DSH Web session 与 tunnel；App 主房间重连后取新 ticket；PTY 仍走原有 15 秒驾驶释放规则 |
+| DSH host 重启/generation 变化 | 关闭旧 streams/Cookie，surface 先 starting；新 generation ready 后 App 请求新 ticket |
+| Tunnel WSS 断开 | Gateway 终止对应 HTTP/WS；App 显示可重试错误；Desktop 指数退避重连，不重启 DSH |
+| 只有静态页、API 403 | Desktop ready probe 失败，手机不得拿到 ticket |
+| browse picker 缺失或仍是 native | surface unavailable；不允许远程创建工作区 |
+| 单请求/缓冲超限 | 只 abort 该 stream；重复违规再关闭 Web session/tunnel，不影响主 Remote WSS |
+| Relay 重启 | 现有 WebView 失败；主房间恢复并重新建立 Desktop tunnel 后请求新 ticket |
+| App renderer 被系统回收 | 清理 Cookie/session，重新取 ticket；不能复用旧 WebView 的内存状态 |
+| 房间 revoke | 所有 DSH 层立即关闭，旧 URL/Cookie 后续稳定 401/404 |
+| DSH 版本不兼容 | 明确显示“当前 DSH 版本不支持远程网页”，不泄漏原始 stderr/路径 |
+
+恢复永远从新 ticket 和当前 generation 开始；HTTP body、DOM 状态和未完成 RPC 不做跨 generation 重放。DSH 自己持久化的会话仍由 DSH 恢复，HRack 不复制存储。
+
+## 12. 验收与真实测试
+
+### 12.1 静态和自动门禁
+
+- 三仓协议副本、type guard、方向白名单和未知字段策略一致；主 Remote v1 未支持 DSH 的旧客户端仍可配对和控制 PTY；
+- ticket 一次性/过期/重放、Cookie seat/generation 绑定、revoke 立即失效；
+- DSH virtual host 的匿名边界、method/path/header allowlist、无 SSRF、无开放代理；
+- tunnel control 状态机、binary framing、sequence、credit、并发与聚合 buffer 上限；
+- Host/Origin 精确保留，Gateway Cookie/Authorization/Forwarded 不进入 Desktop/DSH；
+- Desktop overlay 不写用户 `$DSH_HOME`，browse/native client manifest 门禁；
+- App WebView 同源导航、外链、权限、Cookie 隔离、generation 清理；
+- DSH 大流量期间现有 PTY ACK/输入定向用例继续通过。
+
+### 12.2 本机真实 DSH 接口门槛
+
+测试必须启动电脑真实安装的 DSH Web profile，不使用假的 HTML、Memory API 或手写 directory fixture：
+
+1. HRack 以随机 loopback 端口、trusted public authority 和 browse overlay 启动 DSH；
+2. 用真实浏览器拉取根 HTML、全部 boot entries、assets/plugins，建立 `/plugins/events` SSE 与两条真实 WebSocket upgrade；
+3. 用 trusted public authority 调用真实 `host.describe`、`session.list`、`workspace.list`、`host.listDirectory`；
+4. 在临时 workspace 父目录中通过 browse API 看到真实目录并创建/选择一个测试子目录；
+5. 证明 `host.pickDirectory`、settings/credentials 读写、`host.openPath` 等 privileged 调用仍被拒绝，且电脑没有弹出原生对话框；
+6. 在这些预期 denial 存在时，真实官方页面仍无 fatal runtime error，能列出 workspace/session 并创建空白 session；如果当前 DSH 版本做不到，则标为 incompatible，不能改写 Host 为 loopback 放行；
+7. Desktop 本机 DSH WebContentsView 同样能使用 browse picker；关闭测试后不残留 DSH 用户配置修改。
+
+### 12.3 公网 Android 真实门槛
+
+1. 使用正式 TLS/WSS 的真实 Remote Relay 与独立 DSH origin 创建临时房间；
+2. 安装版 Android release App 加入真实 HRack Desktop，主会话列表出现 DeepSeek Harness 官方图标与 ready 状态；
+3. App 请求真实一次性 ticket，顶层 WebView 从公网读取电脑当前 DSH 的真实 HTML、插件和 event WebSocket，不使用打包夹具；
+4. 在手机官方 browse dialog 中从电脑 Home/磁盘逐层进入专用临时目录，创建或选择工作区；电脑端不出现原生目录对话框；
+5. 在官方网页创建一条真实空白 DSH session，后端 `session.list` 与 workspace 权威状态出现对应 id/path；不提交模型 prompt、不产生模型费用；
+6. 执行一个明确不调用模型的官方本地 UI 操作，并证明 event stream 到达手机；模型真实 prompt smoke 另做显式 opt-in；
+7. 从公网尝试 privileged RPC，稳定被拒绝；尝试任意 loopback/绝对 URL proxy，稳定 404/400；
+8. 同时驾驶一条真实 PTY 并加载/操作 DSH，记录 PTY input/ACK 没有被 DSH 首屏阻塞；
+9. 返回列表后重进，缓存资源命中且仍是同一 DSH 会话；吊销房间后 WebView、Cookie、两条 event WS 与 Desktop tunnel 全部失效；
+10. 清理测试 DSH session/workspace 只能通过测试明确拥有的临时对象，不能删除用户已有会话或目录。
+
+### 12.4 发布门槛
+
+- Android 物理真机和 iPhone/iPad 物理真机都完成真实公网 WebView、软键盘、safe area、后台恢复和外链测试；
+- 自部署使用另一组域名/TLS 配置，证明 `dshPublicOrigin` 可配置且没有 `modplex.app` 硬编码；
+- Nginx/上层代理支持 DSH origin 的 HTTP/2、两条公网 WebSocket、长响应流和 access-log off；
+- 备份/恢复 Relay 后旧 ticket/Cookie 不复活，新 ticket 能连接恢复后的持久房间；
+- 生产监控只记录健康、并发、字节、buffer/timeout/error 类别，不含 secret/path/body。
+
+不能用 `npm test`、静态截图、直接让手机访问同一局域网端口、把 DSH 改成 `0.0.0.0`、桌面浏览器本地页面或假的 filepicker 替代上述公网真实门槛。
+
+## 13. 分段实施
+
+这是独立 D 轨，不插入或重写 Remote P0–P8：
+
+1. **D0 — Spec 与安全原型**：冻结本文；用真实 DSH 证明 public authority、browse picker、privileged denial 和完整资源/WS 形状。
+2. **D1 — Desktop**：HRack-owned overlay、能力预检、surface state、固定目标 tunnel client；本机真实接口门槛通过。
+3. **D2 — Server**：独立 origin、ticket/Cookie、tunnel seat、HTTP/WS multiplex、流控和部署路由；黑盒真实进程门槛通过。
+4. **D3 — App**：独立 DSH surface、ticket 状态机、隔离 WebView、导航/权限/生命周期；Android 构建与本机 Relay 门槛通过。
+5. **D4 — 公网 Android**：真实 TLS、真实 HRack/DSH、browse 工作区、空白 session、event stream、PTY 并行和 revoke 全链通过。
+6. **D5 — 发布关门**：Android/iOS 物理真机、自部署、监控/日志/备份恢复与发布清单完成。
+
+每一阶段失败后遵守根仓库 `AGENTS.md`：记录失败用例，只定向复跑失败项；定向通过且准备合并/发布时才跑一次完整回归。
+
+## 14. 关键决定
+
+1. 复用 DSH 官方完整 Web artifact，不重做 UI。
+2. 使用独立 DSH public origin，不做子路径文本重写。
+3. 手机使用顶层 WebView，不用 iframe、远程桌面或系统浏览器共享 Cookie。
+4. Desktop 只出站连接 Relay；DSH 永远保持 loopback bind。
+5. HTTP/API/event WebSocket 走独立 tunnel，不占用 PTY 主 WSS。
+6. 公网 Host/Origin 保留到 DSH trust fence，绝不伪装 loopback。
+7. 远程启用时统一强制官方 browse picker；不远程操纵电脑原生 file dialog。
+8. DSH 是独立 Web surface，不混入 PTY `RemoteSession` 和六态协议。
+9. ticket/Cookie 与 Phone seat、Room、Desktop tunnel 和 DSH generation 四重绑定；revoke 立即失效。
+10. 第一版先放行文本会话和目录选择；附件、下载、原生能力和 privileged settings 后置并重新做威胁审查。
+
+## 15. D0 实现与验证记录
+
+D0 新增显式 opt-in 门禁 `e2e/remote-dsh-d0.spec.ts` 和固定原型 overlay `e2e/fixtures/dsh-remote-browse.patch.yml`。overlay 先禁用 auto picker，再同时挂载官方 browse host backend 与 browse client surface；只挂 host backend 会让 API 能浏览目录但 boot manifest 没有网页 picker，因此不能算远程能力完成。
+
+门禁使用系统真实安装的 DSH `0.1.0-rc.7`，为每次运行创建独立临时 `DSH_HOME` 和随机 loopback 端口，不读取/修改用户现有 DSH profile、session 或 workspace。Chromium 通过 host resolver 以 `dsh.remote.test:<random>` 这个非 loopback authority 访问真实页面，DSH 以 `--trusted-host dsh.remote.test` 启动；Node HTTP 探针使用相同 Host/Origin 语义。
+
+最终定向结果：
+
+```text
+[dsh-d0] version=real resources=46 bytes=4541867 http=50 ws=2 privileged=denied
+1 passed (2.8s)
+```
+
+已证明：
+
+- boot manifest 只有 `dsh-client-ui-directory-picker-browse`，没有 native picker；
+- 46 个真实官方/插件资源全部通过 public authority 返回，合计 4,541,867 字节；
+- `/plugins/events` SSE 和 `/api/events.host`、`/api/events.mux` 两条 WebSocket 都真实建立；
+- `host.describe`、`session.list`、`workspace.list`、`host.listDirectory` 通过同一 public authority 成功；
+- `host.pickDirectory`、`host.openPath`、`settings.describe`、`credentials.describe` 稳定为 403 `forbidden`，没有弹出电脑原生对话框；
+- 412 × 915 官方页面在上述 authority 和权限边界下完成启动，body 可见且无 page runtime error；
+- 根仓库 `npm run typecheck` 通过。
+
+真实门禁命令：
+
+```powershell
+$env:HRACK_E2E_REAL_DSH=(Get-Command dsh.cmd).Source
+npx playwright test e2e/remote-dsh-d0.spec.ts -g "D0 real DSH supports a trusted public browser without loopback privilege"
+```
+
+未设置 `HRACK_E2E_REAL_DSH` 时该用例明确 skip，普通开发机不会悄悄使用 fixture 冒充真实 DSH。D0 只冻结安全与 carrier 可行性；Desktop 产品实现、持久设置和 tunnel client 属于 D1。
