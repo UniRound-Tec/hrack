@@ -1,6 +1,6 @@
 # HRack Remote DSH Web Tunnel — Spec
 
-> 状态：**D0 Spec/真实安全原型、D1 Desktop、D2 Server 与 D3 App 已关门（2026-08-24）；下一阶段为 D4 公网 Android。** 本文定义 P0–P8 之后的独立 DSH 远程扩展轨，不表示 Remote P8 已关门。
+> 状态：**D0–D3 已关门；D4 公网 Android 功能链与失效链已通过（2026-08-24），当前账号稳定房间的破坏性 revoke 仍待操作时确认；D5 尚未开始。** 本文定义 P0–P8 之后的独立 DSH 远程扩展轨，不表示 Remote P8 已关门。
 > 父文档：[HRack 远程控制 Spec](./SPEC-REMOTE.md)、[DSH 官方 Web Surface 隔离嵌入计划](./PLAN-DSH-OFFICIAL-WEB-SURFACE.md)。
 > 范围：手机 App 通过现有 1:1:1 房间，打开并操作电脑上真实运行的 DSH 官方 Web UI；不重做 DSH UI，不把 DSH loopback 端口直接暴露到公网。
 
@@ -273,7 +273,7 @@ HTTP body 双向可流；当前 DSH event WebSocket 只下行文本，公网客�
 
 ### 7.4 有界资源
 
-- 每个 Web session 最多 16 个并发 HTTP stream、最多 1 条 `/plugins/events` SSE、恰好最多 2 个 DSH event WebSocket；
+- 每个 Web session 最多 64 个并发 HTTP stream、最多 1 条 `/plugins/events` SSE、恰好最多 2 个 DSH event WebSocket；64 来自 D4 对官方 40+ plugin boot fanout 的真实测量，不提高既有字节/buffer budget；
 - 单 HTTP request body 最多 16 MiB，普通单 response body 最多 32 MiB；超过时返回 413/502 并 abort 对应 stream，不断开 PTY 主通道；SSE 不设累计正文上限，但继续受 credit、buffer、速率和 room 生命周期约束；
 - 每 frame payload 最多 64 KiB；初始每 stream credit 256 KiB；任一方向未获 credit 不得发送；
 - 单 stream 未消费缓冲最多 512 KiB，单 room tunnel 聚合未消费缓冲最多 2 MiB；达到上限先停读本地 socket/HTTP body，不能继续堆 Relay 内存；
@@ -511,7 +511,7 @@ D2 已在 `hrack-remote-server` 完成独立 Server carrier：
 - Phone 的 `dsh-ticket-request` 由 Relay 自己消费，不转发 Desktop；ticket 为 256-bit CSPRNG、摘要存储、一次性且最长 30 秒；
 - 独立 DSH virtual host 的 `/_connect/<ticket>` 设置 `__Host-hrack-dsh`（`Secure; HttpOnly; SameSite=Strict; Path=/`）并 303 到根页面；Cookie 同时绑定 Phone connection、Room、Desktop connection、tunnel generation 和 DSH surface generation，掉线、generation 变化与 revoke 都立即失效；
 - 公网 route/method/header 为双层 allowlist；匿名只开放 `/_healthz`，绝对 URL、重复编码穿越、反斜杠、NUL、`CONNECT`/`TRACE` 和未知 route fail closed；Cookie、Authorization、Forwarded 与本地 `Set-Cookie`/Server 不穿 tunnel；
-- HTTP、SSE 和两条 event WebSocket 经独立二进制 tunnel 多路复用，落实 32 KiB control、64 KiB frame、sequence、credit、16 MiB request、32 MiB普通 response、16 HTTP/1 SSE/2 WS、512 KiB/stream、2 MiB/room 及 header/idle/首响应超时；
+- HTTP、SSE 和两条 event WebSocket 经独立二进制 tunnel 多路复用，落实 32 KiB control、64 KiB frame、sequence、credit、16 MiB request、32 MiB普通 response、64 HTTP/1 SSE/2 WS、512 KiB/stream、2 MiB/room 及 header/idle/首响应超时；
 - 带 content revision 的静态资源只允许 `private, immutable`，其余根页面/API 为 `no-store`、SSE 为 `no-cache`；`Accept-Encoding` 可穿透到真实 DSH，正文保持流式而不在 Relay 聚合；
 - Compose/TLS 示例增加第二 DSH virtual host；宿主反代模式使用独立 8789 loopback 入口，整段 access log off，不能把 DSH 退回 `/remote/...` 子路径。
 
@@ -521,7 +521,7 @@ D2 已在 `hrack-remote-server` 完成独立 Server carrier：
 [dsh-d2] process=dist httpBytes=4541867 websocket=2 ticket=one-use revoke=closed logs=clean
 ```
 
-合并门禁结果：Server `npm test` 为 Relay 37 项、Web 131 项、Nginx 5 项、Ops 4 项全绿；Server `npm run typecheck`、完整 build、`docker compose --profile host-edge config --quiet`、真实 Nginx `-t` 与根仓 DSH protocol 3 项门禁均通过。Nginx 第一次隔离校验因测试容器没有 `relay` DNS 记录失败，使用同一配置并只补测试解析后 `nginx -t` 成功；没有通过改写配置掩盖问题。
+合并门禁结果：Server `npm test` 为 Relay 39 项、Web 131 项、Nginx 5 项、Ops 4 项全绿；Server `npm run typecheck`、完整 build、`docker compose --profile host-edge config --quiet`、真实 Nginx `-t` 与根仓 DSH protocol 4 项门禁均通过。Nginx 第一次隔离校验因测试容器没有 `relay` DNS 记录失败，使用同一配置并只补测试解析后 `nginx -t` 成功；没有通过改写配置掩盖问题。
 
 D2 证明的是 Server carrier 和边界，不把 fixture Desktop 冒充真实 DSH。真实 DSH HTML/API/SSE/两条 WS/privileged denial 已由 D1 关门；App 控制面、本机真实 Relay 与 Android release 构建已由 D3 关门，完整公网真 DSH 手机链仍只属于 D4。
 
@@ -550,3 +550,29 @@ Android assembleRelease: BUILD SUCCESSFUL
 `npm run verify:dsh-d3` 不是进程内 mock：它构建并启动 Server 子模块的 `dist/server/cli.js`，用产品 `RemotePhoneClient` 建立 Phone seat，用独立 Desktop tunnel 发布 DSH surface，申请并消费真实一次性 ticket/Cookie，经实际 Relay HTTP/tunnel 路径读取 HTML，重放 ticket 得到 404，随后 revoke 并证明 App DSH state、Cookie session 和 tunnel 一起失效，日志中没有 room/token/ticket/Cookie。Android release 门禁产出约 93 MB 的 `app-release.apk`，原生 WebView patch 编译通过。
 
 D3 的 HTML tunnel 端使用确定性 fixture，只证明 App + 真实 Server carrier，不把它冒充“手机已访问真实 DSH”；真实 DSH 资源/API/SSE/两条 WS 与安全拒绝已在 D1 验证。D4 必须在真实 TLS 公网域名上，用 Android App、真实 HRack Desktop 和真实 DSH 完成二者的组合链，才能宣称手机远程 DSH 可用。
+
+## 19. D4 公网 Android 实现与验证记录
+
+D4 使用已安装 Android release App、Android x64 模拟器、真实 Electron 主进程、系统安装的 DSH `0.1.0-rc.7`、生产 Remote WSS 与独立公网 TLS DSH origin 完成组合链。DSH 临时 origin 使用公开受信的 Let's Encrypt 证书；最终 `dsh.hrack.modplex.app` 在服务器公共解析器上仍无记录，因此本节不把临时 origin 冒充最终生产域名，正式域名切换保留到 D5。
+
+定向门禁 `e2e/remote-dsh-d4-android-live.spec.ts` 实际完成：
+
+- Android 从认证会话列表进入 `DeepSeek Harness`，经一次性 ticket/Cookie 从公网加载电脑上真实 DSH 的官方 HTML、插件、SSE 和两条 event WebSocket，没有使用 App 内置 HTML 或测试网页；
+- 官方 browse picker 在手机上浏览电脑目录，选择测试拥有的临时 workspace；电脑没有出现原生目录对话框；随后创建真实空白 DSH session，并用本地权威 `session.list` 核对 id/cwd，不提交模型 prompt；
+- ticket 首次顶层导航得到 303 与 `Secure; HttpOnly; SameSite=Strict` Cookie，重放得到 404；公网 `settings.describe` 为 403，伪造 loopback/绝对 URL proxy 为 404；
+- 返回列表再进仍是同一个 WebView/DSH workspace，缓存恢复为 4,462 ms，低于 5 秒目标；首次免责声明到可操作 Home 为 15,852 ms，含 Android UIAutomator 轮询与一次人工式 Continue 操作，略高于 15 秒目标，按实记录且未扩大 timeout 冒充性能通过；
+- 保持两条 DSH event WebSocket 打开时，同一个 Phone seat 同时 drive 一条真实 ConPTY，远程输入到桌面权威 history/ACK 为 393 ms，ACK 385 字节；DSH 数据面没有阻塞 PTY 主 WSS；
+- 关闭 Desktop 的 DSH opt-in 后，现有 Cookie 变为 401、两条 event WebSocket 均以 1001 关闭、Desktop tunnel/surface 进入 unavailable，而 PTY 仍保持 driven，证明两条数据面和失效边界独立；D2 构建后黑盒另已用真实 room revoke 证明 seat/ticket/Cookie/tunnel 全关。对当前账号稳定 URL 的公网 revoke/rotate 会使现有配对地址失效，按破坏性操作规则仍待操作时确认。
+
+最终真实输出：
+
+```text
+[dsh-d4-red] webview=ready firstLoadMs=15852 cacheReentryMs=4462
+blankSession=created ticket=one-use privileged=denied websocket=2
+pty=driven ptyAckBytes=385 ptyInputAckMs=393
+invalidation=cookie+websocket+tunnel ptyAfterInvalidation=driven
+1 passed (1.5m)
+root full regression: 339 passed / 22 skipped / 0 failed (4.6m)
+```
+
+D4 真实复跑额外捕获并修复了普通 mock 无法暴露的协议问题：官方 boot graph 同时请求 40+ plugin bundle，原 16 HTTP stream 上限会让页面报 `Failed to load plugins`，现调整为 64 且不扩大字节预算；Phone teardown 与已完成 stream 的迟到帧必须按本代 tombstone 幂等丢弃，未知 id 仍 fail closed；真正协议错误必须走有界重连；WebSocket 的 1005/1006 等保留关闭码不能传给 Node `ws.close()`，Relay 与 Desktop 现统一归一为 1001，协议解析器拒绝 1004/1005/1006/1015 和 1016–2999。对应确定性回归在 `e2e/remote-dsh-protocol.spec.ts` 与 Server `relay/test/dsh-gateway.spec.ts`。

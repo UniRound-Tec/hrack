@@ -5,6 +5,7 @@ import {
   DSH_TUNNEL_LIMITS,
   encodeDshTunnelBinary,
   encodeDshTunnelControl,
+  normalizeDshWebSocketCloseCode,
   parseDshTunnelBinary,
   parseDshTunnelControl,
   type DshTunnelControl,
@@ -304,6 +305,11 @@ export class DshTunnelClient {
     }
     const frame = parsed.value
     const stream = this.streams.get(frame.streamId)
+    // Stream ids are never reused within one tunnel generation. A peer may
+    // already have queued data when the public HTTP client closes and the
+    // gateway tears the stream down, so a frame for a known tombstone is a
+    // harmless late delivery rather than a tunnel-wide protocol failure.
+    if (!stream && this.usedStreamIds.has(frame.streamId)) return
     if (!stream || stream.kind !== 'http' || stream.requestEnded) {
       this.protocolError()
       return
@@ -388,6 +394,7 @@ export class DshTunnelClient {
 
   private endHttpRequest(streamId: number): void {
     const stream = this.streams.get(streamId)
+    if (!stream && this.usedStreamIds.has(streamId)) return
     if (!stream || stream.kind !== 'http' || stream.requestEnded) {
       this.protocolError()
       return
@@ -497,7 +504,7 @@ export class DshTunnelClient {
     })
     socket.once('close', (code, reason) => {
       if (this.streams.get(stream.id) !== stream) return
-      this.sendControl({ type: 'ws-close', streamId: stream.id, code, ...(reason.byteLength ? { reason: reason.toString('utf8').slice(0, 123) } : {}) })
+      this.sendControl({ type: 'ws-close', streamId: stream.id, code: normalizeDshWebSocketCloseCode(code), ...(reason.byteLength ? { reason: reason.toString('utf8').slice(0, 123) } : {}) })
       this.dropStream(stream.id)
     })
   }
@@ -584,15 +591,17 @@ export class DshTunnelClient {
 
   private closeWebSocket(streamId: number, code: number, reason?: string): void {
     const stream = this.streams.get(streamId)
+    if (!stream && this.usedStreamIds.has(streamId)) return
     if (!stream || stream.kind !== 'ws') {
       this.protocolError()
       return
     }
-    stream.socket.close(code, reason)
+    stream.socket.close(normalizeDshWebSocketCloseCode(code), reason)
   }
 
   private abortStream(streamId: number): void {
     const stream = this.streams.get(streamId)
+    if (!stream && this.usedStreamIds.has(streamId)) return
     if (!stream) {
       this.protocolError()
       return
@@ -628,9 +637,11 @@ export class DshTunnelClient {
 
   private protocolError(): void {
     const socket = this.socket
-    this.socket = null
-    this.closeStreams()
+    if (!socket || socket.readyState === WebSocket.CLOSING || socket.readyState === WebSocket.CLOSED) {
+      return
+    }
+    // Keep the socket identity until its close event so the normal bounded
+    // reconnect path runs. Clearing it here made protocol failures permanent.
     socket?.close(1002, 'protocol-error')
-    this.onState?.('closed')
   }
 }
