@@ -1,6 +1,6 @@
 # HRack Remote DSH Web Tunnel — Spec
 
-> 状态：**D0–D3 已关门；D4 公网 Android 功能链与失效链已通过（2026-08-24），当前账号稳定房间的破坏性 revoke 仍待操作时确认；D5 尚未开始。** 本文定义 P0–P8 之后的独立 DSH 远程扩展轨，不表示 Remote P8 已关门。
+> 状态：**D0–D4 已关门（2026-08-24）；D5 发布关门进行中。** 本文定义 P0–P8 之后的独立 DSH 远程扩展轨，不表示 Remote P8 已关门。
 > 父文档：[HRack 远程控制 Spec](./SPEC-REMOTE.md)、[DSH 官方 Web Surface 隔离嵌入计划](./PLAN-DSH-OFFICIAL-WEB-SURFACE.md)。
 > 范围：手机 App 通过现有 1:1:1 房间，打开并操作电脑上真实运行的 DSH 官方 Web UI；不重做 DSH UI，不把 DSH loopback 端口直接暴露到公网。
 
@@ -562,7 +562,7 @@ D4 使用已安装 Android release App、Android x64 模拟器、真实 Electron
 - ticket 首次顶层导航得到 303 与 `Secure; HttpOnly; SameSite=Strict` Cookie，重放得到 404；公网 `settings.describe` 为 403，伪造 loopback/绝对 URL proxy 为 404；
 - 返回列表再进仍是同一个 WebView/DSH workspace，缓存恢复为 4,462 ms，低于 5 秒目标；首次免责声明到可操作 Home 为 15,852 ms，含 Android UIAutomator 轮询与一次人工式 Continue 操作，略高于 15 秒目标，按实记录且未扩大 timeout 冒充性能通过；
 - 保持两条 DSH event WebSocket 打开时，同一个 Phone seat 同时 drive 一条真实 ConPTY，远程输入到桌面权威 history/ACK 为 393 ms，ACK 385 字节；DSH 数据面没有阻塞 PTY 主 WSS；
-- 关闭 Desktop 的 DSH opt-in 后，现有 Cookie 变为 401、两条 event WebSocket 均以 1001 关闭、Desktop tunnel/surface 进入 unavailable，而 PTY 仍保持 driven，证明两条数据面和失效边界独立；D2 构建后黑盒另已用真实 room revoke 证明 seat/ticket/Cookie/tunnel 全关。对当前账号稳定 URL 的公网 revoke/rotate 会使现有配对地址失效，按破坏性操作规则仍待操作时确认。
+- 关闭 Desktop 的 DSH opt-in 后，现有 Cookie 变为 401、两条 event WebSocket 均以 1001 关闭、Desktop tunnel/surface 进入 unavailable，而 PTY 仍保持 driven，证明两条数据面和失效边界独立；D2 构建后黑盒另已用真实 room revoke 证明 seat/ticket/Cookie/tunnel 全关。2026-08-24 又在已登录生产控制台执行了当前账号稳定 URL 的真实轮换：旧地址立即返回 `Room unavailable`，新地址进入有效配对页，证明账号级 revoke/rotate 已贯穿公网入口；完整 URL 未写入日志、文档或提交。
 
 最终真实输出：
 
