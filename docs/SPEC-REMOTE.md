@@ -200,6 +200,8 @@ hello 限流，防止扫 `roomId`。
 
 远程工作区选择器浏览的是**电脑文件系统**，不是手机沙盒。`installationId` 决定路径语义：Windows installation 返回 Windows 路径，WSL installation 返回对应 distro 的 POSIX 路径，macOS/Linux 返回本机 POSIX 路径。电脑只传 `name/path/kind`，不传文件正文、大小、时间、权限或可执行路径；文件显示但不能作为工作区选择，符号链接条目不自动进入。目录单页最多 256 项、最多枚举 5000 项，并以 `offset/nextOffset` 分页；超限、拒绝访问和失效安装都必须给关联拒绝。中继只做既有方向白名单与结构守卫，不保存、索引或记录目录结果。
 
+**真实门槛（2026-08-24）：已通过。** 安装版 Android release App 经正式 `https://hrack.modplex.app/` TLS/WSS 房间，从电脑 Home 逐层浏览到 HRack 仓库并显示其中真实的目录和 `package.json`；选择该目录后由手机启动电脑上实际安装的 Windows Codex CLI。桌面权威 PTY 记录确认 `adapterId=codex`、`cwd` 等于手机选择结果、PTY 存活、history 已有非零输出且驾驶状态为 `driven`；Android HUD 也确认已解析非零 PTY 字节并显示真实 Codex 启动画面。该门槛不使用内存中继、测试目录或 CLI fixture，定向用例见 `e2e/remote-workspace-picker-android-live.spec.ts`；完整记录见 [远程工作区选择器计划 §6](./PLAN-REMOTE-WORKSPACE-PICKER.md#6-实现与验证记录)。
+
 ### 6.3 数据面（仅驾驶中）
 
 | type | 方向 | 字段 |

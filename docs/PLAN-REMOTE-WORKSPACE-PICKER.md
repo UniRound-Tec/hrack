@@ -1,6 +1,6 @@
 # 远程工作区选择器计划
 
-> 状态：实施中
+> 状态：已完成（2026-08-24）
 > 日期：2026-08-24
 > 范围：Android/iOS App 经既有 1:1 房间浏览 HRack 电脑目录并选择新会话工作区。
 
@@ -44,3 +44,11 @@
 4. App 单元测试证明根加载、进入目录、文件禁用、分页、选择当前目录和失败重试。
 5. 安装 Android release 后，经 `https://hrack.modplex.app/` 的公开 HTTPS/WSS 房间浏览开发机目录，选中真实目录并启动一个真实 CLI/PTY；不得用内存 mock 代替最终门槛。
 
+## 6. 实现与验证记录
+
+- 根协议、桌面端、App 与 Server 的协议副本已经同步；协议 parity/hash 门禁通过。
+- 桌面端真实枚举、请求并发/断线隔离、协议结构守卫、Relay 双向转发、App 根加载/逐层进入/文件禁用/分页/重试/选择均有定向自动测试。
+- Android release APK 已安装到模拟器；最终门禁没有使用 CLI fixture、内存 relay 或测试目录，而是使用正式 `https://hrack.modplex.app/` TLS/WSS 中继和电脑上实际安装的 Windows Codex CLI。
+- 手机从 `Home` 逐层浏览到当前 HRack 仓库，真实看到 `.git`、`AGENTS.md`、`package-lock.json`、`package.json` 等电脑文件；选择当前文件夹后，手机发出的 `create` 在电脑启动了 Codex PTY。
+- 桌面权威状态进一步确认新 PTY 的 `adapterId=codex`、`cwd` 等于手机所选目录、进程仍存活、权威 history 已有非零输出，并且远程驾驶状态为 `driven`；Android HUD 同时确认已解析非零 PTY 字节，截图能看到真实 Codex 启动界面。
+- 定向真实门禁：`npx playwright test e2e/remote-workspace-picker-android-live.spec.ts -g "browses the real desktop filesystem"`，结果 `1 passed (3.3m)`；门禁复用既有账号房间，不创建、旋转或撤销房间。
