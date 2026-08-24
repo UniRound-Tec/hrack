@@ -576,3 +576,18 @@ root full regression: 339 passed / 22 skipped / 0 failed (4.6m)
 ```
 
 D4 真实复跑额外捕获并修复了普通 mock 无法暴露的协议问题：官方 boot graph 同时请求 40+ plugin bundle，原 16 HTTP stream 上限会让页面报 `Failed to load plugins`，现调整为 64 且不扩大字节预算；Phone teardown 与已完成 stream 的迟到帧必须按本代 tombstone 幂等丢弃，未知 id 仍 fail closed；真正协议错误必须走有界重连；WebSocket 的 1005/1006 等保留关闭码不能传给 Node `ws.close()`，Relay 与 Desktop 现统一归一为 1001，协议解析器拒绝 1004/1005/1006/1015 和 1016–2999。对应确定性回归在 `e2e/remote-dsh-protocol.spec.ts` 与 Server `relay/test/dsh-gateway.spec.ts`。
+
+## 20. D5 发布关门执行记录
+
+D5 的可自动化与可远程验证部分已在 2026-08-24 完成，逐项状态见
+[D5 发布清单](./CHECKLIST-REMOTE-DSH-D5.md)。Server `e5453ca` 已部署到生产主机：
+
+- `production-monitor` 同时检查平台与独立 DSH origin 的受信 TLS/健康接口，现网连续报告 `ok=true`；Relay `runtime-metrics.dsh` 只含健康、并发、buffer、双向字节和五类错误计数，不含 origin/path/room/ticket/Cookie/body；
+- 使用与 `modplex.app` 无关的公开 sslip.io 域名、Let's Encrypt 证书和 `DSH_PUBLIC_ORIGIN` 完成另一组真实域名/TLS 配置验证；生产 DSH 实现未硬编码 `modplex.app`；
+- 现网 TLS ALPN 协商为 `h2`，运行中的 OpenResty 配置在 server/location 两层均为 `access_log off`，并关闭 request/response buffering、保留一小时流超时；D4 已在同一入口真实承载约 4.54 MB boot graph 与两条 event WebSocket；
+- 新增重启组合门禁：恢复同一持久房间后，上一代未消费 ticket 为 404、Cookie 为 401，重连 Desktop/Phone/Tunnel 后新 ticket 为 303；生产又创建 32,597 字节备份并在隔离卷通过 SHA-256、SQLite `integrity_check=ok` 与 11 张表检查；
+- 当前账号轮换后的稳定房间在新 Relay 与协调器恢复后仍进入有效配对页，完整地址未写入文档或日志。
+
+D5 尚不能关门：当前工作环境只有 Android 模拟器，没有 Android 物理真机和 iPhone/iPad，
+因此不能用模拟器替代软键盘、safe area、后台恢复、外链和不同公网的实体设备验收；此外
+`dsh.hrack.modplex.app` 在生产主机公共解析器上仍无 DNS 记录，正式域名证书与切流尚不能执行。
