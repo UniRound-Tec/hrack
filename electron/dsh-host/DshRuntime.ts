@@ -53,6 +53,11 @@ export interface DshExternalSpawnSpec {
   windowsVerbatimArguments?: boolean
 }
 
+export interface DshRemoteLaunchOptions {
+  publicOrigin: string
+  overlayPath: string
+}
+
 export const DSH_WSL_PID_MARKER = '__HRACK_DSH_PID__='
 
 function quoteCmdArg(value: string): string {
@@ -67,13 +72,23 @@ export function buildDshExternalSpawnSpec(options: {
   environmentPath?: string
   commandInterpreter?: string
   inheritedEnv?: NodeJS.ProcessEnv
+  remote?: DshRemoteLaunchOptions
 }): DshExternalSpawnSpec {
   const { candidate, port, dshHome } = options
-  const runtimeArgs = [
-    'web',
-    '--host', '127.0.0.1',
-    '--port', String(port)
-  ]
+  const runtimeArgs = options.remote
+    ? [
+        '--profile', 'web',
+        '--patch', options.remote.overlayPath,
+        '--host', '127.0.0.1',
+        '--port', String(port),
+        '--trusted-host', new URL(options.remote.publicOrigin).host,
+        '--no-open'
+      ]
+    : [
+        'web',
+        '--host', '127.0.0.1',
+        '--port', String(port)
+      ]
   const telemetry = options.inheritedEnv?.['DSH_TELEMETRY_DISABLED'] ?? '1'
 
   if (candidate.runtime.kind === 'wsl') {

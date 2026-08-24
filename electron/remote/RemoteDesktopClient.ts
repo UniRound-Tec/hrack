@@ -17,9 +17,17 @@ import {
   type RemoteMessage,
   type RemotePtyHistorySnapshot,
   type RemoteSession,
+  type RemoteWebSurface,
   type RemoteWorkspaceEntry,
   type RemoteWorkspaceListRejectReason
 } from '../../shared/remote-protocol'
+
+export interface RemoteDshTunnelLease {
+  roomId: string
+  tunnelUrl: string
+  publicOrigin: string
+  seatToken: string
+}
 
 export type RemoteSessionChange =
   | { kind: 'upsert'; session: RemoteSession }
@@ -196,6 +204,7 @@ export class RemoteDesktopClient {
   private activeCreateRequestId: string | null = null
   private readonly activeWorkspaceRequests = new Map<string, WebSocket>()
   private phoneGraceTimer: ReturnType<typeof setTimeout> | null = null
+  private dshSurface: RemoteWebSurface | null = null
   private pendingRevoke: {
     promise: Promise<RemoteDesktopState>
     resolve: (state: RemoteDesktopState) => void
@@ -212,6 +221,7 @@ export class RemoteDesktopClient {
       broadcastDrive?: (state: RemoteDriveState) => void
       revokeTimeoutMs?: number
       phoneGraceMs?: number
+      onDshTunnelLease?: (lease: RemoteDshTunnelLease | null) => void
     }
   ) {}
 
@@ -313,6 +323,7 @@ export class RemoteDesktopClient {
     socket.onclose = () => {
       if (this.socket !== socket) return
       this.socket = null
+      this.deps.onDshTunnelLease?.(null)
       this.cancelPhoneGrace()
       this.releaseDrive()
       this.resetCreateRequests()
@@ -382,6 +393,7 @@ export class RemoteDesktopClient {
     const message = parsed.value
     switch (message.type) {
       case 'hello-ok':
+        this.publishDshLease(message)
         if (message.peer.phone) this.cancelPhoneGrace()
         this.setState({
           phase: message.peer.phone ? 'peer-online' : 'waiting-phone',
@@ -392,6 +404,7 @@ export class RemoteDesktopClient {
         if (message.peer.phone) {
           this.sendSnapshot()
           this.refreshCatalog()
+          this.sendDshSurface()
         }
         return
       case 'peer-join':
@@ -405,6 +418,7 @@ export class RemoteDesktopClient {
         })
         this.sendSnapshot()
         this.refreshCatalog()
+        this.sendDshSurface()
         return
       case 'peer-leave':
         if (message.role !== 'phone') return
@@ -520,6 +534,11 @@ export class RemoteDesktopClient {
     const responses = await record.result
     if (this.createRequests.get(message.requestId) !== record) return
     for (const response of responses) this.send(response)
+  }
+
+  setDshSurface(surface: RemoteWebSurface | null): void {
+    this.dshSurface = surface ? { ...surface } : null
+    this.sendDshSurface()
   }
 
   private async startWorkspaceList(
@@ -744,6 +763,28 @@ export class RemoteDesktopClient {
     this.snapshotSent = true
   }
 
+  private sendDshSurface(): void {
+    if (!this.dshSurface) return
+    this.send({ v: 1, type: 'dsh-surface-state', surface: this.dshSurface })
+  }
+
+  private publishDshLease(
+    message: Extract<RemoteMessage, { type: 'hello-ok' }>
+  ): void {
+    const tunnel = message.relayCapabilities?.dshWebTunnel
+    const join = this.join
+    if (!tunnel || !message.dshSeatToken || !join) {
+      this.deps.onDshTunnelLease?.(null)
+      return
+    }
+    this.deps.onDshTunnelLease?.({
+      roomId: join.roomId,
+      tunnelUrl: join.wsUrl.replace(/\/v1\/ws$/, '/v1/dsh-tunnel'),
+      publicOrigin: tunnel.origin,
+      seatToken: message.dshSeatToken
+    })
+  }
+
   private async sendCatalog(): Promise<void> {
     const launch = this.deps.launch
     const socket = this.socket
@@ -791,6 +832,7 @@ export class RemoteDesktopClient {
     this.unsubscribe = null
     this.snapshotSent = false
     this.resetCreateRequests()
+    this.deps.onDshTunnelLease?.(null)
     const socket = this.socket
     this.socket = null
     this.join = null

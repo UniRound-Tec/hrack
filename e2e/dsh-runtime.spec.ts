@@ -122,6 +122,27 @@ test('external launch preserves native and WSL runtime boundaries', () => {
   expect(wsl.env.DSH_HOME).toBeUndefined()
 })
 
+test('remote launch pins loopback, product overlay and the public authority', () => {
+  const remote = buildDshExternalSpawnSpec({
+    candidate: windowsCandidate,
+    port: 43125,
+    dshHome: 'C:\\Users\\Test User\\.dsh',
+    commandInterpreter: 'C:\\Windows\\System32\\cmd.exe',
+    inheritedEnv: { SystemRoot: 'C:\\Windows' },
+    remote: {
+      publicOrigin: 'https://dsh.example.test',
+      overlayPath: 'C:\\HRack Data\\dsh-runtime\\remote-web.patch.yml'
+    }
+  })
+  const command = remote.args.join(' ')
+  expect(command).toContain('"--profile" "web"')
+  expect(command).toContain('"--patch" "C:\\HRack Data\\dsh-runtime\\remote-web.patch.yml"')
+  expect(command).toContain('"--host" "127.0.0.1"')
+  expect(command).toContain('"--trusted-host" "dsh.example.test"')
+  expect(command).toContain('"--no-open"')
+  expect(command).not.toContain('0.0.0.0')
+})
+
 test('Home hides DSH when the scan finds no installation', async () => {
   const appState = await launchApp({ createDefaultTerminal: false })
   try {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   REMOTE_DESKTOP_IDLE_STATE,
+  type RemoteDshState,
   type RemoteDesktopState
 } from '../../shared/ipc-contract'
 import { parseJoinUrl } from '../../shared/remote-protocol'
@@ -16,10 +17,20 @@ export default function RemoteSettingsSection() {
     REMOTE_DESKTOP_IDLE_STATE
   )
   const [confirming, setConfirming] = useState(false)
+  const [dshState, setDshState] = useState<RemoteDshState>({
+    enabled: false,
+    relaySupported: false,
+    surface: null
+  })
 
   useEffect(() => {
     void window.remoteApi.getState().then(setState)
     return window.remoteApi.onStateChange(setState)
+  }, [])
+
+  useEffect(() => {
+    void window.remoteApi.getDshState().then(setDshState)
+    return window.remoteApi.onDshStateChange(setDshState)
   }, [])
 
   const parsed = useMemo(() => parseJoinUrl(joinUrl), [joinUrl])
@@ -118,6 +129,44 @@ export default function RemoteSettingsSection() {
           }`}
         >
           {statusText}
+        </p>
+      </div>
+      <div className="border-b border-border-faint py-3.5">
+        <label className="flex items-start justify-between gap-4">
+          <span>
+            <span className="block font-pingfang text-[12px] font-medium text-text-secondary">
+              {strings.settings.remoteDsh}
+            </span>
+            <span className="mt-0.5 block font-pingfang text-[11px] text-text-faint">
+              {strings.settings.remoteDshHint}
+            </span>
+          </span>
+          <input
+            data-testid="settings-remote-dsh"
+            type="checkbox"
+            checked={dshState.enabled}
+            onChange={(event) => {
+              void window.remoteApi
+                .setDshEnabled(event.target.checked)
+                .then(setDshState)
+            }}
+            className="mt-0.5 h-4 w-4 accent-current"
+          />
+        </label>
+        <p
+          data-testid="settings-remote-dsh-status"
+          data-dsh-surface-state={dshState.surface?.state ?? 'none'}
+          className="mt-2 font-pingfang text-[11px] text-text-faint"
+        >
+          {!dshState.enabled
+            ? strings.settings.remoteDshOff
+            : dshState.surface?.state === 'ready'
+              ? strings.settings.remoteDshReady
+              : dshState.surface?.state === 'starting'
+                ? strings.settings.remoteDshStarting
+                : dshState.relaySupported
+                  ? strings.settings.remoteDshUnavailable
+                  : strings.settings.remoteDshUnsupported}
         </p>
       </div>
       {parsed.ok && (

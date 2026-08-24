@@ -68,6 +68,7 @@ import type { DshProjectionBridge } from './dsh-host/DshProjectionBridge'
 import type { DshWebSurfaceController } from './dsh-surface/DshWebSurfaceController'
 import type { UpdateService } from './update/UpdateService'
 import type { RemoteDesktopClient } from './remote/RemoteDesktopClient'
+import type { RemoteDshCoordinator } from './remote/RemoteDshCoordinator'
 import { UserThemeStore } from './user-themes'
 import {
   installTerminalBackgroundProtocol,
@@ -154,6 +155,7 @@ export interface IpcContext {
   dshProjections: DshProjectionBridge
   updateService: UpdateService
   remoteClient: RemoteDesktopClient
+  remoteDshCoordinator: RemoteDshCoordinator
   getDshSurfaceController(): DshWebSurfaceController | null
   getWindow(): BrowserWindow | null
   getTray(): Tray | null
@@ -718,6 +720,20 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     requireMainWindow(event, ctx)
     return ctx.remoteClient.getDriveState()
   })
+  ipcMain.handle(RemoteInvokeChannel.GetDshState, (event) => {
+    requireMainWindow(event, ctx)
+    return ctx.remoteDshCoordinator.getState()
+  })
+  ipcMain.handle(
+    RemoteInvokeChannel.SetDshEnabled,
+    (event, enabled: unknown) => {
+      requireMainWindow(event, ctx)
+      if (typeof enabled !== 'boolean') {
+        return ctx.remoteDshCoordinator.getState()
+      }
+      return ctx.remoteDshCoordinator.setEnabled(enabled)
+    }
+  )
   ipcMain.handle(RemoteInvokeChannel.Connect, (event, url: unknown) => {
     requireMainWindow(event, ctx)
     if (typeof url !== 'string' || url.length === 0 || url.length > 4_096) {

@@ -155,6 +155,7 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "uqr": "^0.1.3",
+    "ws": "^8.21.3",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -175,7 +176,6 @@
     "subset-font": "^2.5.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
-    "vite": "^7.3.6",
-    "ws": "^8.21.3"
+    "vite": "^7.3.6"
   }
 }

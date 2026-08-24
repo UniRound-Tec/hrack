@@ -152,6 +152,32 @@ export interface RemoteHelloOk {
   v: 1
   type: 'hello-ok'
   peer: RemotePeerOccupancy
+  relayCapabilities?: RemoteRelayCapabilities
+  /** Relay-private credential: only a successfully seated Desktop receives it. */
+  dshSeatToken?: string
+}
+
+export interface RemoteRelayCapabilities {
+  dshWebTunnel?: {
+    /** Canonical HTTPS origin with no path, query, fragment, or user info. */
+    origin: string
+    protocol: 1
+  }
+}
+
+export interface RemoteWebSurface {
+  id: 'dsh'
+  kind: 'dsh-web'
+  displayName: 'DeepSeek Harness'
+  iconId: 'dsh'
+  state: 'starting' | 'ready' | 'unavailable' | 'failed'
+  generation: number
+}
+
+export interface RemoteDshSurfaceState {
+  v: 1
+  type: 'dsh-surface-state'
+  surface: RemoteWebSurface
 }
 
 export interface RemotePeerJoin {
@@ -393,6 +419,7 @@ export type RemoteMessage =
   | RemotePtyIn
   | RemotePtyAck
   | RemotePtyExit
+  | RemoteDshSurfaceState
 
 export type RemoteRelayRequest = RemoteHello | RemoteRevoke
 export type RemoteRelayEvent =
@@ -417,6 +444,7 @@ export type RemoteDesktopToPhoneMessage =
   | RemoteNotImplemented
   | RemotePtyOut
   | RemotePtyExit
+  | RemoteDshSurfaceState
 export type RemotePhoneToDesktopMessage =
   | RemoteDrive
   | RemoteUndrive
@@ -507,7 +535,8 @@ const DESKTOP_TO_PHONE_TYPES = new Set<RemoteDesktopToPhoneMessage['type']>([
   'create-reject',
   'not-implemented',
   'pty-out',
-  'pty-exit'
+  'pty-exit',
+  'dsh-surface-state'
 ])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -532,6 +561,27 @@ function isNonNegInt(value: unknown): value is number {
 
 function isPosInt(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1
+}
+
+function parseCanonicalHttpsOrigin(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 2_048) return null
+  try {
+    const url = new URL(value)
+    if (
+      url.protocol !== 'https:' ||
+      url.origin !== value ||
+      url.pathname !== '/' ||
+      url.search ||
+      url.hash ||
+      url.username ||
+      url.password
+    ) {
+      return null
+    }
+    return value
+  } catch {
+    return null
+  }
 }
 
 function isBoundedPosInt(value: unknown, max: number): value is number {
@@ -943,11 +993,43 @@ export function parseRemoteMessage(
       ) {
         return fail('invalid-hello-ok')
       }
-      return ok({
+      let relayCapabilities: RemoteRelayCapabilities | undefined
+      if (raw.relayCapabilities !== undefined) {
+        if (!isRecord(raw.relayCapabilities)) return fail('invalid-hello-ok')
+        const tunnel = raw.relayCapabilities.dshWebTunnel
+        if (tunnel !== undefined) {
+          if (!isRecord(tunnel) || tunnel.protocol !== 1) {
+            return fail('invalid-hello-ok')
+          }
+          const origin = parseCanonicalHttpsOrigin(tunnel.origin)
+          if (!origin) return fail('invalid-hello-ok')
+          relayCapabilities = { dshWebTunnel: { origin, protocol: 1 } }
+        } else {
+          relayCapabilities = {}
+        }
+      }
+      if (
+        raw.dshSeatToken !== undefined &&
+        !isBoundedNonEmptyString(
+          raw.dshSeatToken,
+          REMOTE_PROTOCOL_LIMITS.idChars
+        )
+      ) {
+        return fail('invalid-hello-ok')
+      }
+      if (raw.dshSeatToken !== undefined && !relayCapabilities?.dshWebTunnel) {
+        return fail('invalid-hello-ok')
+      }
+      const message: RemoteHelloOk = {
         v: 1,
         type: 'hello-ok',
         peer: { desktop: raw.peer.desktop, phone: raw.peer.phone }
-      })
+      }
+      if (relayCapabilities) message.relayCapabilities = relayCapabilities
+      if (typeof raw.dshSeatToken === 'string') {
+        message.dshSeatToken = raw.dshSeatToken
+      }
+      return ok(message)
     }
     case 'peer-join':
     case 'peer-leave': {
@@ -1380,6 +1462,37 @@ export function parseRemoteMessage(
       if (typeof raw.code === 'number') message.code = raw.code
       if (typeof raw.signal === 'number') message.signal = raw.signal
       return ok(message)
+    }
+    case 'dsh-surface-state': {
+      if (!isRecord(raw.surface)) return fail('invalid-dsh-surface-state')
+      const surface = raw.surface
+      if (
+        surface.id !== 'dsh' ||
+        surface.kind !== 'dsh-web' ||
+        surface.displayName !== 'DeepSeek Harness' ||
+        surface.iconId !== 'dsh' ||
+        (
+          surface.state !== 'starting' &&
+          surface.state !== 'ready' &&
+          surface.state !== 'unavailable' &&
+          surface.state !== 'failed'
+        ) ||
+        !isPosInt(surface.generation)
+      ) {
+        return fail('invalid-dsh-surface-state')
+      }
+      return ok({
+        v: 1,
+        type: 'dsh-surface-state',
+        surface: {
+          id: 'dsh',
+          kind: 'dsh-web',
+          displayName: 'DeepSeek Harness',
+          iconId: 'dsh',
+          state: surface.state,
+          generation: surface.generation
+        }
+      })
     }
     default:
       return fail('unknown-type')

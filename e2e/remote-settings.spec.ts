@@ -73,6 +73,21 @@ test.describe('remote settings', () => {
     ])
   })
 
+  test('DSH remote access is an explicit opt-in and reports unsupported relays', async () => {
+    const toggle = page.getByTestId('settings-remote-dsh')
+    await expect(toggle).not.toBeChecked()
+    await expect(page.getByTestId('settings-remote-dsh-status')).toContainText(
+      '未开放'
+    )
+    await toggle.click()
+    await expect(toggle).toBeChecked()
+    await expect(page.getByTestId('settings-remote-dsh-status')).toContainText(
+      '等待支持 DSH'
+    )
+    await expect.poll(() => page.evaluate(() => window.remoteApi.getDshState()))
+      .toMatchObject({ enabled: true, relaySupported: false })
+  })
+
   test('real Electron session stays exited remotely until explicit close, then revokes', async () => {
     test.skip(process.platform !== 'win32', 'interactive CLI fixture uses cmd.exe')
     const joinUrl = relay.joinUrl('aK3')

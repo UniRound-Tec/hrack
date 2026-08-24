@@ -410,6 +410,13 @@ export const ko = {
     remoteConnect: '연결',
     remoteDisconnect: '끊기',
     remoteRevoke: '방 취소',
+    remoteDsh: '현재 원격 방에서 DSH 열기 허용',
+    remoteDshHint: '기본값은 꺼짐입니다. 켜면 휴대폰에서 공식 DSH 웹 UI와 웹 작업 공간 선택기를 사용할 수 있습니다.',
+    remoteDshOff: '공개되지 않음',
+    remoteDshStarting: 'DSH를 검증하고 전용 터널을 연결하는 중',
+    remoteDshReady: '원격 DSH 웹 준비 완료',
+    remoteDshUnsupported: 'DSH 웹 터널을 지원하는 Relay 대기 중',
+    remoteDshUnavailable: '현재 DSH 버전 또는 터널을 사용할 수 없음',
     remoteConfirmTitle: '이 서버로 터미널을 보낼까요?',
     remoteConfirmBody: (origin: string) =>
       `연결하면 세션 목록과 운전 중인 터미널 바이트가 ${origin}으로 갑니다. 이 URL을 가진 사람이 자리를 차지할 수 있습니다.`,

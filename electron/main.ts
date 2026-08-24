@@ -64,6 +64,7 @@ import { OpenCodeControlPlane } from './bridge/OpenCodeControlPlane'
 import { BridgeStateStore } from './bridge/state'
 import { BridgeError } from './bridge/errors'
 import { RemoteDesktopClient } from './remote/RemoteDesktopClient'
+import { RemoteDshCoordinator } from './remote/RemoteDshCoordinator'
 import { runtimeSessionSource } from './remote/runtimeSessionSource'
 import { runtimeRemotePtyHost } from './remote/runtimeRemotePtyHost'
 import { runtimeRemoteLaunchHost } from './remote/runtimeRemoteLaunchHost'
@@ -150,6 +151,7 @@ const agentRuntime = new AgentSessionRuntime({
 })
 // DSH host：只启动扫描到的本机 / WSL 安装；懒启动并随 app 退出回收。
 let dshSurfaceController: DshWebSurfaceController | null = null
+let remoteDshCoordinator: RemoteDshCoordinator | null = null
 const dshHost = new DshHostManager({
   defaultDshHome: join(app.getPath('userData'), 'dsh-home'),
   discovery: cliDiscovery,
@@ -158,6 +160,7 @@ const dshHost = new DshHostManager({
   onLeftReady: () => {
     dshProjector.stop()
     dshSurfaceController?.hostStopped()
+    remoteDshCoordinator?.hostStopped()
   }
 })
 const dshProjections = new DshProjectionBridge({
@@ -234,7 +237,16 @@ const remoteClient = new RemoteDesktopClient({
   }),
   workspace: runtimeRemoteWorkspaceHost(cliDiscovery),
   broadcastDrive: (state) =>
-    broadcastToAllWindows(RemoteEventChannel.DriveChanged, state)
+    broadcastToAllWindows(RemoteEventChannel.DriveChanged, state),
+  onDshTunnelLease: (lease) => remoteDshCoordinator?.acceptLease(lease)
+})
+
+remoteDshCoordinator = new RemoteDshCoordinator({
+  userDataDir: app.getPath('userData'),
+  host: dshHost,
+  remote: remoteClient,
+  broadcast: (state) =>
+    broadcastToAllWindows(RemoteEventChannel.DshStateChanged, state)
 })
 
 const updateService = new UpdateService({
@@ -256,6 +268,7 @@ function prepareShutdown(): Promise<void> {
   shutdownPromise = (async () => {
     // Agent Runtime 先写入退出事实并回收 observer；随后兜底关闭普通终端。
     controlPlane.dispose()
+    remoteDshCoordinator?.dispose()
     remoteClient.dispose()
     await bridgeServer.stop()
     await agentRuntime.disposeAll()
@@ -371,6 +384,7 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
     dshProjections,
     updateService,
     remoteClient,
+    remoteDshCoordinator,
     getDshSurfaceController: () => dshSurfaceController,
     getWindow: () => (winRef && !winRef.isDestroyed() ? winRef : null),
     getTray: () => trayRef,

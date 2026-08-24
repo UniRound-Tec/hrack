@@ -48,6 +48,7 @@ import {
   type RemoteApi,
   type RemoteDriveState,
   type RemoteDesktopState,
+  type RemoteDshState,
   type RemoteVisibleLaunchRequest,
   type ShellApi,
   type SpawnOptions,
@@ -364,6 +365,9 @@ const remoteApi: RemoteApi = {
     ipcRenderer.invoke(RemoteInvokeChannel.Reclaim, sessionId),
   setRecentWorkspaces: (workspaces) =>
     ipcRenderer.invoke(RemoteInvokeChannel.SetRecentWorkspaces, workspaces),
+  getDshState: () => ipcRenderer.invoke(RemoteInvokeChannel.GetDshState),
+  setDshEnabled: (enabled) =>
+    ipcRenderer.invoke(RemoteInvokeChannel.SetDshEnabled, enabled),
   onStateChange: (cb) => {
     const handler = (
       _event: IpcRendererEvent,
@@ -393,6 +397,21 @@ const remoteApi: RemoteApi = {
     ipcRenderer.on(RemoteEventChannel.DriveChanged, handler)
     return () =>
       ipcRenderer.removeListener(RemoteEventChannel.DriveChanged, handler)
+  },
+  onDshStateChange: (cb) => {
+    const handler = (_event: IpcRendererEvent, state: RemoteDshState): void => {
+      if (
+        state &&
+        typeof state === 'object' &&
+        typeof state.enabled === 'boolean' &&
+        typeof state.relaySupported === 'boolean'
+      ) {
+        cb(state)
+      }
+    }
+    ipcRenderer.on(RemoteEventChannel.DshStateChanged, handler)
+    return () =>
+      ipcRenderer.removeListener(RemoteEventChannel.DshStateChanged, handler)
   }
 }
 

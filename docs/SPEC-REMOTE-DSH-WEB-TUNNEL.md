@@ -1,6 +1,6 @@
 # HRack Remote DSH Web Tunnel — Spec
 
-> 状态：**D0 Spec 与真实安全原型已关门（2026-08-24）；D1 尚未开始。** 本文定义 P0–P8 之后的独立 DSH 远程扩展轨，不表示 Remote P8 已关门。
+> 状态：**D0 Spec/真实安全原型与 D1 Desktop 已关门（2026-08-24）；下一阶段为 D2 Server。** 本文定义 P0–P8 之后的独立 DSH 远程扩展轨，不表示 Remote P8 已关门。
 > 父文档：[HRack 远程控制 Spec](./SPEC-REMOTE.md)、[DSH 官方 Web Surface 隔离嵌入计划](./PLAN-DSH-OFFICIAL-WEB-SURFACE.md)。
 > 范围：手机 App 通过现有 1:1:1 房间，打开并操作电脑上真实运行的 DSH 官方 Web UI；不重做 DSH UI，不把 DSH loopback 端口直接暴露到公网。
 
@@ -462,4 +462,42 @@ $env:HRACK_E2E_REAL_DSH=(Get-Command dsh.cmd).Source
 npx playwright test e2e/remote-dsh-d0.spec.ts -g "D0 real DSH supports a trusted public browser without loopback privilege"
 ```
 
-未设置 `HRACK_E2E_REAL_DSH` 时该用例明确 skip，普通开发机不会悄悄使用 fixture 冒充真实 DSH。D0 只冻结安全与 carrier 可行性；Desktop 产品实现、持久设置和 tunnel client 属于 D1。
+未设置 `HRACK_E2E_REAL_DSH` 时该用例明确 skip，普通开发机不会悄悄使用 fixture 冒充真实 DSH。D0 只冻结安全与 carrier 可行性；Desktop 产品实现、持久设置和 tunnel client 在 D1 完成。
+
+## 16. D1 Desktop 实现与验证记录
+
+D1 已实现桌面端产品链，而不是把 D0 测试脚本直接搬进产品：
+
+- Remote 设置新增默认关闭、主进程原子持久化的“允许当前远控房间打开 DSH”显式开关；关闭时独立 tunnel 立即终止，PTY 主通道不受影响；
+- 主 WSS `hello-ok` 可选携带规范 HTTPS `relayCapabilities.dshWebTunnel` 与 Desktop-only `dshSeatToken`；旧 Relay 省略字段时仍可照常完成 PTY 配对；
+- HRack 在 `<userData>/dsh-runtime/remote-web.patch.yml` 生成自己拥有的顶层 YAML patch 数组，不写用户 DSH profile；启动参数固定为随机 loopback、browse overlay、Relay 公网 authority 和 `--no-open`；
+- 产品 ready 门槛真实解析 boot manifest，验证 browse client 唯一且 native/auto 不存在，再调用普通 API、directory browse、4 个 privileged denial、SSE 与两条 event WebSocket；任一步不符只发布 unavailable/failed；
+- `DshTunnelClient` 只消费当前 `DshHostManager` ready `baseUrl`，远端报文不能选择 scheme/host/port；HTTP/WS 路由与 header 均为 allowlist，公网 Host/Origin 保留，Cookie/Authorization/Forwarded/Set-Cookie 不进入另一侧；
+- tunnel 使用独立 `ws` 产品依赖、32 KiB control frame、10-byte binary header、64 KiB payload、sequence、credit、16 MiB request、32 MiB response、512 KiB/stream 与 2 MiB/room buffer、HTTP/SSE/WS 并发上限及 stream generation 防复用；
+- `RemoteWebSurface` 作为独立 `dsh-web` surface 发布，不混入 PTY session 或六态。
+
+真实门槛使用系统安装的 DSH `0.1.0-rc.7`、独立临时 `DSH_HOME`、真实 Electron 主进程和本机测试 Relay。Relay 只模拟尚未进入 D2 的公网侧 carrier；HTML、插件、RPC、SSE、WebSocket、目录与 session 状态全部来自真实 DSH 进程。最终定向结果：
+
+```text
+[dsh-d1] runtime=real resources=46 bytes=4541867 privileged=denied session=blank tunnel=fixed
+1 passed (6.2s)
+```
+
+这条门槛实际完成：
+
+- 通过产品独立 tunnel 读取真实根 HTML、46 个 boot/assets/plugin 资源，共 4,541,867 字节；
+- 建立 `/plugins/events` 长期 SSE 与 `/api/events.host`、`/api/events.mux` 两条真实本地 WebSocket；
+- 通过公网 authority 调用 `host.describe`、`session.list`、`workspace.list`、`host.listDirectory`；
+- 证明 `host.pickDirectory`、`host.openPath`、`settings.describe`、`credentials.describe` 仍为 403 `forbidden`；
+- 在测试拥有的临时 workspace 创建真实空白 DSH session，不提交 prompt、不产生模型费用；
+- 证明 overlay 位于 HRack userData runtime 目录、开关已落入 `main-prefs.json`，选定 DSH_HOME 没有新增 patch；
+- `npm run typecheck`、产品 build、协议/allowlist 门禁、Remote 设置显式 opt-in 回归通过。
+
+真实门禁命令：
+
+```powershell
+$env:HRACK_E2E_REAL_DSH=(Get-Command dsh.cmd).Source
+npx playwright test e2e/remote-dsh-d1.spec.ts -g "D1 Desktop carries real DSH"
+```
+
+D1 真实复跑还捕获并修复了三个不能由普通 mock 暴露的问题：产品 overlay 必须是顶层 patch 数组；`ws` 必须作为产品依赖被 externalize，不能由主进程 bundler 错误内联 optional buffer adapter；最后一个 response frame 的反向 credit 可能晚于 `http-end` 到达，必须由 TIME_WAIT stream 吸收，不能误判成未知流关闭整条 tunnel。

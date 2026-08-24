@@ -412,6 +412,13 @@ export const en = {
     remoteConnect: 'Connect',
     remoteDisconnect: 'Disconnect',
     remoteRevoke: 'Revoke room',
+    remoteDsh: 'Allow this Remote room to open DSH',
+    remoteDshHint: 'Off by default. When enabled, the phone can use the official DSH web UI and web workspace picker.',
+    remoteDshOff: 'Not exposed',
+    remoteDshStarting: 'Validating DSH and opening its independent tunnel',
+    remoteDshReady: 'Remote DSH web is ready',
+    remoteDshUnsupported: 'Waiting for a Relay that supports the DSH web tunnel',
+    remoteDshUnavailable: 'This DSH version or tunnel is currently unavailable',
     remoteConfirmTitle: 'Send the terminal to this server?',
     remoteConfirmBody: (origin: string) =>
       `After connecting, session lists and driven terminal bytes go to ${origin}. Anyone with this URL can take a seat.`,

@@ -410,6 +410,13 @@ export const zhTW = {
     remoteConnect: '連線',
     remoteDisconnect: '中斷',
     remoteRevoke: '撤銷房間',
+    remoteDsh: '允許目前遠控房間開啟 DSH',
+    remoteDshHint: '預設關閉。啟用後，手機可使用 DSH 官方網頁與網頁工作區選擇器。',
+    remoteDshOff: '未開放',
+    remoteDshStarting: '正在驗證 DSH 並建立獨立通道',
+    remoteDshReady: 'DSH 遠端網頁已就緒',
+    remoteDshUnsupported: '等待支援 DSH 網頁通道的遠控伺服器',
+    remoteDshUnavailable: '目前 DSH 版本或通道暫不可用',
     remoteConfirmTitle: '把終端機送到這台伺服器？',
     remoteConfirmBody: (origin: string) =>
       `連線後，工作階段列表與被駕駛的終端機位元組會送到 ${origin}。持有這條 URL 的人可以占座。`,

@@ -14,6 +14,7 @@ import {
   type RemoteRole,
   type RoomTable
 } from '../../shared/remote-protocol'
+import { parseDshTunnelControl } from '../../shared/dsh-tunnel-protocol'
 
 interface SocketMeta {
   connectionId: string
@@ -29,11 +30,15 @@ export class RemoteTestRelay {
   readonly fromDesktop: RemoteMessage[] = []
   readonly fromPhone: RemoteMessage[] = []
   readonly revokes: string[] = []
+  readonly dshFrames: Array<string | Buffer> = []
   confirmRevokes = true
+  private dshCapability: { publicOrigin: string; seatToken: string } | null = null
+  private dshSocket: WebSocket | null = null
 
   private constructor(
     private readonly http: Server,
     private readonly wss: WebSocketServer,
+    private readonly dshWss: WebSocketServer,
     readonly port: number,
     readonly base: string
   ) {}
@@ -44,9 +49,16 @@ export class RemoteTestRelay {
       res.end()
     })
     const wss = new WebSocketServer({ noServer: true })
+    const dshWss = new WebSocketServer({ noServer: true })
     http.on('upgrade', (request, socket, head) => {
       const host = request.headers.host ?? '127.0.0.1'
       const pathname = new URL(request.url ?? '/', `http://${host}`).pathname
+      if (pathname === `${base}/v1/dsh-tunnel`) {
+        dshWss.handleUpgrade(request, socket, head, (ws) => {
+          dshWss.emit('connection', ws, request)
+        })
+        return
+      }
       if (pathname !== `${base}/v1/ws`) {
         socket.destroy()
         return
@@ -64,8 +76,9 @@ export class RemoteTestRelay {
           reject(new Error('test relay has no TCP port'))
           return
         }
-        const relay = new RemoteTestRelay(http, wss, address.port, base)
+        const relay = new RemoteTestRelay(http, wss, dshWss, address.port, base)
         wss.on('connection', (ws) => relay.accept(ws))
+        dshWss.on('connection', (ws) => relay.acceptDsh(ws))
         resolve(relay)
       })
     })
@@ -83,13 +96,52 @@ export class RemoteTestRelay {
     this.rooms = openRoom(this.rooms, roomId)
   }
 
+  enableDsh(publicOrigin: string, seatToken = 'dsh-seat-token-for-tests'): void {
+    this.dshCapability = { publicOrigin, seatToken }
+  }
+
+  sendDsh(message: string | Buffer): void {
+    if (this.dshSocket?.readyState !== WebSocket.OPEN) {
+      throw new Error('DSH tunnel is not open')
+    }
+    this.dshSocket.send(message)
+  }
+
   close(): Promise<void> {
     for (const socket of this.sockets.values()) {
-      socket.close()
+      socket.terminate()
     }
     this.wss.close()
+    this.dshSocket?.terminate()
+    this.dshWss.close()
     return new Promise((resolve, reject) => {
       this.http.close((error) => (error ? reject(error) : resolve()))
+    })
+  }
+
+  private acceptDsh(ws: WebSocket): void {
+    if (this.dshSocket?.readyState === WebSocket.OPEN) {
+      ws.close(4009, 'occupied')
+      return
+    }
+    this.dshSocket = ws
+    ws.on('message', (data, isBinary) => {
+      const value = isBinary ? Buffer.from(data as Buffer) : data.toString()
+      if (!isBinary && this.dshFrames.length === 0) {
+        const hello = parseDshTunnelControl(value as string)
+        if (
+          !hello.ok ||
+          hello.value.type !== 'dsh-tunnel-hello' ||
+          hello.value.dshSeatToken !== this.dshCapability?.seatToken
+        ) {
+          ws.close(4003, 'bad tunnel hello')
+          return
+        }
+      }
+      this.dshFrames.push(value)
+    })
+    ws.once('close', () => {
+      if (this.dshSocket === ws) this.dshSocket = null
     })
   }
 
@@ -194,6 +246,22 @@ export class RemoteTestRelay {
   private send(connectionId: string, message: RemoteMessage): void {
     const socket = this.sockets.get(connectionId)
     if (!socket || socket.readyState !== WebSocket.OPEN) return
-    socket.send(JSON.stringify(message))
+    const info = this.meta.get(connectionId)
+    const outbound =
+      message.type === 'hello-ok' &&
+      info?.role === 'desktop' &&
+      this.dshCapability
+        ? {
+            ...message,
+            relayCapabilities: {
+              dshWebTunnel: {
+                origin: this.dshCapability.publicOrigin,
+                protocol: 1 as const
+              }
+            },
+            dshSeatToken: this.dshCapability.seatToken
+          }
+        : message
+    socket.send(JSON.stringify(outbound))
   }
 }

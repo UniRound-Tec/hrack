@@ -410,6 +410,13 @@ export const ja = {
     remoteConnect: '接続',
     remoteDisconnect: '切断',
     remoteRevoke: 'ルームを失効',
+    remoteDsh: '現在のリモートルームで DSH を開く',
+    remoteDshHint: '既定ではオフです。有効にすると、スマートフォンから公式 DSH Web UI とワークスペース選択を利用できます。',
+    remoteDshOff: '公開されていません',
+    remoteDshStarting: 'DSH を検証し、専用トンネルを接続しています',
+    remoteDshReady: 'リモート DSH Web の準備ができました',
+    remoteDshUnsupported: 'DSH Web トンネル対応 Relay を待っています',
+    remoteDshUnavailable: '現在の DSH バージョンまたはトンネルは利用できません',
     remoteConfirmTitle: 'このサーバーへ端末を送りますか？',
     remoteConfirmBody: (origin: string) =>
       `接続後、セッション一覧と運転中の端末バイトは ${origin} に送られます。この URL を持つ人が座席を取れます。`,

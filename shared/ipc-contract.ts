@@ -7,6 +7,7 @@
 import type { UserThemeFile } from './theme-schema'
 import type { FloatingAppearance } from './floating-window'
 import type { TerminalBackgroundPickResult } from './terminal-background'
+import type { RemoteWebSurface } from './remote-protocol'
 export {
   FloatingWindowEventChannel,
   FloatingWindowInvokeChannel,
@@ -400,13 +401,22 @@ export const RemoteInvokeChannel = {
   GetState: 'remote:get-state',
   GetDriveState: 'remote:get-drive-state',
   Reclaim: 'remote:reclaim',
-  SetRecentWorkspaces: 'remote:set-recent-workspaces'
+  SetRecentWorkspaces: 'remote:set-recent-workspaces',
+  GetDshState: 'remote:get-dsh-state',
+  SetDshEnabled: 'remote:set-dsh-enabled'
 } as const
 
 export const RemoteEventChannel = {
   StateChanged: 'remote:state-changed',
-  DriveChanged: 'remote:drive-changed'
+  DriveChanged: 'remote:drive-changed',
+  DshStateChanged: 'remote:dsh-state-changed'
 } as const
+
+export interface RemoteDshState {
+  enabled: boolean
+  relaySupported: boolean
+  surface: RemoteWebSurface | null
+}
 
 export type RemoteDriveState =
   | {
@@ -440,8 +450,11 @@ export interface RemoteApi {
   getDriveState: () => Promise<RemoteDriveState>
   reclaim: (sessionId: string) => Promise<RemoteDriveState>
   setRecentWorkspaces: (workspaces: string[]) => Promise<void>
+  getDshState: () => Promise<RemoteDshState>
+  setDshEnabled: (enabled: boolean) => Promise<RemoteDshState>
   onStateChange: (cb: (state: RemoteDesktopState) => void) => () => void
   onDriveStateChange: (cb: (state: RemoteDriveState) => void) => () => void
+  onDshStateChange: (cb: (state: RemoteDshState) => void) => () => void
 }
 
 export const AppInvokeChannel = {
