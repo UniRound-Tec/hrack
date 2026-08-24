@@ -90,6 +90,25 @@ async function tapResource(resourceId: string): Promise<void> {
   await adb('shell', 'input', 'tap', String(point[0]), String(point[1]))
 }
 
+async function longPressResource(resourceId: string): Promise<void> {
+  const xml = await waitForUi(
+    (candidate) => boundsFor(candidate, resourceId) !== null,
+    resourceId
+  )
+  const point = boundsFor(xml, resourceId)
+  if (!point) throw new Error(`Android resource disappeared: ${resourceId}`)
+  await adb(
+    'shell',
+    'input',
+    'swipe',
+    String(point[0]),
+    String(point[1]),
+    String(point[0]),
+    String(point[1]),
+    '850'
+  )
+}
+
 async function screenshot(testInfo: TestInfo, name: string): Promise<void> {
   const remotePath = `/sdcard/${name}`
   await adb('shell', 'screencap', '-p', remotePath)
@@ -314,7 +333,7 @@ test.describe('remote P6 Android live relay', () => {
       )
       await screenshot(testInfo, 'p6-android-needs-you.png')
 
-      await tapResource('sessions-forget')
+      await longPressResource('sessions-create')
       await waitForUi(
         (xml) => boundsFor(xml, 'pairing-manual-toggle') !== null,
         'pairing after disconnect'

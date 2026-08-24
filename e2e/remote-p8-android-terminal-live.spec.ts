@@ -97,7 +97,7 @@ interface TerminalMetrics {
 
 function terminalMetrics(xml: string): TerminalMetrics | null {
   const match = xml.match(
-    /text="(WEBGL|DOM) · (\d+) × (\d+) · 已解析\s*(\d+) B"/
+    /text="(WEBGL|DOM) · (\d+) × (\d+) · (?:已解析\s*)?(\d+) B"/
   )
   if (!match) return null
   return {
@@ -142,6 +142,37 @@ async function tapResource(resourceId: string): Promise<void> {
   const point = boundsFor(xml, resourceId)
   if (!point) throw new Error(`Android resource disappeared: ${resourceId}`)
   await adb('shell', 'input', 'tap', String(point[0]), String(point[1]))
+}
+
+async function expandTerminalHud(label: string): Promise<string> {
+  await waitForUi(
+    (xml) => boundsFor(xml, 'terminal-hud-details') !== null,
+    `${label} HUD`
+  )
+  await tapResource('terminal-hud-details')
+  return waitForUi(
+    (xml) => terminalMetrics(xml) !== null,
+    `${label} metrics`
+  )
+}
+
+async function longPressResource(resourceId: string): Promise<void> {
+  const xml = await waitForUi(
+    (candidate) => boundsFor(candidate, resourceId) !== null,
+    resourceId
+  )
+  const point = boundsFor(xml, resourceId)
+  if (!point) throw new Error(`Android resource disappeared: ${resourceId}`)
+  await adb(
+    'shell',
+    'input',
+    'swipe',
+    String(point[0]),
+    String(point[1]),
+    String(point[0]),
+    String(point[1]),
+    '900'
+  )
 }
 
 async function screenshot(testInfo: TestInfo, name: string): Promise<string> {
@@ -372,8 +403,8 @@ async function pairAndroid(joinUrl: string): Promise<void> {
   }
   const pairingUi = await dumpUi()
   if (boundsFor(pairingUi, 'pairing-connect') === null) {
-    // Some IMEs deliver Back to the Activity after dismissing themselves,
-    // which also collapses the optional panel. The URL remains in React state.
+    // Re-focus the always-visible URL field when an IME delivers Back to the
+    // Activity after dismissing itself. The URL remains in React state.
     await tapResource('pairing-manual-toggle')
   }
   await waitForUi(
@@ -515,7 +546,7 @@ test.describe('remote P8 Android terminal preflight layout', () => {
       )
       await adb('shell', 'settings', 'put', 'system', 'user_rotation', '0')
       await startAndroid()
-      await tapResource('pairing-terminal-preflight')
+      await longPressResource('pairing-terminal-preflight')
       const portraitXml = await waitForUi(
         (xml) => preflightMetrics(xml) !== null,
         'portrait terminal preflight',
@@ -632,10 +663,7 @@ test.describe('remote P8 Android terminal live relay', () => {
         'rotation probe session list'
       )
       await tapResource(`session-${existing.sessionId}`)
-      const portraitXml = await waitForUi(
-        (xml) => terminalMetrics(xml) !== null,
-        'rotation probe portrait terminal'
-      )
+      const portraitXml = await expandTerminalHud('rotation probe portrait terminal')
       const portrait = terminalMetrics(portraitXml)
       if (!portrait) throw new Error('missing rotation probe portrait metrics')
 
@@ -806,10 +834,7 @@ test.describe('remote P8 Android terminal live relay', () => {
         'real session list'
       )
       await tapResource(`session-${existing.sessionId}`)
-      const portraitXml = await waitForUi(
-        (xml) =>
-          xml.includes('手机正在控制这一个终端') &&
-          terminalMetrics(xml) !== null,
+      const portraitXml = await expandTerminalHud(
         'driven terminal with parsed history'
       )
       const portrait = terminalMetrics(portraitXml)
@@ -1044,12 +1069,7 @@ test.describe('remote P8 Android terminal live relay', () => {
         'creation form before measured create'
       )
       await tapResource('creation-submit')
-      await waitForUi(
-        (xml) =>
-          xml.includes('手机正在控制这一个终端') &&
-          terminalMetrics(xml) !== null,
-        'newly created measured terminal'
-      )
+      await expandTerminalHud('newly created measured terminal')
       const createdMetrics = terminalMetrics(await dumpUi())
       if (!createdMetrics) throw new Error('missing created terminal metrics')
       const created = await hrackPage.evaluate(async (firstSessionId) => {
@@ -1210,12 +1230,8 @@ test.describe('remote P8 Android terminal live relay', () => {
 
       for (const session of sessions) {
         await tapResource(`session-${session.sessionId}`)
-        const initialXml = await waitForUi(
-          (xml) =>
-            xml.includes('手机正在控制这一个终端') &&
-            terminalMetrics(xml) !== null,
-          `${session.adapterId} driven terminal`,
-          60_000
+        const initialXml = await expandTerminalHud(
+          `${session.adapterId} driven terminal`
         )
         const initial = terminalMetrics(initialXml)
         if (!initial) throw new Error(`missing ${session.adapterId} metrics`)
