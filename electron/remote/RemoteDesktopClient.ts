@@ -16,7 +16,9 @@ import {
   type RemoteLaunchable,
   type RemoteMessage,
   type RemotePtyHistorySnapshot,
-  type RemoteSession
+  type RemoteSession,
+  type RemoteWorkspaceEntry,
+  type RemoteWorkspaceListRejectReason
 } from '../../shared/remote-protocol'
 
 export type RemoteSessionChange =
@@ -78,6 +80,24 @@ export type RemoteLaunchResult =
 export interface RemoteLaunchHost {
   catalog(): Promise<RemoteLaunchable[]>
   create(input: RemoteLaunchRequest): Promise<RemoteLaunchResult>
+}
+
+export type RemoteWorkspaceListResult =
+  | {
+      ok: true
+      path: string | null
+      parentPath?: string
+      entries: RemoteWorkspaceEntry[]
+      nextOffset?: number
+    }
+  | { ok: false; reason: RemoteWorkspaceListRejectReason }
+
+export interface RemoteWorkspaceHost {
+  list(input: {
+    installationId: string
+    path?: string
+    offset: number
+  }): Promise<RemoteWorkspaceListResult>
 }
 
 interface CreateRequestRecord {
@@ -174,6 +194,7 @@ export class RemoteDesktopClient {
   private recentWorkspaces: string[] = []
   private readonly createRequests = new Map<string, CreateRequestRecord>()
   private activeCreateRequestId: string | null = null
+  private readonly activeWorkspaceRequests = new Map<string, WebSocket>()
   private phoneGraceTimer: ReturnType<typeof setTimeout> | null = null
   private pendingRevoke: {
     promise: Promise<RemoteDesktopState>
@@ -187,6 +208,7 @@ export class RemoteDesktopClient {
       broadcast: (state: RemoteDesktopState) => void
       pty?: RemotePtyHost
       launch?: RemoteLaunchHost
+      workspace?: RemoteWorkspaceHost
       broadcastDrive?: (state: RemoteDriveState) => void
       revokeTimeoutMs?: number
       phoneGraceMs?: number
@@ -414,6 +436,9 @@ export class RemoteDesktopClient {
       case 'create':
         void this.startCreate(message)
         return
+      case 'workspace-list':
+        void this.startWorkspaceList(message)
+        return
       case 'undrive':
         if (this.driven?.sessionId !== message.sessionId) return
         this.releaseDrive('left')
@@ -495,6 +520,85 @@ export class RemoteDesktopClient {
     const responses = await record.result
     if (this.createRequests.get(message.requestId) !== record) return
     for (const response of responses) this.send(response)
+  }
+
+  private async startWorkspaceList(
+    message: Extract<RemoteMessage, { type: 'workspace-list' }>
+  ): Promise<void> {
+    const socket = this.socket
+    if (!socket || socket.readyState !== WebSocket.OPEN) return
+    if (
+      this.activeWorkspaceRequests.has(message.requestId) ||
+      this.activeWorkspaceRequests.size >= 2
+    ) {
+      this.send({
+        v: 1,
+        type: 'workspace-list-reject',
+        requestId: message.requestId,
+        reason: 'busy'
+      })
+      return
+    }
+    const workspace = this.deps.workspace
+    if (!workspace) {
+      this.send({
+        v: 1,
+        type: 'not-implemented',
+        for: message.type,
+        requestId: message.requestId
+      })
+      return
+    }
+
+    this.activeWorkspaceRequests.set(message.requestId, socket)
+    try {
+      const result = await workspace.list({
+        installationId: message.installationId,
+        ...(message.path ? { path: message.path } : {}),
+        offset: message.offset ?? 0
+      })
+      if (
+        this.socket !== socket ||
+        socket.readyState !== WebSocket.OPEN ||
+        this.activeWorkspaceRequests.get(message.requestId) !== socket
+      ) {
+        return
+      }
+      if (result.ok) {
+        this.send({
+          v: 1,
+          type: 'workspace-list-ok',
+          requestId: message.requestId,
+          installationId: message.installationId,
+          path: result.path,
+          entries: result.entries,
+          ...(result.parentPath ? { parentPath: result.parentPath } : {}),
+          ...(result.nextOffset !== undefined
+            ? { nextOffset: result.nextOffset }
+            : {})
+        })
+      } else {
+        this.send({
+          v: 1,
+          type: 'workspace-list-reject',
+          requestId: message.requestId,
+          reason: result.reason
+        })
+      }
+    } catch {
+      if (this.socket === socket && socket.readyState === WebSocket.OPEN) {
+        this.send({
+          v: 1,
+          type: 'workspace-list-reject',
+          requestId: message.requestId,
+          reason: 'unavailable'
+        })
+      }
+    } finally {
+      if (this.activeWorkspaceRequests.get(message.requestId) === socket) {
+        this.activeWorkspaceRequests.delete(message.requestId)
+      }
+    }
   }
 
   private async runCreate(
@@ -720,6 +824,7 @@ export class RemoteDesktopClient {
   private resetCreateRequests(): void {
     this.createRequests.clear()
     this.activeCreateRequestId = null
+    this.activeWorkspaceRequests.clear()
   }
 
   private setDriveState(state: RemoteDriveState): void {

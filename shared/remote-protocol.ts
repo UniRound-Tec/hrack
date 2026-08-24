@@ -18,6 +18,9 @@ export const REMOTE_PROTOCOL_LIMITS = {
   sessions: 1_024,
   launchable: 256,
   installations: 256,
+  workspaceEntries: 256,
+  workspaceOffset: 5_000,
+  workspaceEntryNameChars: 1_024,
   historyEvents: 20_000,
   ptyChunkBytes: 256 * 1_024,
   ptyAckBytes: 16 * 1_024 * 1_024,
@@ -59,6 +62,16 @@ export type RemoteCreateRejectReason =
   | 'launch-failed'
   | 'busy'
   | 'duplicate-mismatch'
+
+export type RemoteWorkspaceListRejectReason =
+  | 'installation-not-found'
+  | 'invalid-path'
+  | 'not-found'
+  | 'not-directory'
+  | 'denied'
+  | 'too-many-entries'
+  | 'busy'
+  | 'unavailable'
 
 export type RemoteUndrivenReason =
   | 'reclaim'
@@ -199,6 +212,44 @@ export interface RemoteCatalog {
   recentWorkspaces: string[]
 }
 
+export type RemoteWorkspaceEntryKind = 'directory' | 'file' | 'symlink'
+
+export interface RemoteWorkspaceEntry {
+  name: string
+  path: string
+  kind: RemoteWorkspaceEntryKind
+}
+
+export interface RemoteWorkspaceList {
+  v: 1
+  type: 'workspace-list'
+  requestId: string
+  installationId: string
+  /** Omit to list runtime roots (Home/drives or Home/filesystem root). */
+  path?: string
+  /** Zero-based page offset for a directory with more than one response page. */
+  offset?: number
+}
+
+export interface RemoteWorkspaceListOk {
+  v: 1
+  type: 'workspace-list-ok'
+  requestId: string
+  installationId: string
+  /** null means the runtime root selector rather than a filesystem directory. */
+  path: string | null
+  parentPath?: string
+  entries: RemoteWorkspaceEntry[]
+  nextOffset?: number
+}
+
+export interface RemoteWorkspaceListReject {
+  v: 1
+  type: 'workspace-list-reject'
+  requestId: string
+  reason: RemoteWorkspaceListRejectReason
+}
+
 export interface RemoteDriveOk {
   v: 1
   type: 'drive-ok'
@@ -325,6 +376,9 @@ export type RemoteMessage =
   | RemoteSessionUpsert
   | RemoteSessionRemoved
   | RemoteCatalog
+  | RemoteWorkspaceList
+  | RemoteWorkspaceListOk
+  | RemoteWorkspaceListReject
   | RemoteDriveOk
   | RemoteDriveReject
   | RemoteUndriven
@@ -353,6 +407,8 @@ export type RemoteDesktopToPhoneMessage =
   | RemoteSessionUpsert
   | RemoteSessionRemoved
   | RemoteCatalog
+  | RemoteWorkspaceListOk
+  | RemoteWorkspaceListReject
   | RemoteDriveOk
   | RemoteDriveReject
   | RemoteUndriven
@@ -365,6 +421,7 @@ export type RemotePhoneToDesktopMessage =
   | RemoteDrive
   | RemoteUndrive
   | RemoteCreate
+  | RemoteWorkspaceList
   | RemotePtyResize
   | RemotePtyIn
   | RemotePtyAck
@@ -431,6 +488,7 @@ const PHONE_TO_DESKTOP_TYPES = new Set<RemotePhoneToDesktopMessage['type']>([
   'drive',
   'undrive',
   'create',
+  'workspace-list',
   'pty-resize',
   'pty-in',
   'pty-ack'
@@ -440,6 +498,8 @@ const DESKTOP_TO_PHONE_TYPES = new Set<RemoteDesktopToPhoneMessage['type']>([
   'session-upsert',
   'session-removed',
   'catalog',
+  'workspace-list-ok',
+  'workspace-list-reject',
   'drive-ok',
   'drive-reject',
   'undriven',
@@ -526,6 +586,42 @@ function isCreateRejectReason(value: unknown): value is RemoteCreateRejectReason
     value === 'busy' ||
     value === 'duplicate-mismatch'
   )
+}
+
+function isWorkspaceListRejectReason(
+  value: unknown
+): value is RemoteWorkspaceListRejectReason {
+  return (
+    value === 'installation-not-found' ||
+    value === 'invalid-path' ||
+    value === 'not-found' ||
+    value === 'not-directory' ||
+    value === 'denied' ||
+    value === 'too-many-entries' ||
+    value === 'busy' ||
+    value === 'unavailable'
+  )
+}
+
+function isWorkspaceEntryKind(
+  value: unknown
+): value is RemoteWorkspaceEntryKind {
+  return value === 'directory' || value === 'file' || value === 'symlink'
+}
+
+function parseWorkspaceEntry(value: unknown): RemoteWorkspaceEntry | null {
+  if (!isRecord(value)) return null
+  if (
+    !isBoundedNonEmptyString(
+      value.name,
+      REMOTE_PROTOCOL_LIMITS.workspaceEntryNameChars
+    ) ||
+    !isBoundedNonEmptyString(value.path, REMOTE_PROTOCOL_LIMITS.workspaceChars) ||
+    !isWorkspaceEntryKind(value.kind)
+  ) {
+    return null
+  }
+  return { name: value.name, path: value.path, kind: value.kind }
 }
 
 function isUndrivenReason(value: unknown): value is RemoteUndrivenReason {
@@ -915,6 +1011,112 @@ export function parseRemoteMessage(
         launchable.push(parsed)
       }
       return ok({ v: 1, type: 'catalog', launchable, recentWorkspaces })
+    }
+    case 'workspace-list': {
+      if (
+        !isBoundedNonEmptyString(raw.requestId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isBoundedNonEmptyString(
+          raw.installationId,
+          REMOTE_PROTOCOL_LIMITS.idChars
+        )
+      ) {
+        return fail('invalid-workspace-list')
+      }
+      if (
+        raw.path !== undefined &&
+        (typeof raw.path !== 'string' ||
+          raw.path.length === 0 ||
+          raw.path.length > REMOTE_PROTOCOL_LIMITS.workspaceChars ||
+          raw.path.includes('\0'))
+      ) {
+        return fail('invalid-workspace-list')
+      }
+      if (
+        raw.offset !== undefined &&
+        (!isNonNegInt(raw.offset) ||
+          raw.offset > REMOTE_PROTOCOL_LIMITS.workspaceOffset)
+      ) {
+        return fail('invalid-workspace-list')
+      }
+      const message: RemoteWorkspaceList = {
+        v: 1,
+        type: 'workspace-list',
+        requestId: raw.requestId,
+        installationId: raw.installationId
+      }
+      if (typeof raw.path === 'string') message.path = raw.path
+      if (typeof raw.offset === 'number') message.offset = raw.offset
+      return ok(message)
+    }
+    case 'workspace-list-ok': {
+      if (
+        !isBoundedNonEmptyString(raw.requestId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isBoundedNonEmptyString(
+          raw.installationId,
+          REMOTE_PROTOCOL_LIMITS.idChars
+        ) ||
+        (raw.path !== null &&
+          !isBoundedNonEmptyString(
+            raw.path,
+            REMOTE_PROTOCOL_LIMITS.workspaceChars
+          )) ||
+        !Array.isArray(raw.entries) ||
+        raw.entries.length > REMOTE_PROTOCOL_LIMITS.workspaceEntries
+      ) {
+        return fail('invalid-workspace-list-ok')
+      }
+      if (
+        raw.parentPath !== undefined &&
+        !isBoundedNonEmptyString(
+          raw.parentPath,
+          REMOTE_PROTOCOL_LIMITS.workspaceChars
+        )
+      ) {
+        return fail('invalid-workspace-list-ok')
+      }
+      if (
+        raw.nextOffset !== undefined &&
+        (!isNonNegInt(raw.nextOffset) ||
+          raw.nextOffset === 0 ||
+          raw.nextOffset > REMOTE_PROTOCOL_LIMITS.workspaceOffset)
+      ) {
+        return fail('invalid-workspace-list-ok')
+      }
+      const entries: RemoteWorkspaceEntry[] = []
+      for (const item of raw.entries) {
+        const entry = parseWorkspaceEntry(item)
+        if (!entry) return fail('invalid-workspace-entry')
+        entries.push(entry)
+      }
+      const message: RemoteWorkspaceListOk = {
+        v: 1,
+        type: 'workspace-list-ok',
+        requestId: raw.requestId,
+        installationId: raw.installationId,
+        path: raw.path,
+        entries
+      }
+      if (typeof raw.parentPath === 'string') {
+        message.parentPath = raw.parentPath
+      }
+      if (typeof raw.nextOffset === 'number') {
+        message.nextOffset = raw.nextOffset
+      }
+      return ok(message)
+    }
+    case 'workspace-list-reject': {
+      if (
+        !isBoundedNonEmptyString(raw.requestId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isWorkspaceListRejectReason(raw.reason)
+      ) {
+        return fail('invalid-workspace-list-reject')
+      }
+      return ok({
+        v: 1,
+        type: 'workspace-list-reject',
+        requestId: raw.requestId,
+        reason: raw.reason
+      })
     }
     case 'drive-ok': {
       if (

@@ -7,7 +7,8 @@ import {
   type RemoteLaunchRequest,
   type RemoteLaunchResult,
   type RemotePtyHost,
-  type RemoteSessionChange
+  type RemoteSessionChange,
+  type RemoteWorkspaceHost
 } from '../electron/remote/RemoteDesktopClient'
 import { toRemoteSession } from '../electron/remote/toRemoteSession'
 import type { AgentSessionRecord } from '../electron/agents/AgentSessionRuntime'
@@ -144,6 +145,34 @@ class MemoryRemoteLaunchHost implements RemoteLaunchHost {
   }
 }
 
+class MemoryRemoteWorkspaceHost implements RemoteWorkspaceHost {
+  readonly lists: Array<{
+    installationId: string
+    path?: string
+    offset: number
+  }> = []
+
+  async list(input: {
+    installationId: string
+    path?: string
+    offset: number
+  }) {
+    this.lists.push({ ...input })
+    return {
+      ok: true as const,
+      path: input.path ?? null,
+      ...(input.path ? { parentPath: 'C:\\Users' } : {}),
+      entries: [
+        {
+          name: input.path ? 'project' : 'Home',
+          path: input.path ? `${input.path}\\project` : 'C:\\Users\\Jesse',
+          kind: 'directory' as const
+        }
+      ]
+    }
+  }
+}
+
 function remoteSession(
   overrides: Partial<RemoteSession> & Pick<RemoteSession, 'sessionId'>
 ): RemoteSession {
@@ -220,6 +249,63 @@ test.describe('remote desktop client', () => {
     client.connect(relay.joinUrl('aK3'))
     await expect.poll(() => client.getState().phase).toBe('waiting-phone')
     expect(relay.hellos).toEqual([{ role: 'desktop', roomId: 'aK3' }])
+    client.dispose()
+  })
+
+  test('forwards a correlated remote computer directory listing', async () => {
+    const workspace = new MemoryRemoteWorkspaceHost()
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      broadcast: () => {},
+      workspace
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    const phone = await openPhone(relay, 'aK3')
+    await expect.poll(() => client.getState().phase).toBe('peer-online')
+
+    phone.ws.send(
+      JSON.stringify({
+        v: 1,
+        type: 'workspace-list',
+        requestId: 'workspace-1',
+        installationId: 'codex:host',
+        path: 'C:\\Users\\Jesse',
+        offset: 0
+      })
+    )
+
+    await expect.poll(() => workspace.lists).toEqual([
+      {
+        installationId: 'codex:host',
+        path: 'C:\\Users\\Jesse',
+        offset: 0
+      }
+    ])
+    await expect
+      .poll(() =>
+        phone.messages.find(
+          (message) =>
+            message.type === 'workspace-list-ok' &&
+            message.requestId === 'workspace-1'
+        )
+      )
+      .toMatchObject({
+        type: 'workspace-list-ok',
+        installationId: 'codex:host',
+        path: 'C:\\Users\\Jesse',
+        entries: [
+          {
+            name: 'project',
+            path: 'C:\\Users\\Jesse\\project',
+            kind: 'directory'
+          }
+        ]
+      })
+    expect(relay.fromPhone.map((message) => message.type)).toContain(
+      'workspace-list'
+    )
+    phone.ws.close()
     client.dispose()
   })
 

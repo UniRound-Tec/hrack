@@ -167,6 +167,8 @@ hello 限流，防止扫 `roomId`。
 | `session-upsert` | `session: RemoteSession` | 投影变化 |
 | `session-removed` | `sessionId` | tab/会话关掉 |
 | `catalog` | `launchable: RemoteLaunchable[]`, `recentWorkspaces: string[]` | **P5 起**：手机加入时发；扫描/最近工作区变化时再发 |
+| `workspace-list-ok` | `requestId`, `installationId`, `path`, `parentPath?`, `entries`, `nextOffset?` | 返回所选运行环境的根或一页电脑目录；`path=null` 表示根选择页 |
+| `workspace-list-reject` | `requestId`, `reason` | `installation-not-found` / `invalid-path` / `not-found` / `not-directory` / `denied` / `too-many-entries` / `busy` / `unavailable` |
 | `drive-ok` | `requestId`, `sessionId`, `cols`, `rows`, `history` | 同意驾驶；`requestId` 原样关联请求，`history` 为现有 `PtyHistorySnapshot` 的远程表示 |
 | `drive-reject` | `requestId`, `sessionId`, `reason` | `not-found` / `exited` / `busy` |
 | `undriven` | `sessionId`, `reason` | `reclaim` / `left` / `phone-timeout` / `session-exit` / `desktop-offline` |
@@ -189,11 +191,14 @@ hello 限流，防止扫 `roomId`。
 | `drive` | `requestId`, `sessionId`, `cols`, `rows` | 点进一条已有会话 |
 | `undrive` | `sessionId` | 返回列表 |
 | `create` | `requestId`, `installationId`, `workspace`, `cols`, `rows`, `skipApproval?`, `args?` | 对齐首页；尺寸用于首次 spawn 和随后立即驾驶 |
+| `workspace-list` | `requestId`, `installationId`, `path?`, `offset?` | 自建电脑目录选择器；省略 `path` 取 Home/磁盘或 Home/文件系统根，带路径时按页读取 |
 | `pty-resize` | `sessionId`, `cols`, `rows` | 驾驶中旋转/键盘改变可视行列 |
 
 `create.workspace` 必须是电脑能理解的非空路径。结构守卫允许空字符串通过，以便已占座的电脑返回有关联的 `create-reject invalid-workspace`；NUL、超长或非字符串仍在协议边界拒绝。手打错误不在手机上 CreateProcess，也不把 POSIX 路径交给 Windows `CreateProcess`。WSL 安装仍由电脑按 `installationId` 的 `runtime` 启动。`create.cols/rows` 与 `drive` 使用同一 1–10000 边界，避免先按桌面尺寸启动 TUI 再重画。
 
 `requestId` 是 1–128 字符的请求关联键。响应必须原样带回。手机重试同一个 `create` 时必须复用 `requestId`；电脑在该房间连接生命周期内缓存完成结果：相同 id + 相同 payload 返回第一次结果，不得再次 spawn；相同 id + 不同 payload → `create-reject reason=duplicate-mismatch`。`drive` 也用 `requestId` 消除迟到响应歧义，但切换驾驶本身仍按当前权威状态判断。
+
+远程工作区选择器浏览的是**电脑文件系统**，不是手机沙盒。`installationId` 决定路径语义：Windows installation 返回 Windows 路径，WSL installation 返回对应 distro 的 POSIX 路径，macOS/Linux 返回本机 POSIX 路径。电脑只传 `name/path/kind`，不传文件正文、大小、时间、权限或可执行路径；文件显示但不能作为工作区选择，符号链接条目不自动进入。目录单页最多 256 项、最多枚举 5000 项，并以 `offset/nextOffset` 分页；超限、拒绝访问和失效安装都必须给关联拒绝。中继只做既有方向白名单与结构守卫，不保存、索引或记录目录结果。
 
 ### 6.3 数据面（仅驾驶中）
 
@@ -208,7 +213,7 @@ hello 限流，防止扫 `roomId`。
 
 历史：`drive-ok.history` 来自主进程现有 PTY 权威历史，但远程快照必须再按 1 MiB 整帧上限保留最新的完整事件；本机保留上限不因此降低。`complete: false` 和累计 dropped 字段表示本机历史或远程帧预算已经截断。手机 xterm 先 replay 再接 `pty-out`。
 
-边界：id ≤ 128 字符，终端行列为 1–10000，单个 PTY 数据块 ≤ 256 KiB；snapshot 最多 1024 个 session，catalog 最多 256 个 launchable，每项最多 256 个 installation，history 最多 20000 个事件。守卫会重建安全对象并丢弃一般未知字段；若出现 `correlation`、`resolvedExecutable`、`terminalId`、`installationId`、`observerHealth`、`usage`、`capabilities` 等明确禁止的本机内部字段，则整条报文拒绝。
+边界：id ≤ 128 字符，终端行列为 1–10000，单个 PTY 数据块 ≤ 256 KiB；snapshot 最多 1024 个 session，catalog 最多 256 个 launchable，每项最多 256 个 installation，远程目录单页最多 256 项/总枚举最多 5000 项，history 最多 20000 个事件。守卫会重建安全对象并丢弃一般未知字段；若出现 `correlation`、`resolvedExecutable`、`terminalId`、`installationId`、`observerHealth`、`usage`、`capabilities` 等明确禁止的本机内部字段，则整条报文拒绝。
 
 驾驶中电脑 **不得** 因窗口 fit 对这条 PTY 发 resize。手机的 `pty-resize` 才是这条 PTY 的 winsize 来源。释放后由电脑按当前窗口 fit 一次。
 
@@ -221,6 +226,7 @@ hello 限流，防止扫 `roomId`。
 | P2 | 中继按方向白名单转发合法 v1 JSON；占座与吊销。不理解 PTY 正文与业务状态 |
 | P4 | `drive` / `drive-ok` / `drive-reject` / `undrive` / `undriven` / `pty-*` |
 | P5 | `catalog` / `create` / `create-ok` / `create-reject` |
+| P8 后增量 | `workspace-list` / `workspace-list-ok` / `workspace-list-reject` |
 
 未到期：收到后回 `{ type: 'not-implemented', for: '<type>', requestId? }`（控制面）或忽略（中继不当业务端）。不得半套成功。
 

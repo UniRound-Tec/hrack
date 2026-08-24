@@ -212,6 +212,79 @@ test.describe('message guards', () => {
     ).toEqual({ v: 1, type: 'not-implemented', for: 'drive' })
   })
 
+  test('guards paged remote workspace listings in both directions', () => {
+    expect(
+      expectMessage({
+        v: 1,
+        type: 'workspace-list',
+        requestId: 'workspace-1',
+        installationId: 'codex:host',
+        path: 'C:\\Users\\Jesse',
+        offset: 256
+      })
+    ).toEqual({
+      v: 1,
+      type: 'workspace-list',
+      requestId: 'workspace-1',
+      installationId: 'codex:host',
+      path: 'C:\\Users\\Jesse',
+      offset: 256
+    })
+    expect(
+      expectMessage({
+        v: 1,
+        type: 'workspace-list-ok',
+        requestId: 'workspace-1',
+        installationId: 'codex:host',
+        path: 'C:\\Users\\Jesse',
+        parentPath: 'C:\\Users',
+        entries: [
+          {
+            name: 'project',
+            path: 'C:\\Users\\Jesse\\project',
+            kind: 'directory'
+          },
+          {
+            name: 'README.md',
+            path: 'C:\\Users\\Jesse\\README.md',
+            kind: 'file'
+          }
+        ],
+        nextOffset: 512
+      })
+    ).toMatchObject({
+      type: 'workspace-list-ok',
+      path: 'C:\\Users\\Jesse',
+      nextOffset: 512
+    })
+    for (const invalid of [
+      { path: '' },
+      { path: 'C:\\bad\0path' },
+      { offset: -1 },
+      { offset: 5_001 }
+    ]) {
+      expect(
+        parseRemoteMessage({
+          v: 1,
+          type: 'workspace-list',
+          requestId: 'workspace-invalid',
+          installationId: 'codex:host',
+          ...invalid
+        }).ok
+      ).toBe(false)
+    }
+    expect(
+      parseRemoteMessage({
+        v: 1,
+        type: 'workspace-list-ok',
+        requestId: 'workspace-invalid-entry',
+        installationId: 'codex:host',
+        path: null,
+        entries: [{ name: 'secret', path: '/secret', kind: 'unknown' }]
+      }).ok
+    ).toBe(false)
+  })
+
   test('requires request correlation for drive/create and preserves it in replies', () => {
     expect(
       parseRemoteMessage({
