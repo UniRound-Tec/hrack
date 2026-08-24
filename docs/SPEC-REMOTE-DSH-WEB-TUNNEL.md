@@ -1,6 +1,6 @@
 # HRack Remote DSH Web Tunnel — Spec
 
-> 状态：**D0 Spec/真实安全原型、D1 Desktop 与 D2 Server 已关门（2026-08-24）；下一阶段为 D3 App。** 本文定义 P0–P8 之后的独立 DSH 远程扩展轨，不表示 Remote P8 已关门。
+> 状态：**D0 Spec/真实安全原型、D1 Desktop、D2 Server 与 D3 App 已关门（2026-08-24）；下一阶段为 D4 公网 Android。** 本文定义 P0–P8 之后的独立 DSH 远程扩展轨，不表示 Remote P8 已关门。
 > 父文档：[HRack 远程控制 Spec](./SPEC-REMOTE.md)、[DSH 官方 Web Surface 隔离嵌入计划](./PLAN-DSH-OFFICIAL-WEB-SURFACE.md)。
 > 范围：手机 App 通过现有 1:1:1 房间，打开并操作电脑上真实运行的 DSH 官方 Web UI；不重做 DSH UI，不把 DSH loopback 端口直接暴露到公网。
 
@@ -523,4 +523,30 @@ D2 已在 `hrack-remote-server` 完成独立 Server carrier：
 
 合并门禁结果：Server `npm test` 为 Relay 37 项、Web 131 项、Nginx 5 项、Ops 4 项全绿；Server `npm run typecheck`、完整 build、`docker compose --profile host-edge config --quiet`、真实 Nginx `-t` 与根仓 DSH protocol 3 项门禁均通过。Nginx 第一次隔离校验因测试容器没有 `relay` DNS 记录失败，使用同一配置并只补测试解析后 `nginx -t` 成功；没有通过改写配置掩盖问题。
 
-D2 证明的是 Server carrier 和边界，不把 fixture Desktop 冒充真实 DSH。真实 DSH HTML/API/SSE/两条 WS/privileged denial 已由 D1 关门；Server + Desktop + App 的完整手机链留给 D3/D4。
+D2 证明的是 Server carrier 和边界，不把 fixture Desktop 冒充真实 DSH。真实 DSH HTML/API/SSE/两条 WS/privileged denial 已由 D1 关门；App 控制面、本机真实 Relay 与 Android release 构建已由 D3 关门，完整公网真 DSH 手机链仍只属于 D4。
+
+## 18. D3 App 实现与验证记录
+
+D3 已在 `hrack-remote-app` 完成手机产品控制面与原生 WebView 边界：
+
+- App 同步 D2 协议后，只从认证 `hello-ok.relayCapabilities` 接受规范 DSH public origin；`RemoteWebSurface` 以使用桌面同源 DSH 图标的独立列表入口展示，不进入 PTY `RemoteSession`、六态或 native create 页面；
+- `RemotePhoneClient` 维护 capability/surface generation 与唯一 pending ticket；只有主 Phone seat ready、Desktop 在线且 surface ready 时才能向 Relay 发送 `dsh-ticket-request`，响应必须 requestId 关联、未过期、与精确 public origin 和当前 generation 一致；跨 origin、过期、断线或 generation 变化全部 fail closed，票据不落入 SecureStore、配对记录或 preference；
+- 顶层 WebView 使用 incognito/non-shared Cookie、禁止第三方 Cookie、mixed content、file/content/intent/custom scheme、下载、新窗口、全屏媒体、摄像头、麦克风、定位、打印和剪贴板自动读；精确 origin 由 App 自己的 navigation callback 执行，不能使用库的窄 `originWhitelist`，因为后者会在 callback 之前把拒绝 URL 自动交给系统浏览器；
+- 外部 HTTP(S) 链接只有网页真实 click 被注入 guard 捕获后，才出现 native 确认；普通 JS 跳转、iframe 或自定义 scheme 不能借系统浏览器逃逸；
+- 返回列表只隐藏并保持同一个 WebView；主房间断开/revoke、surface unavailable/generation 变化、renderer 失败、明确长按退出或 App 进入后台都会销毁 WebView；
+- Android App 本身已有扫码 `CAMERA` 权限，而 stock `react-native-webview` 会把已授予权限交给网页，且 incognito 只在创建时清 Cookie。仓库 patch 因此在原生层拒绝 incognito 下载/媒体授权，并在创建和销毁时清 Cookie、WebStorage、cache/history/form data；`postinstall` 自动应用，release 构建实际编译该 Java/Kotlin 代码。
+
+最终 App 门禁：
+
+```text
+Protocol parity passed
+Terminal parity passed
+HRack UI parity passed
+11 Jest suites / 51 tests passed
+[dsh-d3] app=RemotePhoneClient relay=dist surface=independent ticket=one-use page=82 revoke=cleared logs=clean
+Android assembleRelease: BUILD SUCCESSFUL
+```
+
+`npm run verify:dsh-d3` 不是进程内 mock：它构建并启动 Server 子模块的 `dist/server/cli.js`，用产品 `RemotePhoneClient` 建立 Phone seat，用独立 Desktop tunnel 发布 DSH surface，申请并消费真实一次性 ticket/Cookie，经实际 Relay HTTP/tunnel 路径读取 HTML，重放 ticket 得到 404，随后 revoke 并证明 App DSH state、Cookie session 和 tunnel 一起失效，日志中没有 room/token/ticket/Cookie。Android release 门禁产出约 93 MB 的 `app-release.apk`，原生 WebView patch 编译通过。
+
+D3 的 HTML tunnel 端使用确定性 fixture，只证明 App + 真实 Server carrier，不把它冒充“手机已访问真实 DSH”；真实 DSH 资源/API/SSE/两条 WS 与安全拒绝已在 D1 验证。D4 必须在真实 TLS 公网域名上，用 Android App、真实 HRack Desktop 和真实 DSH 完成二者的组合链，才能宣称手机远程 DSH 可用。
