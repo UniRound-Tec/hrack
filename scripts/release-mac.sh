@@ -68,6 +68,10 @@ for required in \
   fi
 done
 
+node "$workspace/scripts/inject-release-notes.cjs" \
+  "$metadata_path" \
+  "$workspace/CHANGELOG.md" \
+  "$version"
 node "$workspace/scripts/assert-update-metadata.cjs" \
   "$metadata_path" \
   "$release_dir" \

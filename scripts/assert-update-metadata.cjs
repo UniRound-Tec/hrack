@@ -65,7 +65,24 @@ if (sha512Count < urls.length) {
   throw new Error(`Update metadata is missing SHA-512 entries: ${metadataPath}`)
 }
 
+const releaseNotesMatch = source.match(
+  /^releaseNotes:\s*\|-\s*\r?\n((?:(?: {2}.*)?\r?\n?)*)/m
+)
+if (!releaseNotesMatch) {
+  throw new Error(`Update metadata is missing Markdown release notes: ${metadataPath}`)
+}
+const releaseNotes = releaseNotesMatch[1]
+  .split(/\r?\n/)
+  .map((line) => line.startsWith('  ') ? line.slice(2) : line)
+  .join('\n')
+  .trim()
+if (!releaseNotes.startsWith(`## [${expectedVersion}]`)) {
+  throw new Error(
+    `Update metadata release notes do not match ${expectedVersion}: ${metadataPath}`
+  )
+}
+
 console.log(
-  `Verified ${basename(metadataPath)} for ${expectedVersion}: ${urls.join(', ')}`
+  `Verified ${basename(metadataPath)} with Markdown release notes for ${expectedVersion}: ${urls.join(', ')}`
 )
 

@@ -95,6 +95,8 @@ try {
     }
   }
 
+  & node (Join-Path $workspace 'scripts\inject-release-notes.cjs') $metadataPath (Join-Path $workspace 'CHANGELOG.md') $version
+  if ($LASTEXITCODE -ne 0) { throw 'Embedding Windows Markdown release notes failed.' }
   & node (Join-Path $workspace 'scripts\assert-update-metadata.cjs') $metadataPath $releaseDir $version $installerName
   if ($LASTEXITCODE -ne 0) { throw 'Windows update metadata verification failed.' }
   & node (Join-Path $workspace 'scripts\assert-packaged-update-config.cjs') $packagedUpdateConfig

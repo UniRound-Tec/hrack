@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### 修复
+
+- 发布产物的 `latest*.yml` 直接携带 CHANGELOG 原始 Markdown，避免 GitHub Atom 将更新说明转换为 HTML 后被安全渲染器跳过。
+
 ## [0.4.1] - 2026-08-25
 
 ### 修复
