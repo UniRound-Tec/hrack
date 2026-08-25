@@ -431,6 +431,9 @@ export const ja = {
     remoteStatusWaitingPhone: '接続済み・スマホ待ち',
     remoteStatusPeerOnline: 'スマホ接続済み',
     remoteStatusRevoking: 'ルームを失効中',
+    remoteConnection: '接続状態',
+    remoteLatency: '遅延',
+    remoteTraffic: '通信量',
     remoteError: (code: RemoteDesktopError) => {
       switch (code) {
         case 'occupied':

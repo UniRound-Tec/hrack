@@ -76,6 +76,38 @@ test.describe('remote settings', () => {
     await expect(page.getByTestId('settings-remote-status')).toHaveText(
       '已连接，等待手机'
     )
+    await expect(page.getByTestId('settings-remote-indicator')).toHaveClass(
+      /bg-status-done/
+    )
+    await expect
+      .poll(() =>
+        page.evaluate(async () =>
+          (await window.remoteApi.getState()).latencyMs ?? -1
+        )
+      )
+      .toBeGreaterThanOrEqual(0)
+    await expect(page.getByTestId('settings-remote-latency')).toContainText(
+      'ms'
+    )
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const state = await window.remoteApi.getState()
+          return [state.uploadedBytes, state.downloadedBytes]
+        })
+      )
+      .toEqual([expect.any(Number), expect.any(Number)])
+    const traffic = await page.evaluate(async () => {
+      const state = await window.remoteApi.getState()
+      return {
+        uploaded: state.uploadedBytes,
+        downloaded: state.downloadedBytes
+      }
+    })
+    expect(traffic.uploaded).toBeGreaterThan(0)
+    expect(traffic.downloaded).toBeGreaterThan(0)
+    await expect(page.getByTestId('settings-remote-traffic')).toContainText('↑')
+    await expect(page.getByTestId('settings-remote-traffic')).toContainText('↓')
     await expect.poll(() => relay.hellos).toEqual([
       { role: 'desktop', roomId: 'aK3' }
     ])
