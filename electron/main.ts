@@ -66,6 +66,10 @@ import { BridgeError } from './bridge/errors'
 import { RemoteDesktopClient } from './remote/RemoteDesktopClient'
 import { RemoteDshCoordinator } from './remote/RemoteDshCoordinator'
 import { runtimeSessionSource } from './remote/runtimeSessionSource'
+import {
+  combineRemoteSessionSources,
+  dshRemoteSessionSource
+} from './remote/dshRemoteSessionSource'
 import { runtimeRemotePtyHost } from './remote/runtimeRemotePtyHost'
 import { runtimeRemoteLaunchHost } from './remote/runtimeRemoteLaunchHost'
 import { runtimeRemoteWorkspaceHost } from './remote/runtimeRemoteWorkspaceHost'
@@ -229,7 +233,10 @@ function completeBridgeLaunch(ack: BridgeLaunchAck): void {
 }
 
 const remoteClient = new RemoteDesktopClient({
-  sessions: runtimeSessionSource(agentRuntime),
+  sessions: combineRemoteSessionSources(
+    runtimeSessionSource(agentRuntime),
+    dshRemoteSessionSource(dshProjections)
+  ),
   broadcast: (state) =>
     broadcastToAllWindows(RemoteEventChannel.StateChanged, state),
   pty: runtimeRemotePtyHost(agentRuntime, manager),

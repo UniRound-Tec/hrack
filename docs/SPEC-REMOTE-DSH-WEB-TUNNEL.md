@@ -283,7 +283,7 @@ HTTP body 双向可流；当前 DSH event WebSocket 只下行文本，公网客�
 
 ## 8. App 行为
 
-### 8.1 Surface 而不是 PTY Session
+### 8.1 Surface 能力与 DSH 会话投影
 
 Desktop 通过主 Remote WSS 发布独立的：
 
@@ -298,7 +298,21 @@ interface RemoteWebSurface {
 }
 ```
 
-App 把它渲染成带 DeepSeek 官方图标的单一入口。它不混进 `RemoteSession`，不伪造六态，不出现 `drive` 按钮，也不复制 DSH 内部会话列表；官方页面自己的 sidebar/workspace/session UI 是唯一 DSH 目录。
+`RemoteWebSurface` 只表达“官方网页是否可打开”和 generation，不再作为手机会话列表中的常驻行，也不出现
+`drive` 按钮。Desktop 的 `DshSessionProjector` 用 `session.list` 恢复**已经由 HRack 建立的监听条目**的
+初始状态，再以 `events.host/events.mux` 更新这些条目。`session.list` 不是手机端历史会话目录；未被 HRack
+监听的历史 DSH session 不得进入 Remote snapshot，即使它仍存在于官方 DSH 数据库：
+
+- `RemoteSession.sessionId` 使用官方 DSH session id，`adapterId` 固定为 `dsh`；桌面本地 slot id、
+  `terminalId`、可执行路径、correlation 和 capabilities 不出电脑；
+- 名称、六态、可读 detail、待处理数、活动工具数和最后活动时间随普通
+  `sessions-snapshot/session-upsert/session-removed` 同步；
+- App 点击 `adapterId=dsh` 的会话时不得发送 PTY `drive`，而是唤出唯一 DSH WebView并选择该官方
+  session；因此手机和桌面看到同一任务状态，但不会建立第二套 DSH 事件解释器；
+- 手机官方页面新建 session 后，Desktop 从 `host/session-added` 建立确定性的 HRack 监听条目；该条目再经
+  与桌面 renderer 完全相同的 `DshProjectionBridge` 增量进入手机。手机和桌面均不得依赖轮询刷新；
+- Remote Desktop 不得绕过 `DshProjectionBridge` 直接枚举 projector 的完整 session cache。HRack 取消监听
+  或 slot 改绑时，手机必须同步移除旧官方 session id，再按需加入新 id。
 
 ### 8.2 WebView 状态机
 
@@ -313,11 +327,18 @@ idle → requesting-ticket → loading → ready
 - 禁用网页新窗口、下载、打印、摄像头、麦克风、定位、剪贴板自动读取和不必要权限；
 - 官方页面占据除 safe area 和一个最小返回/连接状态浮层外的全部屏幕；不加 HRack 文案卡、重复 header 或第二套工作区选择器；
 - 返回会话列表可以暂时隐藏同一个 WebView，保持当前 DSH page/session；主 room 断开、吊销、generation 变化或 App 明确退出 DSH 时销毁 WebView并清 Cookie；
+- WebView 在 document-start 捕获官方 Cordis `sessions` service。点击手机列表中的 DSH 会话时调用官方
+  `sessions.open(sessionId)`；从 `+` 进入新建时调用官方 `sessions.clear()`。捕获失败、目标不存在或超时必须
+  显示可重试错误，不能静默停留在错误会话；
 - App 后台时不假装在线。恢复时若主 Phone WSS 或 tunnel WebSocket 已失效，销毁旧 WebView并请求新 ticket；不能把旧页面的重试请求路由到新 room。
 
 ### 8.3 新建 DSH 会话
 
-DSH 新建不进入现有原生 `CreateSessionScreen`。用户在官方 DSH 页面点击新建、打开官方 browse dialog、浏览电脑文件系统并确认目录，再由官方 `session.create`/workspace API 建立会话。HRack App 不再提交自己的 `installationId/workspace/skipApproval` payload，也不把现有 CLI filepicker 强套给 DSH。
+右下角 `+` 是所有新建操作的唯一入口。原生 `CreateSessionScreen` 在 AI CLI 卡片旁展示 DSH 卡片；选择后
+立即打开同一个官方 WebView的空白 Home/新建态。工作区和 session 创建仍完全交给官方页面：用户打开
+官方 browse dialog、浏览电脑文件系统并确认目录，再由官方 `session.create`/workspace API 建立会话。
+HRack App 不提交自己的 `installationId/workspace/skipApproval` payload，也不把现有 CLI filepicker 强套给
+DSH。会话列表不再常驻“官方 Web 控制台”装饰行。
 
 ## 9. 安全边界
 
@@ -433,7 +454,8 @@ safe area、物理软键盘、蜂窝网络切换、系统回收与 iOS 签名安
 5. HTTP/API/event WebSocket 走独立 tunnel，不占用 PTY 主 WSS。
 6. 公网 Host/Origin 保留到 DSH trust fence，绝不伪装 loopback。
 7. 远程启用时统一强制官方 browse picker；不远程操纵电脑原生 file dialog。
-8. DSH 是独立 Web surface，不混入 PTY `RemoteSession` 和六态协议。
+8. DSH 网页仍是独立 surface；其被观察会话复用安全 `RemoteSession` 六态流，但点击必须进入官方
+   WebView，绝不能落入 PTY `drive` 数据面。
 9. ticket/Cookie 与 Phone seat、Room、Desktop tunnel 和 DSH generation 四重绑定；revoke 立即失效。
 10. 第一版先放行文本会话和目录选择；附件、下载、原生能力和 privileged settings 后置并重新做威胁审查。
 
@@ -534,7 +556,9 @@ D2 证明的是 Server carrier 和边界，不把 fixture Desktop 冒充真实 D
 
 D3 已在 `hrack-remote-app` 完成手机产品控制面与原生 WebView 边界：
 
-- App 同步 D2 协议后，只从认证 `hello-ok.relayCapabilities` 接受规范 DSH public origin；`RemoteWebSurface` 以使用桌面同源 DSH 图标的独立列表入口展示，不进入 PTY `RemoteSession`、六态或 native create 页面；
+- App 同步 D2 协议后，只从认证 `hello-ok.relayCapabilities` 接受规范 DSH public origin；D3 当时把
+  `RemoteWebSurface` 作为独立列表入口。该早期展示模型已由 2026-08-25 增量勘误替代：surface 只保留
+  capability/generation，DSH 会话进入安全六态流，官方新建入口进入右下角 `+`；
 - `RemotePhoneClient` 维护 capability/surface generation 与唯一 pending ticket；只有主 Phone seat ready、Desktop 在线且 surface ready 时才能向 Relay 发送 `dsh-ticket-request`，响应必须 requestId 关联、未过期、与精确 public origin 和当前 generation 一致；跨 origin、过期、断线或 generation 变化全部 fail closed，票据不落入 SecureStore、配对记录或 preference；
 - 顶层 WebView 使用 incognito/non-shared Cookie、禁止第三方 Cookie、mixed content、file/content/intent/custom scheme、下载、新窗口、全屏媒体、摄像头、麦克风、定位、打印和剪贴板自动读；精确 origin 由 App 自己的 navigation callback 执行，不能使用库的窄 `originWhitelist`，因为后者会在 callback 之前把拒绝 URL 自动交给系统浏览器；
 - 外部 HTTP(S) 链接只有网页真实 click 被注入 guard 捕获后，才出现 native 确认；普通 JS 跳转、iframe 或自定义 scheme 不能借系统浏览器逃逸；
@@ -611,3 +635,31 @@ invalidation=cookie+websocket+tunnel ptyAfterInvalidation=driven
 当前仍没有 Android 物理真机和 iPhone/iPad，实体设备条目保持未完成。项目所有者已明确要求本次以
 模拟器收尾并接受 12.4 所列残余风险，因此 D5 按发布决策关门；这不构成 Android/iOS 真机通过声明，
 也不改变父 Remote P8 的物理真机关门条件。后续取得设备后应补跑同一门禁和 iOS 人工矩阵。
+
+## 21. 手机与桌面 DSH 会话统一投影（2026-08-25）
+
+本轮修正了 D3 的“手机只常驻一个官方控制台入口”模型，同时保留单 WebView 的性能边界。实现过程中曾把
+完整 `session.list` 误当成手机目录；该语义会重放全部历史会话，已在同日审查中撤回并改为桌面监听镜像：
+
+- `DshSessionProjector` 的 `session.list` 只恢复已监听 slot 的状态，`events.host/events.mux` 只更新这些
+  slot；Remote Desktop 直接订阅桌面 renderer 同源的 `DshProjectionBridge`，不会枚举 projector cache；
+- 手机会话列表展示真实 DSH session、官方图标、六态和桌面同源 detail；点击 DSH 行不会误入 PTY
+  `drive`，而是让常驻 WebView 的官方 `sessions.open` 选择对应 session；
+- 原“官方 Web 控制台”常驻行已删除。右下角 `+` 的新建页把 DSH 放在第一张卡片；进入时执行官方
+  `sessions.clear`，目录选择和创建仍由官方网页完成；
+- 手机创建产生的 `host/session-added` 会为桌面建立确定性展示项，并同时经远程会话增量回到手机；
+  手机不重复直连另一套 host/mux 监听器。
+
+原先“手机先看到既有历史会话”的验证结果正是错误语义的证据，不计入通过项。勘误后的真实门禁已重新使用
+生产 Remote WSS、正式 DSH TLS origin、最新 Electron dev 与 Android 模拟器执行：连接时电脑保存了多条
+官方历史 session，但 HRack 监听投影为 0，App 明确显示“暂无会话”；随后从手机 `+` 第一张 DSH 卡进入
+官方 Home 并新建最小任务，`host/session-added` 使桌面只建立该条监听，App 也只出现这一行并显示
+`已完成`、`本轮任务已完成 · 46 tokens`。再次点击该行后，单例 WebView 的官方 `sessions.current` 精确等于
+新 session id。
+
+本次全新 WebView 首次加载还暴露了 Android 注入时序：官方内联 bootstrap 可能先创建
+`window.__ModuleLoader__`，旧捕获脚本随后会用空 getter 覆盖它。现改为保留并补丁已经存在的 loader，并加入
+确定性回归；官方插件完整启动且 Cordis sessions capture ready。最终根仓 projector/remote source 11 项、
+根仓 node/web typecheck、App DSH WebView 9 项与 App typecheck 均通过。Electron 视觉与 DOM 证据由
+Playwright 直接附着主 renderer 取得；Android 页面状态由 App UI tree 与该 WebView 自身 CDP 取得，没有
+使用整桌面截图或无关窗口作为证据。
