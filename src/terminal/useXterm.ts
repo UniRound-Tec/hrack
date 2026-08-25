@@ -28,6 +28,7 @@ import {
   PTY_OUTPUT_MAX_PERIOD_MS,
   PTY_OUTPUT_QUIET_PERIOD_MS
 } from './PtyOutputBatcher'
+import type { RemoteDriveState } from '../../shared/ipc-contract'
 
 const TERMINAL_SMOOTH_SCROLL_DURATION_MS = 80
 const OUTPUT_SCROLL_SMOOTHING_RESTORE_MS = 100
@@ -110,6 +111,7 @@ export function useXterm(
   containerRef: RefObject<HTMLDivElement | null>,
   tabId: string,
   active: boolean,
+  remoteDrive: Extract<RemoteDriveState, { phase: 'driven' }> | null,
   onCopied?: () => void,
   onTitle?: (title: string) => void,
   onExit?: (code: number | undefined, respawned: boolean) => void,
@@ -119,8 +121,13 @@ export function useXterm(
   const rendererRef = useRef<RendererController | null>(null)
   const rendererFrameRef = useRef<number | null>(null)
   const fitRequestRef = useRef<(() => void) | null>(null)
+  const applyRemoteDriveRef = useRef<
+    ((drive: Extract<RemoteDriveState, { phase: 'driven' }> | null) => void) | null
+  >(null)
   const activeRef = useRef(active)
   activeRef.current = active
+  const remoteDriveRef = useRef(remoteDrive)
+  remoteDriveRef.current = remoteDrive
   const onCopiedRef = useRef(onCopied)
   const onTitleRef = useRef(onTitle)
   const onExitRef = useRef(onExit)
@@ -205,7 +212,7 @@ export function useXterm(
       void window.clipboardApi
         .readForTerminalPaste()
         .then((payload) => {
-          if (disposed || !activeRef.current) return
+          if (disposed || !activeRef.current || remoteDriveRef.current) return
           if (payload.kind === 'image') {
             const adapterId = useTerminalsStore
               .getState()
@@ -302,7 +309,14 @@ export function useXterm(
     let lastSentRows = term.rows
 
     const sendPtyResize = (cols: number, rows: number): void => {
-      if (disposed || !proxy || !activeRef.current) return
+      if (
+        disposed ||
+        !proxy ||
+        !activeRef.current ||
+        remoteDriveRef.current
+      ) {
+        return
+      }
       if (cols === lastSentCols && rows === lastSentRows) return
       lastSentCols = cols
       lastSentRows = rows
@@ -340,6 +354,13 @@ export function useXterm(
     const fitVisual = (): void => {
       fitFrame = null
       if (disposed || !activeRef.current) return
+      const drive = remoteDriveRef.current
+      if (drive) {
+        if (term.cols !== drive.cols || term.rows !== drive.rows) {
+          term.resize(drive.cols, drive.rows)
+        }
+        return
+      }
       if (container.clientWidth <= 0 || container.clientHeight <= 0) return
       const proposed = fit.proposeDimensions()
       if (!proposed || proposed.cols <= 0 || proposed.rows <= 0) return
@@ -356,6 +377,28 @@ export function useXterm(
       fitFrame = requestAnimationFrame(fitVisual)
     }
     fitRequestRef.current = scheduleResize
+    applyRemoteDriveRef.current = (drive) => {
+      if (disposed) return
+      if (fitFrame !== null) {
+        cancelAnimationFrame(fitFrame)
+        fitFrame = null
+      }
+      if (ptyResizeTimer) {
+        clearTimeout(ptyResizeTimer)
+        ptyResizeTimer = null
+      }
+      pendingPtyResize = null
+      if (drive) {
+        if (term.cols !== drive.cols || term.rows !== drive.rows) {
+          term.resize(drive.cols, drive.rows)
+        }
+        return
+      }
+      lastSentCols = 0
+      lastSentRows = 0
+      scheduleResize()
+    }
+    applyRemoteDriveRef.current(remoteDriveRef.current)
 
     const unsubscribeSettings = useSettingsStore.subscribe(
       (settings, previous) => {
@@ -725,6 +768,7 @@ export function useXterm(
 
     // 键盘 → pty；只在挂载时注册一次，自动重启换 proxy 不重复挂。
     term.onData((d) => {
+      if (remoteDriveRef.current) return
       void proxy?.write(d)
     })
     const ro = new ResizeObserver(scheduleResize)
@@ -755,7 +799,12 @@ export function useXterm(
         }
         try {
           term.clearTextureAtlas()
-          fit.fit()
+          const drive = remoteDriveRef.current
+          if (drive) {
+            term.resize(drive.cols, drive.rows)
+          } else {
+            fit.fit()
+          }
         } catch {
           // 保留同步 fit 的结果；即便第二次测量失败也必须允许终端启动。
         }
@@ -815,10 +864,16 @@ export function useXterm(
       ligatures.dispose()
       if (rendererRef.current === renderer) rendererRef.current = null
       if (fitRequestRef.current === scheduleResize) fitRequestRef.current = null
+      if (applyRemoteDriveRef.current) applyRemoteDriveRef.current = null
       if (terminalRef.current === term) terminalRef.current = null
       term.dispose()
     }
   }, [containerRef, tabId])
+
+  useEffect(() => {
+    remoteDriveRef.current = remoteDrive
+    applyRemoteDriveRef.current?.(remoteDrive)
+  }, [remoteDrive])
 
   useEffect(() => {
     if (rendererFrameRef.current !== null) {

@@ -2,14 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import type {
   CliScanReport,
+  RemoteDriveState,
   ShellOption,
   UpdateSnapshot
 } from '../../shared/ipc-contract'
+import { REMOTE_DRIVE_IDLE_STATE } from '../../shared/ipc-contract'
 import type { AgentEvent } from '../../shared/agent-events'
 import type {
   DshRuntimeScanReport,
   DshSurfaceSnapshot
 } from '../../shared/dsh-ipc'
+import { readWorkspaceHistory, saveWorkspace } from './workspaceHistory'
 import TitleBar from './TitleBar'
 import Sidebar from './Sidebar'
 import IconRail from './IconRail'
@@ -90,6 +93,9 @@ export default function AppShell() {
   const [updateModalDismissedVersion, setUpdateModalDismissedVersion] =
     useState<string | null>(null)
   const [newSessionOpen, setNewSessionOpen] = useState(false)
+  const [remoteDrive, setRemoteDrive] = useState<RemoteDriveState>(
+    REMOTE_DRIVE_IDLE_STATE
+  )
   const [pendingCloseSession, setPendingCloseSession] =
     useState<SessionEntry | null>(null)
   const [newSessionIntent, setNewSessionIntent] = useState<
@@ -149,6 +155,7 @@ export default function AppShell() {
   const restoreTerminals = useTerminalsStore((state) => state.restoreTerminals)
   const activateTerminal = useTerminalsStore((state) => state.activateTerminal)
   const closeTerminal = useTerminalsStore((state) => state.closeTerminal)
+  const markTerminalExited = useTerminalsStore((state) => state.markExited)
 
   useEffect(() => {
     let cancelled = false
@@ -157,6 +164,20 @@ export default function AppShell() {
     })
     return () => {
       cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const unsubscribe = window.remoteApi.onDriveStateChange((state) => {
+      if (!cancelled) setRemoteDrive(state)
+    })
+    void window.remoteApi.getDriveState().then((state) => {
+      if (!cancelled) setRemoteDrive(state)
+    })
+    return () => {
+      cancelled = true
+      unsubscribe()
     }
   }, [])
 
@@ -385,6 +406,25 @@ export default function AppShell() {
       setPageId(terminalPage(request.terminalId))
     })
   }, [addTerminal, pageId])
+
+  useEffect(() => {
+    void window.remoteApi.setRecentWorkspaces(readWorkspaceHistory())
+  }, [])
+
+  useEffect(() => {
+    return window.appApi.onRemoteLaunch((request) => {
+      addTerminal({
+        id: request.terminalId,
+        name: request.name,
+        shellId: request.adapterId,
+        cwd: request.workspace,
+        launch: { kind: 'attach', ptyId: request.ptyId, agent: true }
+      })
+      const history = saveWorkspace(request.workspace)
+      void window.remoteApi.setRecentWorkspaces(history)
+      setPageId(terminalPage(request.terminalId))
+    })
+  }, [addTerminal])
 
   useEffect(() => {
     return window.appApi.onFocusSession(({ sessionId, terminalId }) => {
@@ -798,36 +838,17 @@ export default function AppShell() {
           (session) => item.parentSessionId === session.sessionId
         )
       )
-      const activePageTerminalId = terminalIdFromPage(pageId)
-      const wasActive =
-        activePageTerminalId === terminalId ||
-        children.some((child) => child.id === activePageTerminalId)
       for (const child of children) {
         void window.ptyApi.killTerminal(child.id)
         closeTerminal(child.id)
       }
 
-      // 进程已经自行退出，不再调用 agent:stop。这里只释放 PTYManager
-      // 为回看输出保留的描述符，并用墓碑阻止迟到投影复活卡片。
-      void window.ptyApi.killTerminal(terminalId)
-      closeTerminal(terminalId)
-      useSessionsStore
-        .getState()
-        .removeSessions(linkedSessions.map((session) => session.sessionId))
-      setPendingCloseSession((pending) =>
-        linkedSessions.some(
-          (session) => session.sessionId === pending?.sessionId
-        )
-          ? null
-          : pending
-      )
-
-      if (wasActive) {
-        const nextTerminalId = useTerminalsStore.getState().activeTerminalId
-        setPageId(nextTerminalId ? terminalPage(nextTerminalId) : 'home')
-      }
+      // 退出与关闭是两个事实：保留 tab、PTY 历史和 exited 投影供本机/手机回看。
+      // 用户显式关闭 tab 时 closeTerminalAndRoute 才调用 agent:stop，主进程随后
+      // 发布 removed，远程列表也在同一时刻移除。
+      markTerminalExited(terminalId)
     },
-    [closeTerminal, pageId]
+    [closeTerminal, markTerminalExited]
   )
 
   const requestCloseSession = useCallback((session: SessionEntry): void => {
@@ -917,6 +938,7 @@ export default function AppShell() {
                 sessions={navigationSessions}
                 terminals={standaloneTerminals}
                 childTerminals={childTerminals}
+                drivenSessionId={remoteDrive.sessionId}
                 onNavigate={navigate}
                 onOpenNewSession={openNewSession}
                 onCollapse={() => setNavMode('rail')}
@@ -942,6 +964,7 @@ export default function AppShell() {
                 pageId={pageId}
                 sessions={navigationSessions}
                 terminals={nonSessionTerminals}
+                drivenSessionId={remoteDrive.sessionId}
                 onNavigate={navigate}
                 onOpenNewSession={openNewSession}
                 onExpand={() => setNavMode('sidebar')}
@@ -1001,6 +1024,7 @@ export default function AppShell() {
               pageId={pageId}
               sessions={navigationSessions}
               terminals={nonSessionTerminals}
+              drivenSessionId={remoteDrive.sessionId}
               onNavigate={navigate}
               onOpenNewSession={openNewSession}
               onRenameSession={renameSession}
@@ -1067,6 +1091,7 @@ export default function AppShell() {
                 key={terminal.id}
                 terminal={terminal}
                 active={activeTerminalId === terminal.id}
+                remoteDrive={remoteDrive}
                 onInitialSpawn={handleInitialTerminalSpawn}
                 onExit={handleTerminalExit}
               />
@@ -1103,6 +1128,9 @@ export default function AppShell() {
         onOpenDsh={openDshFromNewSession}
         onLaunchTerminal={launchTerminal}
         onLaunchCli={launchCli}
+        onWorkspaceHistoryChange={(history) =>
+          void window.remoteApi.setRecentWorkspaces(history)
+        }
       />
 
       <AnimatePresence>

@@ -153,7 +153,14 @@ function firstQuestion(questions: unknown): string | undefined {
 const BOOTSTRAP_RETRY_INITIAL_MS = 100
 const BOOTSTRAP_RETRY_MAX_MS = 2_000
 
-function titleOf(session: ProjectorSession): string {
+/** Deterministic HRack identity for a session created outside an existing slot. */
+function adoptedSlotId(sessionId: string): string {
+  return `official:${sessionId}`
+}
+
+function titleOf(
+  session: Pick<ProjectorSession, 'sessionId' | 'cwd' | 'agentPreset'>
+): string {
   if (session.cwd) {
     const base = session.cwd.replace(/[/\\]+$/, '').split(/[/\\]/).pop()
     if (base) return base
@@ -229,7 +236,6 @@ export class DshSessionProjector {
   private bootstrapRetryTimer: ReturnType<typeof setTimeout> | null = null
   private bootstrapFailures = 0
   private lifecycleGeneration = 0
-
   constructor(
     private readonly host: DshHostManager,
     private readonly bridge: DshProjectionBridge
@@ -285,6 +291,13 @@ export class DshSessionProjector {
     const slotId = this.activeSlotId
     if (!slotId) return
     const previousSessionId = this.slots.get(slotId)
+    if (sessionId) {
+      const adopted = adoptedSlotId(sessionId)
+      if (adopted !== slotId && this.slots.get(adopted) === sessionId) {
+        this.slots.delete(adopted)
+        this.bridge.remove(adopted)
+      }
+    }
     this.slots.set(slotId, sessionId)
     if (!sessionId) {
       if (previousSessionId) this.bridge.remove(slotId)
@@ -365,13 +378,8 @@ export class DshSessionProjector {
           sessionId: item.sessionId,
           name: typeof title === 'string' && title.trim() ? title.trim() : titleOf({
             sessionId: item.sessionId,
-            name: '',
-            running: item.running === true,
             cwd: item.cwd,
-            agentPreset: item.agentPreset,
-            pendingAttention: false,
-            activeTools: {},
-            updatedAt: item.updatedAt ?? Date.now()
+            agentPreset: item.agentPreset
           }),
           running: item.running === true,
           cwd: item.cwd,
@@ -483,18 +491,41 @@ export class DshSessionProjector {
     }
   }
 
+  /**
+   * A session created by the phone or another official DSH surface has no
+   * Home-created HRack slot. Bind a pending local slot when one exists;
+   * otherwise publish a deterministic slot so desktop and remote stay in sync.
+   */
+  private adoptExternalSession(sessionId: string): void {
+    if ([...this.slots.values()].includes(sessionId)) return
+    const pendingSlot = this.activeSlotId
+    if (pendingSlot && this.slots.get(pendingSlot) === undefined) {
+      this.slots.set(pendingSlot, sessionId)
+      this.publishSlot(pendingSlot)
+      return
+    }
+    const slotId = adoptedSlotId(sessionId)
+    if (this.closedSlotIds.has(slotId)) return
+    this.slots.set(slotId, sessionId)
+    this.publishSlot(slotId)
+  }
+
   private onHostFrame(payload: Record<string, unknown>): void {
     const type = payload.type
     const sessionId = payload.sessionId
     if (type === 'host/session-added' && typeof sessionId === 'string') {
       if (payload.origin === 'subagent') return
+      const cwd = typeof payload.cwd === 'string' ? payload.cwd : undefined
+      const agentPreset =
+        typeof payload.agentPreset === 'string' ? payload.agentPreset : undefined
       this.upsert({
         sessionId,
+        name: titleOf({ sessionId, cwd, agentPreset }),
         running: false,
-        cwd: typeof payload.cwd === 'string' ? payload.cwd : undefined,
-        agentPreset:
-          typeof payload.agentPreset === 'string' ? payload.agentPreset : undefined
+        cwd,
+        agentPreset
       })
+      this.adoptExternalSession(sessionId)
       return
     }
     if (type === 'host/session-removed' && typeof sessionId === 'string') {

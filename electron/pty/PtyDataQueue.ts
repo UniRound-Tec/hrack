@@ -112,6 +112,13 @@ export class PtyDataQueue {
     this.resume()
   }
 
+  dispose(): void {
+    this.queued.length = 0
+    this.queuedBytes = 0
+    this.unackedBytes = 0
+    this.resume()
+  }
+
   snapshot(): PtyFlowControlSnapshot {
     return {
       highWaterMarkBytes: this.options.highWaterMarkBytes,

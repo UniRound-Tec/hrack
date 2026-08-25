@@ -24,6 +24,7 @@ import {
 import { startThemeWatcher, stopThemeWatcher } from './themes-watch'
 import {
   AppEventChannel,
+  RemoteEventChannel,
   UpdateEventChannel,
   type BridgeLaunchAck,
   type BridgeLaunchRequest
@@ -62,6 +63,16 @@ import { BridgeServer } from './bridge/BridgeServer'
 import { OpenCodeControlPlane } from './bridge/OpenCodeControlPlane'
 import { BridgeStateStore } from './bridge/state'
 import { BridgeError } from './bridge/errors'
+import { RemoteDesktopClient } from './remote/RemoteDesktopClient'
+import { RemoteDshCoordinator } from './remote/RemoteDshCoordinator'
+import { runtimeSessionSource } from './remote/runtimeSessionSource'
+import {
+  combineRemoteSessionSources,
+  dshRemoteSessionSource
+} from './remote/dshRemoteSessionSource'
+import { runtimeRemotePtyHost } from './remote/runtimeRemotePtyHost'
+import { runtimeRemoteLaunchHost } from './remote/runtimeRemoteLaunchHost'
+import { runtimeRemoteWorkspaceHost } from './remote/runtimeRemoteWorkspaceHost'
 
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
@@ -144,6 +155,7 @@ const agentRuntime = new AgentSessionRuntime({
 })
 // DSH host：只启动扫描到的本机 / WSL 安装；懒启动并随 app 退出回收。
 let dshSurfaceController: DshWebSurfaceController | null = null
+let remoteDshCoordinator: RemoteDshCoordinator | null = null
 const dshHost = new DshHostManager({
   defaultDshHome: join(app.getPath('userData'), 'dsh-home'),
   discovery: cliDiscovery,
@@ -152,6 +164,7 @@ const dshHost = new DshHostManager({
   onLeftReady: () => {
     dshProjector.stop()
     dshSurfaceController?.hostStopped()
+    remoteDshCoordinator?.hostStopped()
   },
   onRestarting: () => {
     dshProjector.pause()
@@ -219,6 +232,35 @@ function completeBridgeLaunch(ack: BridgeLaunchAck): void {
   pending(ack.error)
 }
 
+const remoteClient = new RemoteDesktopClient({
+  sessions: combineRemoteSessionSources(
+    runtimeSessionSource(agentRuntime),
+    dshRemoteSessionSource(dshProjections)
+  ),
+  broadcast: (state) =>
+    broadcastToAllWindows(RemoteEventChannel.StateChanged, state),
+  pty: runtimeRemotePtyHost(agentRuntime, manager),
+  launch: runtimeRemoteLaunchHost(cliDiscovery, agentRuntime, (request) => {
+    const win = winRef && !winRef.isDestroyed() ? winRef : null
+    if (!win || win.webContents.isDestroyed()) return
+    win.webContents.send(AppEventChannel.RemoteLaunch, request)
+  }),
+  workspace: runtimeRemoteWorkspaceHost(cliDiscovery),
+  focusSession: (sessionId) =>
+    floatingController?.focusSession(sessionId) ?? false,
+  broadcastDrive: (state) =>
+    broadcastToAllWindows(RemoteEventChannel.DriveChanged, state),
+  onDshTunnelLease: (lease) => remoteDshCoordinator?.acceptLease(lease)
+})
+
+remoteDshCoordinator = new RemoteDshCoordinator({
+  userDataDir: app.getPath('userData'),
+  host: dshHost,
+  remote: remoteClient,
+  broadcast: (state) =>
+    broadcastToAllWindows(RemoteEventChannel.DshStateChanged, state)
+})
+
 const updateService = new UpdateService({
   enabled: app.isPackaged && process.env['HRACK_DISABLE_UPDATES'] !== '1',
   currentVersion: packageMetadata.version,
@@ -238,6 +280,8 @@ function prepareShutdown(): Promise<void> {
   shutdownPromise = (async () => {
     // Agent Runtime 先写入退出事实并回收 observer；随后兜底关闭普通终端。
     controlPlane.dispose()
+    remoteDshCoordinator?.dispose()
+    remoteClient.dispose()
     await bridgeServer.stop()
     await agentRuntime.disposeAll()
     await hookIngress.dispose()
@@ -351,6 +395,8 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
     dshWire,
     dshProjections,
     updateService,
+    remoteClient,
+    remoteDshCoordinator,
     getDshSurfaceController: () => dshSurfaceController,
     getWindow: () => (winRef && !winRef.isDestroyed() ? winRef : null),
     getTray: () => trayRef,

@@ -1,4 +1,5 @@
 import type { AppStrings } from './zh-CN'
+import type { RemoteDesktopError } from '../../../shared/ipc-contract'
 
 /** 繁體中文。原型英文微标签保持英文（与 zh-CN 基准一致）。 */
 export const zhTW = {
@@ -174,6 +175,8 @@ export const zhTW = {
     booting: '正在啟動 DeepSeek Harness…',
     bootHostInit: 'dsh host 首次啟動需要初始化 profile',
     bootFailed: 'DSH 啟動失敗',
+    copyError: '複製錯誤訊息',
+    errorCopied: '已複製',
     bootReload: '重新載入視窗',
     homeHint: '自動選擇 · 本機優先'
   },
@@ -221,7 +224,9 @@ export const zhTW = {
     copied: '已複製',
     newTab: '新增分頁',
     closeTab: '關閉分頁',
-    exited: '已結束'
+    exited: '已結束',
+    remoteDriven: '手機正在控制',
+    remoteReclaim: '取回控制'
   },
   home: {
     greetings: [
@@ -284,6 +289,7 @@ export const zhTW = {
       layout: '版面',
       terminal: '終端機',
       session: '工作階段',
+      remote: '遠端',
       update: '應用程式更新'
     },
     uiTheme: '介面主題',
@@ -404,6 +410,53 @@ export const zhTW = {
     updateCheck: '檢查更新',
     updateDownload: '下載更新',
     updateRestart: '重新啟動並安裝',
+    remoteUrl: '加入 URL',
+    remoteUrlHint: '電腦和手機使用同一條完整 URL。用戶端不寫死網域。',
+    remoteConnect: '連線',
+    remoteDisconnect: '中斷',
+    remoteRevoke: '撤銷房間',
+    remoteDsh: '允許目前遠控房間開啟 DSH',
+    remoteDshHint: '預設關閉。啟用後，手機可使用 DSH 官方網頁與網頁工作區選擇器。',
+    remoteDshOff: '未開放',
+    remoteDshStarting: '正在驗證 DSH 並建立獨立通道',
+    remoteDshReady: 'DSH 遠端網頁已就緒',
+    remoteDshUnsupported: '等待支援 DSH 網頁通道的遠控伺服器',
+    remoteDshUnavailable: '目前 DSH 版本或通道暫不可用',
+    remoteConfirmTitle: '把終端機送到這台伺服器？',
+    remoteConfirmBody: (origin: string) =>
+      `連線後，工作階段列表與被駕駛的終端機位元組會送到 ${origin}。持有這條 URL 的人可以占座。`,
+    remoteStatusIdle: '未連線',
+    remoteStatusConnecting: '連線中',
+    remoteStatusWaitingPhone: '已出站，等待手機',
+    remoteStatusPeerOnline: '手機已占座',
+    remoteStatusRevoking: '正在撤銷房間',
+    remoteError: (code: RemoteDesktopError) => {
+      switch (code) {
+        case 'occupied':
+          return '該座位已有電腦，未踢掉原連線'
+        case 'bad-key':
+          return '房間不存在或已撤銷'
+        case 'revoked':
+          return '房間已撤銷'
+        case 'connect-failed':
+          return '無法連上中繼'
+        case 'invalid-url':
+        case 'invalid-scheme':
+        case 'invalid-room':
+        case 'missing-room':
+          return '無法解析這條 URL'
+        case 'insecure-remote':
+          return '遠端伺服器必須使用 HTTPS / WSS；明文連線僅允許本機回環位址'
+        case 'not-connected':
+          return '尚未連線，無法撤銷房間'
+        case 'revoke-unconfirmed':
+          return '中繼沒有確認撤銷，房間可能仍然有效'
+        default:
+          return `失敗：${code}`
+      }
+    },
+    remoteQr: '加入 QR 碼',
+    remoteQrHint: '網頁關掉後可掃這裡補連',
     description: '版面與控制項沿用定稿原型；各項設定直讀寫 settingsStore。',
     mapleMono: 'Maple Mono',
     pixels: (value: number) => `${value}px`,

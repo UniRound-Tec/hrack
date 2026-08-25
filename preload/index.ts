@@ -11,6 +11,8 @@ import {
   FloatingWindowEventChannel,
   FloatingWindowInvokeChannel,
   PtyInvokeChannel,
+  RemoteEventChannel,
+  RemoteInvokeChannel,
   ShellInvokeChannel,
   StatsInvokeChannel,
   ThemeEventChannel,
@@ -43,6 +45,11 @@ import {
   type PtyMeta,
   type PtyResizeCursorSync,
   type RecordEventInput,
+  type RemoteApi,
+  type RemoteDriveState,
+  type RemoteDesktopState,
+  type RemoteDshState,
+  type RemoteVisibleLaunchRequest,
   type ShellApi,
   type SpawnOptions,
   type StatsApi,
@@ -348,6 +355,66 @@ const workspaceReader: WorkspaceReaderApi = {
   }
 }
 
+const remoteApi: RemoteApi = {
+  connect: (joinUrl) => ipcRenderer.invoke(RemoteInvokeChannel.Connect, joinUrl),
+  disconnect: () => ipcRenderer.invoke(RemoteInvokeChannel.Disconnect),
+  revoke: () => ipcRenderer.invoke(RemoteInvokeChannel.Revoke),
+  getState: () => ipcRenderer.invoke(RemoteInvokeChannel.GetState),
+  getDriveState: () => ipcRenderer.invoke(RemoteInvokeChannel.GetDriveState),
+  reclaim: (sessionId) =>
+    ipcRenderer.invoke(RemoteInvokeChannel.Reclaim, sessionId),
+  setRecentWorkspaces: (workspaces) =>
+    ipcRenderer.invoke(RemoteInvokeChannel.SetRecentWorkspaces, workspaces),
+  getDshState: () => ipcRenderer.invoke(RemoteInvokeChannel.GetDshState),
+  setDshEnabled: (enabled) =>
+    ipcRenderer.invoke(RemoteInvokeChannel.SetDshEnabled, enabled),
+  onStateChange: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      state: RemoteDesktopState
+    ): void => {
+      if (state && typeof state === 'object' && typeof state.phase === 'string') {
+        cb(state)
+      }
+    }
+    ipcRenderer.on(RemoteEventChannel.StateChanged, handler)
+    return () =>
+      ipcRenderer.removeListener(RemoteEventChannel.StateChanged, handler)
+  },
+  onDriveStateChange: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      state: RemoteDriveState
+    ): void => {
+      if (
+        state &&
+        typeof state === 'object' &&
+        (state.phase === 'idle' || state.phase === 'driven')
+      ) {
+        cb(state)
+      }
+    }
+    ipcRenderer.on(RemoteEventChannel.DriveChanged, handler)
+    return () =>
+      ipcRenderer.removeListener(RemoteEventChannel.DriveChanged, handler)
+  },
+  onDshStateChange: (cb) => {
+    const handler = (_event: IpcRendererEvent, state: RemoteDshState): void => {
+      if (
+        state &&
+        typeof state === 'object' &&
+        typeof state.enabled === 'boolean' &&
+        typeof state.relaySupported === 'boolean'
+      ) {
+        cb(state)
+      }
+    }
+    ipcRenderer.on(RemoteEventChannel.DshStateChanged, handler)
+    return () =>
+      ipcRenderer.removeListener(RemoteEventChannel.DshStateChanged, handler)
+  }
+}
+
 const appApi: AppApi = {
   setMainPrefs: (update: MainPrefsUpdate) =>
     ipcRenderer.invoke(AppInvokeChannel.SetMainPrefs, update),
@@ -396,6 +463,42 @@ const appApi: AppApi = {
     ipcRenderer.on(AppEventChannel.BridgeLaunch, handler)
     return () =>
       ipcRenderer.removeListener(AppEventChannel.BridgeLaunch, handler)
+  },
+  onRemoteLaunch: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      request: RemoteVisibleLaunchRequest
+    ): void => {
+      if (
+        request &&
+        typeof request.terminalId === 'string' &&
+        typeof request.name === 'string' &&
+        typeof request.adapterId === 'string' &&
+        typeof request.workspace === 'string' &&
+        typeof request.ptyId === 'string' &&
+        request.selection &&
+        typeof request.selection.installationId === 'string' &&
+        typeof request.selection.workspace === 'string' &&
+        Array.isArray(request.selection.args) &&
+        request.selection.args.every((arg) => typeof arg === 'string')
+      ) {
+        cb({
+          terminalId: request.terminalId,
+          name: request.name,
+          adapterId: request.adapterId,
+          workspace: request.workspace,
+          ptyId: request.ptyId,
+          selection: {
+            installationId: request.selection.installationId,
+            workspace: request.selection.workspace,
+            args: [...request.selection.args]
+          }
+        })
+      }
+    }
+    ipcRenderer.on(AppEventChannel.RemoteLaunch, handler)
+    return () =>
+      ipcRenderer.removeListener(AppEventChannel.RemoteLaunch, handler)
   },
   reportBridgeLaunch: (ack: BridgeLaunchAck) =>
     ipcRenderer.invoke(BridgeInvokeChannel.LaunchResult, ack),
@@ -583,6 +686,7 @@ try {
   contextBridge.exposeInMainWorld('workspaceReader', workspaceReader)
   contextBridge.exposeInMainWorld('appApi', appApi)
   contextBridge.exposeInMainWorld('updateApi', updateApi)
+  contextBridge.exposeInMainWorld('remoteApi', remoteApi)
   contextBridge.exposeInMainWorld('appThemeApi', appThemeApi)
   contextBridge.exposeInMainWorld('dshApi', dshApi)
   contextBridge.exposeInMainWorld('dshWireApi', dshWireApi)

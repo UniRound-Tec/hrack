@@ -19,8 +19,18 @@ import type {
  * 并证明临时目录（`<userData>/observer-runs/<sessionId>/`）的隔离与清理。
  */
 
-const FIXTURE_EMIT_INTERVAL_MS = 450
+const DEFAULT_FIXTURE_EMIT_INTERVAL_MS = 450
 const MAX_SCRIPT_EVENTS = 64
+
+function fixtureEmitIntervalMs(): number {
+  const configured = Number(
+    process.env['HRACK_FIXTURE_OBSERVER_INTERVAL_MS'] ??
+      DEFAULT_FIXTURE_EMIT_INTERVAL_MS
+  )
+  return Number.isInteger(configured) && configured >= 100 && configured <= 5_000
+    ? configured
+    : DEFAULT_FIXTURE_EMIT_INTERVAL_MS
+}
 
 function buildFixtureScript(): AdapterEvent[] {
   return [
@@ -141,7 +151,7 @@ export class FixtureObserverAdapter implements AgentObserverAdapter {
           }
           const event = script[index++]
           emit({ ...event, nativeId: `fixture:${running.sessionId}:${index}` })
-        }, FIXTURE_EMIT_INTERVAL_MS)
+        }, fixtureEmitIntervalMs())
         return {
           capabilities: this.capabilities,
           dispose: async (): Promise<void> => {

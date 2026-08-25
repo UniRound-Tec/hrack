@@ -28,6 +28,9 @@ interface DshProjectionBridgeOptions {
 
 export class DshProjectionBridge {
   private readonly projections = new Map<string, AgentSessionProjection>()
+  private readonly listeners = new Set<
+    (projection: AgentSessionProjection) => void
+  >()
   private seq = 0
 
   constructor(private readonly options: DshProjectionBridgeOptions) {}
@@ -40,6 +43,17 @@ export class DshProjectionBridge {
 
   find(sessionId: string): AgentSessionProjection | undefined {
     return this.projections.get(sessionId)
+  }
+
+  /**
+   * Subscribe to the same followed-session projection stream consumed by the
+   * HRack renderer. This deliberately does not expose DSH session.list.
+   */
+  subscribe(
+    listener: (projection: AgentSessionProjection) => void
+  ): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
   }
 
   apply(snapshot: DshProjectionSnapshot): AgentSessionProjection {
@@ -75,6 +89,7 @@ export class DshProjectionBridge {
       this.projections.set(snapshot.slotId, projection)
     }
     this.options.broadcast(AgentEventChannel.Projection, projection)
+    for (const listener of this.listeners) listener(projection)
     return projection
   }
 

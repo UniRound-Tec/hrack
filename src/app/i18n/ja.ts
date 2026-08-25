@@ -1,4 +1,5 @@
 import type { AppStrings } from './zh-CN'
+import type { RemoteDesktopError } from '../../../shared/ipc-contract'
 
 /** 日本語。プロトタイプの英文マイクロラベルは英語のまま（zh-CN 基準と同一）。 */
 export const ja = {
@@ -174,6 +175,8 @@ export const ja = {
     booting: 'DeepSeek Harness を起動しています…',
     bootHostInit: '初回の host 起動では profile の初期化が必要です',
     bootFailed: 'DSH の起動に失敗しました',
+    copyError: 'エラーをコピー',
+    errorCopied: 'コピーしました',
     bootReload: 'ウィンドウを再読み込み',
     homeHint: '自動選択 · ローカル優先'
   },
@@ -221,7 +224,9 @@ export const ja = {
     copied: 'コピーしました',
     newTab: '新しいタブ',
     closeTab: 'タブを閉じる',
-    exited: '終了'
+    exited: '終了',
+    remoteDriven: 'スマートフォンが操作中',
+    remoteReclaim: '操作を取り戻す'
   },
   home: {
     greetings: [
@@ -284,6 +289,7 @@ export const ja = {
       layout: 'レイアウト',
       terminal: 'ターミナル',
       session: 'セッション',
+      remote: 'リモート',
       update: 'アプリ更新'
     },
     uiTheme: 'UI テーマ',
@@ -404,6 +410,53 @@ export const ja = {
     updateCheck: '更新を確認',
     updateDownload: '更新をダウンロード',
     updateRestart: '再起動してインストール',
+    remoteUrl: '参加 URL',
+    remoteUrlHint: 'パソコンとスマホは同じ完全な URL を使います。ドメインはハードコードしません。',
+    remoteConnect: '接続',
+    remoteDisconnect: '切断',
+    remoteRevoke: 'ルームを失効',
+    remoteDsh: '現在のリモートルームで DSH を開く',
+    remoteDshHint: '既定ではオフです。有効にすると、スマートフォンから公式 DSH Web UI とワークスペース選択を利用できます。',
+    remoteDshOff: '公開されていません',
+    remoteDshStarting: 'DSH を検証し、専用トンネルを接続しています',
+    remoteDshReady: 'リモート DSH Web の準備ができました',
+    remoteDshUnsupported: 'DSH Web トンネル対応 Relay を待っています',
+    remoteDshUnavailable: '現在の DSH バージョンまたはトンネルは利用できません',
+    remoteConfirmTitle: 'このサーバーへ端末を送りますか？',
+    remoteConfirmBody: (origin: string) =>
+      `接続後、セッション一覧と運転中の端末バイトは ${origin} に送られます。この URL を持つ人が座席を取れます。`,
+    remoteStatusIdle: '未接続',
+    remoteStatusConnecting: '接続中',
+    remoteStatusWaitingPhone: '送信済み。スマホ待ち',
+    remoteStatusPeerOnline: 'スマホが着席',
+    remoteStatusRevoking: 'ルームを失効中',
+    remoteError: (code: RemoteDesktopError) => {
+      switch (code) {
+        case 'occupied':
+          return 'その席には既にデスクトップがあります。既存接続は切断しません'
+        case 'bad-key':
+          return 'ルームが存在しないか失効しています'
+        case 'revoked':
+          return 'ルームは失効しました'
+        case 'connect-failed':
+          return 'リレーに接続できません'
+        case 'invalid-url':
+        case 'invalid-scheme':
+        case 'invalid-room':
+        case 'missing-room':
+          return 'この URL を解析できません'
+        case 'insecure-remote':
+          return 'リモートサーバーには HTTPS / WSS が必要です。平文はループバックのみ許可されます'
+        case 'not-connected':
+          return 'ルームを失効するには先に接続してください'
+        case 'revoke-unconfirmed':
+          return '中継が失効を確認しませんでした。ルームがまだ有効な可能性があります'
+        default:
+          return `失敗: ${code}`
+      }
+    },
+    remoteQr: '参加 QR',
+    remoteQrHint: 'サイトを閉じたあとはここから読み取れます',
     description: 'レイアウトとコントロールは確定プロトタイプに準拠。設定は settingsStore に直書き。',
     mapleMono: 'Maple Mono',
     pixels: (value: number) => `${value}px`,

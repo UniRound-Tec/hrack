@@ -1,4 +1,5 @@
 import type { AppStrings } from './zh-CN'
+import type { RemoteDesktopError } from '../../../shared/ipc-contract'
 
 /** 한국어. 프로토타입 영어 마이크로 라벨은 영어 유지(zh-CN 기준과 동일). */
 export const ko = {
@@ -174,6 +175,8 @@ export const ko = {
     booting: 'DeepSeek Harness 시작하는 중…',
     bootHostInit: '첫 host 시작 시 profile 초기화가 필요합니다',
     bootFailed: 'DSH 시작 실패',
+    copyError: '오류 복사',
+    errorCopied: '복사됨',
     bootReload: '창 다시 로드',
     homeHint: '자동 선택 · 로컬 우선'
   },
@@ -221,7 +224,9 @@ export const ko = {
     copied: '복사됨',
     newTab: '새 탭',
     closeTab: '탭 닫기',
-    exited: '종료됨'
+    exited: '종료됨',
+    remoteDriven: '휴대폰에서 제어 중',
+    remoteReclaim: '제어권 회수'
   },
   home: {
     greetings: [
@@ -284,6 +289,7 @@ export const ko = {
       layout: '레이아웃',
       terminal: '터미널',
       session: '세션',
+      remote: '원격',
       update: '앱 업데이트'
     },
     uiTheme: 'UI 테마',
@@ -404,6 +410,53 @@ export const ko = {
     updateCheck: '업데이트 확인',
     updateDownload: '업데이트 다운로드',
     updateRestart: '다시 시작하고 설치',
+    remoteUrl: '참가 URL',
+    remoteUrlHint: '컴퓨터와 휴대폰이 같은 전체 URL을 씁니다. 클라이언트는 도메인을 하드코딩하지 않습니다.',
+    remoteConnect: '연결',
+    remoteDisconnect: '끊기',
+    remoteRevoke: '방 취소',
+    remoteDsh: '현재 원격 방에서 DSH 열기 허용',
+    remoteDshHint: '기본값은 꺼짐입니다. 켜면 휴대폰에서 공식 DSH 웹 UI와 웹 작업 공간 선택기를 사용할 수 있습니다.',
+    remoteDshOff: '공개되지 않음',
+    remoteDshStarting: 'DSH를 검증하고 전용 터널을 연결하는 중',
+    remoteDshReady: '원격 DSH 웹 준비 완료',
+    remoteDshUnsupported: 'DSH 웹 터널을 지원하는 Relay 대기 중',
+    remoteDshUnavailable: '현재 DSH 버전 또는 터널을 사용할 수 없음',
+    remoteConfirmTitle: '이 서버로 터미널을 보낼까요?',
+    remoteConfirmBody: (origin: string) =>
+      `연결하면 세션 목록과 운전 중인 터미널 바이트가 ${origin}으로 갑니다. 이 URL을 가진 사람이 자리를 차지할 수 있습니다.`,
+    remoteStatusIdle: '연결 안 됨',
+    remoteStatusConnecting: '연결 중',
+    remoteStatusWaitingPhone: '송신됨, 휴대폰 대기',
+    remoteStatusPeerOnline: '휴대폰이 착석함',
+    remoteStatusRevoking: '방 폐기 중',
+    remoteError: (code: RemoteDesktopError) => {
+      switch (code) {
+        case 'occupied':
+          return '그 자리에는 이미 데스크톱이 있습니다. 기존 연결은 끊지 않았습니다'
+        case 'bad-key':
+          return '방이 없거나 취소되었습니다'
+        case 'revoked':
+          return '방이 취소되었습니다'
+        case 'connect-failed':
+          return '릴레이에 연결할 수 없습니다'
+        case 'invalid-url':
+        case 'invalid-scheme':
+        case 'invalid-room':
+        case 'missing-room':
+          return '이 URL을 해석할 수 없습니다'
+        case 'insecure-remote':
+          return '원격 서버는 HTTPS / WSS를 사용해야 하며 평문 연결은 루프백에서만 허용됩니다'
+        case 'not-connected':
+          return '방을 폐기하려면 먼저 연결하세요'
+        case 'revoke-unconfirmed':
+          return '릴레이가 폐기를 확인하지 않았습니다. 방이 아직 유효할 수 있습니다'
+        default:
+          return `실패: ${code}`
+      }
+    },
+    remoteQr: '참가 QR',
+    remoteQrHint: '웹사이트를 닫은 뒤 여기서 스캔하세요',
     description: '레이아웃과 컨트롤은 확정된 프로토타입을 따르며 설정은 settingsStore에 직접 기록됩니다.',
     mapleMono: 'Maple Mono',
     pixels: (value: number) => `${value}px`,

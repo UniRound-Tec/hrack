@@ -1,3 +1,5 @@
+import type { RemoteDesktopError } from '../../../shared/ipc-contract'
+
 /**
  * zh-CN 是类型基准：`AppStrings = typeof zhCN`，其余 locale 以
  * `satisfies AppStrings` 保证 key 完整性（含函数型条目逐语言实现）。
@@ -177,6 +179,8 @@ export const zhCN = {
     booting: '正在启动 DeepSeek Harness…',
     bootHostInit: 'dsh host 首次启动需要初始化 profile',
     bootFailed: 'DSH 启动失败',
+    copyError: '复制错误信息',
+    errorCopied: '已复制',
     bootReload: '重新加载窗口',
     homeHint: '自动选择 · 本机优先'
   },
@@ -224,7 +228,9 @@ export const zhCN = {
     copied: '已复制',
     newTab: '新建标签页',
     closeTab: '关闭标签页',
-    exited: '已退出'
+    exited: '已退出',
+    remoteDriven: '手机正在控制',
+    remoteReclaim: '抢回'
   },
   home: {
     greetings: [
@@ -287,6 +293,7 @@ export const zhCN = {
       layout: '布局',
       terminal: '终端',
       session: '会话',
+      remote: '远程',
       update: '应用更新'
     },
     uiTheme: '界面主题',
@@ -407,6 +414,53 @@ export const zhCN = {
     updateCheck: '检查更新',
     updateDownload: '下载更新',
     updateRestart: '重启并安装',
+    remoteUrl: '加入 URL',
+    remoteUrlHint: '电脑和手机用同一条完整 URL。客户端不写死域名。',
+    remoteConnect: '连接',
+    remoteDisconnect: '断开',
+    remoteRevoke: '吊销房间',
+    remoteDsh: '允许当前远控房间打开 DSH',
+    remoteDshHint: '默认关闭。启用后，手机可使用 DSH 官方网页和网页工作区选择器。',
+    remoteDshOff: '未开放',
+    remoteDshStarting: '正在验证 DSH 并建立独立隧道',
+    remoteDshReady: 'DSH 远程网页已就绪',
+    remoteDshUnsupported: '等待支持 DSH 网页隧道的远控服务器',
+    remoteDshUnavailable: '当前 DSH 版本或隧道暂不可用',
+    remoteConfirmTitle: '把终端送到这台服务器？',
+    remoteConfirmBody: (origin: string) =>
+      `连接后，会话列表和被驾驶的终端字节会送到 ${origin}。持有这条 URL 的人可以占座。`,
+    remoteStatusIdle: '未连接',
+    remoteStatusConnecting: '连接中',
+    remoteStatusWaitingPhone: '已出站，等待手机',
+    remoteStatusPeerOnline: '手机已占座',
+    remoteStatusRevoking: '正在吊销房间',
+    remoteError: (code: RemoteDesktopError) => {
+      switch (code) {
+        case 'occupied':
+          return '该座位已有电脑，未踢掉原连接'
+        case 'bad-key':
+          return '房间不存在或已吊销'
+        case 'revoked':
+          return '房间已吊销'
+        case 'connect-failed':
+          return '无法连上中继'
+        case 'invalid-url':
+        case 'invalid-scheme':
+        case 'invalid-room':
+        case 'missing-room':
+          return '无法解析这条 URL'
+        case 'insecure-remote':
+          return '远程服务器必须使用 HTTPS / WSS；明文连接仅允许本机回环地址'
+        case 'not-connected':
+          return '尚未连接，无法吊销房间'
+        case 'revoke-unconfirmed':
+          return '中继没有确认吊销，房间可能仍然有效'
+        default:
+          return `失败：${code}`
+      }
+    },
+    remoteQr: '加入二维码',
+    remoteQrHint: '网页关掉后可扫这里补连',
     description: '布局与控件沿用定稿原型；各项设置直读写 settingsStore。',
     mapleMono: 'Maple Mono',
     pixels: (value: number) => `${value}px`,

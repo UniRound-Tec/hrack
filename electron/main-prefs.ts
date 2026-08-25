@@ -44,6 +44,8 @@ export interface MainPrefs {
   dshHomeMode: DshHomeMode
   dshRetention: DshRetentionPolicy
   dshRuntimePreference: DshRuntimePreference
+  /** Explicit opt-in for exposing DSH to the currently joined Remote room. */
+  remoteDshEnabled: boolean
 }
 
 export const DEFAULT_BACKGROUND_COLOR = '#ffffff'
@@ -67,7 +69,8 @@ export const defaultMainPrefs: MainPrefs = {
   floatingWindowPosition: null,
   dshHomeMode: 'shared',
   dshRetention: { kind: 'all' },
-  dshRuntimePreference: { kind: 'auto' }
+  dshRuntimePreference: { kind: 'auto' },
+  remoteDshEnabled: false
 }
 
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/
@@ -144,6 +147,9 @@ function sanitize(parsed: unknown): MainPrefs {
   prefs.dshRuntimePreference = sanitizeDshRuntimePreference(
     raw.dshRuntimePreference
   )
+  if (typeof raw.remoteDshEnabled === 'boolean') {
+    prefs.remoteDshEnabled = raw.remoteDshEnabled
+  }
   return prefs
 }
 

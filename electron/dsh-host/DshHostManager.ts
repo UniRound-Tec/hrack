@@ -1,7 +1,8 @@
 import { app } from 'electron'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { promisify } from 'node:util'
 import { createServer } from 'node:net'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import type { CliInstallation } from '../../shared/ipc-contract'
 import {
   DshEventChannel,
@@ -24,9 +25,9 @@ import {
   buildDshExternalSpawnSpec,
   dshCandidateFromInstallation,
   dshRejectedNoOpenOption,
-  dshWebOpensBrowserByDefault,
   selectDshRuntimeCandidates
 } from './DshRuntime'
+import { preflightRemoteDsh } from './RemoteDshPreflight'
 
 /**
  * DshHostManager —— 对外只暴露一个 DSH Web host，内部由当前主机安装或
@@ -41,6 +42,36 @@ const REQUIRED_CONTROL_PLANE_METHODS = [
   'session.list',
   'workspace.list'
 ] as const
+const execFileAsync = promisify(execFile)
+
+export interface RemoteDshHostConfig {
+  /** Canonical public HTTPS origin advertised by the current Relay. */
+  publicOrigin: string
+  /** Absolute product-owned overlay path, never below DSH_HOME. */
+  overlayPath: string
+}
+
+function validateRemoteConfig(config: RemoteDshHostConfig): void {
+  const url = new URL(config.publicOrigin)
+  if (
+    url.protocol !== 'https:' ||
+    url.origin !== config.publicOrigin ||
+    url.pathname !== '/' ||
+    url.search ||
+    url.hash ||
+    url.username ||
+    url.password
+  ) {
+    throw new Error('DSH public origin must be a canonical HTTPS origin')
+  }
+  if (
+    !config.overlayPath ||
+    !isAbsolute(config.overlayPath) ||
+    config.overlayPath.includes('\0')
+  ) {
+    throw new Error('DSH remote overlay path is invalid')
+  }
+}
 
 function dshHomeOverride(): string | undefined {
   return process.env['HRACK_DSH_HOME']?.trim() || undefined
@@ -138,6 +169,8 @@ export class DshHostManager {
   private activeWslProcess: { distro: string; pid: number } | null = null
   private activeWindowsProcessTreePid: number | null = null
   private activePosixProcessGroupPid: number | null = null
+  private remoteConfig: RemoteDshHostConfig | null = null
+  private activeRemoteConfigKey: string | null = null
   private restarting = false
 
   constructor(private readonly options: DshHostManagerOptions) {}
@@ -215,6 +248,22 @@ export class DshHostManager {
     return this.getConfig()
   }
 
+  /**
+   * Switch the managed host to the public-authority/browse profile. A changed
+   * authority or overlay always creates a fresh host generation.
+   */
+  async configureRemoteWeb(config: RemoteDshHostConfig): Promise<DshHostStatus> {
+    validateRemoteConfig(config)
+    const key = `${config.publicOrigin}\n${config.overlayPath}`
+    this.remoteConfig = { ...config }
+    if (this.status.state === 'ready' && this.activeRemoteConfigKey === key) {
+      return this.status
+    }
+    if (this.starting) await this.starting
+    if (this.status.state === 'stopped') return this.status
+    return this.restart()
+  }
+
   async restart(): Promise<DshHostStatus> {
     this.restarting = true
     try {
@@ -237,6 +286,7 @@ export class DshHostManager {
 
   async stop(): Promise<DshHostStatus> {
     await this.stopChild()
+    this.activeRemoteConfigKey = null
     this.setStatus({
       state: 'stopped',
       dshHome: this.status.dshHome,
@@ -329,41 +379,55 @@ export class DshHostManager {
     this.outputTail = ''
     this.setStatus({ state: 'starting' })
     try {
-      const targets = await this.resolveLaunchTargets()
-      const failures: string[] = []
-      for (const target of targets) {
-        try {
-          return await this.startTarget(target)
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : String(error)
-          failures.push(`${target.candidate.id}: ${detail}`)
-          this.appendOutput(`\n[${target.candidate.id}] ${detail}\n`)
-          await this.stopChild()
-        }
-      }
-      throw new Error(failures.join('\n'))
+      return await this.attemptStart()
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      console.warn(
+        '[dsh-host] start failed; killing and retrying once:',
+        error instanceof Error ? error.message : error
+      )
       await this.stopChild()
-      this.setStatus({
-        state: 'failed',
-        dshHome: this.status.dshHome,
-        activeRuntime: this.status.activeRuntime,
-        error: `${message}\n${this.outputTail.slice(-2048)}`
-      })
-      return this.status
+      this.outputTail = ''
+      try {
+        return await this.attemptStart()
+      } catch (retryError) {
+        const message =
+          retryError instanceof Error ? retryError.message : String(retryError)
+        await this.stopChild()
+        this.setStatus({
+          state: 'failed',
+          dshHome: this.status.dshHome,
+          activeRuntime: this.status.activeRuntime,
+          error: `${message}\n${this.outputTail.slice(-2048)}`
+        })
+        return this.status
+      }
     }
+  }
+
+  private async attemptStart(): Promise<DshHostStatus> {
+    const targets = await this.resolveLaunchTargets()
+    const failures: string[] = []
+    for (const target of targets) {
+      try {
+        return await this.startTarget(target)
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error)
+        failures.push(`${target.candidate.id}: ${detail}`)
+        this.appendOutput(`\n[${target.candidate.id}] ${detail}\n`)
+        await this.stopChild()
+      }
+    }
+    throw new Error(failures.join('\n'))
   }
 
   private async startTarget(target: DshLaunchTarget): Promise<DshHostStatus> {
     const dshHome = this.resolveTargetHome(target)
     const port = await allocatePort()
-    const preferNoOpen = dshWebOpensBrowserByDefault(target.candidate.version)
     try {
-      return await this.bootTarget(target, port, dshHome, preferNoOpen)
+      return await this.bootTarget(target, port, dshHome, true)
     } catch (error) {
       await new Promise((resolve) => setTimeout(resolve, 50))
-      if (!preferNoOpen || !dshRejectedNoOpenOption(this.outputTail)) {
+      if (!dshRejectedNoOpenOption(this.outputTail)) {
         throw error
       }
       console.warn('[dsh-host] --no-open rejected; retrying without it')
@@ -380,7 +444,8 @@ export class DshHostManager {
     noOpen: boolean
   ): Promise<DshHostStatus> {
     const baseUrl = `http://127.0.0.1:${port}`
-    const child = this.spawnTarget(target, port, dshHome, noOpen)
+    const remote = await this.resolveRemoteLaunch(target)
+    const child = this.spawnTarget(target, port, dshHome, remote, noOpen)
     this.child = child
     this.activeWslProcess = null
     this.activeWindowsProcessTreePid =
@@ -455,10 +520,16 @@ export class DshHostManager {
       dshHome
     )
     await this.waitReady(baseUrl, HOST_STARTUP_TIMEOUT_MS)
+    if (remote) {
+      await preflightRemoteDsh(baseUrl, remote.publicOrigin)
+    }
     if (this.child !== child) {
       throw new Error('dsh host exited before becoming ready')
     }
     ready = true
+    this.activeRemoteConfigKey = remote
+      ? `${remote.publicOrigin}\n${this.remoteConfig?.overlayPath ?? remote.overlayPath}`
+      : null
     this.setStatus({
       state: 'ready',
       dshHome,
@@ -473,6 +544,7 @@ export class DshHostManager {
     target: DshLaunchTarget,
     port: number,
     dshHome: string,
+    remote: RemoteDshHostConfig | null,
     noOpen?: boolean
   ): ManagedDshChild {
     if (!target.installation) {
@@ -486,7 +558,8 @@ export class DshHostManager {
         this.options.discovery.runtimeEnvironment(target.installation).PATH,
       commandInterpreter: process.env.ComSpec,
       inheritedEnv: process.env,
-      noOpen
+      noOpen,
+      ...(remote ? { remote } : {})
     })
     const detached =
       target.candidate.runtime.kind === 'host' &&
@@ -498,6 +571,32 @@ export class DshHostManager {
       windowsHide: true,
       windowsVerbatimArguments: spec.windowsVerbatimArguments ?? false
     }))
+  }
+
+  private async resolveRemoteLaunch(
+    target: DshLaunchTarget
+  ): Promise<RemoteDshHostConfig | null> {
+    const config = this.remoteConfig
+    if (!config) return null
+    if (
+      target.candidate.kind !== 'installation' ||
+      target.candidate.runtime.kind !== 'wsl'
+    ) {
+      return { ...config }
+    }
+    const { stdout } = await execFileAsync(
+      'wsl.exe',
+      [
+        '--distribution', target.candidate.runtime.distro,
+        '--exec', 'wslpath', '-a', '-u', config.overlayPath
+      ],
+      { timeout: 5_000, windowsHide: true, encoding: 'utf8' }
+    )
+    const overlayPath = stdout.trim()
+    if (!overlayPath.startsWith('/') || overlayPath.includes('\0')) {
+      throw new Error('cannot map the HRack DSH overlay into WSL')
+    }
+    return { publicOrigin: config.publicOrigin, overlayPath }
   }
 
   private async stopChild(): Promise<void> {

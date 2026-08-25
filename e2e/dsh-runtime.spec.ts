@@ -8,6 +8,7 @@ import {
   cliDefinitions
 } from '../electron/ai-cli-discovery'
 import {
+  DSH_EMBED_SSH_CONNECTION,
   DSH_WSL_PID_MARKER,
   buildDshExternalSpawnSpec,
   dshRejectedNoOpenOption,
@@ -58,7 +59,7 @@ test('dsh web suppresses the OS browser from 0.1.0-rc.7 onward', () => {
   expect(dshWebOpensBrowserByDefault('0.1.0-rc.8')).toBe(true)
   expect(dshWebOpensBrowserByDefault('0.1.0')).toBe(true)
   expect(dshWebRuntimeArgs(43123, '0.1.0-rc.6')).toEqual([
-    'web', '--host', '127.0.0.1', '--port', '43123'
+    'web', '--host', '127.0.0.1', '--port', '43123', '--no-open'
   ])
   expect(dshWebRuntimeArgs(43123, '0.1.0-rc.8')).toEqual([
     'web', '--host', '127.0.0.1', '--port', '43123', '--no-open'
@@ -121,8 +122,9 @@ test('external launch preserves native and WSL runtime boundaries', () => {
   expect(windows.args.slice(0, 3)).toEqual(['/d', '/v:off', '/c'])
   expect(windows.args[3]).toContain('dsh.cmd')
   expect(windows.args[3]).toContain('"--port" "43123"')
-  expect(windows.args[3]).not.toContain('--no-open')
+  expect(windows.args[3]).toContain('"--no-open"')
   expect(windows.env.DSH_HOME).toBe('C:\\HRack Data\\dsh-home')
+  expect(windows.env.SSH_CONNECTION).toBe(DSH_EMBED_SSH_CONNECTION)
 
   const rc8Windows = buildDshExternalSpawnSpec({
     candidate: { ...windowsCandidate, version: '0.1.0-rc.8' },
@@ -149,6 +151,7 @@ test('external launch preserves native and WSL runtime boundaries', () => {
     noOpen: false
   })
   expect(rc7Wsl.args).not.toContain('--no-open')
+  expect(rc7Wsl.args).toContain(`SSH_CONNECTION=${DSH_EMBED_SSH_CONNECTION}`)
 
   const wsl = buildDshExternalSpawnSpec({
     candidate: wslCandidate,
@@ -165,11 +168,52 @@ test('external launch preserves native and WSL runtime boundaries', () => {
     'DSH_HOME=/home/test/.local/share/hrack/dsh-home',
     '/home/test/.local/bin/dsh',
     '--port',
-    '43124'
+    '43124',
+    '--no-open',
+    `SSH_CONNECTION=${DSH_EMBED_SSH_CONNECTION}`
   ]))
   expect(wsl.args.join(' ')).toContain(DSH_WSL_PID_MARKER)
-  expect(wsl.args).not.toContain('--no-open')
   expect(wsl.env.DSH_HOME).toBeUndefined()
+  expect(wsl.env.SSH_CONNECTION).toBeUndefined()
+})
+
+test('remote launch pins loopback, product overlay and the public authority', () => {
+  const remote = buildDshExternalSpawnSpec({
+    candidate: windowsCandidate,
+    port: 43125,
+    dshHome: 'C:\\Users\\Test User\\.dsh',
+    commandInterpreter: 'C:\\Windows\\System32\\cmd.exe',
+    inheritedEnv: { SystemRoot: 'C:\\Windows' },
+    remote: {
+      publicOrigin: 'https://dsh.example.test',
+      overlayPath: 'C:\\HRack Data\\dsh-runtime\\remote-web.patch.yml'
+    }
+  })
+  const command = remote.args.join(' ')
+  expect(command).toContain('"--profile" "web"')
+  expect(command).toContain('"--patch" "C:\\HRack Data\\dsh-runtime\\remote-web.patch.yml"')
+  expect(command).toContain('"--host" "127.0.0.1"')
+  expect(command).toContain('"--trusted-host" "dsh.example.test"')
+  expect(command).toContain('"--no-open"')
+  expect(command).not.toContain('0.0.0.0')
+
+  const retry = buildDshExternalSpawnSpec({
+    candidate: windowsCandidate,
+    port: 43125,
+    dshHome: 'C:\\Users\\Test User\\.dsh',
+    commandInterpreter: 'C:\\Windows\\System32\\cmd.exe',
+    inheritedEnv: { SystemRoot: 'C:\\Windows' },
+    noOpen: false,
+    remote: {
+      publicOrigin: 'https://dsh.example.test',
+      overlayPath: 'C:\\HRack Data\\dsh-runtime\\remote-web.patch.yml'
+    }
+  })
+  const retryCommand = retry.args.join(' ')
+  expect(retryCommand).not.toContain('--no-open')
+  expect(retryCommand).toContain('"--patch" "C:\\HRack Data\\dsh-runtime\\remote-web.patch.yml"')
+  expect(retryCommand).toContain('"--trusted-host" "dsh.example.test"')
+  expect(retry.env.SSH_CONNECTION).toBe(DSH_EMBED_SSH_CONNECTION)
 })
 
 test('Home hides DSH when the scan finds no installation', async () => {
@@ -299,6 +343,73 @@ test('auto starts a discovered Windows DSH installation through its real shim', 
     expect(restarted.state).toBe('ready')
     expect(restarted.baseUrl).toBeTruthy()
     expect(restarted.baseUrl).not.toBe(before.baseUrl)
+  } finally {
+    await appState.app.close()
+  }
+})
+
+test('host retries without --no-open when the selected DSH rejects it', async () => {
+  test.skip(process.platform !== 'win32', 'Windows command shim is required')
+  test.setTimeout(60_000)
+  const executable = resolve(
+    __dirname,
+    'fixtures/dsh-no-open-retry.cmd'
+  )
+  const appState = await launchApp({
+    createDefaultTerminal: false,
+    env: { HRACK_E2E_DSH_INSTALLATION: executable }
+  })
+  try {
+    await expect(appState.window.getByTestId('home-quick-dsh')).toBeVisible({
+      timeout: 20_000
+    })
+    const status = await appState.window.evaluate(() =>
+      window.dshApi.ensureStarted()
+    )
+    expect(status).toMatchObject({
+      state: 'ready',
+      activeRuntime: {
+        kind: 'installation',
+        resolvedExecutable: executable,
+        runtime: { kind: 'host', platform: 'windows' }
+      }
+    })
+  } finally {
+    await appState.app.close()
+  }
+})
+
+test('a real installed Windows DSH captures the official Electron surface', async () => {
+  const executable = process.env['HRACK_E2E_REAL_DSH']
+  test.skip(
+    process.platform !== 'win32' || !executable,
+    'Set HRACK_E2E_REAL_DSH to the installed Windows dsh.cmd'
+  )
+  test.setTimeout(180_000)
+  expect(existsSync(executable!)).toBe(true)
+  const appState = await launchApp({
+    createDefaultTerminal: false,
+    env: { HRACK_E2E_DSH_INSTALLATION: executable! }
+  })
+  try {
+    await expect(appState.window.getByTestId('home-quick-dsh')).toBeVisible({
+      timeout: 20_000
+    })
+    await appState.window.getByTestId('home-quick-dsh').click()
+    await expect(appState.window.getByTestId('dsh-page')).toHaveAttribute(
+      'data-dsh-surface-phase',
+      'ready',
+      { timeout: 120_000 }
+    )
+    const status = await appState.window.evaluate(() => window.dshApi.getStatus())
+    expect(status).toMatchObject({
+      state: 'ready',
+      activeRuntime: {
+        kind: 'installation',
+        resolvedExecutable: executable,
+        runtime: { kind: 'host', platform: 'windows' }
+      }
+    })
   } finally {
     await appState.app.close()
   }

@@ -13,6 +13,7 @@ import type {
   ShellApi,
   StatsApi,
   ThemeApi,
+  RemoteApi,
   UpdateApi,
   WindowApi
 } from '../shared/ipc-contract'
@@ -41,6 +42,7 @@ declare global {
     workspaceReader: WorkspaceReaderApi
     appApi: AppApi
     updateApi: UpdateApi
+    remoteApi: RemoteApi
     appThemeApi: AppThemeApi
     dshApi: DshApi
     dshWireApi: DshWireApi

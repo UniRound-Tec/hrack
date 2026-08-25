@@ -24,6 +24,7 @@ import {
   PTY_DATA_MAX_BUFFERED_BYTES,
   PtyDataQueue
 } from './PtyDataQueue'
+import { PtyPauseLeases } from './PtyPauseLeases'
 
 interface ManagedPty {
   pty?: IPty
@@ -38,6 +39,9 @@ interface ManagedPty {
   /** 最近一次真正转发给 renderer 的输出；不包含被抑制的 ConPTY resize 重画。 */
   lastForwardedOutputAt: number
   terminal?: PtyTerminalIdentity
+  /** 远程驾驶期间 winsize 归手机；token 防止迟到 release 释放新驾驶。 */
+  remoteResizeOwner?: symbol
+  pauseLeases: PtyPauseLeases
 }
 
 /**
@@ -162,6 +166,10 @@ export class PTYManager {
   private exitListeners = new Map<string, Set<(payload: ExitPayload) => void>>()
   private exitedPayloads = new Map<string, ExitPayload>()
   private inputSubmitListeners = new Map<string, Set<() => void>>()
+  private outputListeners = new Map<
+    string,
+    Set<(data: Uint8Array) => void>
+  >()
 
   /**
    * 订阅某 pty 的退出（幂等：已退出则立刻用缓存的 payload 回调）。
@@ -246,6 +254,11 @@ export class PTYManager {
     history.appendResize(cols, rows)
     const resizeFilter =
       process.platform === 'win32' ? new ConptyResizeFilter() : undefined
+    const rendererPauseOwner = Symbol(`renderer:${ptyId}`)
+    const pauseLeases = new PtyPauseLeases(
+      () => spawnedPty.pause(),
+      () => spawnedPty.resume()
+    )
     const dataQueue = new PtyDataQueue({
       highWaterMarkBytes: PTY_DATA_HIGH_WATER_MARK_BYTES,
       lowWaterMarkBytes: PTY_DATA_LOW_WATER_MARK_BYTES,
@@ -255,8 +268,12 @@ export class PTYManager {
           win.webContents.send(ptyDataChannel(ptyId), data)
         }
       },
-      pause: () => spawnedPty.pause(),
-      resume: () => spawnedPty.resume()
+      pause: () => {
+        pauseLeases.acquire(rendererPauseOwner)
+      },
+      resume: () => {
+        pauseLeases.release(rendererPauseOwner)
+      }
     })
     const managed: ManagedPty = {
       pty: spawnedPty,
@@ -264,6 +281,7 @@ export class PTYManager {
       dataQueue,
       resizeFilter,
       lastForwardedOutputAt: 0,
+      pauseLeases,
       terminal: opts.terminal
         ? { ...opts.terminal, cwd: opts.terminal.cwd.trim() || cwd }
         : opts.terminal
@@ -274,6 +292,10 @@ export class PTYManager {
       // 权威历史永远保存未经修改的原始流；过滤只作用于易受 ConPTY
       // resize 重画破坏的 renderer 显示链路。
       history.appendOutput(data)
+      const rawBytes = new TextEncoder().encode(data)
+      for (const listener of this.outputListeners.get(ptyId) ?? []) {
+        listener(rawBytes)
+      }
       const filtered = resizeFilter?.push(data)
       const displayData = filtered?.forward ?? data
       // ConPTY 自己的 resize 重画不能延长“输出活跃”窗口，否则连续拖窗时
@@ -343,11 +365,76 @@ export class PTYManager {
   resize(ptyId: string, cols: number, rows: number) {
     const managed = this.ptys.get(ptyId)
     if (!managed?.pty) return
+    if (managed.remoteResizeOwner) return
     // 输出活跃时只保留最新尺寸。renderer 的 xterm 已经立即 fit/reflow；
     // ConPTY 尺寸优先在 500ms 无输出后跟上；持续输出时也会在硬截止时间送达。
     if (!managed.pendingResize) managed.pendingResizeRequestedAt = Date.now()
     managed.pendingResize = { cols, rows }
     this.schedulePendingResize(managed)
+  }
+
+  ptyIdForTerminal(terminalId: string): string | null {
+    for (const [ptyId, managed] of this.ptys) {
+      if (managed.terminal?.terminalId === terminalId) return ptyId
+    }
+    return null
+  }
+
+  acquireRemoteResize(
+    ptyId: string,
+    owner: symbol,
+    cols: number,
+    rows: number
+  ): boolean {
+    const managed = this.ptys.get(ptyId)
+    if (!managed?.pty || managed.remoteResizeOwner) return false
+    managed.remoteResizeOwner = owner
+    if (!managed.pendingResize) managed.pendingResizeRequestedAt = Date.now()
+    managed.pendingResize = { cols, rows }
+    this.schedulePendingResize(managed)
+    return true
+  }
+
+  resizeRemote(
+    ptyId: string,
+    owner: symbol,
+    cols: number,
+    rows: number
+  ): void {
+    const managed = this.ptys.get(ptyId)
+    if (!managed?.pty || managed.remoteResizeOwner !== owner) return
+    if (!managed.pendingResize) managed.pendingResizeRequestedAt = Date.now()
+    managed.pendingResize = { cols, rows }
+    this.schedulePendingResize(managed)
+  }
+
+  releaseRemoteResize(ptyId: string, owner: symbol): void {
+    const managed = this.ptys.get(ptyId)
+    if (!managed || managed.remoteResizeOwner !== owner) return
+    managed.remoteResizeOwner = undefined
+  }
+
+  onOutput(ptyId: string, listener: (data: Uint8Array) => void): () => void {
+    const listeners = this.outputListeners.get(ptyId) ?? new Set()
+    listeners.add(listener)
+    this.outputListeners.set(ptyId, listeners)
+    return () => {
+      const current = this.outputListeners.get(ptyId)
+      current?.delete(listener)
+      if (current?.size === 0) this.outputListeners.delete(ptyId)
+    }
+  }
+
+  pauseOutput(ptyId: string, owner: symbol): void {
+    const managed = this.ptys.get(ptyId)
+    if (!managed?.pty) return
+    managed.pauseLeases.acquire(owner)
+  }
+
+  resumeOutput(ptyId: string, owner: symbol): void {
+    const managed = this.ptys.get(ptyId)
+    if (!managed?.pty) return
+    managed.pauseLeases.release(owner)
   }
 
   ack(ptyId: string, bytes: number): void {
@@ -422,6 +509,7 @@ export class PTYManager {
     this.exitListeners.delete(ptyId)
     this.exitedPayloads.delete(ptyId)
     this.inputSubmitListeners.delete(ptyId)
+    this.outputListeners.delete(ptyId)
     const terminalId = managed.terminal?.terminalId
     if (terminalId) {
       for (const listener of this.terminalRemovedListeners) listener(terminalId)
@@ -447,6 +535,7 @@ export class PTYManager {
     this.exitListeners.clear()
     this.exitedPayloads.clear()
     this.inputSubmitListeners.clear()
+    this.outputListeners.clear()
     for (const terminalId of terminalIds) {
       for (const listener of this.terminalRemovedListeners) listener(terminalId)
     }

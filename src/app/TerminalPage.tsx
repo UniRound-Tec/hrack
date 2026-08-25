@@ -7,10 +7,13 @@ import WorkspaceReaderLayout from '../workspace-reader/WorkspaceReaderLayout'
 import { getTerminalLaunch } from '../state/terminalLaunchRegistry'
 import { useWorkspaceReaderStore } from '../workspace-reader/workspaceReaderStore'
 import { hasTerminalBackground } from '../../shared/terminal-background'
+import type { RemoteDriveState } from '../../shared/ipc-contract'
+import { useStrings } from './i18n'
 
 interface TerminalPageProps {
   terminal: TerminalEntry
   active: boolean
+  remoteDrive: RemoteDriveState
   onInitialSpawn?: (terminalId: string, error: string | null) => void
   onExit?: (terminalId: string) => void
 }
@@ -19,9 +22,11 @@ interface TerminalPageProps {
 export default function TerminalPage({
   terminal,
   active,
+  remoteDrive,
   onInitialSpawn,
   onExit
 }: TerminalPageProps) {
+  const strings = useStrings()
   const rounded = useSettingsStore((state) => state.terminalRounded)
   const terminalThemeId = useSettingsStore((state) => state.terminalThemeId)
   const backgroundName = useSettingsStore((state) => state.terminalBackgroundName)
@@ -44,6 +49,8 @@ export default function TerminalPage({
   const readerOpen = useWorkspaceReaderStore(
     (state) => state.sessions[terminal.id]?.open ?? false
   )
+  const driven =
+    remoteDrive.phase === 'driven' && remoteDrive.terminalId === terminal.id
   const terminalSurface = (
     <div
       className={`relative h-full w-full overflow-hidden ${
@@ -66,9 +73,32 @@ export default function TerminalPage({
         <TerminalView
           tabId={terminal.id}
           active={active}
+          remoteDrive={driven ? remoteDrive : null}
           onInitialSpawn={onInitialSpawn}
           onExit={onExit}
         />
+        {driven && (
+          <div
+            data-testid="terminal-remote-overlay"
+            className="absolute inset-0 z-20 flex items-start justify-center bg-black/5 pt-3"
+          >
+            <div className="flex items-center gap-2 rounded-xl border border-border-default bg-surface/95 px-3 py-2 shadow-lg backdrop-blur">
+              <span className="font-pingfang text-[12px] text-text-secondary">
+                {strings.terminal.remoteDriven}
+              </span>
+              <button
+                type="button"
+                data-testid="terminal-remote-reclaim"
+                onClick={() => {
+                  void window.remoteApi.reclaim(remoteDrive.sessionId)
+                }}
+                className="cursor-target rounded-lg bg-brand px-2.5 py-1 font-pingfang text-[11px] font-semibold text-white hover:opacity-90"
+              >
+                {strings.terminal.remoteReclaim}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

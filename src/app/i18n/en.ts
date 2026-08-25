@@ -1,4 +1,5 @@
 import type { AppStrings } from './zh-CN'
+import type { RemoteDesktopError } from '../../../shared/ipc-contract'
 
 /** English. Prototype English micro-labels stay English (same baseline as zh-CN). */
 export const en = {
@@ -174,6 +175,8 @@ export const en = {
     booting: 'Starting DeepSeek Harness…',
     bootHostInit: 'First host start needs to initialize the profile',
     bootFailed: 'DSH failed to start',
+    copyError: 'Copy error',
+    errorCopied: 'Copied',
     bootReload: 'Reload window',
     homeHint: 'Auto-select · local preferred'
   },
@@ -221,7 +224,9 @@ export const en = {
     copied: 'Copied',
     newTab: 'New tab',
     closeTab: 'Close tab',
-    exited: 'Exited'
+    exited: 'Exited',
+    remoteDriven: 'Phone is controlling this terminal',
+    remoteReclaim: 'Reclaim'
   },
   home: {
     greetings: [
@@ -285,6 +290,7 @@ export const en = {
       layout: 'Layout',
       terminal: 'Terminal',
       session: 'Sessions',
+      remote: 'Remote',
       update: 'App update'
     },
     uiTheme: 'UI theme',
@@ -406,6 +412,53 @@ export const en = {
     updateCheck: 'Check for updates',
     updateDownload: 'Download update',
     updateRestart: 'Restart and install',
+    remoteUrl: 'Join URL',
+    remoteUrlHint: 'Desktop and phone share one full URL. Clients do not hardcode a domain.',
+    remoteConnect: 'Connect',
+    remoteDisconnect: 'Disconnect',
+    remoteRevoke: 'Revoke room',
+    remoteDsh: 'Allow this Remote room to open DSH',
+    remoteDshHint: 'Off by default. When enabled, the phone can use the official DSH web UI and web workspace picker.',
+    remoteDshOff: 'Not exposed',
+    remoteDshStarting: 'Validating DSH and opening its independent tunnel',
+    remoteDshReady: 'Remote DSH web is ready',
+    remoteDshUnsupported: 'Waiting for a Relay that supports the DSH web tunnel',
+    remoteDshUnavailable: 'This DSH version or tunnel is currently unavailable',
+    remoteConfirmTitle: 'Send the terminal to this server?',
+    remoteConfirmBody: (origin: string) =>
+      `After connecting, session lists and driven terminal bytes go to ${origin}. Anyone with this URL can take a seat.`,
+    remoteStatusIdle: 'Not connected',
+    remoteStatusConnecting: 'Connecting',
+    remoteStatusWaitingPhone: 'Outbound, waiting for the phone',
+    remoteStatusPeerOnline: 'Phone is seated',
+    remoteStatusRevoking: 'Revoking the room',
+    remoteError: (code: RemoteDesktopError) => {
+      switch (code) {
+        case 'occupied':
+          return 'That seat already has a desktop; the first connection was not kicked'
+        case 'bad-key':
+          return 'Room is missing or revoked'
+        case 'revoked':
+          return 'Room revoked'
+        case 'connect-failed':
+          return 'Could not reach the relay'
+        case 'invalid-url':
+        case 'invalid-scheme':
+        case 'invalid-room':
+        case 'missing-room':
+          return 'Could not parse this URL'
+        case 'insecure-remote':
+          return 'Remote servers must use HTTPS / WSS; plaintext is limited to loopback'
+        case 'not-connected':
+          return 'Connect before revoking the room'
+        case 'revoke-unconfirmed':
+          return 'The relay did not confirm revocation; the room may still be valid'
+        default:
+          return `Failed: ${code}`
+      }
+    },
+    remoteQr: 'Join QR code',
+    remoteQrHint: 'Scan here if the website is already closed',
     description: 'Layout and controls follow the locked prototype; settings write through.',
     mapleMono: 'Maple Mono',
     pixels: (value: number) => `${value}px`,

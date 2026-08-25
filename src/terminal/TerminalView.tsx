@@ -3,11 +3,13 @@ import { useStrings } from '../app/i18n'
 import { useSettingsStore } from '../state/settingsStore'
 import { useTerminalsStore } from '../state/terminalsStore'
 import { useXterm } from './useXterm'
+import type { RemoteDriveState } from '../../shared/ipc-contract'
 
 /** xterm 宿主容器：一个占满父级的 div，内部由 xterm 独占渲染。 */
 interface TerminalViewProps {
   tabId: string
   active: boolean
+  remoteDrive: Extract<RemoteDriveState, { phase: 'driven' }> | null
   onInitialSpawn?: (terminalId: string, error: string | null) => void
   onExit?: (terminalId: string) => void
 }
@@ -15,6 +17,7 @@ interface TerminalViewProps {
 export default function TerminalView({
   tabId,
   active,
+  remoteDrive,
   onInitialSpawn,
   onExit
 }: TerminalViewProps) {
@@ -46,6 +49,7 @@ export default function TerminalView({
     ref,
     tabId,
     active,
+    remoteDrive,
     showCopied,
     (title) => setTitle(tabId, title),
     (code, respawned) => {

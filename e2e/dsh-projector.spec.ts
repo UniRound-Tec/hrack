@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { DshProjectionBridge } from '../electron/dsh-host/DshProjectionBridge'
 import { DshSessionProjector } from '../electron/dsh-host/DshSessionProjector'
+import { dshRemoteSessionSource } from '../electron/remote/dshRemoteSessionSource'
 
 function rpcResponse(value: unknown): Response {
   return new Response(
@@ -100,6 +101,9 @@ test('DSH projector recovers when the control plane briefly returns 404', async 
       )
       .toEqual([{ slotId: 'slot-1', adapterSessionId: 'session-a' }])
     expect(sessionListAttempts).toBe(2)
+    expect(
+      dshRemoteSessionSource(bridge).list().map((session) => session.sessionId)
+    ).toEqual(['session-a'])
 
     // Switching inside official DSH replaces this Home-created slot's binding.
     projector.setActiveSession('session-b')
@@ -323,8 +327,98 @@ test('DSH projector listens to mux tool calls and marks a finished turn as done'
   }
 })
 
-test('DSH projector treats a watched running→idle flip as turn completion', async () => {
+test('a DSH session created outside HRack is adopted into the desktop list', async () => {
+  const existing = {
+    sessionId: 'session-a',
+    running: false,
+    cwd: 'C:\\workspace\\existing',
+    updatedAt: 123
+  }
+  const { bridge, projector, restore } = await startLiveProjector([existing])
+  try {
+    latestSocket('/api/events.host').emit({
+      type: 'host/session-added',
+      sessionId: 'phone-session',
+      cwd: 'C:\\workspace\\phone',
+      agentPreset: 'standard'
+    })
+
+    expect(bridge.find('official:phone-session')).toMatchObject({
+      sessionId: 'official:phone-session',
+      adapterSessionId: 'phone-session',
+      name: 'phone',
+      status: 'idle'
+    })
+  } finally {
+    restore()
+  }
+})
+
+test('an unmonitored historical DSH session never enters the phone list', async () => {
   const { bridge, restore } = await startLiveProjector([
+    {
+      sessionId: 'session-a',
+      running: false,
+      cwd: 'C:\\workspace\\followed',
+      updatedAt: 123
+    },
+    {
+      sessionId: 'historical-session',
+      running: false,
+      cwd: 'C:\\workspace\\history',
+      updatedAt: 100
+    }
+  ])
+  try {
+    const source = dshRemoteSessionSource(bridge)
+    expect(source.list().map((session) => session.sessionId)).toEqual([
+      'session-a'
+    ])
+
+    latestSocket('/api/events.host').emit({
+      type: 'host/session-status',
+      sessionId: 'historical-session',
+      running: true
+    })
+
+    expect(source.list().map((session) => session.sessionId)).toEqual([
+      'session-a'
+    ])
+  } finally {
+    restore()
+  }
+})
+
+test('a pending Home slot claims a newly created DSH session without a duplicate', async () => {
+  const existing = {
+    sessionId: 'session-a',
+    running: false,
+    cwd: 'C:\\workspace\\existing',
+    updatedAt: 123
+  }
+  const { bridge, projector, restore } = await startLiveProjector([existing])
+  try {
+    projector.activateSlot('home-slot')
+    latestSocket('/api/events.host').emit({
+      type: 'host/session-added',
+      sessionId: 'new-local-session',
+      cwd: 'C:\\workspace\\local',
+      agentPreset: 'standard'
+    })
+
+    expect(bridge.find('home-slot')).toMatchObject({
+      sessionId: 'home-slot',
+      adapterSessionId: 'new-local-session',
+      name: 'local'
+    })
+    expect(bridge.find('official:new-local-session')).toBeUndefined()
+  } finally {
+    restore()
+  }
+})
+
+test('DSH projector treats a watched running→idle flip as turn completion', async () => {
+  const { bridge, projector, restore } = await startLiveProjector([
     {
       sessionId: 'session-a',
       running: false,

@@ -63,7 +63,7 @@ export interface AgentSessionRecord {
   projection: AgentSessionProjection
 }
 
-export type AgentSessionPhase = 'updated' | 'finalized'
+export type AgentSessionPhase = 'updated' | 'finalized' | 'removed'
 
 const DEFAULT_SILENCE_AFTER_MS = 300_000
 const DEFAULT_IDLE_CHECK_MS = 60_000
@@ -776,6 +776,10 @@ export class AgentSessionRuntime {
       }
     }
     await this.finalize(session, true)
+    if (this.sessions.get(sessionId) === session) {
+      this.sessions.delete(sessionId)
+      this.notify(session, 'removed')
+    }
   }
 
   /** 活动 Session 显示名属于权威 projection；改名不伪造语义活动时间。 */
@@ -830,11 +834,12 @@ export class AgentSessionRuntime {
     return this.listRecords().map((record) => record.projection)
   }
 
-  listRecords(): AgentSessionRecord[] {
+  listRecords(options: { includeExited?: boolean } = {}): AgentSessionRecord[] {
     return [...this.sessions.values()]
       .filter(
         (session) =>
-          !session.finalized && !session.projection.correlation.exited
+          options.includeExited === true ||
+          (!session.finalized && !session.projection.correlation.exited)
       )
       .map(toSessionRecord)
   }
@@ -1184,7 +1189,6 @@ export class AgentSessionRuntime {
         }
       )
       this.notify(session, 'finalized')
-      this.sessions.delete(session.sessionId)
     }
   }
 

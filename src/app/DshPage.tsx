@@ -5,6 +5,7 @@ import {
   useRef,
   useState
 } from 'react'
+import { Check, Copy } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import DeepSeekText from '@lobehub/icons/es/DeepSeek/components/Text'
 import type {
@@ -159,6 +160,7 @@ export default function DshPage({
     visible: false
   })
   const [retry, setRetry] = useState(0)
+  const [errorCopied, setErrorCopied] = useState(false)
   const uiThemeId = useSettingsStore((state) => state.uiThemeId)
   const language = useSettingsStore((state) => state.language)
   const dshScale = useSettingsStore((state) => state.dshScale)
@@ -315,17 +317,42 @@ export default function DshPage({
               <span className="text-sm text-status-exited">
                 {strings.dsh.bootFailed}
               </span>
-              <pre className="max-w-2xl overflow-auto rounded-lg bg-surface-strong p-3 text-xs text-text-muted">
+              <pre
+                data-testid="dsh-surface-error"
+                className="app-no-drag max-h-64 max-w-2xl overflow-auto rounded-lg bg-surface-strong p-3 text-left text-xs text-text-muted whitespace-pre-wrap break-all select-text cursor-text"
+              >
                 {snapshot.error}
               </pre>
-              <button
-                type="button"
-                data-testid="dsh-surface-retry"
-                className="rounded-md bg-surface-strong px-3 py-1.5 text-xs text-text-primary"
-                onClick={() => setRetry((value) => value + 1)}
-              >
-                {strings.dsh.refresh}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="dsh-surface-copy-error"
+                  disabled={!snapshot.error}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-surface-strong px-3 py-1.5 text-xs text-text-primary disabled:opacity-50"
+                  onClick={() => {
+                    if (!snapshot.error) return
+                    void window.clipboardApi.writeText(snapshot.error).then(() => {
+                      setErrorCopied(true)
+                      window.setTimeout(() => setErrorCopied(false), 1_500)
+                    })
+                  }}
+                >
+                  {errorCopied ? (
+                    <Check className="size-3 text-status-done" strokeWidth={1.75} />
+                  ) : (
+                    <Copy className="size-3" strokeWidth={1.75} />
+                  )}
+                  {errorCopied ? strings.dsh.errorCopied : strings.dsh.copyError}
+                </button>
+                <button
+                  type="button"
+                  data-testid="dsh-surface-retry"
+                  className="rounded-md bg-surface-strong px-3 py-1.5 text-xs text-text-primary"
+                  onClick={() => setRetry((value) => value + 1)}
+                >
+                  {strings.dsh.refresh}
+                </button>
+              </div>
             </>
           ) : (
             <DshBootScreen

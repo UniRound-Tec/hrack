@@ -141,6 +141,14 @@ If Codex asks you to review Hooks, open `/hooks`, inspect the HRack definition, 
 
 ## Development
 
+Clone the remote App and relay together with HRack:
+
+```bash
+git clone --recurse-submodules https://github.com/UniRound-Tec/hrack.git
+```
+
+For an existing checkout, initialize them with `git submodule update --init --recursive`. Their source is indexed under `remotes/app` and `remotes/server`; each remains an independently versioned repository.
+
 ```bash
 npm install
 npm run dev

@@ -53,7 +53,20 @@ export interface DshExternalSpawnSpec {
   windowsVerbatimArguments?: boolean
 }
 
+export interface DshRemoteLaunchOptions {
+  publicOrigin: string
+  overlayPath: string
+}
+
 export const DSH_WSL_PID_MARKER = '__HRACK_DSH_PID__='
+
+/**
+ * DSH opens the OS browser when `openBrowser` is true and SSH_CONNECTION /
+ * SSH_TTY are unset. HRack embeds the official page, so the spawned host
+ * always carries this marker — including first profile boot, before `--no-open`
+ * is parsed, and WSL installs that reject the flag.
+ */
+export const DSH_EMBED_SSH_CONNECTION = 'hrack-embed'
 
 function quoteCmdArg(value: string): string {
   return `"${value.replace(/"/g, '""')}"`
@@ -108,7 +121,7 @@ export function dshWebRuntimeArgs(
     '--host', '127.0.0.1',
     '--port', String(port)
   ]
-  if (noOpen ?? dshWebOpensBrowserByDefault(version)) args.push('--no-open')
+  if (noOpen ?? true) args.push('--no-open')
   return args
 }
 
@@ -125,11 +138,21 @@ export function buildDshExternalSpawnSpec(options: {
   environmentPath?: string
   commandInterpreter?: string
   inheritedEnv?: NodeJS.ProcessEnv
+  remote?: DshRemoteLaunchOptions
   /** When set, overrides the version heuristic for `--no-open`. */
   noOpen?: boolean
 }): DshExternalSpawnSpec {
   const { candidate, port, dshHome } = options
-  const runtimeArgs = dshWebRuntimeArgs(port, candidate.version, options.noOpen)
+  const runtimeArgs = options.remote
+    ? [
+        '--profile', 'web',
+        '--patch', options.remote.overlayPath,
+        '--host', '127.0.0.1',
+        '--port', String(port),
+        '--trusted-host', new URL(options.remote.publicOrigin).host
+      ]
+    : dshWebRuntimeArgs(port, candidate.version, false)
+  if (options.noOpen ?? true) runtimeArgs.push('--no-open')
   const telemetry = options.inheritedEnv?.['DSH_TELEMETRY_DISABLED'] ?? '1'
 
   if (candidate.runtime.kind === 'wsl') {
@@ -147,6 +170,7 @@ export function buildDshExternalSpawnSpec(options: {
           : []),
         `DSH_HOME=${dshHome}`,
         `DSH_TELEMETRY_DISABLED=${telemetry}`,
+        `SSH_CONNECTION=${DSH_EMBED_SSH_CONNECTION}`,
         candidate.resolvedExecutable,
         ...runtimeArgs
       ],
@@ -158,7 +182,8 @@ export function buildDshExternalSpawnSpec(options: {
   const env: NodeJS.ProcessEnv = {
     ...options.inheritedEnv,
     DSH_HOME: dshHome,
-    DSH_TELEMETRY_DISABLED: telemetry
+    DSH_TELEMETRY_DISABLED: telemetry,
+    SSH_CONNECTION: DSH_EMBED_SSH_CONNECTION
   }
   if (
     candidate.runtime.platform === 'windows' &&

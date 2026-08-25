@@ -73,6 +73,8 @@ export interface SettingsSnapshot {
   ignoredUpdateVersion: string | null
   /** 用户选择“以后不再弹出”后，所有未来版本都不再自动弹出更新确认框。 */
   updateModalDisabled: boolean
+  /** 远程房间加入 URL；空字符串表示未填。 */
+  remoteJoinUrl: string
 }
 
 /** v3 及更早版本的默认字号；v4 起默认 14，迁移时把旧默认值一并带过去。 */
@@ -109,7 +111,8 @@ export const defaultSettings: SettingsSnapshot = {
   notificationSoundName: DEFAULT_NOTIFICATION_SOUND_NAME,
   notificationSoundRevision: 0,
   ignoredUpdateVersion: null,
-  updateModalDisabled: false
+  updateModalDisabled: false,
+  remoteJoinUrl: ''
 }
 
 /** Terminal consumers only need this stable subset. */
@@ -155,6 +158,7 @@ export interface SettingsState extends SettingsSnapshot {
   clearNotificationSound(): void
   ignoreUpdateVersion(version: string | null): void
   setUpdateModalDisabled(disabled: boolean): void
+  setRemoteJoinUrl(url: string): void
   reset(): void
 }
 
@@ -336,7 +340,11 @@ export function migrateSettings(
     updateModalDisabled:
       typeof legacy.updateModalDisabled === 'boolean'
         ? legacy.updateModalDisabled
-        : false
+        : false,
+    remoteJoinUrl:
+      typeof legacy.remoteJoinUrl === 'string'
+        ? legacy.remoteJoinUrl.slice(0, 4_096)
+        : defaultSettings.remoteJoinUrl
   }
 }
 
@@ -429,6 +437,8 @@ export const createSettingsState: StateCreator<SettingsState> = (set) => ({
     }),
   setUpdateModalDisabled: (updateModalDisabled) =>
     set({ updateModalDisabled }),
+  setRemoteJoinUrl: (remoteJoinUrl) =>
+    set({ remoteJoinUrl: remoteJoinUrl.slice(0, 4_096) }),
   reset: () => set(defaultSettings)
 })
 
@@ -437,7 +447,7 @@ migrateLegacyStorageKey('hrack-terminal-settings', 'vibing-terminal-settings')
 export const useSettingsStore = create<SettingsState>()(
   persist(createSettingsState, {
     name: 'hrack-terminal-settings',
-    version: 15,
+    version: 16,
     migrate: migrateSettings,
     partialize: ({
       onboardingCompleted,
@@ -467,7 +477,8 @@ export const useSettingsStore = create<SettingsState>()(
       notificationSoundName,
       notificationSoundRevision,
       ignoredUpdateVersion,
-      updateModalDisabled
+      updateModalDisabled,
+      remoteJoinUrl
     }) => ({
       onboardingCompleted,
       uiThemeId,
@@ -496,7 +507,8 @@ export const useSettingsStore = create<SettingsState>()(
       notificationSoundName,
       notificationSoundRevision,
       ignoredUpdateVersion,
-      updateModalDisabled
+      updateModalDisabled,
+      remoteJoinUrl
     })
   })
 )
