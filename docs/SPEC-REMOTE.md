@@ -188,6 +188,7 @@ hello 限流，防止扫 `roomId`。
 
 | type | 字段 | 何时 |
 |---|---|---|
+| `focus-session` | `sessionId` | 全屏监听中点击会话；仅唤起 HRack 主窗口并聚焦已有 PTY/DSH 会话，不申请驾驶、不改变手机页面 |
 | `drive` | `requestId`, `sessionId`, `cols`, `rows` | 点进一条已有会话 |
 | `undrive` | `sessionId` | 返回列表 |
 | `create` | `requestId`, `installationId`, `workspace`, `cols`, `rows`, `skipApproval?`, `args?` | 对齐首页；尺寸用于首次 spawn 和随后立即驾驶 |
@@ -228,7 +229,7 @@ hello 限流，防止扫 `roomId`。
 | P2 | 中继按方向白名单转发合法 v1 JSON；占座与吊销。不理解 PTY 正文与业务状态 |
 | P4 | `drive` / `drive-ok` / `drive-reject` / `undrive` / `undriven` / `pty-*` |
 | P5 | `catalog` / `create` / `create-ok` / `create-reject` |
-| P8 后增量 | `workspace-list` / `workspace-list-ok` / `workspace-list-reject` |
+| P8 后增量 | `workspace-list` / `workspace-list-ok` / `workspace-list-reject` / `focus-session` |
 
 未到期：收到后回 `{ type: 'not-implemented', for: '<type>', requestId? }`（控制面）或忽略（中继不当业务端）。不得半套成功。
 
@@ -255,6 +256,7 @@ hello 限流，防止扫 `roomId`。
 
 - 扫码进入房间（可提供「等待电脑」空态）。
 - 列表：所有 AI CLI 会话 + 六态。
+- 横屏监听：卡片与桌面悬浮窗共用状态语义；点击卡片只聚焦电脑上的对应会话，手机保持监听，不触发 `drive`。
 - 新建：列 CLI（含多 installation / WSL），工作区必填（最近或手打）；桌面该 CLI 有免审批则同样给出开关。
 - 终端：xterm 或等价组件画与电脑同一套格子；附加键至少 Esc / Ctrl / Tab / 方向。中文组字不得把拼音逐键送进 PTY。字体、完整 palette、renderer fallback、字体就绪/fit/ack 时序及真实 TUI 视觉门禁必须遵守 [远程终端呈现契约](REMOTE-TERMINAL-RENDERING.md)，不能只证明协议字节已到达。
 - 返回列表 = `undrive`。

@@ -212,6 +212,26 @@ test.describe('message guards', () => {
     ).toEqual({ v: 1, type: 'not-implemented', for: 'drive' })
   })
 
+  test('accepts only a bounded session id for desktop focus', () => {
+    expect(
+      expectMessage({
+        v: 1,
+        type: 'focus-session',
+        sessionId: 'session-one'
+      })
+    ).toEqual({ v: 1, type: 'focus-session', sessionId: 'session-one' })
+    expect(
+      parseRemoteMessage({ v: 1, type: 'focus-session', sessionId: '' }).ok
+    ).toBe(false)
+    expect(
+      parseRemoteMessage({
+        v: 1,
+        type: 'focus-session',
+        sessionId: 'x'.repeat(129)
+      }).ok
+    ).toBe(false)
+  })
+
   test('guards paged remote workspace listings in both directions', () => {
     expect(
       expectMessage({

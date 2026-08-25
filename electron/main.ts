@@ -246,6 +246,8 @@ const remoteClient = new RemoteDesktopClient({
     win.webContents.send(AppEventChannel.RemoteLaunch, request)
   }),
   workspace: runtimeRemoteWorkspaceHost(cliDiscovery),
+  focusSession: (sessionId) =>
+    floatingController?.focusSession(sessionId) ?? false,
   broadcastDrive: (state) =>
     broadcastToAllWindows(RemoteEventChannel.DriveChanged, state),
   onDshTunnelLease: (lease) => remoteDshCoordinator?.acceptLease(lease)

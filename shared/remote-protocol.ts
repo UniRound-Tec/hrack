@@ -262,6 +262,12 @@ export interface RemoteSessionRemoved {
   sessionId: string
 }
 
+export interface RemoteFocusSession {
+  v: 1
+  type: 'focus-session'
+  sessionId: string
+}
+
 export interface RemoteCatalog {
   v: 1
   type: 'catalog'
@@ -442,6 +448,7 @@ export type RemoteMessage =
   | RemoteCreateOk
   | RemoteCreateReject
   | RemoteNotImplemented
+  | RemoteFocusSession
   | RemoteDrive
   | RemoteUndrive
   | RemoteCreate
@@ -482,6 +489,7 @@ export type RemoteDesktopToPhoneMessage =
   | RemotePtyExit
   | RemoteDshSurfaceState
 export type RemotePhoneToDesktopMessage =
+  | RemoteFocusSession
   | RemoteDrive
   | RemoteUndrive
   | RemoteCreate
@@ -549,6 +557,7 @@ const INSTALLATION_FORBIDDEN_KEYS = new Set([
   'definitionId'
 ])
 const PHONE_TO_DESKTOP_TYPES = new Set<RemotePhoneToDesktopMessage['type']>([
+  'focus-session',
   'drive',
   'undrive',
   'create',
@@ -1112,6 +1121,12 @@ export function parseRemoteMessage(
         return fail('invalid-session-removed')
       }
       return ok({ v: 1, type: 'session-removed', sessionId: raw.sessionId })
+    }
+    case 'focus-session': {
+      if (!isBoundedNonEmptyString(raw.sessionId, REMOTE_PROTOCOL_LIMITS.idChars)) {
+        return fail('invalid-focus-session')
+      }
+      return ok({ v: 1, type: 'focus-session', sessionId: raw.sessionId })
     }
     case 'catalog': {
       if (

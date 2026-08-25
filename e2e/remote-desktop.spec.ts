@@ -309,6 +309,34 @@ test.describe('remote desktop client', () => {
     client.dispose()
   })
 
+  test('focuses an existing desktop session without starting a drive', async () => {
+    const focused: string[] = []
+    const pty = new MemoryRemotePtyHost()
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      broadcast: () => {},
+      pty,
+      focusSession: (sessionId) => {
+        focused.push(sessionId)
+        return true
+      }
+    })
+    client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    const phone = await openPhone(relay, 'aK3')
+    await expect.poll(() => client.getState().phase).toBe('peer-online')
+
+    phone.ws.send(
+      JSON.stringify({ v: 1, type: 'focus-session', sessionId: 'session-one' })
+    )
+
+    await expect.poll(() => focused).toEqual(['session-one'])
+    expect(pty.opens).toEqual([])
+    expect(client.getDriveState()).toEqual(REMOTE_DRIVE_IDLE_STATE)
+    phone.ws.close()
+    client.dispose()
+  })
+
   test('sends a two-session snapshot after the phone joins', async () => {
     const sessions = new MemorySessions()
     sessions.upsert(remoteSession({ sessionId: 's1', status: 'idle' }))

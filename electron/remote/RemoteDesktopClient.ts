@@ -218,6 +218,7 @@ export class RemoteDesktopClient {
       pty?: RemotePtyHost
       launch?: RemoteLaunchHost
       workspace?: RemoteWorkspaceHost
+      focusSession?: (sessionId: string) => boolean
       broadcastDrive?: (state: RemoteDriveState) => void
       revokeTimeoutMs?: number
       phoneGraceMs?: number
@@ -443,6 +444,9 @@ export class RemoteDesktopClient {
           return
         }
         this.fail('revoked')
+        return
+      case 'focus-session':
+        this.deps.focusSession?.(message.sessionId)
         return
       case 'drive':
         this.send(this.openDrive(message))
