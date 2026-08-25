@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-25
+
+### 修复
+
+- 适配 DeepSeek Harness 0.1.1 的 boot manifest 注入方式：远程能力检查改为解析 `window.__DSH_BOOT__` 和 `globalThis["__DSH_BOOT__"]` 的等价写法，再校验 manifest 内容，不再将 0.1.1 误判为“远程隧道不可用”。
+- 调整 DSH 远程状态文案，不再把主机、网页表面或隧道的能力失败笼统归因于 DSH 版本。
+
 ## [0.4.0] - 2026-08-25
 
 ### 新增

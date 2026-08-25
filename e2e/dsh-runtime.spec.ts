@@ -16,6 +16,7 @@ import {
   dshWebRuntimeArgs,
   selectDshRuntimeCandidates
 } from '../electron/dsh-host/DshRuntime'
+import { parseDshBootManifestEntries } from '../electron/dsh-host/RemoteDshPreflight'
 import type { DshRuntimeCandidate } from '../shared/dsh-ipc'
 import {
   resolveHrackUserDataDir,
@@ -69,6 +70,27 @@ test('dsh web suppresses the OS browser from 0.1.0-rc.7 onward', () => {
   ])
   expect(dshRejectedNoOpenOption("error: unknown option '--no-open'")).toBe(true)
   expect(dshRejectedNoOpenOption('dsh web: http://127.0.0.1:8080')).toBe(false)
+})
+
+test('DSH boot manifest parsing follows the capability across runtime spellings', () => {
+  const manifest = JSON.stringify({
+    rev: 'test',
+    entries: [{ id: '@deepseek-ai/dsh-client-test', url: '/plugins/test.js' }]
+  })
+  for (const assignment of [
+    'window.__DSH_BOOT__ = ',
+    'globalThis.__DSH_BOOT__=',
+    'globalThis["__DSH_BOOT__"] = ',
+    "globalThis['__DSH_BOOT__']="
+  ]) {
+    expect(
+      parseDshBootManifestEntries(
+        `<html><script>${assignment}${manifest}</script></html>`
+      )
+    ).toEqual([
+      { id: '@deepseek-ai/dsh-client-test', url: '/plugins/test.js' }
+    ])
+  }
 })
 
 test('HRack paths use the new brand and share an existing DSH home', () => {

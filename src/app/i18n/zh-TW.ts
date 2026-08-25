@@ -421,7 +421,7 @@ export const zhTW = {
     remoteDshStarting: '正在驗證 DSH 並建立獨立通道',
     remoteDshReady: 'DSH 遠端網頁已就緒',
     remoteDshUnsupported: '等待支援 DSH 網頁通道的遠控伺服器',
-    remoteDshUnavailable: '目前 DSH 版本或通道暫不可用',
+    remoteDshUnavailable: 'DSH 網頁或通道暫不可用',
     remoteConfirmTitle: '把終端機送到這台伺服器？',
     remoteConfirmBody: (origin: string) =>
       `連線後，工作階段列表與被駕駛的終端機位元組會送到 ${origin}。持有這條 URL 的人可以占座。`,

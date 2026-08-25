@@ -9,6 +9,7 @@ import {
   type DshTunnelControl,
   type DshTunnelHeaders
 } from '../shared/dsh-tunnel-protocol'
+import { parseDshBootManifestEntries } from '../electron/dsh-host/RemoteDshPreflight'
 import { launchApp } from './helpers'
 import { RemoteTestRelay } from './helpers/remoteTestRelay'
 
@@ -98,16 +99,6 @@ function rpcBody(method: string, args: unknown = {}): string {
   })
 }
 
-function bootManifest(html: string): Array<{ id: string; url: string }> {
-  const marker = 'window.__DSH_BOOT__ = '
-  const start = html.indexOf(marker)
-  const end = start < 0 ? -1 : html.indexOf('</script>', start)
-  if (start < 0 || end < 0) throw new Error('missing DSH boot manifest')
-  return (JSON.parse(html.slice(start + marker.length, end)) as {
-    entries: Array<{ id: string; url: string }>
-  }).entries
-}
-
 async function waitForControl(
   relay: RemoteTestRelay,
   start: number,
@@ -177,7 +168,7 @@ test('D1 Desktop carries real DSH HTTP through a fixed public-authority tunnel',
     const root = await tunnelRequest(relay, 1, { path: '/' })
     expect(root.status).toBe(200)
     const html = root.body.toString('utf8')
-    const entries = bootManifest(html)
+    const entries = parseDshBootManifestEntries(html)
     expect(entries.some((entry) =>
       entry.id === '@deepseek-ai/dsh-client-ui-directory-picker-browse'
     )).toBe(true)

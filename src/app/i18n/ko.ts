@@ -421,7 +421,7 @@ export const ko = {
     remoteDshStarting: 'DSH를 검증하고 전용 터널을 연결하는 중',
     remoteDshReady: '원격 DSH 웹 준비 완료',
     remoteDshUnsupported: 'DSH 웹 터널을 지원하는 Relay 대기 중',
-    remoteDshUnavailable: '현재 DSH 버전 또는 터널을 사용할 수 없음',
+    remoteDshUnavailable: '현재 DSH 웹 화면 또는 터널을 사용할 수 없음',
     remoteConfirmTitle: '이 서버로 터미널을 보낼까요?',
     remoteConfirmBody: (origin: string) =>
       `연결하면 세션 목록과 운전 중인 터미널 바이트가 ${origin}으로 갑니다. 이 URL을 가진 사람이 자리를 차지할 수 있습니다.`,

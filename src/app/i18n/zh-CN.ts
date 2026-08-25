@@ -425,7 +425,7 @@ export const zhCN = {
     remoteDshStarting: '正在验证 DSH 并建立独立隧道',
     remoteDshReady: 'DSH 远程网页已就绪',
     remoteDshUnsupported: '等待支持 DSH 网页隧道的远控服务器',
-    remoteDshUnavailable: '当前 DSH 版本或隧道暂不可用',
+    remoteDshUnavailable: 'DSH 网页或隧道暂不可用',
     remoteConfirmTitle: '把终端送到这台服务器？',
     remoteConfirmBody: (origin: string) =>
       `连接后，会话列表和被驾驶的终端字节会送到 ${origin}。持有这条 URL 的人可以占座。`,

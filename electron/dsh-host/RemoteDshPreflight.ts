@@ -77,14 +77,21 @@ function rpcBody(method: string, args: unknown = {}): string {
   })
 }
 
-function bootEntries(html: string): Array<{ id: string; url: string }> {
-  const marker = 'window.__DSH_BOOT__ = '
-  const start = html.indexOf(marker)
+export function parseDshBootManifestEntries(
+  html: string
+): Array<{ id: string; url: string }> {
+  // DSH 0.1.0 used `window.__DSH_BOOT__`, while 0.1.1 switched to the
+  // equivalent `globalThis["__DSH_BOOT__"]`. The JavaScript spelling is not
+  // a product capability; validate the manifest payload below instead.
+  const assignment = /(?:window|globalThis)(?:\.__DSH_BOOT__|\[\s*["']__DSH_BOOT__["']\s*\])\s*=\s*/.exec(
+    html
+  )
+  const start = assignment ? assignment.index + assignment[0].length : -1
   const end = start < 0 ? -1 : html.indexOf('</script>', start)
   if (start < 0 || end < 0) {
     throw new Error('DSH boot manifest is missing')
   }
-  const parsed = JSON.parse(html.slice(start + marker.length, end)) as {
+  const parsed = JSON.parse(html.slice(start, end)) as {
     entries?: unknown
   }
   if (!Array.isArray(parsed.entries)) {
@@ -178,7 +185,7 @@ export async function preflightRemoteDsh(
 ): Promise<RemoteDshPreflightEvidence> {
   const root = await localRequest(baseUrl, publicOrigin, { path: '/' })
   if (root.status !== 200) throw new Error(`DSH root HTTP ${root.status}`)
-  const entries = bootEntries(root.body.toString('utf8'))
+  const entries = parseDshBootManifestEntries(root.body.toString('utf8'))
   const browseId = '@deepseek-ai/dsh-client-ui-directory-picker-browse'
   if (entries.filter((entry) => entry.id === browseId).length !== 1) {
     throw new Error('DSH browse directory picker client is not unique')

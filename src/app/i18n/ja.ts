@@ -421,7 +421,7 @@ export const ja = {
     remoteDshStarting: 'DSH を検証し、専用トンネルを接続しています',
     remoteDshReady: 'リモート DSH Web の準備ができました',
     remoteDshUnsupported: 'DSH Web トンネル対応 Relay を待っています',
-    remoteDshUnavailable: '現在の DSH バージョンまたはトンネルは利用できません',
+    remoteDshUnavailable: 'DSH Web 画面またはトンネルは現在利用できません',
     remoteConfirmTitle: 'このサーバーへ端末を送りますか？',
     remoteConfirmBody: (origin: string) =>
       `接続後、セッション一覧と運転中の端末バイトは ${origin} に送られます。この URL を持つ人が座席を取れます。`,
