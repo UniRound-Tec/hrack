@@ -32,7 +32,7 @@ interface DshBinding {
   adapterSessionId?: string
 }
 
-async function dshBindings(window: Page): Promise<DshBinding[]> {
+async function homeDshBindings(window: Page): Promise<DshBinding[]> {
   return window.evaluate(() =>
     (
       window as unknown as {
@@ -46,7 +46,10 @@ async function dshBindings(window: Page): Promise<DshBinding[]> {
       }
     ).__hrackDebugShell
       .agentSessions()
-      .filter((session) => session.kind === 'dsh')
+      .filter(
+        (session) =>
+          session.kind === 'dsh' && !session.sessionId.startsWith('official:')
+      )
       .map((session) => ({
         slotId: session.sessionId,
         adapterSessionId: session.adapterSessionId
@@ -54,10 +57,13 @@ async function dshBindings(window: Page): Promise<DshBinding[]> {
   )
 }
 
-async function activeDshBindings(window: Page): Promise<DshBinding[]> {
+async function activeHomeDshBindings(window: Page): Promise<DshBinding[]> {
   return window.evaluate(async () =>
     (await window.agentApi.listActive())
-      .filter((session) => session.adapterId === 'dsh')
+      .filter(
+        (session) =>
+          session.adapterId === 'dsh' && !session.sessionId.startsWith('official:')
+      )
       .map((session) => ({
         slotId: session.sessionId,
         adapterSessionId: session.adapterSessionId
@@ -329,10 +335,10 @@ test('Home-created DSH slots independently follow the session selected inside ea
     expect(inspection?.page?.currentSession).toBe(sessionA.sessionId)
     expect(inspection?.page?.sidebarClosed).toBe(true)
     await expect
-      .poll(() => dshBindings(window))
+      .poll(() => homeDshBindings(window))
       .toEqual([{ slotId: slot1!, adapterSessionId: sessionA.sessionId }])
     await expect
-      .poll(() => activeDshBindings(window))
+      .poll(() => activeHomeDshBindings(window))
       .toEqual([{ slotId: slot1!, adapterSessionId: sessionA.sessionId }])
 
     const hideCountBeforeOfficialSwitch =
@@ -347,16 +353,17 @@ test('Home-created DSH slots independently follow the session selected inside ea
       { sessionId: sessionB.sessionId }
     )
     await expect
-      .poll(() => dshBindings(window))
+      .poll(() => homeDshBindings(window))
       .toEqual([{ slotId: slot1!, adapterSessionId: sessionB.sessionId }])
     await expect
-      .poll(() => activeDshBindings(window))
+      .poll(() => activeHomeDshBindings(window))
       .toEqual([{ slotId: slot1!, adapterSessionId: sessionB.sessionId }])
     expect((await inspectSurface(app))?.hideTransitionCount).toBe(
       hideCountBeforeOfficialSwitch
     )
 
-    // Only Home creates a second HRack tracking slot.
+    // Only Home creates a second explicit HRack tracking slot. Official sessions
+    // created through RPC may also be auto-adopted under `official:` slots.
     await navigate(window, 'home')
     await window.getByTestId('home-quick-dsh').click()
     await expect
@@ -373,7 +380,7 @@ test('Home-created DSH slots independently follow the session selected inside ea
       .toBe(`${slot2}:ready`)
     expect((await inspectSurface(app))?.page?.currentSession).toBeUndefined()
     await expect
-      .poll(() => dshBindings(window))
+      .poll(() => homeDshBindings(window))
       .toEqual([{ slotId: slot1!, adapterSessionId: sessionB.sessionId }])
 
     await app.evaluate(
@@ -387,7 +394,7 @@ test('Home-created DSH slots independently follow the session selected inside ea
     )
     await expect
       .poll(async () =>
-        (await dshBindings(window)).sort((left, right) =>
+        (await homeDshBindings(window)).sort((left, right) =>
           left.slotId.localeCompare(right.slotId)
         )
       )
@@ -414,7 +421,7 @@ test('Home-created DSH slots independently follow the session selected inside ea
     )
     await expect
       .poll(async () =>
-        (await dshBindings(window)).sort((left, right) =>
+        (await homeDshBindings(window)).sort((left, right) =>
           left.slotId.localeCompare(right.slotId)
         )
       )
@@ -432,11 +439,11 @@ test('Home-created DSH slots independently follow the session selected inside ea
     await activeRow.locator('..').getByTestId('sidebar-session-close').click()
     await expect(window.getByTestId('close-session-confirm-dialog')).toBeVisible()
     await window.getByTestId('close-session-confirm-submit').click()
-    await expect.poll(() => dshBindings(window)).toEqual([
+    await expect.poll(() => homeDshBindings(window)).toEqual([
       { slotId: slot2!, adapterSessionId: sessionC.sessionId }
     ])
     await expect
-      .poll(() => activeDshBindings(window))
+      .poll(() => activeHomeDshBindings(window))
       .toEqual([{ slotId: slot2!, adapterSessionId: sessionC.sessionId }])
 
     const listedAfterUnfollow = await dshRpc<{

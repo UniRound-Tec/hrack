@@ -25,6 +25,17 @@ function Invoke-Checked([string]$Command, [string[]]$Arguments) {
   }
 }
 
+function Get-FileSha256([string]$Path) {
+  $stream = [System.IO.File]::OpenRead($Path)
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    return [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '')
+  } finally {
+    $sha.Dispose()
+    $stream.Dispose()
+  }
+}
+
 Push-Location $workspace
 try {
   Invoke-Checked 'npm.cmd' @('run', 'typecheck')
@@ -41,7 +52,7 @@ try {
     }
   }
 
-  $digest = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  $digest = (Get-FileSha256 $installerPath).ToLowerInvariant()
   $checksumPath = "$installerPath.sha256"
   "$digest  $installerName" | Set-Content -LiteralPath $checksumPath -Encoding ascii
 
