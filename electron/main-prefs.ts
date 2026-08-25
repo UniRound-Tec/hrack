@@ -44,7 +44,7 @@ export interface MainPrefs {
   dshHomeMode: DshHomeMode
   dshRetention: DshRetentionPolicy
   dshRuntimePreference: DshRuntimePreference
-  /** Explicit opt-in for exposing DSH to the currently joined Remote room. */
+  /** Remote DSH is enabled by default; the desktop UI no longer exposes a toggle. */
   remoteDshEnabled: boolean
 }
 
@@ -70,7 +70,7 @@ export const defaultMainPrefs: MainPrefs = {
   dshHomeMode: 'shared',
   dshRetention: { kind: 'all' },
   dshRuntimePreference: { kind: 'auto' },
-  remoteDshEnabled: false
+  remoteDshEnabled: true
 }
 
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/
@@ -147,9 +147,8 @@ function sanitize(parsed: unknown): MainPrefs {
   prefs.dshRuntimePreference = sanitizeDshRuntimePreference(
     raw.dshRuntimePreference
   )
-  if (typeof raw.remoteDshEnabled === 'boolean') {
-    prefs.remoteDshEnabled = raw.remoteDshEnabled
-  }
+  // Ignore the former opt-in preference so upgrades from an older `false`
+  // value adopt the new always-on default.
   return prefs
 }
 

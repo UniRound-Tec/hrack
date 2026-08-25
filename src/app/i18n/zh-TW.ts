@@ -173,7 +173,7 @@ export const zhTW = {
     ungrouped: '未分組',
     blank: '空白',
     booting: '正在啟動 DeepSeek Harness…',
-    bootHostInit: 'dsh host 首次啟動需要初始化 profile',
+    bootHostInit: 'DSH 首次啟動需要完成初始化，請稍候',
     bootFailed: 'DSH 啟動失敗',
     copyError: '複製錯誤訊息',
     errorCopied: '已複製',
@@ -410,8 +410,9 @@ export const zhTW = {
     updateCheck: '檢查更新',
     updateDownload: '下載更新',
     updateRestart: '重新啟動並安裝',
-    remoteUrl: '加入 URL',
-    remoteUrlHint: '電腦和手機使用同一條完整 URL。用戶端不寫死網域。',
+    remoteUrl: '配對 URL',
+    remoteUrlHintBefore: '從',
+    remoteUrlHintAfter: '建立配對 URL。',
     remoteConnect: '連線',
     remoteDisconnect: '中斷',
     remoteRevoke: '撤銷房間',
@@ -422,24 +423,24 @@ export const zhTW = {
     remoteDshReady: 'DSH 遠端網頁已就緒',
     remoteDshUnsupported: '等待支援 DSH 網頁通道的遠控伺服器',
     remoteDshUnavailable: 'DSH 網頁或通道暫不可用',
-    remoteConfirmTitle: '把終端機送到這台伺服器？',
+    remoteConfirmTitle: '連線到這台遠端控制伺服器？',
     remoteConfirmBody: (origin: string) =>
-      `連線後，工作階段列表與被駕駛的終端機位元組會送到 ${origin}。持有這條 URL 的人可以占座。`,
+      `連線後，工作階段列表與遠端控制所需的資料會透過 ${origin} 傳輸。請只使用你信任的配對 URL。`,
     remoteStatusIdle: '未連線',
     remoteStatusConnecting: '連線中',
-    remoteStatusWaitingPhone: '已出站，等待手機',
-    remoteStatusPeerOnline: '手機已占座',
+    remoteStatusWaitingPhone: '已連線，等待手機',
+    remoteStatusPeerOnline: '手機已連線',
     remoteStatusRevoking: '正在撤銷房間',
     remoteError: (code: RemoteDesktopError) => {
       switch (code) {
         case 'occupied':
-          return '該座位已有電腦，未踢掉原連線'
+          return '已有一台電腦連線到這個配對 URL'
         case 'bad-key':
           return '房間不存在或已撤銷'
         case 'revoked':
           return '房間已撤銷'
         case 'connect-failed':
-          return '無法連上中繼'
+          return '無法連線到遠端控制伺服器'
         case 'invalid-url':
         case 'invalid-scheme':
         case 'invalid-room':
@@ -497,8 +498,7 @@ export const zhTW = {
     clisFound: (count: number) => `已發現 ${count} 個 AI CLI`,
     partialScanErrors: (count: number) => `${count} 項未通過驗證`,
     installation: '安裝位置',
-    launching: '啟動中…',
-    p2Placeholder: 'CLI 與執行環境選項將在 P3 接入'
+    launching: '啟動中…'
   },
   workspaceReader: {
     show: '顯示程式碼閱讀器',
@@ -519,10 +519,6 @@ export const zhTW = {
     code: '程式碼'
   },
   shell: {
-    homeLabel: 'home · app shell',
-    homeTitle: 'Welcome back.',
-    homeHint: '首頁內容將在 P3 接入；三態導覽與終端機路由已可用。',
-    settingsHint: 'P2 先開放導覽模式；完整設定項將在 P3 接入。',
     unavailableTerminal: '這個示範工作階段沒有可開啟的終端機。'
   },
   updateModal: {

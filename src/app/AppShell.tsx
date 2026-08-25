@@ -60,6 +60,7 @@ import { planChildTerminal } from './childTerminal'
 import { projectSessionNavigation } from '../session-navigation/sessionNavigation'
 import { useSessionNavigationStore } from '../session-navigation/sessionNavigationStore'
 import { playNotificationSound } from '../state/notificationSound'
+import { parseJoinUrl } from '../../shared/remote-protocol'
 
 export interface HRackDebugShellApi {
   navigate(pageId: PageId): void
@@ -156,6 +157,26 @@ export default function AppShell() {
   const activateTerminal = useTerminalsStore((state) => state.activateTerminal)
   const closeTerminal = useTerminalsStore((state) => state.closeTerminal)
   const markTerminalExited = useTerminalsStore((state) => state.markExited)
+
+  useEffect(() => {
+    let cancelled = false
+    const parsed = parseJoinUrl(useSettingsStore.getState().remoteJoinUrl)
+    if (!parsed.ok) return
+
+    void window.remoteApi.getState().then((state) => {
+      if (
+        cancelled ||
+        (state.phase !== 'idle' && state.phase !== 'error')
+      ) {
+        return
+      }
+      void window.remoteApi.connect(parsed.value.href)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false

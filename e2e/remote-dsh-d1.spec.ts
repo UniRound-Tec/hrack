@@ -272,11 +272,6 @@ test('D1 Desktop carries real DSH HTTP through a fixed public-authority tunnel',
     expect(existsSync(overlay)).toBe(true)
     expect(readFileSync(overlay, 'utf8')).toContain('directory-picker-browse-surface')
     expect(existsSync(resolve(appState.userDataDir, 'dsh-home/remote-web.patch.yml'))).toBe(false)
-    const persisted = JSON.parse(
-      readFileSync(resolve(appState.userDataDir, 'main-prefs.json'), 'utf8')
-    ) as { remoteDshEnabled?: boolean }
-    expect(persisted.remoteDshEnabled).toBe(true)
-
     console.log(
       `[dsh-d1] runtime=real resources=${resources.length} bytes=${resourceBytes} ` +
       `privileged=denied session=blank tunnel=fixed`

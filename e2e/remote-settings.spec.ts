@@ -28,11 +28,12 @@ test.describe('remote settings', () => {
   let app: ElectronApplication
   let page: Page
   let relay: RemoteTestRelay
+  let userDataDir: string
 
   test.beforeEach(async () => {
     relay = await RemoteTestRelay.listen(0, '/remote')
     relay.openRoom('aK3')
-    ;({ app, window: page } = await launchApp({
+    ;({ app, window: page, userDataDir } = await launchApp({
       createDefaultTerminal: false,
       env: {
         HRACK_FIXTURE_OBSERVER: '1',
@@ -52,6 +53,10 @@ test.describe('remote settings', () => {
 
   test('confirms the join URL then hellos the test relay as desktop', async () => {
     const joinUrl = relay.joinUrl('aK3')
+    await expect(page.getByTestId('settings-remote-create-url')).toHaveAttribute(
+      'href',
+      'https://hrack.modplex.app/'
+    )
     await page.getByTestId('settings-remote-url').fill(joinUrl)
     await expect(page.getByTestId('settings-remote-qr')).toHaveAttribute(
       'data-qr-url',
@@ -68,27 +73,60 @@ test.describe('remote settings', () => {
         page.getByTestId('settings-remote-status').getAttribute('data-remote-phase')
       )
       .toBe('waiting-phone')
+    await expect(page.getByTestId('settings-remote-status')).toHaveText(
+      '已连接，等待手机'
+    )
     await expect.poll(() => relay.hellos).toEqual([
       { role: 'desktop', roomId: 'aK3' }
     ])
   })
 
-  test('DSH remote access is an explicit opt-in and reports unsupported relays', async () => {
-    const toggle = page.getByTestId('settings-remote-dsh')
-    await expect(toggle).not.toBeChecked()
-    await expect(page.getByTestId('settings-remote-dsh-status')).toContainText(
-      '未开放'
-    )
-    await toggle.click()
-    await expect(toggle).toBeChecked()
-    await expect(page.getByTestId('settings-remote-dsh-status')).toContainText(
-      '等待支持 DSH'
-    )
+  test('DSH remote access is enabled by default without a settings toggle', async () => {
+    await expect(page.getByTestId('settings-remote-dsh')).toHaveCount(0)
+    await expect(page.getByTestId('settings-remote-dsh-status')).toHaveCount(0)
     await expect.poll(() => page.evaluate(() => window.remoteApi.getDshState()))
       .toMatchObject({ enabled: true, relaySupported: false })
   })
 
-  test('real Electron session stays exited remotely until explicit close, then revokes', async () => {
+  test('persists the join URL and reconnects automatically after restart', async () => {
+    const joinUrl = relay.joinUrl('aK3')
+    await page.getByTestId('settings-remote-url').fill(joinUrl)
+    await page.getByTestId('settings-remote-connect').click()
+    await page.getByTestId('settings-remote-confirm-accept').click()
+    await expect.poll(() => relay.hellos.filter(({ role }) => role === 'desktop').length)
+      .toBe(1)
+
+    const phone = await openPhone(relay, 'aK3')
+    await app.close()
+    await expect.poll(() => phone.messages.some(
+      (message) => message.type === 'peer-leave' && message.role === 'desktop'
+    )).toBe(true)
+
+    const restarted = await launchApp({
+      userDataDir,
+      createDefaultTerminal: false,
+      env: {
+        HRACK_FIXTURE_OBSERVER: '1',
+        HRACK_FIXTURE_OBSERVER_HOLD: '1'
+      }
+    })
+    app = restarted.app
+    page = restarted.window
+
+    await expect.poll(() => relay.hellos.filter(({ role }) => role === 'desktop').length)
+      .toBe(2)
+    await expect.poll(() => page.evaluate(() => window.remoteApi.getState()))
+      .toMatchObject({ phase: 'peer-online', href: joinUrl })
+
+    await page.evaluate(() => window.__hrackDebugShell?.navigate('settings'))
+    await page.getByTestId('settings-category-remote').click()
+    await expect(page.getByTestId('settings-remote-url')).toHaveValue(joinUrl)
+    await expect(page.getByTestId('settings-remote-status')).toHaveText(
+      '手机已连接'
+    )
+  })
+
+  test('real Electron session stays exited remotely until explicit close, then disconnects', async () => {
     test.skip(process.platform !== 'win32', 'interactive CLI fixture uses cmd.exe')
     const joinUrl = relay.joinUrl('aK3')
     await page.getByTestId('settings-remote-url').fill(joinUrl)
@@ -172,13 +210,12 @@ test.describe('remote settings', () => {
 
     await page.evaluate(() => window.__hrackDebugShell?.navigate('settings'))
     await page.getByTestId('settings-category-remote').click()
-    await page.getByTestId('settings-remote-revoke').click()
-    await expect
-      .poll(() => phone.messages.some((message) => message.type === 'revoked'))
-      .toBe(true)
+    await expect(page.getByTestId('settings-remote-revoke')).toHaveCount(0)
+    await page.getByTestId('settings-remote-disconnect').click()
     await expect(page.getByTestId('settings-remote-status')).toHaveAttribute(
       'data-remote-phase',
       'idle'
     )
+    expect(relay.revokes).toEqual([])
   })
 })

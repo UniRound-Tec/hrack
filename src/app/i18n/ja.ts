@@ -173,7 +173,7 @@ export const ja = {
     ungrouped: '未分類',
     blank: '空白',
     booting: 'DeepSeek Harness を起動しています…',
-    bootHostInit: '初回の host 起動では profile の初期化が必要です',
+    bootHostInit: 'DSH の初回セットアップを実行しています',
     bootFailed: 'DSH の起動に失敗しました',
     copyError: 'エラーをコピー',
     errorCopied: 'コピーしました',
@@ -410,8 +410,9 @@ export const ja = {
     updateCheck: '更新を確認',
     updateDownload: '更新をダウンロード',
     updateRestart: '再起動してインストール',
-    remoteUrl: '参加 URL',
-    remoteUrlHint: 'パソコンとスマホは同じ完全な URL を使います。ドメインはハードコードしません。',
+    remoteUrl: 'ペアリング URL',
+    remoteUrlHintBefore: '',
+    remoteUrlHintAfter: ' でペアリング URL を作成します。',
     remoteConnect: '接続',
     remoteDisconnect: '切断',
     remoteRevoke: 'ルームを失効',
@@ -422,24 +423,24 @@ export const ja = {
     remoteDshReady: 'リモート DSH Web の準備ができました',
     remoteDshUnsupported: 'DSH Web トンネル対応 Relay を待っています',
     remoteDshUnavailable: 'DSH Web 画面またはトンネルは現在利用できません',
-    remoteConfirmTitle: 'このサーバーへ端末を送りますか？',
+    remoteConfirmTitle: 'このリモート操作サーバーに接続しますか？',
     remoteConfirmBody: (origin: string) =>
-      `接続後、セッション一覧と運転中の端末バイトは ${origin} に送られます。この URL を持つ人が座席を取れます。`,
+      `セッション一覧とリモート操作に必要なデータは ${origin} を経由します。信頼できるペアリング URL のみ使用してください。`,
     remoteStatusIdle: '未接続',
     remoteStatusConnecting: '接続中',
-    remoteStatusWaitingPhone: '送信済み。スマホ待ち',
-    remoteStatusPeerOnline: 'スマホが着席',
+    remoteStatusWaitingPhone: '接続済み・スマホ待ち',
+    remoteStatusPeerOnline: 'スマホ接続済み',
     remoteStatusRevoking: 'ルームを失効中',
     remoteError: (code: RemoteDesktopError) => {
       switch (code) {
         case 'occupied':
-          return 'その席には既にデスクトップがあります。既存接続は切断しません'
+          return 'このペアリング URL には別のデスクトップが接続済みです'
         case 'bad-key':
           return 'ルームが存在しないか失効しています'
         case 'revoked':
           return 'ルームは失効しました'
         case 'connect-failed':
-          return 'リレーに接続できません'
+          return 'リモート操作サーバーに接続できません'
         case 'invalid-url':
         case 'invalid-scheme':
         case 'invalid-room':
@@ -497,8 +498,7 @@ export const ja = {
     clisFound: (count: number) => `${count} 個の AI CLI を検出`,
     partialScanErrors: (count: number) => `${count} 件の検証に失敗`,
     installation: 'インストール先',
-    launching: '起動中…',
-    p2Placeholder: 'CLI と実行環境のオプションは P3 で追加'
+    launching: '起動中…'
   },
   workspaceReader: {
     show: 'コードリーダーを表示',
@@ -519,10 +519,6 @@ export const ja = {
     code: 'コード'
   },
   shell: {
-    homeLabel: 'home · app shell',
-    homeTitle: 'Welcome back.',
-    homeHint: 'ホーム内容は P3 で追加。三状態ナビゲーションとターミナルルーティングは利用可。',
-    settingsHint: 'P2 ではナビゲーションモードのみ解放。完全な設定は P3 で追加。',
     unavailableTerminal: 'このデモセッションには開けるターミナルがありません。'
   },
   updateModal: {

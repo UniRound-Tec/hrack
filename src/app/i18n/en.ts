@@ -173,7 +173,7 @@ export const en = {
     ungrouped: 'Ungrouped',
     blank: 'Blank',
     booting: 'Starting DeepSeek Harness…',
-    bootHostInit: 'First host start needs to initialize the profile',
+    bootHostInit: 'DSH is completing its first-time setup',
     bootFailed: 'DSH failed to start',
     copyError: 'Copy error',
     errorCopied: 'Copied',
@@ -412,8 +412,9 @@ export const en = {
     updateCheck: 'Check for updates',
     updateDownload: 'Download update',
     updateRestart: 'Restart and install',
-    remoteUrl: 'Join URL',
-    remoteUrlHint: 'Desktop and phone share one full URL. Clients do not hardcode a domain.',
+    remoteUrl: 'Pairing URL',
+    remoteUrlHintBefore: 'Create a pairing URL at ',
+    remoteUrlHintAfter: '.',
     remoteConnect: 'Connect',
     remoteDisconnect: 'Disconnect',
     remoteRevoke: 'Revoke room',
@@ -424,24 +425,24 @@ export const en = {
     remoteDshReady: 'Remote DSH web is ready',
     remoteDshUnsupported: 'Waiting for a Relay that supports the DSH web tunnel',
     remoteDshUnavailable: 'The DSH web surface or tunnel is currently unavailable',
-    remoteConfirmTitle: 'Send the terminal to this server?',
+    remoteConfirmTitle: 'Connect to this remote-control server?',
     remoteConfirmBody: (origin: string) =>
-      `After connecting, session lists and driven terminal bytes go to ${origin}. Anyone with this URL can take a seat.`,
+      `Session lists and data needed for remote control will pass through ${origin}. Only use a pairing URL you trust.`,
     remoteStatusIdle: 'Not connected',
     remoteStatusConnecting: 'Connecting',
-    remoteStatusWaitingPhone: 'Outbound, waiting for the phone',
-    remoteStatusPeerOnline: 'Phone is seated',
+    remoteStatusWaitingPhone: 'Connected, waiting for phone',
+    remoteStatusPeerOnline: 'Phone connected',
     remoteStatusRevoking: 'Revoking the room',
     remoteError: (code: RemoteDesktopError) => {
       switch (code) {
         case 'occupied':
-          return 'That seat already has a desktop; the first connection was not kicked'
+          return 'Another desktop is already connected to this pairing URL'
         case 'bad-key':
           return 'Room is missing or revoked'
         case 'revoked':
           return 'Room revoked'
         case 'connect-failed':
-          return 'Could not reach the relay'
+          return 'Could not connect to the remote-control server'
         case 'invalid-url':
         case 'invalid-scheme':
         case 'invalid-room':
@@ -499,8 +500,7 @@ export const en = {
     clisFound: (count: number) => `${count} AI CLI${count === 1 ? '' : 's'} found`,
     partialScanErrors: (count: number) => `${count} probe${count === 1 ? '' : 's'} failed`,
     installation: 'Installation',
-    launching: 'Launching…',
-    p2Placeholder: 'CLI and runtime options land in P3'
+    launching: 'Launching…'
   },
   workspaceReader: {
     show: 'Show code reader',
@@ -521,10 +521,6 @@ export const en = {
     code: 'Code'
   },
   shell: {
-    homeLabel: 'home · app shell',
-    homeTitle: 'Welcome back.',
-    homeHint: 'Home content lands in P3; three-state navigation and routing work.',
-    settingsHint: 'P2 unlocks navigation mode; full settings land in P3.',
     unavailableTerminal: 'This demo session has no terminal to open.'
   },
   updateModal: {

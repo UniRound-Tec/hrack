@@ -177,7 +177,7 @@ export const zhCN = {
     ungrouped: '未分组',
     blank: '空白',
     booting: '正在启动 DeepSeek Harness…',
-    bootHostInit: 'dsh host 首次启动需要初始化 profile',
+    bootHostInit: 'DSH 首次启动需要完成初始化，请稍候',
     bootFailed: 'DSH 启动失败',
     copyError: '复制错误信息',
     errorCopied: '已复制',
@@ -414,8 +414,9 @@ export const zhCN = {
     updateCheck: '检查更新',
     updateDownload: '下载更新',
     updateRestart: '重启并安装',
-    remoteUrl: '加入 URL',
-    remoteUrlHint: '电脑和手机用同一条完整 URL。客户端不写死域名。',
+    remoteUrl: '配对 URL',
+    remoteUrlHintBefore: '从',
+    remoteUrlHintAfter: '创建配对 URL。',
     remoteConnect: '连接',
     remoteDisconnect: '断开',
     remoteRevoke: '吊销房间',
@@ -426,31 +427,31 @@ export const zhCN = {
     remoteDshReady: 'DSH 远程网页已就绪',
     remoteDshUnsupported: '等待支持 DSH 网页隧道的远控服务器',
     remoteDshUnavailable: 'DSH 网页或隧道暂不可用',
-    remoteConfirmTitle: '把终端送到这台服务器？',
+    remoteConfirmTitle: '连接到这台远控服务器？',
     remoteConfirmBody: (origin: string) =>
-      `连接后，会话列表和被驾驶的终端字节会送到 ${origin}。持有这条 URL 的人可以占座。`,
+      `连接后，会话列表和远程控制所需的数据会通过 ${origin} 传输。请只使用你信任的配对 URL。`,
     remoteStatusIdle: '未连接',
     remoteStatusConnecting: '连接中',
-    remoteStatusWaitingPhone: '已出站，等待手机',
-    remoteStatusPeerOnline: '手机已占座',
+    remoteStatusWaitingPhone: '已连接，等待手机',
+    remoteStatusPeerOnline: '手机已连接',
     remoteStatusRevoking: '正在吊销房间',
     remoteError: (code: RemoteDesktopError) => {
       switch (code) {
         case 'occupied':
-          return '该座位已有电脑，未踢掉原连接'
+          return '已有一台电脑连接到这个配对 URL'
         case 'bad-key':
-          return '房间不存在或已吊销'
+          return '配对 URL 无效或已被吊销'
         case 'revoked':
-          return '房间已吊销'
+          return '配对 URL 已被吊销'
         case 'connect-failed':
-          return '无法连上中继'
+          return '无法连接远控服务器'
         case 'invalid-url':
         case 'invalid-scheme':
         case 'invalid-room':
         case 'missing-room':
           return '无法解析这条 URL'
         case 'insecure-remote':
-          return '远程服务器必须使用 HTTPS / WSS；明文连接仅允许本机回环地址'
+          return '远控服务器必须使用安全连接；只有本机地址可以使用普通连接'
         case 'not-connected':
           return '尚未连接，无法吊销房间'
         case 'revoke-unconfirmed':
@@ -501,8 +502,7 @@ export const zhCN = {
     clisFound: (count: number) => `已发现 ${count} 个 AI CLI`,
     partialScanErrors: (count: number) => `${count} 项未通过验证`,
     installation: '安装位置',
-    launching: '启动中…',
-    p2Placeholder: 'CLI 与运行环境选项将在 P3 接入'
+    launching: '启动中…'
   },
   workspaceReader: {
     show: '显示代码阅读器',
@@ -523,10 +523,6 @@ export const zhCN = {
     code: '代码'
   },
   shell: {
-    homeLabel: 'home · app shell',
-    homeTitle: 'Welcome back.',
-    homeHint: '首页内容将在 P3 接入；三态导航与终端路由已可用。',
-    settingsHint: 'P2 先开放导航模式；完整设置项将在 P3 接入。',
     unavailableTerminal: '这个演示会话没有可打开的终端。'
   },
   updateModal: {

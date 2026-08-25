@@ -173,7 +173,7 @@ export const ko = {
     ungrouped: '미분류',
     blank: '빈 세션',
     booting: 'DeepSeek Harness 시작하는 중…',
-    bootHostInit: '첫 host 시작 시 profile 초기화가 필요합니다',
+    bootHostInit: 'DSH 첫 실행 설정을 완료하는 중입니다',
     bootFailed: 'DSH 시작 실패',
     copyError: '오류 복사',
     errorCopied: '복사됨',
@@ -410,8 +410,9 @@ export const ko = {
     updateCheck: '업데이트 확인',
     updateDownload: '업데이트 다운로드',
     updateRestart: '다시 시작하고 설치',
-    remoteUrl: '참가 URL',
-    remoteUrlHint: '컴퓨터와 휴대폰이 같은 전체 URL을 씁니다. 클라이언트는 도메인을 하드코딩하지 않습니다.',
+    remoteUrl: '페어링 URL',
+    remoteUrlHintBefore: '',
+    remoteUrlHintAfter: '에서 페어링 URL을 만드세요.',
     remoteConnect: '연결',
     remoteDisconnect: '끊기',
     remoteRevoke: '방 취소',
@@ -422,24 +423,24 @@ export const ko = {
     remoteDshReady: '원격 DSH 웹 준비 완료',
     remoteDshUnsupported: 'DSH 웹 터널을 지원하는 Relay 대기 중',
     remoteDshUnavailable: '현재 DSH 웹 화면 또는 터널을 사용할 수 없음',
-    remoteConfirmTitle: '이 서버로 터미널을 보낼까요?',
+    remoteConfirmTitle: '이 원격 제어 서버에 연결할까요?',
     remoteConfirmBody: (origin: string) =>
-      `연결하면 세션 목록과 운전 중인 터미널 바이트가 ${origin}으로 갑니다. 이 URL을 가진 사람이 자리를 차지할 수 있습니다.`,
+      `세션 목록과 원격 제어에 필요한 데이터가 ${origin}을 통해 전송됩니다. 신뢰할 수 있는 페어링 URL만 사용하세요.`,
     remoteStatusIdle: '연결 안 됨',
     remoteStatusConnecting: '연결 중',
-    remoteStatusWaitingPhone: '송신됨, 휴대폰 대기',
-    remoteStatusPeerOnline: '휴대폰이 착석함',
+    remoteStatusWaitingPhone: '연결됨, 휴대폰 대기',
+    remoteStatusPeerOnline: '휴대폰 연결됨',
     remoteStatusRevoking: '방 폐기 중',
     remoteError: (code: RemoteDesktopError) => {
       switch (code) {
         case 'occupied':
-          return '그 자리에는 이미 데스크톱이 있습니다. 기존 연결은 끊지 않았습니다'
+          return '이 페어링 URL에 다른 데스크톱이 이미 연결되어 있습니다'
         case 'bad-key':
           return '방이 없거나 취소되었습니다'
         case 'revoked':
           return '방이 취소되었습니다'
         case 'connect-failed':
-          return '릴레이에 연결할 수 없습니다'
+          return '원격 제어 서버에 연결할 수 없습니다'
         case 'invalid-url':
         case 'invalid-scheme':
         case 'invalid-room':
@@ -497,8 +498,7 @@ export const ko = {
     clisFound: (count: number) => `AI CLI ${count}개 발견`,
     partialScanErrors: (count: number) => `검증 실패 ${count}건`,
     installation: '설치 위치',
-    launching: '실행 중…',
-    p2Placeholder: 'CLI 및 실행 환경 옵션은 P3에서 추가'
+    launching: '실행 중…'
   },
   workspaceReader: {
     show: '코드 리더 표시',
@@ -519,10 +519,6 @@ export const ko = {
     code: '코드'
   },
   shell: {
-    homeLabel: 'home · app shell',
-    homeTitle: 'Welcome back.',
-    homeHint: '홈 콘텐츠는 P3에서 추가. 세 상태 내비게이션과 터미널 라우팅은 사용 가능.',
-    settingsHint: 'P2에서는 내비게이션 모드만 제공. 전체 설정은 P3에서 추가.',
     unavailableTerminal: '이 데모 세션에는 열 수 있는 터미널이 없습니다.'
   },
   updateModal: {
