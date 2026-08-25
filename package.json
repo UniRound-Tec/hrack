@@ -8,6 +8,7 @@
     "predev": "npm run subset-fonts",
     "dev": "electron-vite dev",
     "subset-fonts": "node scripts/subset-fonts.mjs",
+    "generate:icons": "node scripts/generate-brand-icons.mjs",
     "assert-font-size": "node scripts/assert-font-size.mjs",
     "assert:dsh-surface": "node scripts/assert-dsh-web-surface.mjs",
     "ensure:dsh": "node scripts/ensure-dsh-runtime.cjs",
@@ -89,7 +90,7 @@
           ]
         }
       ],
-      "icon": "resources/tray/hrack-white.ico"
+      "icon": "resources/tray/hrack-app.ico"
     },
     "mac": {
       "target": [

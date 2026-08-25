@@ -6,7 +6,7 @@ import {
 } from '../shared/ipc-contract'
 import { DEFAULT_BACKGROUND_COLOR, type MainPrefs } from './main-prefs'
 import { isQuitting } from './quitting'
-import { applyHrackWindowIcon, createThemedHrackIcon } from './app-icons'
+import { applyHrackWindowIcon, createHrackAppIcon } from './app-icons'
 
 /** 窗口位置换算成"相对当前显示器"坐标（多显示器下渐变坐标系跟随窗口所在屏）。 */
 export function displayRelativePosition(
@@ -44,7 +44,7 @@ export function createWindow(prefs: MainPrefs): BrowserWindow {
     autoHideMenuBar: true,
     ...(process.platform === 'darwin'
       ? {}
-      : { icon: createThemedHrackIcon() }),
+      : { icon: createHrackAppIcon() }),
     backgroundColor: prefs.backgroundColor || DEFAULT_BACKGROUND_COLOR,
     ...(process.platform === 'darwin'
       ? { titleBarStyle: 'hiddenInset' as const }

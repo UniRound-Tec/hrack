@@ -36,26 +36,21 @@ function averageVisibleLuminance(path: string): number {
   return visiblePixels > 0 ? luminance / visiblePixels : 0
 }
 
-test('Windows uses a light window icon in dark mode', () => {
+test('desktop uses the branded app icon and keeps the macOS tray template', () => {
   expect(hrackIconBasename('win32', true)).toBe('hrack-white')
   expect(hrackIconBasename('win32', false)).toBe('hrack')
   expect(hrackIconBasename('darwin', true)).toBe('hrackTemplate')
-  expect(hrackWindowsIconFile(true)).toBe('hrack-white.ico')
-  expect(hrackWindowsIconFile(false)).toBe('hrack.ico')
+  expect(hrackWindowsIconFile()).toBe('hrack-app.ico')
   expect(
     averageVisibleLuminance(
       resolve(__dirname, '../resources/tray/hrack-white-32.png')
     )
   ).toBeGreaterThan(200)
   expect(
-    readFileSync(resolve(__dirname, '../resources/tray/hrack-white.ico')).length
+    readFileSync(resolve(__dirname, '../resources/tray/hrack-app.ico')).length
   ).toBeGreaterThan(16)
   expect(icoContainsSize(
-    resolve(__dirname, '../resources/tray/hrack-white.ico'),
-    256
-  )).toBe(true)
-  expect(icoContainsSize(
-    resolve(__dirname, '../resources/tray/hrack.ico'),
+    resolve(__dirname, '../resources/tray/hrack-app.ico'),
     256
   )).toBe(true)
   expect(
@@ -85,7 +80,7 @@ $bitmap.Dispose()
 Write-Output $average
 `
 
-test('a real Windows BrowserWindow applies the dark-theme icon', async () => {
+test('a real Windows BrowserWindow applies the branded app icon', async () => {
   test.skip(process.platform !== 'win32')
   const { app } = await launchApp({ createDefaultTerminal: false })
   try {
@@ -106,7 +101,7 @@ test('a real Windows BrowserWindow applies the dark-theme icon', async () => {
         }
       ).trim()),
       { timeout: 10_000, intervals: [100, 250, 500] }
-    ).toBeGreaterThan(160)
+    ).toBeGreaterThan(20)
   } finally {
     await app.close()
   }
