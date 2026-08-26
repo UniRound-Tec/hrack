@@ -55,7 +55,7 @@ test.describe('remote settings', () => {
     const joinUrl = relay.joinUrl('aK3')
     await expect(page.getByTestId('settings-remote-create-url')).toHaveAttribute(
       'href',
-      'https://hrack.modplex.app/'
+      'https://hrack.dev/'
     )
     await page.getByTestId('settings-remote-url').fill(joinUrl)
     await expect(page.getByTestId('settings-remote-qr')).toHaveAttribute(
