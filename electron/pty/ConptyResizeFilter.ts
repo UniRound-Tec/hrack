@@ -1,6 +1,7 @@
 const HIDE_CURSOR = '\x1b[?25l'
 const SHOW_CURSOR = '\x1b[?25h'
 const CURSOR_HOME = '\x1b[H'
+const WINDOW_SIZE = /^(\x1b\[8;(\d+);(\d+)t)/
 const FINAL_CURSOR_POSITION = /\x1b\[(\d+);(\d+)H\x1b\[\?25h$/
 const DEC_PRIVATE_MODE = /\x1b\[\?([0-9;]+)[hl]/g
 
@@ -42,17 +43,22 @@ function persistentModes(frame: string): string {
 /**
  * 从显示链路中移除 ConPTY resize 后的整屏重画事务。
  *
- * ConPTY 的稳定帧：
- *   CSI ?25l  [可选 CSI 8;<rows>;<cols>t]  CSI H  <逐行重画>  CSI ?25h
+ * ConPTY 的可安全识别帧：
+ *   CSI ?25l  CSI 8;<rows>;<cols>t  CSI H  <逐行重画>  CSI ?25h
  *
- * 只有 expectResize 后紧接着的数据严格匹配该帧头才会进入抑制状态。
- * 控制序列可跨任意 onData chunk；不匹配时原样放行，避免吞掉应用自己的输出。
+ * `CSI 8` 尺寸标记是必要边界。OpenTUI、Claude Code、Cline 等应用也会用
+ * `CSI ?25l CSI H ... CSI ?25h` 做整屏重画，仅凭这组通用序列无法判断输出方；
+ * 将它误当成 ConPTY 重画会随机吞掉应用唯一的新布局帧。控制序列可跨任意
+ * onData chunk；没有尺寸标记时必须原样放行。
  */
 export class ConptyResizeFilter {
   private readonly maxCandidateChars: number
   private nextGeneration = 1
   private expectedGeneration: number | null = null
+  private expectedRows: number | null = null
+  private expectedCols: number | null = null
   private captureGeneration: number | null = null
+  private captureCompletesExpected = false
   private candidate = ''
   private capturing = false
 
@@ -61,10 +67,12 @@ export class ConptyResizeFilter {
       options.maxCandidateChars ?? DEFAULT_MAX_CANDIDATE_CHARS
   }
 
-  expectResize(): number {
+  expectResize(cols: number, rows: number): number {
     const generation = this.nextGeneration++
     // ConPTY 会合并快速连续的 resize；只等待最新一代，不能累计欠账。
     this.expectedGeneration = generation
+    this.expectedCols = cols
+    this.expectedRows = rows
     return generation
   }
 
@@ -109,6 +117,8 @@ export class ConptyResizeFilter {
         }
         this.capturing = true
         this.captureGeneration = this.expectedGeneration
+        this.captureCompletesExpected =
+          header.rows === this.expectedRows && header.cols === this.expectedCols
       }
 
       const end = this.candidate.indexOf(SHOW_CURSOR)
@@ -125,11 +135,15 @@ export class ConptyResizeFilter {
         })
       }
       this.candidate = this.candidate.slice(frameEnd)
-      if (this.expectedGeneration === this.captureGeneration) {
-        this.expectedGeneration = null
+      if (
+        this.captureCompletesExpected &&
+        this.expectedGeneration === this.captureGeneration
+      ) {
+        this.clearExpected()
       }
       this.capturing = false
       this.captureGeneration = null
+      this.captureCompletesExpected = false
       suppressedRedraws++
 
       if (this.expectedGeneration === null) {
@@ -142,20 +156,26 @@ export class ConptyResizeFilter {
     return { forward, suppressedRedraws, cursorSyncs }
   }
 
-  private classifyHeader(): 'complete' | 'incomplete' | 'invalid' {
+  private classifyHeader():
+    | { rows: number; cols: number }
+    | 'incomplete'
+    | 'invalid' {
     if (this.candidate.length < HIDE_CURSOR.length) {
       return HIDE_CURSOR.startsWith(this.candidate) ? 'incomplete' : 'invalid'
     }
     if (!this.candidate.startsWith(HIDE_CURSOR)) return 'invalid'
 
     const rest = this.candidate.slice(HIDE_CURSOR.length)
-    if (rest.startsWith(CURSOR_HOME)) return 'complete'
-    if (CURSOR_HOME.startsWith(rest)) return 'incomplete'
-
-    const windowSize = rest.match(/^(\x1b\[8;\d+;\d+t)/)
+    if (rest.length === 0) return 'incomplete'
+    if (CURSOR_HOME.startsWith(rest)) {
+      return rest === CURSOR_HOME ? 'invalid' : 'incomplete'
+    }
+    const windowSize = rest.match(WINDOW_SIZE)
     if (windowSize) {
       const afterWindowSize = rest.slice(windowSize[1].length)
-      if (afterWindowSize.startsWith(CURSOR_HOME)) return 'complete'
+      if (afterWindowSize.startsWith(CURSOR_HOME)) {
+        return { rows: Number(windowSize[2]), cols: Number(windowSize[3]) }
+      }
       return CURSOR_HOME.startsWith(afterWindowSize)
         ? 'incomplete'
         : 'invalid'
@@ -171,9 +191,16 @@ export class ConptyResizeFilter {
   }
 
   private reset(): void {
-    this.expectedGeneration = null
+    this.clearExpected()
     this.captureGeneration = null
+    this.captureCompletesExpected = false
     this.candidate = ''
     this.capturing = false
+  }
+
+  private clearExpected(): void {
+    this.expectedGeneration = null
+    this.expectedRows = null
+    this.expectedCols = null
   }
 }

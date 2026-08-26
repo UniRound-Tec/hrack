@@ -468,7 +468,7 @@ export class PTYManager {
     const { cols, rows } = managed.pendingResize
     managed.pendingResize = undefined
     managed.pendingResizeRequestedAt = undefined
-    const resizeGeneration = managed.resizeFilter?.expectResize()
+    const resizeGeneration = managed.resizeFilter?.expectResize(cols, rows)
     try {
       targetPty.resize(cols, rows)
       managed.history.appendResize(cols, rows)
