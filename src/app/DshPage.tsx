@@ -12,13 +12,7 @@ import type {
   DshSurfaceBounds,
   DshSurfaceSnapshot
 } from '../../shared/dsh-ipc'
-import { createDshSurfaceAppearance } from '../dsh/themeBridge'
 import { useSettingsStore } from '../state/settingsStore'
-import {
-  builtInLightTheme,
-  getUiThemeRegistry,
-  useThemeRegistryVersion
-} from './themeRuntime'
 import { useStrings } from './i18n'
 
 interface DshPageProps {
@@ -161,15 +155,16 @@ export default function DshPage({
   })
   const [retry, setRetry] = useState(0)
   const [errorCopied, setErrorCopied] = useState(false)
-  const uiThemeId = useSettingsStore((state) => state.uiThemeId)
   const language = useSettingsStore((state) => state.language)
   const dshScale = useSettingsStore((state) => state.dshScale)
   const rounded = useSettingsStore((state) => state.terminalRounded)
-  const themeVersion = useThemeRegistryVersion((state) => state.version)
-  const appearance = useMemo(() => {
-    const theme = getUiThemeRegistry().get(uiThemeId) ?? builtInLightTheme
-    return createDshSurfaceAppearance(theme, language, dshScale)
-  }, [uiThemeId, language, dshScale, themeVersion])
+  const appearance = useMemo(
+    () => ({
+      locale: language.startsWith('zh') ? ('zh' as const) : ('en' as const),
+      scale: dshScale
+    }),
+    [language, dshScale]
+  )
   const mode = active && slotId ? 'slot' : 'hidden'
   const shouldShow = active && slotId !== null && !obscured
   const hasBounds = bounds !== null

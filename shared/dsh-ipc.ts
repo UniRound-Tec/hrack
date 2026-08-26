@@ -189,14 +189,11 @@ export interface DshSurfaceBounds {
   cornerRadius: number
 }
 
-/** Renderer 已从通过校验的 HRack 主题解析出的 DSH token 覆盖。 */
+/** HRack 只负责 DSH Web surface 的宿主级显示参数，不干预 DSH 自身主题。 */
 export interface DshSurfaceAppearance {
-  colorScheme: 'light' | 'dark'
   locale: 'zh' | 'en'
   /** Electron zoom factor；0.75–1.25。 */
   scale: number
-  backgroundColor: string
-  tokens: Record<string, string>
 }
 
 export interface DshSurfaceShowRequest {

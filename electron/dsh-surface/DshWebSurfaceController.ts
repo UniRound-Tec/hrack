@@ -7,16 +7,12 @@ import type {
   DshSurfaceSnapshot
 } from '../../shared/dsh-ipc'
 import { DSH_SURFACE_ACTIVE_SESSION_REPORT_CHANNEL } from '../../shared/dsh-ipc'
-import { isCssColorLiteral } from '../../shared/theme-schema'
 import type { DshHostManager } from '../dsh-host/DshHostManager'
 
 const RUNTIME_READY_TIMEOUT_MS = 20_000
 const SESSION_READY_TIMEOUT_MS = 20_000
 const SIDEBAR_COLLAPSE_MAX_ATTEMPTS = 3
 const MAX_SESSION_ID_LENGTH = 256
-const MAX_TOKEN_COUNT = 64
-const MAX_CSS_VALUE_LENGTH = 256
-const TOKEN_NAME = /^--dsw-[a-z0-9-]+$/
 
 const WAIT_FOR_RUNTIME_SCRIPT = `
 (async () => {
@@ -28,8 +24,7 @@ const WAIT_FOR_RUNTIME_SCRIPT = `
       try {
         const sessions = ctx.get('sessions');
         const layout = ctx.get('layout');
-        const theme = ctx.get('theme');
-        if (sessions && layout && theme) {
+        if (sessions && layout) {
           return {
             locale: ctx.get('locale')?.getLocale?.()?.active,
             sessionPhase: sessions.list?.getSnapshot?.()?.phase
@@ -165,47 +160,17 @@ export function sanitizeDshSurfaceBounds(value: unknown): DshSurfaceBounds {
 
 function sanitizeAppearance(value: unknown): DshSurfaceAppearance {
   if (!isRecord(value)) throw new Error('invalid DSH surface appearance')
-  const colorScheme = value['colorScheme']
   const locale = value['locale']
   const scale = finiteNumber(value['scale'], 'scale')
-  const backgroundColor = value['backgroundColor']
-  const rawTokens = value['tokens']
-  if (colorScheme !== 'light' && colorScheme !== 'dark') {
-    throw new Error('invalid DSH surface color scheme')
-  }
   if (locale !== 'zh' && locale !== 'en') {
     throw new Error('invalid DSH surface locale')
   }
   if (scale < 0.75 || scale > 1.25) {
     throw new Error('invalid DSH surface scale')
   }
-  if (!isCssColorLiteral(backgroundColor)) {
-    throw new Error('invalid DSH surface background')
-  }
-  if (!isRecord(rawTokens)) {
-    throw new Error('invalid DSH surface tokens')
-  }
-  const entries = Object.entries(rawTokens)
-  if (entries.length > MAX_TOKEN_COUNT) {
-    throw new Error('too many DSH surface tokens')
-  }
-  const tokens: Record<string, string> = {}
-  for (const [name, tokenValue] of entries) {
-    if (
-      !TOKEN_NAME.test(name) ||
-      !isCssColorLiteral(tokenValue) ||
-      tokenValue.length > MAX_CSS_VALUE_LENGTH
-    ) {
-      throw new Error(`invalid DSH surface token: ${name}`)
-    }
-    tokens[name] = tokenValue.trim()
-  }
   return {
-    colorScheme,
     locale,
-    scale,
-    backgroundColor: backgroundColor.trim(),
-    tokens
+    scale
   }
 }
 
@@ -526,11 +491,9 @@ export class DshWebSurfaceController {
 
     const view = this.requireView()
     this.applyBounds()
-    this.applyViewBackground(request.appearance)
     // Chromium resets page zoom during a top-level navigation. Set it once
     // before loading for the initial viewport and confirm it again afterward.
     view.webContents.setZoomFactor(request.appearance.scale)
-    await this.applyAppearance(request.appearance)
     if (generation !== this.generation) return
     if (request.intent === 'new') {
       await this.clearSession()
@@ -633,8 +596,23 @@ export class DshWebSurfaceController {
       }
       return { action: 'deny' }
     })
+    // DSH uses navigator.clipboard.writeText for copy actions. Keep every
+    // other permission denied and scope clipboard writes to this local page.
+    view.webContents.session.setPermissionCheckHandler(
+      (requestingWebContents, permission, requestingOrigin, details) =>
+        requestingWebContents === view.webContents &&
+        permission === 'clipboard-sanitized-write' &&
+        allowSameOrigin(details.requestingUrl ?? requestingOrigin)
+    )
     view.webContents.session.setPermissionRequestHandler(
-      (_webContents, _permission, callback) => callback(false)
+      (requestingWebContents, permission, callback, details) => {
+        callback(
+          requestingWebContents === view.webContents &&
+            permission === 'clipboard-sanitized-write' &&
+            'requestingUrl' in details &&
+            allowSameOrigin(details.requestingUrl)
+        )
+      }
     )
 
     try {
@@ -648,48 +626,6 @@ export class DshWebSurfaceController {
       if (this.view === view) this.destroyView()
       throw error
     }
-  }
-
-  private async applyAppearance(
-    appearance: DshSurfaceAppearance
-  ): Promise<void> {
-    const payload = JSON.stringify(appearance)
-    await this.requireView().webContents.executeJavaScript(
-      `(() => {
-        const appearance = ${payload};
-        const state = globalThis.__HRACK_DSH_EMBED__;
-        const ctx = state?.ctx;
-        if (!ctx) throw new Error('official DSH runtime is unavailable');
-        const tokenModes = Object.fromEntries(
-          Object.entries(appearance.tokens).map(([name, value]) => [
-            name,
-            { light: value, dark: value }
-          ])
-        );
-        state.themeDisposer = ctx.get('theme').overrideTokens(
-          'hrack-web-surface',
-          tokenModes
-        );
-        state.colorScheme = appearance.colorScheme;
-        const syncScheme = () => {
-          document.documentElement.style.colorScheme = state.colorScheme;
-          document.body?.toggleAttribute(
-            'data-ds-dark-theme',
-            state.colorScheme === 'dark'
-          );
-        };
-        syncScheme();
-        if (!state.themeObserver && document.body) {
-          state.themeObserver = new MutationObserver(syncScheme);
-          state.themeObserver.observe(document.body, {
-            attributes: true,
-            attributeFilter: ['data-ds-dark-theme']
-          });
-        }
-        return true;
-      })()`,
-      true
-    )
   }
 
   private async openSession(sessionId: string): Promise<void> {
@@ -780,17 +716,6 @@ export class DshWebSurfaceController {
       this.view.setBorderRadius(cornerRadius)
     } catch {
       // 平台不支持原生圆角时退回直角，避免影响 DSH 展示。
-    }
-  }
-
-  private applyViewBackground(appearance: DshSurfaceAppearance): void {
-    const view = this.requireView()
-    try {
-      view.setBackgroundColor(appearance.backgroundColor)
-    } catch {
-      view.setBackgroundColor(
-        appearance.colorScheme === 'dark' ? '#1e1e1e' : '#ffffff'
-      )
     }
   }
 

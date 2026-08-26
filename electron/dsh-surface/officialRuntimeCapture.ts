@@ -6,16 +6,13 @@
  * DSH 0.1.0-rc.6 writes the module table to `__DSH_MODULES__` before creating
  * the Cordis root. 0.1.0-rc.7+ installs `window.__ModuleLoader__` and seeds
  * Cordis through `create({ staticModules })`. Both paths patch
- * `Context.prototype.extend` once so HRack can drive sessions/layout/theme.
+ * `Context.prototype.extend` once so HRack can drive sessions/layout.
  */
 
 export interface HrackDshEmbedState {
   ctx?: { get(name: string): unknown }
   captureError?: string
   sidebarDefaultApplied: boolean
-  themeDisposer?: () => void
-  themeObserver?: unknown
-  colorScheme?: 'light' | 'dark'
   activeSessionDisposer?: () => void
   reportActiveSession?: () => void
   activeSessionReported?: boolean
