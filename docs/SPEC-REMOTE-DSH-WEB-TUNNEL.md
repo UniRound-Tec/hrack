@@ -69,7 +69,7 @@ http://127.0.0.1:<random>/ 真实 dsh web
 
 DSH 根页面、启动 manifest、插件模块和运行时都使用 `/assets/*`、`/plugins/*`、`/api/*` 等根绝对路径。把它挂到现有 `/remote/<room>/dsh/` 会迫使 HRack 重写 HTML、动态插件 URL、`fetch`、WebSocket 和未来新增的 Worker/EventSource，版本升级极易失效。
 
-因此 DSH Gateway 必须独占一个 origin，例如 `https://dsh.hrack.modplex.app`。不要求每房间一个子域名，也不要求 wildcard 证书；房间映射由该 origin 上的短期 Cookie 完成。自部署者配置自己的单独 origin 和正式 TLS 即可。
+因此 DSH Gateway 必须独占一个 origin，例如 `https://dsh.hrack.dev`。不要求每房间一个子域名，也不要求 wildcard 证书；房间映射由该 origin 上的短期 Cookie 完成。自部署者配置自己的单独 origin 和正式 TLS 即可。
 
 ### 3.2 顶层页面而不是 iframe
 

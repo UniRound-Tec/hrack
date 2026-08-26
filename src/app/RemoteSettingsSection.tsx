@@ -96,12 +96,12 @@ export default function RemoteSettingsSection() {
           {strings.settings.remoteUrlHintBefore}
           <a
             data-testid="settings-remote-create-url"
-            href="https://hrack.modplex.app/"
+            href="https://hrack.dev/"
             target="_blank"
             rel="noreferrer"
             className="cursor-target text-text-secondary underline decoration-border-strong underline-offset-2 transition-colors hover:text-text-primary"
           >
-            hrack.modplex.app
+            hrack.dev
           </a>
           {strings.settings.remoteUrlHintAfter}
         </p>
