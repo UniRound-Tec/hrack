@@ -433,6 +433,9 @@ export const en = {
     remoteStatusWaitingPhone: 'Connected, waiting for phone',
     remoteStatusPeerOnline: 'Phone connected',
     remoteStatusRevoking: 'Revoking the room',
+    remoteConnection: 'Connection',
+    remoteLatency: 'Latency',
+    remoteTraffic: 'Traffic',
     remoteError: (code: RemoteDesktopError) => {
       switch (code) {
         case 'occupied':

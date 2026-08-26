@@ -1,5 +1,5 @@
-import { BrowserWindow, Menu, Tray, nativeTheme } from 'electron'
-import { createThemedHrackIcon } from './app-icons'
+import { BrowserWindow, Menu, Tray } from 'electron'
+import { createHrackTrayIcon } from './app-icons'
 
 export type { Tray } from 'electron'
 
@@ -25,12 +25,6 @@ const TRAY_LABELS: Record<string, { toggle: string; newSession: string; quit: st
 
 let activeTray: Tray | null = null
 let activeMenu: Menu | null = null
-
-nativeTheme.on('updated', () => {
-  if (process.platform !== 'darwin' && activeTray && !activeTray.isDestroyed()) {
-    activeTray.setImage(createThemedHrackIcon())
-  }
-})
 
 export function rebuildTrayMenu(
   tray: Tray,
@@ -89,7 +83,7 @@ export function createTray(
   language: string,
   callbacks: TrayCallbacks
 ): Tray {
-  const tray = new Tray(createThemedHrackIcon())
+  const tray = new Tray(createHrackTrayIcon())
   tray.setToolTip('HRack')
   rebuildTrayMenu(tray, language, callbacks)
   // Windows/Linux：单击图标切换显示；macOS 点击交给系统弹出菜单。

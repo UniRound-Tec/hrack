@@ -21,6 +21,33 @@ import {
   type RemoteWorkspaceEntry,
   type RemoteWorkspaceListRejectReason
 } from '../../shared/remote-protocol'
+import WebSocket, { type RawData } from 'ws'
+
+const METRICS_BROADCAST_INTERVAL_MS = 500
+const LATENCY_PROBE_INTERVAL_MS = 5_000
+const LATENCY_PROBE_TIMEOUT_MS = 10_000
+const LATENCY_PROBE_PREFIX = 'hrack-rtt:'
+
+type RemoteDesktopCoreState = Omit<
+  RemoteDesktopState,
+  'latencyMs' | 'uploadedBytes' | 'downloadedBytes'
+>
+
+function rawDataByteLength(data: RawData): number {
+  if (Buffer.isBuffer(data)) return data.byteLength
+  if (data instanceof ArrayBuffer) return data.byteLength
+  if (Array.isArray(data)) {
+    return data.reduce((total, chunk) => total + chunk.byteLength, 0)
+  }
+  return 0
+}
+
+function rawDataToText(data: RawData): string {
+  if (Buffer.isBuffer(data)) return data.toString('utf8')
+  if (data instanceof ArrayBuffer) return Buffer.from(data).toString('utf8')
+  if (Array.isArray(data)) return Buffer.concat(data).toString('utf8')
+  return ''
+}
 
 export interface RemoteDshTunnelLease {
   roomId: string
@@ -204,6 +231,13 @@ export class RemoteDesktopClient {
   private activeCreateRequestId: string | null = null
   private readonly activeWorkspaceRequests = new Map<string, WebSocket>()
   private phoneGraceTimer: ReturnType<typeof setTimeout> | null = null
+  private metricsBroadcastTimer: ReturnType<typeof setTimeout> | null = null
+  private latencyProbeTimer: ReturnType<typeof setTimeout> | null = null
+  private latencyProbe: { token: string; startedAt: number } | null = null
+  private latencyProbeSequence = 0
+  private latencyMs: number | null = null
+  private uploadedBytes = 0
+  private downloadedBytes = 0
   private dshSurface: RemoteWebSurface | null = null
   private pendingRevoke: {
     promise: Promise<RemoteDesktopState>
@@ -278,6 +312,7 @@ export class RemoteDesktopClient {
   connect(rawUrl: string): RemoteDesktopState {
     this.cancelPendingRevoke(REMOTE_DESKTOP_IDLE_STATE)
     this.tearDownSocket()
+    this.resetMetrics()
     const parsed = parseJoinUrl(rawUrl)
     if (!parsed.ok) {
       this.setState({
@@ -304,7 +339,7 @@ export class RemoteDesktopClient {
       this.onSessionChange(change)
     })
 
-    socket.onopen = () => {
+    socket.on('open', () => {
       if (this.socket !== socket) return
       this.send({
         v: 1,
@@ -312,18 +347,25 @@ export class RemoteDesktopClient {
         role: 'desktop',
         roomId: parsed.value.roomId
       })
-    }
-    socket.onmessage = (event) => {
+      this.startLatencyProbes(socket)
+    })
+    socket.on('message', (data, isBinary) => {
       if (this.socket !== socket) return
-      if (typeof event.data !== 'string') return
-      this.onFrame(event.data)
-    }
-    socket.onerror = () => {
+      this.recordTraffic('down', rawDataByteLength(data))
+      if (isBinary) return
+      this.onFrame(rawDataToText(data))
+    })
+    socket.on('pong', (data) => {
+      if (this.socket !== socket) return
+      this.acceptLatencyPong(socket, data)
+    })
+    socket.on('error', () => {
       /* close 会跟上来 */
-    }
-    socket.onclose = () => {
+    })
+    socket.on('close', () => {
       if (this.socket !== socket) return
       this.socket = null
+      this.stopLatencyProbes()
       this.deps.onDshTunnelLease?.(null)
       this.cancelPhoneGrace()
       this.releaseDrive()
@@ -343,12 +385,13 @@ export class RemoteDesktopClient {
         origin: parsed.value.origin,
         error: 'connect-failed'
       })
-    }
+    })
     return this.state
   }
 
   disconnect(): RemoteDesktopState {
     this.tearDownSocket()
+    this.resetMetrics()
     this.setState(REMOTE_DESKTOP_IDLE_STATE)
     this.cancelPendingRevoke(this.state)
     return this.state
@@ -825,11 +868,75 @@ export class RemoteDesktopClient {
 
   private send(message: RemoteMessage): void {
     if (this.socket?.readyState !== WebSocket.OPEN) return
-    this.socket.send(JSON.stringify(message))
+    const payload = JSON.stringify(message)
+    this.socket.send(payload)
+    this.recordTraffic('up', Buffer.byteLength(payload))
+  }
+
+  private startLatencyProbes(socket: WebSocket): void {
+    this.stopLatencyProbes()
+    const probe = (): void => {
+      if (this.socket !== socket || socket.readyState !== WebSocket.OPEN) return
+      const now = Date.now()
+      if (
+        this.latencyProbe &&
+        now - this.latencyProbe.startedAt >= LATENCY_PROBE_TIMEOUT_MS
+      ) {
+        this.latencyProbe = null
+        this.latencyMs = null
+        this.broadcastMetrics()
+      }
+      if (!this.latencyProbe) {
+        const token = `${LATENCY_PROBE_PREFIX}${++this.latencyProbeSequence}`
+        this.latencyProbe = { token, startedAt: now }
+        socket.ping(token)
+      }
+      this.latencyProbeTimer = setTimeout(probe, LATENCY_PROBE_INTERVAL_MS)
+    }
+    probe()
+  }
+
+  private acceptLatencyPong(socket: WebSocket, data: Buffer): void {
+    if (this.socket !== socket || !this.latencyProbe) return
+    if (data.toString('utf8') !== this.latencyProbe.token) return
+    this.latencyMs = Math.max(0, Date.now() - this.latencyProbe.startedAt)
+    this.latencyProbe = null
+    this.broadcastMetrics()
+  }
+
+  private stopLatencyProbes(): void {
+    if (this.latencyProbeTimer) clearTimeout(this.latencyProbeTimer)
+    this.latencyProbeTimer = null
+    this.latencyProbe = null
+  }
+
+  private recordTraffic(direction: 'up' | 'down', bytes: number): void {
+    if (bytes <= 0) return
+    if (direction === 'up') this.uploadedBytes += bytes
+    else this.downloadedBytes += bytes
+    if (this.metricsBroadcastTimer) return
+    this.metricsBroadcastTimer = setTimeout(() => {
+      this.metricsBroadcastTimer = null
+      this.broadcastMetrics()
+    }, METRICS_BROADCAST_INTERVAL_MS)
+  }
+
+  private broadcastMetrics(): void {
+    this.setState(this.state)
+  }
+
+  private resetMetrics(): void {
+    if (this.metricsBroadcastTimer) clearTimeout(this.metricsBroadcastTimer)
+    this.metricsBroadcastTimer = null
+    this.stopLatencyProbes()
+    this.latencyMs = null
+    this.uploadedBytes = 0
+    this.downloadedBytes = 0
   }
 
   private tearDownSocket(): void {
     this.userClosed = true
+    this.stopLatencyProbes()
     this.cancelPhoneGrace()
     this.releaseDrive('desktop-offline')
     this.unsubscribe?.()
@@ -910,6 +1017,7 @@ export class RemoteDesktopClient {
     const href = this.join?.href ?? this.state.href
     const origin = this.join?.origin ?? this.state.origin
     this.tearDownSocket()
+    if (confirmed) this.resetMetrics()
     this.setState(
       confirmed
         ? REMOTE_DESKTOP_IDLE_STATE
@@ -926,8 +1034,16 @@ export class RemoteDesktopClient {
     pending.resolve(state)
   }
 
-  private setState(state: RemoteDesktopState): void {
-    this.state = state
-    this.deps.broadcast(state)
+  private setState(state: RemoteDesktopCoreState | RemoteDesktopState): void {
+    this.state = {
+      phase: state.phase,
+      href: state.href,
+      origin: state.origin,
+      error: state.error,
+      latencyMs: this.latencyMs,
+      uploadedBytes: this.uploadedBytes,
+      downloadedBytes: this.downloadedBytes
+    }
+    this.deps.broadcast(this.state)
   }
 }

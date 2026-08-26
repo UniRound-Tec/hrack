@@ -25,8 +25,8 @@ Cookie、Authorization、邮箱验证码、密钥、电脑路径或 DSH/PTY 正�
 - [x] D4 两条公网 event WebSocket 同时通过
 - [x] 运行中 OpenResty server/location 均 `access_log off`
 - [x] request/response buffering 关闭，长流 timeout 为 3600 秒
-- [x] `dsh.hrack.modplex.app` 的公共 DNS 指向生产主机 `38.246.237.57`
-- [x] 正式域名签发受信 ECDSA 证书，有效期至 2026-11-22，主机名校验与 ALPN `h2` 通过
+- [x] `dsh.hrack.dev` 的公共 DNS 指向生产主机 `38.246.237.57`
+- [x] 正式域名签发受信 ECDSA 证书，有效期至 2026-11-24，主机名校验与 ALPN `h2` 通过
 - [x] 证书自动续期后的复制、`openresty -t` 与热重载钩子实跑通过
 - [x] `DSH_PUBLIC_ORIGIN` 已切换为正式域名；`/_healthz` 为 200，匿名根路径为 401
 - [x] 正式域名 Android release 公网门禁通过：两条 event WS、browse picker、空白 session 与 PTY 并行
@@ -80,3 +80,12 @@ Windows 上的 Expo export 只能保留为 bundle 预检证据。
 蜂窝网络切换、系统回收与 iOS 签名安装。项目所有者已明确接受这些风险，所以当前 DSH 扩展轨可以
 按“正式域名 + Android release 模拟器”证据关门；真机条目保持未勾选，后续有设备时补测。该决定
 只适用于本次 DSH D5 发布，不改变父 Remote P8 的物理真机关门条件，也不构成真机通过声明。
+
+## F. 2026-08-26 域名迁移
+
+- 官方平台切换为 `https://hrack.dev`，DSH 独立 origin 切换为
+  `https://dsh.hrack.dev`；旧 `modplex.app` 入口已停用，不提供跳转或 WSS 兼容。
+- 迁移前对生产数据卷停写备份，随后在保留 `roomId` 和撤销凭据的前提下
+  将 2 条活动配对记录显式迁移至新 origin；SQLite `integrity_check=ok`。
+- 新域名已通过正式 TLS、HTTP 边界、生产监控、匿名建房封锁、双端真实 WSS
+  配对与双向帧、DSH capability origin 和 `/_healthz` 验证。

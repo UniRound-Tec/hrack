@@ -431,6 +431,9 @@ export const ko = {
     remoteStatusWaitingPhone: '연결됨, 휴대폰 대기',
     remoteStatusPeerOnline: '휴대폰 연결됨',
     remoteStatusRevoking: '방 폐기 중',
+    remoteConnection: '연결 상태',
+    remoteLatency: '지연 시간',
+    remoteTraffic: '트래픽',
     remoteError: (code: RemoteDesktopError) => {
       switch (code) {
         case 'occupied':

@@ -1,5 +1,5 @@
 param(
-  [string]$RelayBase = 'https://hrack.modplex.app',
+  [string]$RelayBase = 'https://hrack.dev',
   [string]$Adb = 'C:\Users\Jesse\AppData\Local\Android\Sdk\platform-tools\adb.exe',
   [string]$Emulator = 'C:\Users\Jesse\AppData\Local\Android\Sdk\emulator\emulator.exe',
   [string]$Avd = 'nuva_x64'

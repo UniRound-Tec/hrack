@@ -44,13 +44,37 @@ export function createThemedHrackIcon(): NativeImage {
   return image
 }
 
+/** Desktop window/taskbar artwork stays branded; only the tray follows system contrast. */
+export function createHrackAppIcon(): NativeImage {
+  const directory = iconAssetsDirectory()
+  const image = nativeImage.createFromPath(join(directory, 'hrack-app-16.png'))
+  const highDpiImage = nativeImage.createFromPath(
+    join(directory, 'hrack-app-32.png')
+  )
+  if (!highDpiImage.isEmpty()) {
+    image.addRepresentation({
+      scaleFactor: 2,
+      width: 32,
+      height: 32,
+      buffer: highDpiImage.toPNG()
+    })
+  }
+  return image
+}
+
+export function createHrackTrayIcon(): NativeImage {
+  return process.platform === 'darwin'
+    ? createThemedHrackIcon()
+    : createHrackAppIcon()
+}
+
 export function applyHrackWindowIcon(win: BrowserWindow): void {
   if (process.platform === 'darwin' || win.isDestroyed()) return
-  win.setIcon(createThemedHrackIcon())
+  win.setIcon(createHrackAppIcon())
   if (process.platform !== 'win32') return
   const appIconPath = join(
     iconAssetsDirectory(),
-    hrackWindowsIconFile(nativeTheme.shouldUseDarkColors)
+    hrackWindowsIconFile()
   )
   win.setAppDetails({
     appId: WINDOWS_APP_USER_MODEL_ID,

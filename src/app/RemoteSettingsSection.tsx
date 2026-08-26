@@ -8,6 +8,19 @@ import { useSettingsStore } from '../state/settingsStore'
 import { useStrings } from './i18n'
 import RemoteJoinQr from './RemoteJoinQr'
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1_024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB'] as const
+  let value = bytes / 1_024
+  let unitIndex = 0
+  while (value >= 1_024 && unitIndex < units.length - 1) {
+    value /= 1_024
+    unitIndex += 1
+  }
+  const digits = value >= 100 ? 0 : value >= 10 ? 1 : 2
+  return `${value.toFixed(digits)} ${units[unitIndex]}`
+}
+
 export default function RemoteSettingsSection() {
   const strings = useStrings()
   const joinUrl = useSettingsStore((state) => state.remoteJoinUrl)
@@ -48,6 +61,20 @@ export default function RemoteSettingsSection() {
         return strings.settings.remoteStatusIdle
     }
   })()
+  const statusDotClass = (() => {
+    switch (state.phase) {
+      case 'waiting-phone':
+      case 'peer-online':
+        return 'bg-status-done'
+      case 'connecting':
+      case 'revoking':
+        return 'animate-pulse bg-status-needs-you'
+      case 'error':
+        return 'bg-status-error'
+      default:
+        return 'bg-text-disabled'
+    }
+  })()
 
   const requestConnect = (): void => {
     if (!canConnect || busy) return
@@ -69,12 +96,12 @@ export default function RemoteSettingsSection() {
           {strings.settings.remoteUrlHintBefore}
           <a
             data-testid="settings-remote-create-url"
-            href="https://hrack.modplex.app/"
+            href="https://hrack.dev/"
             target="_blank"
             rel="noreferrer"
             className="cursor-target text-text-secondary underline decoration-border-strong underline-offset-2 transition-colors hover:text-text-primary"
           >
-            hrack.modplex.app
+            hrack.dev
           </a>
           {strings.settings.remoteUrlHintAfter}
         </p>
@@ -108,15 +135,57 @@ export default function RemoteSettingsSection() {
             {strings.settings.remoteDisconnect}
           </button>
         </div>
-        <p
-          data-testid="settings-remote-status"
-          data-remote-phase={state.phase}
-          className={`mt-2 font-pingfang text-[11px] ${
-            state.phase === 'error' ? 'text-status-error' : 'text-text-faint'
-          }`}
+        <div
+          data-testid="settings-remote-metrics"
+          className="mt-3 grid grid-cols-[minmax(0,1.35fr)_minmax(90px,0.65fr)_minmax(160px,1fr)] overflow-hidden rounded-xl border border-border-faint bg-content"
         >
-          {statusText}
-        </p>
+          <div className="min-w-0 px-3 py-2.5">
+            <p className="font-pingfang text-[10px] text-text-faint">
+              {strings.settings.remoteConnection}
+            </p>
+            <div className="mt-1 flex min-w-0 items-center gap-1.5">
+              <span
+                data-testid="settings-remote-indicator"
+                aria-hidden="true"
+                className={`size-1.5 shrink-0 rounded-full ${statusDotClass}`}
+              />
+              <p
+                data-testid="settings-remote-status"
+                data-remote-phase={state.phase}
+                className={`truncate font-pingfang text-[11px] font-medium ${
+                  state.phase === 'error'
+                    ? 'text-status-error'
+                    : 'text-text-secondary'
+                }`}
+              >
+                {statusText}
+              </p>
+            </div>
+          </div>
+          <div className="border-l border-border-faint px-3 py-2.5">
+            <p className="font-pingfang text-[10px] text-text-faint">
+              {strings.settings.remoteLatency}
+            </p>
+            <p
+              data-testid="settings-remote-latency"
+              className="mt-1 font-maple text-[11px] font-medium text-text-secondary tabular-nums"
+            >
+              {state.latencyMs === null ? '—' : `${state.latencyMs} ms`}
+            </p>
+          </div>
+          <div className="border-l border-border-faint px-3 py-2.5">
+            <p className="font-pingfang text-[10px] text-text-faint">
+              {strings.settings.remoteTraffic}
+            </p>
+            <p
+              data-testid="settings-remote-traffic"
+              className="mt-1 whitespace-nowrap font-maple text-[11px] font-medium text-text-secondary tabular-nums"
+            >
+              ↑ {formatBytes(state.uploadedBytes)} · ↓{' '}
+              {formatBytes(state.downloadedBytes)}
+            </p>
+          </div>
+        </div>
       </div>
       {parsed.ok && (
         <div className="border-b border-border-faint py-3.5 last:border-b-0">

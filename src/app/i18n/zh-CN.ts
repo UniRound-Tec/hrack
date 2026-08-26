@@ -435,6 +435,9 @@ export const zhCN = {
     remoteStatusWaitingPhone: '已连接，等待手机',
     remoteStatusPeerOnline: '手机已连接',
     remoteStatusRevoking: '正在吊销房间',
+    remoteConnection: '连接状态',
+    remoteLatency: '延迟',
+    remoteTraffic: '流量',
     remoteError: (code: RemoteDesktopError) => {
       switch (code) {
         case 'occupied':

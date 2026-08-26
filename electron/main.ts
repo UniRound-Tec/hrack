@@ -177,6 +177,7 @@ const dshProjector = new DshSessionProjector(dshHost, dshProjections)
 const dshWire = new DshWireProxy(dshHost, broadcastToAllWindows)
 let shutdownStarted = false
 let winRef: BrowserWindow | null = null
+let mainWindowRaiseSequence = 0
 let shutdownPromise: Promise<void> | null = null
 const pendingBridgeLaunches = new Map<string, (error: string | null) => void>()
 const bridgeState = BridgeStateStore.inUserData(app.getPath('userData'))
@@ -246,8 +247,12 @@ const remoteClient = new RemoteDesktopClient({
     win.webContents.send(AppEventChannel.RemoteLaunch, request)
   }),
   workspace: runtimeRemoteWorkspaceHost(cliDiscovery),
-  focusSession: (sessionId) =>
-    floatingController?.focusSession(sessionId) ?? false,
+  focusSession: (sessionId) => {
+    const focused = floatingController?.focusSession(sessionId) ?? false
+    const win = winRef && !winRef.isDestroyed() ? winRef : null
+    if (win) raiseMainWindow(win)
+    return focused
+  },
   broadcastDrive: (state) =>
     broadcastToAllWindows(RemoteEventChannel.DriveChanged, state),
   onDshTunnelLease: (lease) => remoteDshCoordinator?.acceptLease(lease)
@@ -332,18 +337,43 @@ function estimateTerminalSize(win: BrowserWindow): { cols: number; rows: number 
 
 function raiseMainWindow(win: BrowserWindow): boolean {
   if (win.isDestroyed()) return false
-  if (win.isMinimized()) win.restore()
+  win.restore()
   win.show()
   if (process.platform === 'win32') {
+    const sequence = ++mainWindowRaiseSequence
+    let released = false
+    let focusArmTimer: ReturnType<typeof setTimeout> | null = null
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null
+    const releaseTopmost = (): void => {
+      if (released || sequence !== mainWindowRaiseSequence) return
+      released = true
+      if (focusArmTimer) clearTimeout(focusArmTimer)
+      if (fallbackTimer) clearTimeout(fallbackTimer)
+      win.removeListener('focus', releaseAfterFocus)
+      if (win.isDestroyed()) return
+      win.setAlwaysOnTop(false)
+      win.moveTop()
+    }
+    const releaseAfterFocus = (): void => {
+      setTimeout(releaseTopmost, 250)
+    }
     try {
       win.setAlwaysOnTop(true)
       win.moveTop()
+      app.focus({ steal: true })
       win.focus()
-      win.setAlwaysOnTop(false)
     } catch {
-      win.focus()
+      try {
+        win.focus()
+      } catch {
+        // The fallback timer below still releases a successfully applied topmost state.
+      }
     }
-    app.focus({ steal: true })
+    focusArmTimer = setTimeout(() => {
+      if (released || sequence !== mainWindowRaiseSequence || win.isDestroyed()) return
+      win.once('focus', releaseAfterFocus)
+    }, 500)
+    fallbackTimer = setTimeout(releaseTopmost, 10_000)
   } else {
     win.focus()
   }

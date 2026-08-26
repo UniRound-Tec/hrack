@@ -431,6 +431,9 @@ export const zhTW = {
     remoteStatusWaitingPhone: '已連線，等待手機',
     remoteStatusPeerOnline: '手機已連線',
     remoteStatusRevoking: '正在撤銷房間',
+    remoteConnection: '連線狀態',
+    remoteLatency: '延遲',
+    remoteTraffic: '流量',
     remoteError: (code: RemoteDesktopError) => {
       switch (code) {
         case 'occupied':

@@ -385,13 +385,19 @@ export interface RemoteDesktopState {
   href: string | null
   origin: string | null
   error: RemoteDesktopError | null
+  latencyMs: number | null
+  uploadedBytes: number
+  downloadedBytes: number
 }
 
 export const REMOTE_DESKTOP_IDLE_STATE: RemoteDesktopState = {
   phase: 'idle',
   href: null,
   origin: null,
-  error: null
+  error: null,
+  latencyMs: null,
+  uploadedBytes: 0,
+  downloadedBytes: 0
 }
 
 export const RemoteInvokeChannel = {
