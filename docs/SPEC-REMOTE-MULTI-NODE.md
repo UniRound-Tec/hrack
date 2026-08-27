@@ -54,6 +54,18 @@ The variable name is `RELAY_NODES_JSON`. Node IDs are stable lowercase identifie
 
 Adding a third region requires only a node configuration entry, one Relay deployment and DNS/TLS; it must not require a schema change.
 
+### 3.1 IP-certificate fallback
+
+Some regional hosting networks rewrite or reset unfiled domain HTTP Host and TLS SNI traffic. WSS still performs a TLS handshake and therefore does not bypass that policy. If both HTTP-01 and TLS-ALPN-01 fail at the network edge while raw-IP HTTP succeeds, the node may use a publicly trusted short-lived IP certificate:
+
+- `relayPublicOrigin`: `https://REGIONAL_IP` on port 443.
+- `dshPublicOrigin`: `https://REGIONAL_IP:8443`.
+- The management and Relay routes stay on 443; DSH public HTTP/WebSocket stays on 8443.
+- The two origins must not share one authority. Relay identifies DSH public traffic by Host authority, so sharing `IP:443` would misroute the control API as DSH traffic.
+- Certificate renewal must run at least twice daily and reload Nginx because IP certificates are short-lived.
+
+The stable user-facing join URL remains on `hrack.dev`; the IP origin is returned only by the resolver for the selected room.
+
 ## 4. Data model
 
 `pairings` gains a non-null `node_id` column with default `us-1` and an index. The existing global projection revision remains authoritative in P0. Each independent Relay receives the same revision number with only its assigned room subset.
@@ -132,7 +144,7 @@ Automated tests are supporting evidence only. Completion requires actual process
 
 1. Create a `us-1` URL, connect desktop and App, exchange terminal input/output, and observe bytes only on `us-1`.
 2. Create a `cn-1` URL, connect desktop and App, exchange terminal input/output, and observe active sessions/bytes on `cn-1`, not `us-1`.
-3. Open a DSH session assigned to `cn-1` and verify browser traffic reaches `dsh-cn.hrack.dev`.
+3. Open a DSH session assigned to `cn-1` and verify browser traffic reaches the resolver-provided DSH origin (regional domain or the IP-certificate `:8443` fallback).
 4. Confirm the displayed/saved/QR join URL remains `https://hrack.dev/remote/{roomId}` for both nodes.
 5. Restart `cn-1`; the reconciler must restore its room subset and the same URL must reconnect.
 6. Confirm an unauthenticated or non-control-center request cannot call a regional system management route.
