@@ -1,10 +1,15 @@
-# D0 security prototype: pin DSH's dual-face directory picker to the official
-# remote-browser implementation. Production generates the same overlay in
-# HRack-owned userData; it must never mutate the user's DSH profile.
-- id: directory-picker
-  disabled: true
-- insert:
-    - id: directory-picker-browse-host
-      name: '@deepseek-ai/dsh-host-directory-picker-browse'
-    - id: directory-picker-browse-surface
-      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'
+# HRack marks its managed host as an embedded/remote launch, so DSH's official
+# auto picker selects browse. The product layer must not insert a second copy
+# when a user profile already pins the same official browse implementation.
+# It only restores the official command-line -> Web runtime -> API trust chain
+# after profile/user layers so the public authority is actually accepted.
+- id: web-runtime
+  inject:
+    - webStartup
+  config:
+    trustedHosts: !!js ctx.webStartup.trustedHosts
+- id: connection
+  inject:
+    - webRuntime
+  config:
+    trustedHosts: !!js ctx.webRuntime.trustedHosts

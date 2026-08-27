@@ -1,13 +1,21 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-export const DSH_REMOTE_BROWSE_OVERLAY = `- id: directory-picker
-  disabled: true
-- insert:
-    - id: directory-picker-browse-host
-      name: '@deepseek-ai/dsh-host-directory-picker-browse'
-    - id: directory-picker-browse-surface
-      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'
+export const DSH_REMOTE_BROWSE_OVERLAY = `# HRack sets SSH_CONNECTION for the
+# managed remote host, so DSH's official auto picker selects its browse pair.
+# Do not insert picker entries here: a profile may already pin the official
+# browse implementation. Only restore the official trusted-host config chain
+# after user layers so --trusted-host reaches the HTTP/RPC authority fence.
+- id: web-runtime
+  inject:
+    - webStartup
+  config:
+    trustedHosts: !!js ctx.webStartup.trustedHosts
+- id: connection
+  inject:
+    - webRuntime
+  config:
+    trustedHosts: !!js ctx.webRuntime.trustedHosts
 `
 
 /**

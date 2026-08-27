@@ -396,7 +396,7 @@ DSH。会话列表不再常驻“官方 Web 控制台”装饰行。
 
 测试必须启动电脑真实安装的 DSH Web profile，不使用假的 HTML、Memory API 或手写 directory fixture：
 
-1. HRack 以随机 loopback 端口、trusted public authority 和 browse overlay 启动 DSH；
+1. HRack 以随机 loopback 端口、trusted public authority 和远程嵌入标记启动 DSH，由 DSH 官方 auto picker 选择 browse 实现；
 2. 用真实浏览器拉取根 HTML、全部 boot entries、assets/plugins，建立 `/plugins/events` SSE 与两条真实 WebSocket upgrade；
 3. 用 trusted public authority 调用真实 `host.describe`、`session.list`、`workspace.list`、`host.listDirectory`；
 4. 在临时 workspace 父目录中通过 browse API 看到真实目录并创建/选择一个测试子目录；
@@ -461,7 +461,9 @@ safe area、物理软键盘、蜂窝网络切换、系统回收与 iOS 签名安
 
 ## 15. D0 实现与验证记录
 
-D0 新增显式 opt-in 门禁 `e2e/remote-dsh-d0.spec.ts` 和固定原型 overlay `e2e/fixtures/dsh-remote-browse.patch.yml`。overlay 先禁用 auto picker，再同时挂载官方 browse host backend 与 browse client surface；只挂 host backend 会让 API 能浏览目录但 boot manifest 没有网页 picker，因此不能算远程能力完成。
+D0 新增显式 opt-in 门禁 `e2e/remote-dsh-d0.spec.ts` 和固定原型 overlay `e2e/fixtures/dsh-remote-browse.patch.yml`。早期原型曾先禁用 auto picker，再同时挂载官方 browse host backend 与 browse client surface；只挂 host backend 会让 API 能浏览目录但 boot manifest 没有网页 picker，因此不能算远程能力完成。
+
+后续真机构发现，新版 DSH profile 或用户已固定 browse 实现时，HRack 再次插入同名 entry 会触发 `duplicate loader entry id` 并使 host 在 ready 前退出。当前 fixture 与产品 overlay 因此不再插入任何 picker entry：HRack 设置远程嵌入标记，由 DSH 官方 auto picker 负责唯一的 browse 组合；同时在用户层之后恢复官方 trusted-host 配置链，防止旧 profile/用户覆盖使公网 authority 误报 403。最后由 boot manifest 和 RPC 预检拒绝 native/auto 泄漏、browse 缺失或 authority 未生效。
 
 门禁使用系统真实安装的 DSH `0.1.0-rc.7`，为每次运行创建独立临时 `DSH_HOME` 和随机 loopback 端口，不读取/修改用户现有 DSH profile、session 或 workspace。Chromium 通过 host resolver 以 `dsh.remote.test:<random>` 这个非 loopback authority 访问真实页面，DSH 以 `--trusted-host dsh.remote.test` 启动；Node HTTP 探针使用相同 Host/Origin 语义。
 
@@ -497,7 +499,7 @@ D1 已实现桌面端产品链，而不是把 D0 测试脚本直接搬进产品�
 
 - Remote 设置新增默认关闭、主进程原子持久化的“允许当前远控房间打开 DSH”显式开关；关闭时独立 tunnel 立即终止，PTY 主通道不受影响；
 - 主 WSS `hello-ok` 可选携带规范 HTTPS `relayCapabilities.dshWebTunnel` 与 Desktop-only `dshSeatToken`；旧 Relay 省略字段时仍可照常完成 PTY 配对；
-- HRack 在 `<userData>/dsh-runtime/remote-web.patch.yml` 生成自己拥有的顶层 YAML patch 数组，不写用户 DSH profile；启动参数固定为随机 loopback、browse overlay、Relay 公网 authority 和 `--no-open`；
+- HRack 在 `<userData>/dsh-runtime/remote-web.patch.yml` 生成自己拥有的最小 YAML patch，不写用户 DSH profile，也不重复插入可能已被 profile 固定的 browse 条目；该 patch 只在用户层之后恢复官方 `webStartup → webRuntime → connection` trusted-host 配置链。启动时固定设置嵌入标记，由 DSH 官方 auto picker 选择唯一 browse host/surface，同时固定随机 loopback、Relay 公网 authority 和 `--no-open`；
 - 产品 ready 门槛真实解析 boot manifest，验证 browse client 唯一且 native/auto 不存在，再调用普通 API、directory browse、4 个 privileged denial、SSE 与两条 event WebSocket；任一步不符只发布 unavailable/failed；
 - `DshTunnelClient` 只消费当前 `DshHostManager` ready `baseUrl`，远端报文不能选择 scheme/host/port；HTTP/WS 路由与 header 均为 allowlist，公网 Host/Origin 保留，Cookie/Authorization/Forwarded/Set-Cookie 不进入另一侧；
 - tunnel 使用独立 `ws` 产品依赖、32 KiB control frame、10-byte binary header、64 KiB payload、sequence、credit、16 MiB request、32 MiB response、512 KiB/stream 与 2 MiB/room buffer、HTTP/SSE/WS 并发上限及 stream generation 防复用；

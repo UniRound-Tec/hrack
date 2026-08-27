@@ -170,7 +170,8 @@ test('D0 real DSH supports a trusted public browser without loopback privilege',
           env: {
             ...process.env,
             DSH_HOME: dshHome,
-            DSH_TELEMETRY_DISABLED: '1'
+            DSH_TELEMETRY_DISABLED: '1',
+            SSH_CONNECTION: 'hrack-embed'
           },
           windowsVerbatimArguments: true,
           stdio: ['ignore', 'pipe', 'pipe']
@@ -180,7 +181,8 @@ test('D0 real DSH supports a trusted public browser without loopback privilege',
         env: {
           ...process.env,
           DSH_HOME: dshHome,
-          DSH_TELEMETRY_DISABLED: '1'
+          DSH_TELEMETRY_DISABLED: '1',
+          SSH_CONNECTION: 'hrack-embed'
         },
         stdio: ['ignore', 'pipe', 'pipe']
       })

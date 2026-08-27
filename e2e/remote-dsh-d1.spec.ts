@@ -270,7 +270,9 @@ test('D1 Desktop carries real DSH HTTP through a fixed public-authority tunnel',
 
     const overlay = resolve(appState.userDataDir, 'dsh-runtime/remote-web.patch.yml')
     expect(existsSync(overlay)).toBe(true)
-    expect(readFileSync(overlay, 'utf8')).toContain('directory-picker-browse-surface')
+    expect(readFileSync(overlay, 'utf8')).toContain(
+      'must not insert a second copy'
+    )
     expect(existsSync(resolve(appState.userDataDir, 'dsh-home/remote-web.patch.yml'))).toBe(false)
     console.log(
       `[dsh-d1] runtime=real resources=${resources.length} bytes=${resourceBytes} ` +
