@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-08-27
+
+### Fixed
+
+- Fixed intermittent terminal corruption and misalignment after long, scrollable TUI output or window-size changes. HRack now suppresses only ConPTY redraw frames that carry the expected size marker, while preserving application-owned redraws from Cline, Claude Code, Kimi Code, and other terminal UIs.
+- Restored copy actions in the embedded DSH interface by allowing sanitized clipboard writes only from the same-origin local DSH surface; all unrelated permissions remain denied.
+
+### Changed
+
+- The embedded DSH interface now keeps its native theme instead of being recolored with HRack theme tokens.
+- Updated the public HRack website with device-aware visual effects that cap render cadence, pause off-screen work, reduce load on constrained devices, and respect reduced-motion preferences.
+
 ## [0.4.2] - 2026-08-26
 
 ### 新增
