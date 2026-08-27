@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-08-28
+
+### Added
+
+- Added a selectable diagnostics panel in Settings that collects desktop, remote-control, and DSH events for easier troubleshooting without forcing an all-at-once copy action.
+- Added regional relay discovery for pairing URLs, allowing the desktop client to connect automatically to the relay selected when the URL was created.
+
+### Fixed
+
+- Fixed DSH startup failures caused by injecting the remote directory picker more than once into the same official DSH boot configuration.
+- Hardened remote and DSH connection diagnostics so regional routing and tunnel failures retain useful local context without exposing pairing credentials.
+
 ## [0.4.3] - 2026-08-27
 
 ### Fixed
