@@ -39,6 +39,13 @@ Nginx. No private token, room ID, URL key, ticket or Cookie is recorded here.
    returned HTTP 200.
 8. The temporary pairing and user were deleted. Both the resolver and regional
    room lookup returned HTTP 404 afterward.
+9. The production `RemoteDesktopClient` and App `RemotePhoneClient` then used a
+   second temporary stable join URL through their real resolver paths. They
+   reached `peer-online`/`ready`, preserved `https://hrack.dev` as the displayed
+   control origin, received the China `:8443` DSH origin, and exchanged 27 bytes
+   of terminal input plus 32 bytes of terminal output. Desktop transport metrics
+   recorded 73 uploaded and 256 downloaded bytes. This second canary was also
+   deleted; resolver and regional room lookup both returned HTTP 404.
 
 No automated test suite was run for this deployment pass. The evidence above
 came from real HTTPS, WSS, Relay restart, resolver and DSH tunnel traffic.
