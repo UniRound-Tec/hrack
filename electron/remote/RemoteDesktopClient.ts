@@ -22,6 +22,7 @@ import {
   type RemoteWorkspaceListRejectReason
 } from '../../shared/remote-protocol'
 import WebSocket, { type RawData } from 'ws'
+import { resolveRemoteJoin } from '../../shared/remote-node-resolver'
 
 const METRICS_BROADCAST_INTERVAL_MS = 500
 const LATENCY_PROBE_INTERVAL_MS = 5_000
@@ -220,6 +221,7 @@ function boundedDriveOkMessage(
 export class RemoteDesktopClient {
   private socket: WebSocket | null = null
   private join: JoinUrl | null = null
+  private connectAttempt = 0
   private userClosed = false
   private snapshotSent = false
   private unsubscribe: (() => void) | null = null
@@ -309,7 +311,8 @@ export class RemoteDesktopClient {
     return this.driveState
   }
 
-  connect(rawUrl: string): RemoteDesktopState {
+  async connect(rawUrl: string): Promise<RemoteDesktopState> {
+    const attempt = ++this.connectAttempt
     this.cancelPendingRevoke(REMOTE_DESKTOP_IDLE_STATE)
     this.tearDownSocket()
     this.resetMetrics()
@@ -333,7 +336,24 @@ export class RemoteDesktopClient {
       error: null
     })
 
-    const socket = new WebSocket(parsed.value.wsUrl)
+    let resolved: JoinUrl
+    try {
+      resolved = await resolveRemoteJoin(parsed.value)
+    } catch {
+      if (this.connectAttempt === attempt) {
+        this.setState({
+          phase: 'error',
+          href: parsed.value.href,
+          origin: parsed.value.origin,
+          error: 'connect-failed'
+        })
+      }
+      return this.state
+    }
+    if (this.connectAttempt !== attempt) return this.state
+    this.join = resolved
+
+    const socket = new WebSocket(resolved.wsUrl)
     this.socket = socket
     this.unsubscribe = this.deps.sessions.subscribe((change) => {
       this.onSessionChange(change)
@@ -345,7 +365,7 @@ export class RemoteDesktopClient {
         v: 1,
         type: 'hello',
         role: 'desktop',
-        roomId: parsed.value.roomId
+        roomId: resolved.roomId
       })
       this.startLatencyProbes(socket)
     })
@@ -391,6 +411,7 @@ export class RemoteDesktopClient {
   }
 
   disconnect(): RemoteDesktopState {
+    this.connectAttempt += 1
     this.tearDownSocket()
     this.resetMetrics()
     this.setState(REMOTE_DESKTOP_IDLE_STATE)
