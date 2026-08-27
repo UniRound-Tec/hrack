@@ -290,8 +290,12 @@ export const ja = {
       terminal: 'ターミナル',
       session: 'セッション',
       remote: 'リモート',
+      logs: 'ログ',
       update: 'アプリ更新'
     },
+    diagnosticLogHint: '必要な範囲をドラッグして選択し、Ctrl+C でコピーします。ログは端末内にのみ保存され、認証情報は伏せられます。',
+    diagnosticLogStored: '保持中',
+    diagnosticLogEmpty: 'ログはまだありません。',
     uiTheme: 'UI テーマ',
     uiThemeHint: 'アプリ UI のみに影響。ターミナルの配色とは独立',
     targetCursor: 'ホバー枠',

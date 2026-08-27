@@ -290,8 +290,12 @@ export const zhTW = {
       terminal: '終端機',
       session: '工作階段',
       remote: '遠端',
+      logs: '日誌',
       update: '應用程式更新'
     },
+    diagnosticLogHint: '拖選需要的內容後按 Ctrl+C 複製。日誌只保存在本機，配對憑證等敏感資訊會自動隱藏。',
+    diagnosticLogStored: '已保留',
+    diagnosticLogEmpty: '目前沒有日誌。',
     uiTheme: '介面主題',
     uiThemeHint: '只影響應用程式介面，與終端機配色相互獨立',
     targetCursor: '懸停方框',

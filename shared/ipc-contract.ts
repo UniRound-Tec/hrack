@@ -524,7 +524,7 @@ export interface PtyApi {
     cb: (payload: PtyResizeCursorSync) => void
   ) => () => void
   onExit: (ptyId: string, cb: (payload: ExitPayload) => void) => () => void
-  /** 诊断：把一行文本写到主进程 logs/resize-diag.log（定位 resize 丢内容用，临时）。 */
+  /** 把终端 resize 诊断写入统一的本机诊断日志。 */
   diagLog: (line: string) => Promise<void>
 }
 

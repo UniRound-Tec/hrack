@@ -302,6 +302,12 @@ export class DshHostManager {
   private setStatus(next: DshHostStatus): void {
     const previous = this.status.state
     this.status = next
+    if (previous !== next.state) {
+      const detail = next.error ? `: ${next.error}` : ''
+      const message = `[dsh-host] state ${previous} -> ${next.state}${detail}`
+      if (next.state === 'failed') console.error(message)
+      else console.log(message)
+    }
     this.options.broadcast(DshEventChannel.StatusChanged, next)
     if (previous !== 'ready' && next.state === 'ready') {
       this.options.onBecameReady?.()

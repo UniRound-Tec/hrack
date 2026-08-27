@@ -243,16 +243,19 @@ export class DshTunnelClient {
       if (isBinary) this.onBinary(asBuffer(data))
       else this.onControl(asBuffer(data).toString('utf8'))
     })
-    socket.once('error', () => {
-      // close drives bounded retry; secrets and request details are not logged.
+    socket.once('error', (error) => {
+      // Never log the lease or request details; close drives bounded retry.
+      console.warn('[dsh-tunnel] socket error:', error.message)
     })
-    socket.once('close', () => {
+    socket.once('close', (code) => {
       if (this.socket !== socket) return
+      console.warn('[dsh-tunnel] socket closed:', code)
       this.socket = null
       this.closeStreams()
       this.onState?.('closed')
       if (this.stopped || !this.lease) return
       const delay = Math.min(10_000, 250 * 2 ** Math.min(this.retryAttempt++, 6))
+      console.log('[dsh-tunnel] reconnect scheduled in', delay, 'ms')
       this.retryTimer = setTimeout(() => {
         this.retryTimer = null
         this.connect()

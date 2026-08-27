@@ -73,6 +73,8 @@ import {
 import { runtimeRemotePtyHost } from './remote/runtimeRemotePtyHost'
 import { runtimeRemoteLaunchHost } from './remote/runtimeRemoteLaunchHost'
 import { runtimeRemoteWorkspaceHost } from './remote/runtimeRemoteWorkspaceHost'
+import { DiagnosticLog } from './diagnostics/DiagnosticLog'
+import { DiagnosticLogEventChannel } from '../shared/diagnostic-log'
 
 
 // E2E/开发：隔离 userData，保证 stats/主题等持久化断言从干净状态出发。
@@ -104,6 +106,16 @@ if (cliArgv) {
 
 const isPrimaryInstance = cliArgv ? false : app.requestSingleInstanceLock()
 
+const diagnosticLog = new DiagnosticLog(
+  join(app.getPath('userData'), 'logs', 'hrack-diagnostic.jsonl')
+)
+if (isPrimaryInstance) {
+  diagnosticLog.installConsoleCapture()
+  app.on('web-contents-created', (_event, contents) => {
+    diagnosticLog.captureWebContents(contents)
+  })
+}
+
 const manager = new PTYManager()
 const cliDiscovery = new AiCliDiscoveryService(
   join(app.getPath('userData'), 'ai-cli-scan.json')
@@ -117,6 +129,9 @@ const broadcastToAllWindows = (channel: string, payload: unknown): void => {
     }
   }
 }
+diagnosticLog.onChanged((change) => {
+  broadcastToAllWindows(DiagnosticLogEventChannel.Changed, change)
+})
 const broadcastAgentChannel = (channel: string, payload: unknown): void => {
   if (isAgentProjectionChannel(channel, payload)) {
     floatingController?.publishProjection(payload)
@@ -417,6 +432,7 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
   }
 
   const ctx: IpcContext = {
+    diagnosticLog,
     eventLog,
     cliDiscovery,
     agentRuntime,

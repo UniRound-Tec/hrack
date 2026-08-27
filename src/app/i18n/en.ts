@@ -291,8 +291,12 @@ export const en = {
       terminal: 'Terminal',
       session: 'Sessions',
       remote: 'Remote',
+      logs: 'Logs',
       update: 'App update'
     },
+    diagnosticLogHint: 'Drag to select the lines you need, then press Ctrl+C. Logs stay on this device and pairing credentials are redacted.',
+    diagnosticLogStored: 'Retained',
+    diagnosticLogEmpty: 'No logs yet.',
     uiTheme: 'UI theme',
     uiThemeHint: 'Only affects the app UI, independent of terminal colors',
     targetCursor: 'Hover frame',

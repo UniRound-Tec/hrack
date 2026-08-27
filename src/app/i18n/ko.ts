@@ -290,8 +290,12 @@ export const ko = {
       terminal: '터미널',
       session: '세션',
       remote: '원격',
+      logs: '로그',
       update: '앱 업데이트'
     },
+    diagnosticLogHint: '필요한 내용을 드래그해 선택한 뒤 Ctrl+C로 복사하세요. 로그는 이 기기에만 저장되며 페어링 자격 증명은 숨겨집니다.',
+    diagnosticLogStored: '보관됨',
+    diagnosticLogEmpty: '아직 로그가 없습니다.',
     uiTheme: 'UI 테마',
     uiThemeHint: '앱 인터페이스에만 영향. 터미널 색상과 독립',
     targetCursor: '호버 테두리',

@@ -294,8 +294,12 @@ export const zhCN = {
       terminal: '终端',
       session: '会话',
       remote: '远程',
+      logs: '日志',
       update: '应用更新'
     },
+    diagnosticLogHint: '拖选需要的内容后按 Ctrl+C 复制。日志仅保存在本机，配对凭据等敏感信息会自动隐藏。',
+    diagnosticLogStored: '已保留',
+    diagnosticLogEmpty: '暂时没有日志。',
     uiTheme: '界面主题',
     uiThemeHint: '只影响应用界面，与终端配色相互独立',
     targetCursor: '悬停方框',

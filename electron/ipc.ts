@@ -6,7 +6,6 @@ import {
   ipcMain,
   type IpcMainInvokeEvent
 } from 'electron'
-import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PTYManager } from './pty/PTYManager'
 import {
@@ -86,6 +85,10 @@ import {
   directoryPickerDefaultPath,
   normalizePickedDirectory
 } from './directory-picker'
+import {
+  DiagnosticLogInvokeChannel
+} from '../shared/diagnostic-log'
+import type { DiagnosticLog } from './diagnostics/DiagnosticLog'
 
 const MAX_CLIPBOARD_TEXT_LENGTH = 8 * 1024 * 1024
 const MAX_EVENT_ADAPTER_ID_LENGTH = 128
@@ -146,6 +149,7 @@ const EVENT_KIND_WHITELIST = new Set<HistoryEventKind>([
 
 /** 主进程运行时上下文：窗口 / 托盘由 main.ts 组装后注入。 */
 export interface IpcContext {
+  diagnosticLog: DiagnosticLog
   eventLog: EventLog
   cliDiscovery: AiCliDiscoveryService
   agentRuntime: AgentSessionRuntime
@@ -264,6 +268,14 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     join(__dirname, '../../resources/done.mp3')
   )
   installNotificationSoundProtocol(notificationSounds)
+  ipcMain.handle(DiagnosticLogInvokeChannel.GetSnapshot, (event) => {
+    requireMainWindow(event, ctx)
+    return ctx.diagnosticLog.snapshot()
+  })
+  ipcMain.handle(DiagnosticLogInvokeChannel.Clear, (event) => {
+    requireMainWindow(event, ctx)
+    ctx.diagnosticLog.clear()
+  })
   ipcMain.handle(WorkspaceReaderInvokeChannel.Describe, (_event, terminalId: unknown) =>
     ctx.workspaceReader.describe(terminalId)
   )
@@ -784,15 +796,9 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
     }
   )
 
-  // 诊断：渲染进程把 resize 前后的 buffer 快照写到 logs/resize-diag.log，供离线分析。
-  // 只在真实 dev 会话里抓证据用，定位后移除。
-  const diagPath = join(app.getPath('userData'), 'logs', 'resize-diag.log')
   ipcMain.handle('diag:log', (_e, line: string) => {
-    try {
-      appendFileSync(diagPath, `${line}\n`)
-    } catch {
-      /* logs 目录不可写时忽略 */
-    }
+    if (typeof line !== 'string' || !line) return
+    ctx.diagnosticLog.append('debug', 'terminal-resize', line)
   })
 }
 

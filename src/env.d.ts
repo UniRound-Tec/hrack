@@ -22,6 +22,7 @@ import type { FloatingRendererApi } from '../shared/floating-window'
 import type { HRackDebugShellApi } from './app/AppShell'
 import type { WorkspaceReaderApi } from '../shared/workspace-reader'
 import type { DshApi, DshSurfaceApi, DshWireApi } from '../shared/dsh-ipc'
+import type { DiagnosticLogApi } from '../shared/diagnostic-log'
 
 // renderer 全局类型：preload 通过 contextBridge 注入 window.ptyApi。
 declare global {
@@ -47,6 +48,7 @@ declare global {
     dshApi: DshApi
     dshWireApi: DshWireApi
     dshSurfaceApi: DshSurfaceApi
+    diagnosticLogApi: DiagnosticLogApi
     __HRACK_E2E__?: true
     __hrackDebugShell?: HRackDebugShellApi
   }

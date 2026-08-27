@@ -60,6 +60,7 @@ export class RemoteDshCoordinator {
     this.tunnel.stop()
     this.lease = lease ? { ...lease } : null
     this.relaySupported = lease !== null
+    console.log('[remote-dsh] tunnel lease', lease ? 'available' : 'unavailable')
     if (!this.enabled || !lease) {
       if (this.enabled) this.publishSurface('unavailable', true)
       this.broadcast()
@@ -102,6 +103,11 @@ export class RemoteDshCoordinator {
       })
       if (operation !== this.operation || !this.enabled || this.lease !== lease) return
       if (status.state !== 'ready') {
+        console.warn(
+          '[remote-dsh] local DSH host is not ready:',
+          status.state,
+          status.error ?? ''
+        )
         this.publishSurface('unavailable', false)
         return
       }
@@ -111,13 +117,15 @@ export class RemoteDshCoordinator {
         seatToken: lease.seatToken,
         publicOrigin: lease.publicOrigin
       })
-    } catch {
+    } catch (error) {
+      console.error('[remote-dsh] startup failed:', error)
       if (operation === this.operation) this.publishSurface('failed', false)
     }
   }
 
   private onTunnelState(state: DshTunnelClientState): void {
     if (!this.enabled || !this.lease) return
+    console.log('[remote-dsh] tunnel state:', state)
     if (state === 'connecting') this.publishSurface('starting', false)
     else if (state === 'open') this.publishSurface('ready', false)
     else if (state === 'closed') this.publishSurface('unavailable', false)

@@ -359,11 +359,12 @@ export class RemoteDesktopClient {
       if (this.socket !== socket) return
       this.acceptLatencyPong(socket, data)
     })
-    socket.on('error', () => {
-      /* close 会跟上来 */
+    socket.on('error', (error) => {
+      console.warn('[remote] control socket error:', error.message)
     })
-    socket.on('close', () => {
+    socket.on('close', (code) => {
       if (this.socket !== socket) return
+      console.warn('[remote] control socket closed:', code)
       this.socket = null
       this.stopLatencyProbes()
       this.deps.onDshTunnelLease?.(null)
@@ -1035,6 +1036,8 @@ export class RemoteDesktopClient {
   }
 
   private setState(state: RemoteDesktopCoreState | RemoteDesktopState): void {
+    const previousPhase = this.state.phase
+    const previousError = this.state.error
     this.state = {
       phase: state.phase,
       href: state.href,
@@ -1043,6 +1046,10 @@ export class RemoteDesktopClient {
       latencyMs: this.latencyMs,
       uploadedBytes: this.uploadedBytes,
       downloadedBytes: this.downloadedBytes
+    }
+    if (previousPhase !== this.state.phase || previousError !== this.state.error) {
+      const detail = this.state.error ? ` (${this.state.error})` : ''
+      console.log(`[remote] ${previousPhase} -> ${this.state.phase}${detail}`)
     }
     this.deps.broadcast(this.state)
   }

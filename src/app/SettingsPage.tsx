@@ -11,6 +11,10 @@ import type {
   DshRuntimeScanReport
 } from '../../shared/dsh-ipc'
 import type { FloatingWindowState } from '../../shared/floating-window'
+import type {
+  DiagnosticLogChange,
+  DiagnosticLogSnapshot
+} from '../../shared/diagnostic-log'
 import {
   CUSTOM_UI_THEME_ID,
   validateUiTheme
@@ -56,6 +60,7 @@ const SETTINGS_CATEGORIES = [
   'terminal',
   'session',
   'remote',
+  'logs',
   'update'
 ] as const
 
@@ -104,6 +109,11 @@ export default function SettingsPage({
     useState<string | null>(null)
   const [updateSnapshot, setUpdateSnapshot] =
     useState<UpdateSnapshot | null>(null)
+  const [diagnosticLog, setDiagnosticLog] = useState<DiagnosticLogSnapshot>({
+    entries: [],
+    droppedEntries: 0,
+    capacity: 2_000
+  })
   const [floatingState, setFloatingState] =
     useState<FloatingWindowState | null>(null)
   const [floatingActionError, setFloatingActionError] =
@@ -213,6 +223,40 @@ export default function SettingsPage({
       })
     return () => {
       cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const applyChange = (change: DiagnosticLogChange): void => {
+      if (cancelled) return
+      if (change.kind === 'clear') {
+        setDiagnosticLog((current) => ({
+          ...current,
+          entries: [],
+          droppedEntries: 0
+        }))
+        return
+      }
+      setDiagnosticLog((current) => {
+        if (current.entries.some((entry) => entry.id === change.entry.id)) {
+          return current
+        }
+        const entries = [...current.entries, change.entry]
+        return {
+          ...current,
+          entries: entries.slice(-current.capacity),
+          droppedEntries: change.droppedEntries
+        }
+      })
+    }
+    const unsubscribe = window.diagnosticLogApi.onChanged(applyChange)
+    void window.diagnosticLogApi.getSnapshot().then((snapshot) => {
+      if (!cancelled) setDiagnosticLog(snapshot)
+    })
+    return () => {
+      cancelled = true
+      unsubscribe()
     }
   }, [])
 
@@ -569,6 +613,12 @@ export default function SettingsPage({
         : window.updateApi.check()
     void action.catch(() => {})
   }
+  const diagnosticLogText = diagnosticLog.entries
+    .map((entry) => {
+      const timestamp = new Date(entry.occurredAt).toISOString()
+      return `${timestamp} ${entry.level.toUpperCase().padEnd(5)} [${entry.source}] ${entry.message}`
+    })
+    .join('\n')
 
   return (
     <ClickSpark sparkColor="var(--hrack-accent-spark)" sparkSize={8} sparkRadius={18} sparkCount={10} duration={450}>
@@ -625,7 +675,7 @@ export default function SettingsPage({
               </p>
             )}
           </header>
-          <div className="flex w-full max-w-[760px] flex-col px-10 pb-12">
+          <div className={`flex w-full flex-col px-10 pb-12 ${category === 'logs' ? 'max-w-none' : 'max-w-[760px]'}`}>
           {category === 'appearance' && (
           <Section label="appearance" title={strings.settings.sections.appearance}>
             <Row label={strings.settings.uiTheme} hint={strings.settings.uiThemeHint}>
@@ -1211,6 +1261,30 @@ export default function SettingsPage({
           {category === 'remote' && (
           <Section label="remote" title={strings.settings.sections.remote}>
             <RemoteSettingsSection />
+          </Section>
+          )}
+
+          {category === 'logs' && (
+          <Section label="logs" title={strings.settings.sections.logs}>
+            <div className="flex min-h-[520px] flex-col">
+              <div className="mb-3 flex items-end justify-between gap-4">
+                <p className="max-w-[720px] font-pingfang text-[11px] leading-5 text-text-faint">
+                  {strings.settings.diagnosticLogHint}
+                </p>
+                <span className="shrink-0 font-maple text-[10px] text-text-faint">
+                  {strings.settings.diagnosticLogStored} {diagnosticLog.entries.length} / {diagnosticLog.capacity}
+                  {diagnosticLog.droppedEntries > 0 ? ` · +${diagnosticLog.droppedEntries}` : ''}
+                </span>
+              </div>
+              <pre
+                data-testid="settings-diagnostic-log"
+                tabIndex={0}
+                aria-label={strings.settings.sections.logs}
+                className="select-text min-h-[480px] flex-1 cursor-text overflow-auto rounded-xl border border-border-default bg-input p-4 font-maple text-[11px] leading-[1.65] whitespace-pre text-text-secondary outline-none selection:bg-accent/25 focus:border-border-control"
+              >
+                {diagnosticLogText || strings.settings.diagnosticLogEmpty}
+              </pre>
+            </div>
           </Section>
           )}
 

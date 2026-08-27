@@ -93,6 +93,12 @@ import {
   type DshWireStreamOpenedEvent,
   type DshWireStreamOpenRequest
 } from '../shared/dsh-ipc'
+import {
+  DiagnosticLogEventChannel,
+  DiagnosticLogInvokeChannel,
+  type DiagnosticLogApi,
+  type DiagnosticLogChange
+} from '../shared/diagnostic-log'
 
 /** 推算 Windows build 号（os.release() 形如 "10.0.26200"）。 */
 function windowsBuildNumber(): number {
@@ -670,6 +676,19 @@ const dshSurfaceApi: DshSurfaceApi = {
     ipcRenderer.invoke(DshInvokeChannel.SurfaceUnfollow, slotId)
 }
 
+const diagnosticLogApi: DiagnosticLogApi = {
+  getSnapshot: () => ipcRenderer.invoke(DiagnosticLogInvokeChannel.GetSnapshot),
+  clear: () => ipcRenderer.invoke(DiagnosticLogInvokeChannel.Clear),
+  onChanged: (cb) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      change: DiagnosticLogChange
+    ): void => cb(change)
+    ipcRenderer.on(DiagnosticLogEventChannel.Changed, handler)
+    return () => ipcRenderer.removeListener(DiagnosticLogEventChannel.Changed, handler)
+  }
+}
+
 try {
   contextBridge.exposeInMainWorld('ptyApi', ptyApi)
   contextBridge.exposeInMainWorld('clipboardApi', clipboardApi)
@@ -691,6 +710,7 @@ try {
   contextBridge.exposeInMainWorld('dshApi', dshApi)
   contextBridge.exposeInMainWorld('dshWireApi', dshWireApi)
   contextBridge.exposeInMainWorld('dshSurfaceApi', dshSurfaceApi)
+  contextBridge.exposeInMainWorld('diagnosticLogApi', diagnosticLogApi)
   // E2E：主进程设置 HRACK_E2E 时，向渲染进程注入标记，激活 debugBridge（即便是生产构建）
   if (process.env['HRACK_E2E']) {
     contextBridge.exposeInMainWorld('__HRACK_E2E__', true)
