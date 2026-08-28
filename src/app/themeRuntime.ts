@@ -8,6 +8,14 @@ import draculaThemeJson from '../themes/dracula.json'
 import nordThemeJson from '../themes/nord.json'
 import rosePineDawnThemeJson from '../themes/rose-pine-dawn.json'
 import solarizedLightThemeJson from '../themes/solarized-light.json'
+import paperInkThemeJson from '../themes/paper-ink.json'
+import glacierGlassThemeJson from '../themes/glacier-glass.json'
+import sakuraClayThemeJson from '../themes/sakura-clay.json'
+import circuitLimeThemeJson from '../themes/circuit-lime.json'
+import obsidianEmberThemeJson from '../themes/obsidian-ember.json'
+import midnightCobaltThemeJson from '../themes/midnight-cobalt.json'
+import forestSignalThemeJson from '../themes/forest-signal.json'
+import violetArcadeThemeJson from '../themes/violet-arcade.json'
 import { create } from 'zustand'
 import {
   UI_COLOR_TOKENS,
@@ -132,15 +140,23 @@ export const builtInLightTheme = loadBuiltInTheme(lightThemeJson)
 export const builtInDarkTheme = loadBuiltInTheme(darkThemeJson)
 const builtInThemes = [
   builtInLightTheme,
+  loadBuiltInTheme(catppuccinLatteThemeJson),
+  loadBuiltInTheme(solarizedLightThemeJson),
+  loadBuiltInTheme(rosePineDawnThemeJson),
+  loadBuiltInTheme(gruvboxLightThemeJson),
+  loadBuiltInTheme(paperInkThemeJson),
+  loadBuiltInTheme(glacierGlassThemeJson),
+  loadBuiltInTheme(sakuraClayThemeJson),
+  loadBuiltInTheme(circuitLimeThemeJson),
   builtInDarkTheme,
   loadBuiltInTheme(catppuccinMochaThemeJson),
   loadBuiltInTheme(draculaThemeJson),
   loadBuiltInTheme(gruvboxDarkThemeJson),
   loadBuiltInTheme(nordThemeJson),
-  loadBuiltInTheme(catppuccinLatteThemeJson),
-  loadBuiltInTheme(solarizedLightThemeJson),
-  loadBuiltInTheme(rosePineDawnThemeJson),
-  loadBuiltInTheme(gruvboxLightThemeJson)
+  loadBuiltInTheme(obsidianEmberThemeJson),
+  loadBuiltInTheme(midnightCobaltThemeJson),
+  loadBuiltInTheme(forestSignalThemeJson),
+  loadBuiltInTheme(violetArcadeThemeJson)
 ] as const
 
 export function applyUiTheme(theme: ResolvedUiTheme): void {
