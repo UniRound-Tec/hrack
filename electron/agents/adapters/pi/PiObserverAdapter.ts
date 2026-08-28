@@ -11,13 +11,12 @@ import type {
   ObserverPreparationContext,
   PreparedObserver
 } from '../types'
+import { ADAPTER_COMMAND_TIMEOUT_MS } from '../adapterTimeouts'
 import { wslRuntimeCommand } from '../wslRuntimeCommand'
 import { PiEventProjector } from './PiEventProjector'
 import { buildPiExtensionSource } from './PiExtensionSource'
 import { parsePiHook } from './PiHookParser'
 import { PI_OBSERVER_CAPABILITIES } from './types'
-
-const PROBE_TIMEOUT_MS = 3_000
 
 const NO_CAPABILITIES: ObserverCapabilities = {
   thinking: 'none',
@@ -68,7 +67,7 @@ function defaultRunCommand(
       command.args,
       {
         encoding: 'utf8',
-        timeout: PROBE_TIMEOUT_MS,
+        timeout: ADAPTER_COMMAND_TIMEOUT_MS,
         maxBuffer: 256 * 1024,
         windowsHide: true,
         windowsVerbatimArguments: command.windowsVerbatimArguments

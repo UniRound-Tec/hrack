@@ -25,9 +25,13 @@ import type {
 import { parseWslUncPath } from './directory-picker'
 
 const COMMAND_TIMEOUT_MS = 2_500
+// WSL may need to boot the distro before executing even a trivial command.
+// Keep this above the observed cold-start cost and use it consistently for
+// distro discovery, environment resolution, inventory, and identity probes.
+const WSL_COMMAND_TIMEOUT_MS = 10_000
 const COMMAND_MAX_BUFFER = 64 * 1024
 const SCAN_CONCURRENCY = 4
-const CLI_SCAN_CACHE_VERSION = 6
+const CLI_SCAN_CACHE_VERSION = 7
 export const DSH_CLI_DEFINITION_ID = 'dsh'
 /** Sample version-like string for probe tests; discovery does not pin DSH. */
 export const DSH_COMPATIBLE_VERSION = '0.1.0-rc.6'
@@ -637,7 +641,7 @@ async function runWsl(
   distro: string,
   executable: string,
   args: readonly string[],
-  timeout = 8_000
+  timeout = WSL_COMMAND_TIMEOUT_MS
 ): Promise<CommandResult> {
   return runCommand('wsl.exe', [
     '--distribution', distro,
@@ -646,26 +650,56 @@ async function runWsl(
   ], timeout)
 }
 
+function wslEnvironmentValue(output: string, key: string): string | undefined {
+  const prefix = `${key}=`
+  for (const entry of output.split('\0')) {
+    const line = entry
+      .split(/\r?\n/)
+      .reverse()
+      .find((candidate) => candidate.startsWith(prefix))
+    if (line) return line.slice(prefix.length)
+  }
+  return undefined
+}
+
+function mergeWslPath(home: string, ...values: Array<string | undefined>): string {
+  return [...new Set([
+    ...values.flatMap((value) => (value ?? '').split(':')),
+    `${home}/.local/bin`,
+    `${home}/bin`,
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin'
+  ].map((value) => value.trim()).filter(Boolean))].join(':')
+}
+
 async function wslUserEnvironment(
   distro: string
-): Promise<{ home: string; shell: string; path: string } | null> {
-  const result = await runWsl(distro, 'sh', [
-    '-lc', 'printf "%s\\n%s\\n" "$HOME" "${SHELL:-/bin/sh}"'
+): Promise<{ home: string; path: string } | null> {
+  // First resolve the environment used by the actual `wsl.exe --exec` launch.
+  // A login shell is only a best-effort PATH enrichment for NVM/asdf/etc.; a
+  // slow or broken profile must not make the whole distro disappear.
+  const result = await runWsl(distro, '/bin/sh', [
+    '-c',
+    'printf "HOME=%s\\000SHELL=%s\\000PATH=%s\\000" "${HOME:-}" "${SHELL:-/bin/sh}" "${PATH:-}"'
   ])
-  if (result.code !== 0) return null
-  const [home, shell] = result.stdout
-    .split(/\r?\n/)
-    .map((value) => value.trim())
-  if (!home || !shell) return null
+  if (result.code !== 0 || result.timedOut) return null
+  const home = wslEnvironmentValue(result.stdout, 'HOME')?.trim() ?? ''
+  const shell = wslEnvironmentValue(result.stdout, 'SHELL')?.trim() || '/bin/sh'
+  const runtimePath = wslEnvironmentValue(result.stdout, 'PATH')?.trim()
+  if (!home.startsWith('/') || /[\r\n]/.test(home)) return null
+
   const pathResult = await runWsl(distro, shell, [
     '-lic', 'printf "%s\\n" "$PATH"'
   ])
-  const path = pathResult.stdout
-    .split(/\r?\n/)
-    .map((value) => value.trim())
-    .reverse()
-    .find((value) => value.startsWith('/') && value.includes(':'))
-  return pathResult.code === 0 && path ? { home, shell, path } : null
+  const loginPath = pathResult.code === 0 && !pathResult.timedOut
+    ? pathResult.stdout
+        .split(/\r?\n/)
+        .map((value) => value.trim())
+        .reverse()
+        .find((value) => value.startsWith('/') && value.includes(':'))
+    : undefined
+  return { home, path: mergeWslPath(home, loginPath, runtimePath) }
 }
 
 interface ResolvedCandidate {
@@ -940,7 +974,11 @@ async function verifyWsl(
 
 async function listWslDistros(): Promise<{ distros: string[]; error?: CliRuntimeError }> {
   const runtime: CliRuntime = { kind: 'host', platform: 'windows' }
-  const result = await runCommand('wsl.exe', ['--list', '--quiet'])
+  const result = await runCommand(
+    'wsl.exe',
+    ['--list', '--quiet'],
+    WSL_COMMAND_TIMEOUT_MS
+  )
   if (result.code !== 0) {
     return {
       distros: [],

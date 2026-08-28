@@ -1325,13 +1325,14 @@ test.describe('Kimi observer adapter', () => {
       expect(installed).toBe(true)
       expect(
         calls.some(({ args }) => args.includes('hrack-kimi-config-shell'))
-      ).toBe(true)
+      ).toBe(false)
       expect(
         calls.some(
           ({ args }) =>
-            args.includes('hrack-kimi-config-home') && args.includes('/bin/bash')
+            args.includes('hrack-kimi-config-home') && args.includes('/bin/sh')
         )
       ).toBe(true)
+      expect(calls.flatMap(({ args }) => args)).not.toContain('-lic')
       expect(
         calls.some(({ file, args }) =>
           [file, ...args].some((value) => value.toLowerCase().includes('curl.exe'))

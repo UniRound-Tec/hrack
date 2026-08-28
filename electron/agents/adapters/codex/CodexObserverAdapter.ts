@@ -11,6 +11,7 @@ import type {
   ObserverPreparationContext,
   PreparedObserver
 } from '../types'
+import { ADAPTER_COMMAND_TIMEOUT_MS } from '../adapterTimeouts'
 import { wslRuntimeCommand } from '../wslRuntimeCommand'
 import {
   buildCodexInlineHookConfig,
@@ -29,7 +30,6 @@ const NO_CAPABILITIES: ObserverCapabilities = {
   usage: 'none',
   messages: 'none'
 }
-const PROBE_TIMEOUT_MS = 3_000
 
 export interface CodexCommandResult {
   code: number | null
@@ -56,7 +56,7 @@ function defaultRunCommand(
       [...args],
       {
         encoding: 'utf8',
-        timeout: PROBE_TIMEOUT_MS,
+        timeout: ADAPTER_COMMAND_TIMEOUT_MS,
         maxBuffer: 256 * 1024,
         windowsHide: true
       },

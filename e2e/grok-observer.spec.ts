@@ -13,6 +13,7 @@ import {
 import { parseGrokHook } from '../electron/agents/adapters/grok/GrokHookParser'
 import { GrokHookProjector } from '../electron/agents/adapters/grok/GrokHookProjector'
 import { ensureGrokManagedHooks } from '../electron/agents/adapters/grok/GrokHookStore'
+import { ensureWslGrokManagedHooks } from '../electron/agents/adapters/grok/GrokWslHookStore'
 import { GrokObserverAdapter } from '../electron/agents/adapters/grok/GrokObserverAdapter'
 import { GROK_HOOK_CAPABILITIES } from '../electron/agents/adapters/grok/types'
 import type { AdapterEvent } from '../electron/agents/adapters/types'
@@ -467,6 +468,50 @@ test.describe('Grok observer adapter', () => {
     expect(buildGrokManagedHookFile('windows')).toBe(windows)
     expect(posix).toContain('HRACK_GROK_HOOK_BRIDGE')
     expect(posix).not.toContain('powershell.exe')
+  })
+
+  test('resolves the WSL hook home without starting a login shell', async () => {
+    const runDir = await mkdtemp(join(tmpdir(), 'hrack-grok-wsl-home-'))
+    const calls: Array<{ file: string; args: readonly string[] }> = []
+    try {
+      const result = await ensureWslGrokManagedHooks(
+        {
+          sessionId: 'session-wsl-home',
+          adapterId: 'grok',
+          platform: 'win32',
+          workspace: '/mnt/c/project',
+          args: [],
+          runDir,
+          installation: {
+            id: 'grok:wsl:Ubuntu-22.04',
+            definitionId: 'grok',
+            runtime: { kind: 'wsl', distro: 'Ubuntu-22.04' },
+            resolvedExecutable: '/usr/local/bin/grok',
+            detectedVia: 'path',
+            verification: 'verified'
+          }
+        },
+        '/mnt/c/hrack-observer-run',
+        async (file, args) => {
+          calls.push({ file, args })
+          if (args.includes('hrack-grok-hook-home')) {
+            return {
+              code: 0,
+              stdout: 'HOME=/home/reporter\0GROK_HOME=\0'
+            }
+          }
+          return { code: 0, stdout: '' }
+        }
+      )
+
+      expect(result).toMatchObject({
+        ok: true,
+        path: '/home/reporter/.grok/hooks/hrack-observer.json'
+      })
+      expect(calls.flatMap((call) => call.args)).not.toContain('-lic')
+    } finally {
+      await rm(runDir, { recursive: true, force: true })
+    }
   })
 
   test('installs the WSL hook file and proves drop interop on a real distro', async () => {

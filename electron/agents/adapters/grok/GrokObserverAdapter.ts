@@ -11,6 +11,7 @@ import type {
   ObserverPreparationContext,
   PreparedObserver
 } from '../types'
+import { ADAPTER_COMMAND_TIMEOUT_MS } from '../adapterTimeouts'
 import { ThinkingCaptionClock } from '../ThinkingCaptionClock'
 import { wslRuntimeCommand } from '../wslRuntimeCommand'
 import {
@@ -31,11 +32,12 @@ const NO_CAPABILITIES: ObserverCapabilities = {
   usage: 'none',
   messages: 'none'
 }
-const PROBE_TIMEOUT_MS = 3_000
 
 export interface GrokCommandResult {
   code: number | null
   stdout: string
+  stderr?: string
+  timedOut?: boolean
 }
 
 export type GrokCommandRunner = (
@@ -58,17 +60,22 @@ function defaultRunCommand(
       [...args],
       {
         encoding: 'utf8',
-        timeout: PROBE_TIMEOUT_MS,
+        timeout: ADAPTER_COMMAND_TIMEOUT_MS,
         maxBuffer: 256 * 1024,
         windowsHide: true
       },
-      (error, stdout) => {
+      (error, stdout, stderr) => {
         const failure = error as
-          | (NodeJS.ErrnoException & { code?: string | number })
+          | (NodeJS.ErrnoException & {
+              code?: string | number
+              killed?: boolean
+            })
           | null
         resolve({
           code: typeof failure?.code === 'number' ? failure.code : error ? null : 0,
-          stdout: String(stdout ?? '')
+          stdout: String(stdout ?? ''),
+          stderr: String(stderr ?? ''),
+          timedOut: Boolean(failure?.killed)
         })
       }
     )

@@ -8,6 +8,7 @@ import type { EnsureGrokManagedHooksResult } from './GrokHookStore'
 interface CommandResult {
   code: number | null
   stdout: string
+  timedOut?: boolean
 }
 
 export type GrokCommandRunner = (
@@ -88,45 +89,41 @@ async function ensureWslGrokManagedHooksUnlocked(
     return { ok: false, reason: 'grok-hook-path-unavailable' }
   }
   const distro = context.installation.runtime.distro
-  const shellResult = await runCommand(
+  // HRack launches the WSL CLI directly with `wsl.exe --exec`, so the hook
+  // location must be resolved from that same non-login environment. Starting
+  // `$SHELL -lic` here was both inconsistent with the actual Grok process and
+  // vulnerable to slow/broken shell startup files, custom shells, and WSL cold
+  // starts. Those unrelated failures were previously collapsed into the
+  // misleading `grok-hook-path-unavailable` reason.
+  const runtimeEnvironment = await runCommand(
     'wsl.exe',
     wslShellArgs(
       distro,
-      'printf "%s\\n" "${SHELL:-/bin/sh}"',
-      'hrack-grok-hook-shell'
+      'printf "HOME=%s\\000GROK_HOME=%s\\000" "${HOME:-}" "${GROK_HOME:-}"',
+      'hrack-grok-hook-home'
     )
   )
-  const shell = shellResult.stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .reverse()
-    .find((line) => line.startsWith('/') && line.length <= 4_096)
-  if (shellResult.code !== 0 || !shell) {
-    return { ok: false, reason: 'grok-hook-path-unavailable' }
-  }
-  const loginEnvironment = await runCommand('wsl.exe', [
-    '--distribution',
-    distro,
-    '--exec',
-    shell,
-    '-lic',
-    'env -0',
-    'hrack-grok-hook-home'
-  ])
   const configuredHome = loginEnvironmentValue(
-    loginEnvironment.stdout,
+    runtimeEnvironment.stdout,
     'GROK_HOME'
   )
-  const userHome = loginEnvironmentValue(loginEnvironment.stdout, 'HOME')
+  const userHome = loginEnvironmentValue(runtimeEnvironment.stdout, 'HOME')
   const grokHome =
     configuredHome || (userHome ? posix.join(userHome, '.grok') : '')
+  if (runtimeEnvironment.code !== 0) {
+    return {
+      ok: false,
+      reason: runtimeEnvironment.timedOut
+        ? 'grok-wsl-env-timeout'
+        : 'grok-wsl-env-unavailable'
+    }
+  }
   if (
-    loginEnvironment.code !== 0 ||
     !grokHome.startsWith('/') ||
     grokHome.length > 4_080 ||
     /[\r\n]/.test(grokHome)
   ) {
-    return { ok: false, reason: 'grok-hook-path-unavailable' }
+    return { ok: false, reason: 'grok-home-path-invalid' }
   }
   const hookPath = posix.join(grokHome, 'hooks', grokHookFileName())
   const candidateName = `grok-hook-candidate-${randomBytes(6).toString('hex')}.json`

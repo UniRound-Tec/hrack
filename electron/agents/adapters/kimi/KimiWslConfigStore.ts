@@ -9,6 +9,7 @@ import type { EnsureKimiManagedHooksResult } from './KimiConfigStore'
 interface CommandResult {
   code: number | null
   stdout: string
+  timedOut?: boolean
 }
 
 type CommandRunner = (
@@ -91,47 +92,37 @@ async function ensureWslKimiManagedHooksUnlocked(
     return { ok: false, reason: 'kimi-config-read-failed' }
   }
   const distro = context.installation.runtime.distro
-  const shellResult = await runCommand(
+  // Resolve the config location in the same non-login environment used by the
+  // actual `wsl.exe --exec` launch. Shell profiles are unrelated to the Kimi
+  // hook location and may be slow, interactive, or broken on another machine.
+  const runtimeEnvironment = await runCommand(
     'wsl.exe',
     wslShellArgs(
       distro,
-      'printf "%s\\n" "${SHELL:-/bin/sh}"',
-      'hrack-kimi-config-shell'
+      'printf "HOME=%s\\000KIMI_CODE_HOME=%s\\000" "${HOME:-}" "${KIMI_CODE_HOME:-}"',
+      'hrack-kimi-config-home'
     )
   )
-  const shell = shellResult.stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .reverse()
-    .find((line) => line.startsWith('/') && line.length <= 4_096)
-  if (shellResult.code !== 0 || !shell) {
-    return { ok: false, reason: 'kimi-config-read-failed' }
-  }
-  const loginEnvironment = await runCommand(
-    'wsl.exe',
-    [
-      '--distribution',
-      distro,
-      '--exec',
-      shell,
-      '-lic',
-      'env -0',
-      'hrack-kimi-config-home'
-    ]
-  )
   const configuredHome = loginEnvironmentValue(
-    loginEnvironment.stdout,
+    runtimeEnvironment.stdout,
     'KIMI_CODE_HOME'
   )
-  const userHome = loginEnvironmentValue(loginEnvironment.stdout, 'HOME')
+  const userHome = loginEnvironmentValue(runtimeEnvironment.stdout, 'HOME')
   const kimiHome = configuredHome || (userHome ? posix.join(userHome, '.kimi-code') : '')
+  if (runtimeEnvironment.code !== 0) {
+    return {
+      ok: false,
+      reason: runtimeEnvironment.timedOut
+        ? 'kimi-wsl-env-timeout'
+        : 'kimi-wsl-env-unavailable'
+    }
+  }
   if (
-    loginEnvironment.code !== 0 ||
     !kimiHome.startsWith('/') ||
     kimiHome.length > 4_080 ||
     /[\r\n]/.test(kimiHome)
   ) {
-    return { ok: false, reason: 'kimi-config-read-failed' }
+    return { ok: false, reason: 'kimi-home-path-invalid' }
   }
   const configPath = posix.join(kimiHome, 'config.toml')
 

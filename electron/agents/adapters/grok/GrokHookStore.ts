@@ -14,6 +14,9 @@ export type EnsureGrokManagedHooksResult =
       ok: false
       reason:
         | 'grok-hook-path-unavailable'
+        | 'grok-wsl-env-timeout'
+        | 'grok-wsl-env-unavailable'
+        | 'grok-home-path-invalid'
         | 'grok-hook-file-conflict'
         | 'grok-hook-write-failed'
     }

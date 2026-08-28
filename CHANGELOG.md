@@ -4,6 +4,23 @@
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-08-28
+
+### Added
+
+- Added eight built-in UI themes with four light styles (Paper Ink, Glacier Glass, Sakura Clay, and Circuit Lime) and four dark styles (Obsidian Ember, Midnight Cobalt, Forest Signal, and Violet Arcade).
+
+### Changed
+
+- Refreshed the desktop, taskbar, tray, and installer branding with the updated HRack mark.
+- Standardized adapter preparation commands on a 10-second budget so WSL cold starts and Windows-mounted filesystem access are handled consistently across Grok Build, Kimi Code, Codex, Pi, Claude Code, and OpenCode.
+
+### Fixed
+
+- Fixed Grok Build and Kimi Code WSL observer setup failures caused by launching user login shells to resolve hook configuration paths. Hook locations now use the same non-login environment as the actual CLI process and report specific environment failures.
+- Hardened shared WSL discovery so a slow or broken login profile no longer hides an otherwise healthy distro or CLI installation; login-shell PATH remains an optional enhancement with a safe runtime fallback.
+- Fixed intermittent remote terminal alignment after scrolling or viewport changes by synchronizing cursor and viewport state with remote renderers.
+
 ## [0.4.4] - 2026-08-28
 
 ### Added

@@ -12,6 +12,7 @@ import type {
   ObserverPreparationContext,
   PreparedObserver
 } from '../types'
+import { ADAPTER_COMMAND_TIMEOUT_MS } from '../adapterTimeouts'
 import { claudeEnvironmentAugmentation } from './claudeEnvironment'
 import {
   probeHttpHookPolicy,
@@ -33,7 +34,6 @@ const NO_CAPABILITIES: ObserverCapabilities = {
   usage: 'none',
   messages: 'none'
 }
-const PROBE_TIMEOUT_MS = 3_000
 const REQUEST_SWEEP_MS = 60_000
 
 interface CommandResult {
@@ -56,7 +56,7 @@ function runCommand(file: string, args: readonly string[]): Promise<CommandResul
       [...args],
       {
         encoding: 'utf8',
-        timeout: PROBE_TIMEOUT_MS,
+        timeout: ADAPTER_COMMAND_TIMEOUT_MS,
         maxBuffer: 256 * 1024,
         windowsHide: true
       },

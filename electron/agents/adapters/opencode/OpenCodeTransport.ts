@@ -2,12 +2,13 @@ import { execFile, spawn, type ChildProcessByStdio } from 'node:child_process'
 import http, { type IncomingMessage } from 'node:http'
 import type { Readable } from 'node:stream'
 import type { OpenCodeSnapshot } from './types'
+import { ADAPTER_COMMAND_TIMEOUT_MS } from '../adapterTimeouts'
 import { parseOpenCodeSnapshot } from './OpenCodeEventParser'
 import { OpenCodeSseError, OpenCodeSseParser } from './OpenCodeSseParser'
 
 const MAX_BODY = 1024 * 1024
 const REQUEST_TIMEOUT_MS = 3_000
-const SSE_FIRST_BYTE_TIMEOUT_MS = 3_000
+const WSL_SSE_FIRST_BYTE_TIMEOUT_MS = ADAPTER_COMMAND_TIMEOUT_MS
 
 export class OpenCodeTransportError extends Error {
   constructor(
@@ -326,7 +327,7 @@ export function runWslCommand(
   distro: string,
   executable: string,
   args: readonly string[],
-  timeout = REQUEST_TIMEOUT_MS
+  timeout = ADAPTER_COMMAND_TIMEOUT_MS
 ): Promise<CommandResult> {
   return new Promise((resolve) => {
     execFile(
@@ -543,7 +544,7 @@ export class WslOpenCodeTransport implements OpenCodeTransport {
             'WSL OpenCode SSE first byte timed out'
           )
         )
-      }, SSE_FIRST_BYTE_TIMEOUT_MS)
+      }, WSL_SSE_FIRST_BYTE_TIMEOUT_MS)
       child.stderr.on('data', (chunk: Buffer) => {
         stderr = (stderr + chunk.toString('utf8')).slice(-8192)
       })
