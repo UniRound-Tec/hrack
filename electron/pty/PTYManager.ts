@@ -28,7 +28,10 @@ import { PtyPauseLeases } from './PtyPauseLeases'
 
 interface ManagedPty {
   pty?: IPty
+  /** 未修改的诊断/灾难恢复源，包含 ConPTY resize 重画。 */
   history: PtyHistory
+  /** renderer/远程端可安全重放的显示历史，不包含 ConPTY resize 重画。 */
+  displayHistory: PtyHistory
   dataQueue: PtyDataQueue
   resizeFilter?: ConptyResizeFilter
   /** renderer 已 fit、但尚未安全送给 ConPTY 的最新尺寸。 */
@@ -170,6 +173,14 @@ export class PTYManager {
     string,
     Set<(data: Uint8Array) => void>
   >()
+  private displayOutputListeners = new Map<
+    string,
+    Set<(data: Uint8Array) => void>
+  >()
+  private cursorSyncListeners = new Map<
+    string,
+    Set<(payload: { row: number; column: number }) => void>
+  >()
 
   /**
    * 订阅某 pty 的退出（幂等：已退出则立刻用缓存的 payload 回调）。
@@ -252,6 +263,8 @@ export class PTYManager {
     installPtyErrorGuard(spawnedPty as unknown as PtyErrorEmitter)
     const history = new PtyHistory()
     history.appendResize(cols, rows)
+    const displayHistory = new PtyHistory()
+    displayHistory.appendResize(cols, rows)
     const resizeFilter =
       process.platform === 'win32' ? new ConptyResizeFilter() : undefined
     const rendererPauseOwner = Symbol(`renderer:${ptyId}`)
@@ -278,6 +291,7 @@ export class PTYManager {
     const managed: ManagedPty = {
       pty: spawnedPty,
       history,
+      displayHistory,
       dataQueue,
       resizeFilter,
       lastForwardedOutputAt: 0,
@@ -304,13 +318,22 @@ export class PTYManager {
         managed.lastForwardedOutputAt = Date.now()
         this.schedulePendingResize(managed)
       }
-      for (const win of BrowserWindow.getAllWindows()) {
-        for (const cursor of filtered?.cursorSyncs ?? []) {
+      for (const cursor of filtered?.cursorSyncs ?? []) {
+        managed.displayHistory.appendCursorSync(cursor.row, cursor.column)
+        for (const listener of this.cursorSyncListeners.get(ptyId) ?? []) {
+          listener(cursor)
+        }
+        for (const win of BrowserWindow.getAllWindows()) {
           win.webContents.send(ptyResizeCursorSyncChannel(ptyId), cursor)
         }
       }
       if (displayData.length > 0) {
-        const accepted = dataQueue.push(new TextEncoder().encode(displayData))
+        managed.displayHistory.appendOutput(displayData)
+        const displayBytes = new TextEncoder().encode(displayData)
+        for (const listener of this.displayOutputListeners.get(ptyId) ?? []) {
+          listener(displayBytes)
+        }
+        const accepted = dataQueue.push(displayBytes)
         if (!accepted) {
           console.error(
             `[hrack] ptyId=${ptyId} output exceeded the bounded delivery buffer; terminating PTY`
@@ -425,6 +448,34 @@ export class PTYManager {
     }
   }
 
+  onDisplayOutput(
+    ptyId: string,
+    listener: (data: Uint8Array) => void
+  ): () => void {
+    const listeners = this.displayOutputListeners.get(ptyId) ?? new Set()
+    listeners.add(listener)
+    this.displayOutputListeners.set(ptyId, listeners)
+    return () => {
+      const current = this.displayOutputListeners.get(ptyId)
+      current?.delete(listener)
+      if (current?.size === 0) this.displayOutputListeners.delete(ptyId)
+    }
+  }
+
+  onCursorSync(
+    ptyId: string,
+    listener: (payload: { row: number; column: number }) => void
+  ): () => void {
+    const listeners = this.cursorSyncListeners.get(ptyId) ?? new Set()
+    listeners.add(listener)
+    this.cursorSyncListeners.set(ptyId, listeners)
+    return () => {
+      const current = this.cursorSyncListeners.get(ptyId)
+      current?.delete(listener)
+      if (current?.size === 0) this.cursorSyncListeners.delete(ptyId)
+    }
+  }
+
   pauseOutput(ptyId: string, owner: symbol): void {
     const managed = this.ptys.get(ptyId)
     if (!managed?.pty) return
@@ -472,6 +523,7 @@ export class PTYManager {
     try {
       targetPty.resize(cols, rows)
       managed.history.appendResize(cols, rows)
+      managed.displayHistory.appendResize(cols, rows)
     } catch (error) {
       // resize 未送达 PTY 时不能让过滤器继续等待，否则会误判下一段普通输出。
       if (resizeGeneration !== undefined) {
@@ -487,6 +539,10 @@ export class PTYManager {
 
   history(ptyId: string): PtyHistorySnapshot | null {
     return this.ptys.get(ptyId)?.history.snapshot() ?? null
+  }
+
+  displayHistory(ptyId: string): PtyHistorySnapshot | null {
+    return this.ptys.get(ptyId)?.displayHistory.snapshot() ?? null
   }
 
   flowControl(ptyId: string): PtyFlowControlSnapshot | null {
@@ -510,6 +566,8 @@ export class PTYManager {
     this.exitedPayloads.delete(ptyId)
     this.inputSubmitListeners.delete(ptyId)
     this.outputListeners.delete(ptyId)
+    this.displayOutputListeners.delete(ptyId)
+    this.cursorSyncListeners.delete(ptyId)
     const terminalId = managed.terminal?.terminalId
     if (terminalId) {
       for (const listener of this.terminalRemovedListeners) listener(terminalId)
@@ -536,6 +594,8 @@ export class PTYManager {
     this.exitedPayloads.clear()
     this.inputSubmitListeners.clear()
     this.outputListeners.clear()
+    this.displayOutputListeners.clear()
+    this.cursorSyncListeners.clear()
     for (const terminalId of terminalIds) {
       for (const listener of this.terminalRemovedListeners) listener(terminalId)
     }
@@ -554,7 +614,7 @@ export class PTYManager {
     const managed = this.ptys.get(ptyId)
     if (!managed) return null
     managed.dataQueue.resetForAttach()
-    return managed.history.snapshot()
+    return managed.displayHistory.snapshot()
   }
 
   listRecoverable(): RecoverablePty[] {

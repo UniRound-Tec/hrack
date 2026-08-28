@@ -68,6 +68,7 @@ export interface RemoteSessionSource {
 
 export interface RemoteDriveObserver {
   onOutput(data: Uint8Array): void
+  onCursorSync(payload: { row: number; column: number }): void
   onExit(payload: ExitPayload): void
   onOverflow(): void
 }
@@ -775,6 +776,16 @@ export class RemoteDesktopClient {
             sessionId: message.sessionId,
             data: Buffer.from(data).toString('base64'),
             byteLength: data.byteLength
+          })
+        },
+        onCursorSync: ({ row, column }) => {
+          if (this.driven?.sessionId !== message.sessionId) return
+          this.send({
+            v: 1,
+            type: 'pty-cursor-sync',
+            sessionId: message.sessionId,
+            row,
+            column
           })
         },
         onExit: (payload) => {

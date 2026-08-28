@@ -85,6 +85,15 @@ function remoteHistory(
       })
       continue
     }
+    if (event.kind === 'cursor-sync') {
+      events.push({
+        sequence: sequence++,
+        kind: 'cursor-sync',
+        row: event.row,
+        column: event.column
+      })
+      continue
+    }
     for (const data of splitUtf8Text(
       event.data,
       REMOTE_PROTOCOL_LIMITS.ptyChunkBytes
@@ -138,6 +147,7 @@ export function runtimeRemotePtyHost(
       let ready = false
       let exitedDuringOpen = false
       let unsubscribeOutput = (): void => {}
+      let unsubscribeCursorSync = (): void => {}
       let unsubscribeExit = (): void => {}
       const outputQueue = new PtyDataQueue({
         highWaterMarkBytes: PTY_DATA_HIGH_WATER_MARK_BYTES,
@@ -151,11 +161,12 @@ export function runtimeRemotePtyHost(
         if (released) return
         released = true
         unsubscribeOutput()
+        unsubscribeCursorSync()
         unsubscribeExit()
         outputQueue.dispose()
         manager.releaseRemoteResize(ptyId, owner)
       }
-      unsubscribeOutput = manager.onOutput(ptyId, (data) => {
+      unsubscribeOutput = manager.onDisplayOutput(ptyId, (data) => {
         for (
           let offset = 0;
           offset < data.byteLength;
@@ -173,6 +184,7 @@ export function runtimeRemotePtyHost(
           return
         }
       })
+      unsubscribeCursorSync = manager.onCursorSync(ptyId, observer.onCursorSync)
       unsubscribeExit = manager.onExit(ptyId, (payload) => {
         if (!ready) {
           exitedDuringOpen = true
@@ -186,7 +198,7 @@ export function runtimeRemotePtyHost(
       const target: RemoteDrivenPty = {
         sessionId: input.sessionId,
         terminalId: record.terminalId,
-        history: remoteHistory(manager.history(ptyId)),
+        history: remoteHistory(manager.displayHistory(ptyId)),
         write: (data) => manager.write(ptyId, data),
         resize: (cols, rows) =>
           manager.resizeRemote(ptyId, owner, cols, rows),

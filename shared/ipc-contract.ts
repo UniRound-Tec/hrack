@@ -80,7 +80,17 @@ export interface PtyHistoryResizeEvent {
   rows: number
 }
 
-export type PtyHistoryEvent = PtyHistoryOutputEvent | PtyHistoryResizeEvent
+export interface PtyHistoryCursorSyncEvent {
+  sequence: number
+  kind: 'cursor-sync'
+  row: number
+  column: number
+}
+
+export type PtyHistoryEvent =
+  | PtyHistoryOutputEvent
+  | PtyHistoryResizeEvent
+  | PtyHistoryCursorSyncEvent
 
 /** 主进程权威历史源的只读快照。P0 保存原始流；后续 P1/P2 在此之上做重放。 */
 export interface PtyHistorySnapshot {

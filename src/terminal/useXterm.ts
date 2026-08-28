@@ -522,8 +522,10 @@ export function useXterm(
           continue
         }
         await flushOutput()
-        if (event.cols > 0 && event.rows > 0) {
+        if (event.kind === 'resize' && event.cols > 0 && event.rows > 0) {
           term.resize(event.cols, event.rows)
+        } else if (event.kind === 'cursor-sync') {
+          applyConptyCursorSync(term, event.row, event.column)
         }
       }
       await flushOutput()

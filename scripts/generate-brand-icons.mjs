@@ -9,10 +9,11 @@ const brandRoot = join(projectRoot, 'resources', 'brand')
 const trayRoot = join(projectRoot, 'resources', 'tray')
 const buildRoot = join(projectRoot, 'build')
 const scratchRoot = join(projectRoot, '.dev-shots')
-const markSvg = await readFile(join(brandRoot, 'hrack-h.svg'), 'utf8')
+const markSvg = await readFile(join(brandRoot, 'hrack-mark.svg'), 'utf8')
+const whiteMarkSvg = await readFile(join(brandRoot, 'hrack-mark-white.svg'), 'utf8')
+const appSvg = await readFile(join(brandRoot, 'hrack-app.svg'), 'utf8')
 
 const MASTER_SIZE = 1024
-const APP_TILE = { inset: 64, radius: 208, color: '#171717' }
 
 function svgDocument(body) {
   return `<!doctype html><html><head><style>
@@ -22,9 +23,17 @@ function svgDocument(body) {
   </style></head><body>${body}</body></html>`
 }
 
-function nestedMark({ x, y, width, height, color }) {
-  return `<svg x="${x}" y="${y}" width="${width}" height="${height}" viewBox="-107 0 716 696" preserveAspectRatio="xMidYMid meet" fill="${color}">
-    ${markSvg.replace(/^<svg[^>]*>|<\/svg>\s*$/g, '')}
+function nestedMark({ x, y, width, height, color, source = markSvg }) {
+  return `<svg x="${x}" y="${y}" width="${width}" height="${height}" viewBox="0 0 47 57" preserveAspectRatio="xMidYMid meet" fill="${color}">
+    ${source
+      .replace(/^<svg[^>]*>|<\/svg>\s*$/g, '')
+      .replace(/fill="(?:black|white)"/g, `fill="${color}"`)}
+  </svg>`
+}
+
+function nestedAppIcon() {
+  return `<svg width="${MASTER_SIZE}" height="${MASTER_SIZE}" viewBox="0 0 96 96" preserveAspectRatio="xMidYMid meet">
+    ${appSvg.replace(/^<svg[^>]*>|<\/svg>\s*$/g, '')}
   </svg>`
 }
 
@@ -106,6 +115,7 @@ function encodeIco(frames) {
 await Promise.all([brandRoot, trayRoot, buildRoot, scratchRoot].map((path) => mkdir(path, { recursive: true })))
 const appMasterPath = join(scratchRoot, 'hrack-app-icon-master.png')
 const markMasterPath = join(scratchRoot, 'hrack-mark-master.png')
+const whiteMarkMasterPath = join(scratchRoot, 'hrack-mark-white-master.png')
 const browser = await chromium.launch({ headless: true })
 const page = await browser.newPage({ viewport: { width: MASTER_SIZE, height: MASTER_SIZE } })
 
@@ -113,37 +123,51 @@ try {
   const appMaster = await renderMaster(
     page,
     appMasterPath,
-    `<rect x="${APP_TILE.inset}" y="${APP_TILE.inset}" width="${MASTER_SIZE - APP_TILE.inset * 2}" height="${MASTER_SIZE - APP_TILE.inset * 2}" rx="${APP_TILE.radius}" fill="${APP_TILE.color}"/>
-     ${nestedMark({ x: 242, y: 270, width: 500, height: 500, color: '#ffffff' })}`
+    nestedAppIcon()
   )
   const markMaster = await renderMaster(
     page,
     markMasterPath,
     nestedMark({ x: 72, y: 72, width: 880, height: 880, color: '#000000' })
   )
+  const whiteMarkMaster = await renderMaster(
+    page,
+    whiteMarkMasterPath,
+    nestedMark({ x: 72, y: 72, width: 880, height: 880, color: '#ffffff', source: whiteMarkSvg })
+  )
 
   const appFrames = [16, 32, 64, 128, 256].map((size) => ({
     size,
     buffer: resizeBox(appMaster, size)
+  }))
+  const blackTrayFrames = [16, 32, 256].map((size) => ({
+    size,
+    buffer: recolorAlpha(markMaster, size, 0)
+  }))
+  const whiteTrayFrames = [16, 32, 256].map((size) => ({
+    size,
+    buffer: recolorAlpha(whiteMarkMaster, size, 255)
   }))
   const outputs = [
     [join(buildRoot, 'icon.png'), PNG.sync.write(appMaster)],
     [join(trayRoot, 'hrack-master.png'), resizeBox(markMaster, 256)],
     [join(trayRoot, 'hrack-16.png'), recolorAlpha(markMaster, 16, 0)],
     [join(trayRoot, 'hrack-32.png'), recolorAlpha(markMaster, 32, 0)],
-    [join(trayRoot, 'hrack-white-16.png'), recolorAlpha(markMaster, 16, 255)],
-    [join(trayRoot, 'hrack-white-32.png'), recolorAlpha(markMaster, 32, 255)],
+    [join(trayRoot, 'hrack-white-16.png'), recolorAlpha(whiteMarkMaster, 16, 255)],
+    [join(trayRoot, 'hrack-white-32.png'), recolorAlpha(whiteMarkMaster, 32, 255)],
     [join(trayRoot, 'hrackTemplate-16.png'), recolorAlpha(markMaster, 16, 0)],
     [join(trayRoot, 'hrackTemplate-32.png'), recolorAlpha(markMaster, 32, 0)],
     [join(trayRoot, 'hrack-256.png'), recolorAlpha(markMaster, 256, 0)],
-    [join(trayRoot, 'hrack-white-256.png'), recolorAlpha(markMaster, 256, 255)],
+    [join(trayRoot, 'hrack-white-256.png'), recolorAlpha(whiteMarkMaster, 256, 255)],
     [join(trayRoot, 'hrack-app-16.png'), appFrames[0].buffer],
     [join(trayRoot, 'hrack-app-32.png'), appFrames[1].buffer],
-    [join(trayRoot, 'hrack-app.ico'), encodeIco(appFrames)]
+    [join(trayRoot, 'hrack-app.ico'), encodeIco(appFrames)],
+    [join(trayRoot, 'hrack.ico'), encodeIco(blackTrayFrames)],
+    [join(trayRoot, 'hrack-white.ico'), encodeIco(whiteTrayFrames)]
   ]
   await Promise.all(outputs.map(([path, buffer]) => writeFile(path, buffer)))
   for (const [path] of outputs) console.log(`wrote ${path.slice(projectRoot.length + 1)}`)
 } finally {
   await browser.close()
-  await Promise.all([appMasterPath, markMasterPath].map((path) => unlink(path).catch(() => {})))
+  await Promise.all([appMasterPath, markMasterPath, whiteMarkMasterPath].map((path) => unlink(path).catch(() => {})))
 }

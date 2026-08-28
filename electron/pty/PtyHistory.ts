@@ -55,6 +55,16 @@ export class PtyHistory {
     this.trim()
   }
 
+  appendCursorSync(row: number, column: number): void {
+    this.events.push({
+      sequence: this.nextSequence++,
+      kind: 'cursor-sync',
+      row,
+      column
+    })
+    this.trim()
+  }
+
   snapshot(): PtyHistorySnapshot {
     return {
       complete: this.droppedEvents === 0,

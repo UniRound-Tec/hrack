@@ -883,6 +883,7 @@ test.describe('remote desktop client', () => {
     expect(pty.acknowledgements).toEqual([13])
 
     pty.observer?.onOutput(new TextEncoder().encode('desktop-output'))
+    pty.observer?.onCursorSync({ row: 17, column: 9 })
     await expect
       .poll(() => phone.messages.find((message) => message.type === 'pty-out'))
       .toMatchObject({
@@ -890,6 +891,16 @@ test.describe('remote desktop client', () => {
         sessionId: 's1',
         data: Buffer.from('desktop-output').toString('base64'),
         byteLength: 14
+      })
+    await expect
+      .poll(() =>
+        phone.messages.find((message) => message.type === 'pty-cursor-sync')
+      )
+      .toMatchObject({
+        type: 'pty-cursor-sync',
+        sessionId: 's1',
+        row: 17,
+        column: 9
       })
 
     expect(client.reclaim('s1')).toEqual(REMOTE_DRIVE_IDLE_STATE)
@@ -1146,7 +1157,10 @@ test.describe('remote desktop client', () => {
       phase: 'idle',
       href: null,
       origin: null,
-      error: null
+      error: null,
+      latencyMs: null,
+      uploadedBytes: 0,
+      downloadedBytes: 0
     })
     expect(relay.revokes).toEqual(['aK3'])
     client.dispose()

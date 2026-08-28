@@ -124,9 +124,17 @@ export interface RemotePtyHistoryResizeEvent {
   rows: number
 }
 
+export interface RemotePtyHistoryCursorSyncEvent {
+  sequence: number
+  kind: 'cursor-sync'
+  row: number
+  column: number
+}
+
 export type RemotePtyHistoryEvent =
   | RemotePtyHistoryOutputEvent
   | RemotePtyHistoryResizeEvent
+  | RemotePtyHistoryCursorSyncEvent
 
 export interface RemotePtyHistorySnapshot {
   complete: boolean
@@ -404,6 +412,14 @@ export interface RemotePtyOut {
   byteLength: number
 }
 
+export interface RemotePtyCursorSync {
+  v: 1
+  type: 'pty-cursor-sync'
+  sessionId: string
+  row: number
+  column: number
+}
+
 export interface RemotePtyIn {
   v: 1
   type: 'pty-in'
@@ -454,6 +470,7 @@ export type RemoteMessage =
   | RemoteCreate
   | RemotePtyResize
   | RemotePtyOut
+  | RemotePtyCursorSync
   | RemotePtyIn
   | RemotePtyAck
   | RemotePtyExit
@@ -486,6 +503,7 @@ export type RemoteDesktopToPhoneMessage =
   | RemoteCreateReject
   | RemoteNotImplemented
   | RemotePtyOut
+  | RemotePtyCursorSync
   | RemotePtyExit
   | RemoteDshSurfaceState
 export type RemotePhoneToDesktopMessage =
@@ -580,6 +598,7 @@ const DESKTOP_TO_PHONE_TYPES = new Set<RemoteDesktopToPhoneMessage['type']>([
   'create-reject',
   'not-implemented',
   'pty-out',
+  'pty-cursor-sync',
   'pty-exit',
   'dsh-surface-state'
 ])
@@ -960,6 +979,20 @@ function parseHistoryEvent(value: unknown): RemotePtyHistoryEvent | null {
       kind: 'resize',
       cols: value.cols,
       rows: value.rows
+    }
+  }
+  if (value.kind === 'cursor-sync') {
+    if (
+      !isBoundedPosInt(value.row, REMOTE_PROTOCOL_LIMITS.terminalDimension) ||
+      !isBoundedPosInt(value.column, REMOTE_PROTOCOL_LIMITS.terminalDimension)
+    ) {
+      return null
+    }
+    return {
+      sequence: value.sequence,
+      kind: 'cursor-sync',
+      row: value.row,
+      column: value.column
     }
   }
   return null
@@ -1463,6 +1496,22 @@ export function parseRemoteMessage(
         sessionId: raw.sessionId,
         data: raw.data,
         byteLength: raw.byteLength
+      })
+    }
+    case 'pty-cursor-sync': {
+      if (
+        !isBoundedNonEmptyString(raw.sessionId, REMOTE_PROTOCOL_LIMITS.idChars) ||
+        !isBoundedPosInt(raw.row, REMOTE_PROTOCOL_LIMITS.terminalDimension) ||
+        !isBoundedPosInt(raw.column, REMOTE_PROTOCOL_LIMITS.terminalDimension)
+      ) {
+        return fail('invalid-pty-cursor-sync')
+      }
+      return ok({
+        v: 1,
+        type: 'pty-cursor-sync',
+        sessionId: raw.sessionId,
+        row: raw.row,
+        column: raw.column
       })
     }
     case 'pty-in': {
