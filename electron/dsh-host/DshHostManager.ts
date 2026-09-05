@@ -165,6 +165,7 @@ export class DshHostManager {
   private child: ManagedDshChild | null = null
   private status: DshHostStatus = { state: 'stopped' }
   private starting: Promise<DshHostStatus> | null = null
+  private stopping: Promise<DshHostStatus> | null = null
   private outputTail = ''
   private activeWslProcess: { distro: string; pid: number } | null = null
   private activeWindowsProcessTreePid: number | null = null
@@ -172,6 +173,9 @@ export class DshHostManager {
   private remoteConfig: RemoteDshHostConfig | null = null
   private activeRemoteConfigKey: string | null = null
   private restarting = false
+  /** 每次 stop() 递增；进行中的 start 据此放弃后续 spawn/重试。 */
+  private stopEpoch = 0
+  private disposed = false
 
   constructor(private readonly options: DshHostManagerOptions) {}
 
@@ -276,6 +280,8 @@ export class DshHostManager {
 
   /** 幂等启动；starting 中的并发调用共享同一个 Promise。 */
   ensureStarted(): Promise<DshHostStatus> {
+    if (this.disposed) return Promise.resolve(this.status)
+    if (this.stopping) return this.stopping.then(() => this.ensureStarted())
     if (this.status.state === 'ready') return Promise.resolve(this.status)
     if (this.starting) return this.starting
     this.starting = this.start().finally(() => {
@@ -284,8 +290,23 @@ export class DshHostManager {
     return this.starting
   }
 
-  async stop(): Promise<DshHostStatus> {
+  stop(): Promise<DshHostStatus> {
+    if (this.stopping) return this.stopping
+    // 先递增代数再杀子进程：进行中的 start() 会在下一次 spawn/重试前看到
+    // 代数变化并放弃，避免 dispose()/stop() 返回后又拉起新的 DSH 子进程。
+    this.stopEpoch += 1
+    this.stopping = this.finishStop(this.starting).finally(() => {
+      this.stopping = null
+    })
+    return this.stopping
+  }
+
+  private async finishStop(
+    starting: Promise<DshHostStatus> | null
+  ): Promise<DshHostStatus> {
     await this.stopChild()
+    // 旧启动必须收尾，restart 才能创建新一代，而不是复用已取消的 Promise。
+    await starting
     this.activeRemoteConfigKey = null
     this.setStatus({
       state: 'stopped',
@@ -296,6 +317,7 @@ export class DshHostManager {
   }
 
   async dispose(): Promise<void> {
+    this.disposed = true
     await this.stop()
   }
 
@@ -382,23 +404,29 @@ export class DshHostManager {
   }
 
   private async start(): Promise<DshHostStatus> {
+    const epoch = this.stopEpoch
     this.outputTail = ''
     this.setStatus({ state: 'starting' })
     try {
-      return await this.attemptStart()
+      return await this.attemptStart(epoch)
     } catch (error) {
+      // stop()/dispose() 已介入：状态归它管，这里不得重试也不得置 failed。
+      if (this.stopEpoch !== epoch) return this.status
       console.warn(
         '[dsh-host] start failed; killing and retrying once:',
         error instanceof Error ? error.message : error
       )
       await this.stopChild()
       this.outputTail = ''
+      if (this.stopEpoch !== epoch) return this.status
       try {
-        return await this.attemptStart()
+        return await this.attemptStart(epoch)
       } catch (retryError) {
+        if (this.stopEpoch !== epoch) return this.status
         const message =
           retryError instanceof Error ? retryError.message : String(retryError)
         await this.stopChild()
+        if (this.stopEpoch !== epoch) return this.status
         this.setStatus({
           state: 'failed',
           dshHome: this.status.dshHome,
@@ -410,13 +438,18 @@ export class DshHostManager {
     }
   }
 
-  private async attemptStart(): Promise<DshHostStatus> {
+  private async attemptStart(epoch: number): Promise<DshHostStatus> {
     const targets = await this.resolveLaunchTargets()
     const failures: string[] = []
     for (const target of targets) {
+      if (this.stopEpoch !== epoch) throw new Error('dsh host stop requested')
+      // 每个目标独立判定 --no-open：outputTail 若累计前一目标的输出，
+      // 会把无关失败误判成 --no-open 拒绝。
+      this.outputTail = ''
       try {
-        return await this.startTarget(target)
+        return await this.startTarget(target, epoch)
       } catch (error) {
+        if (this.stopEpoch !== epoch) throw new Error('dsh host stop requested')
         const detail = error instanceof Error ? error.message : String(error)
         failures.push(`${target.candidate.id}: ${detail}`)
         this.appendOutput(`\n[${target.candidate.id}] ${detail}\n`)
@@ -426,20 +459,25 @@ export class DshHostManager {
     throw new Error(failures.join('\n'))
   }
 
-  private async startTarget(target: DshLaunchTarget): Promise<DshHostStatus> {
+  private async startTarget(
+    target: DshLaunchTarget,
+    epoch: number
+  ): Promise<DshHostStatus> {
     const dshHome = this.resolveTargetHome(target)
     const port = await allocatePort()
     try {
-      return await this.bootTarget(target, port, dshHome, true)
+      return await this.bootTarget(target, port, dshHome, true, epoch)
     } catch (error) {
+      if (this.stopEpoch !== epoch) throw error
       await new Promise((resolve) => setTimeout(resolve, 50))
+      if (this.stopEpoch !== epoch) throw error
       if (!dshRejectedNoOpenOption(this.outputTail)) {
         throw error
       }
       console.warn('[dsh-host] --no-open rejected; retrying without it')
       await this.stopChild()
       this.outputTail = ''
-      return this.bootTarget(target, port, dshHome, false)
+      return this.bootTarget(target, port, dshHome, false, epoch)
     }
   }
 
@@ -447,10 +485,14 @@ export class DshHostManager {
     target: DshLaunchTarget,
     port: number,
     dshHome: string,
-    noOpen: boolean
+    noOpen: boolean,
+    epoch: number
   ): Promise<DshHostStatus> {
+    if (this.stopEpoch !== epoch) throw new Error('dsh host stop requested')
     const baseUrl = `http://127.0.0.1:${port}`
     const remote = await this.resolveRemoteLaunch(target)
+    // WSL 的 wslpath 转换是异步的；停止可能发生在上面的 await 期间。
+    if (this.stopEpoch !== epoch) throw new Error('dsh host stop requested')
     const child = this.spawnTarget(target, port, dshHome, remote, noOpen)
     this.child = child
     this.activeWslProcess = null
@@ -532,6 +574,7 @@ export class DshHostManager {
     if (this.child !== child) {
       throw new Error('dsh host exited before becoming ready')
     }
+    if (this.stopEpoch !== epoch) throw new Error('dsh host stop requested')
     ready = true
     this.activeRemoteConfigKey = remote
       ? `${remote.publicOrigin}\n${this.remoteConfig?.overlayPath ?? remote.overlayPath}`

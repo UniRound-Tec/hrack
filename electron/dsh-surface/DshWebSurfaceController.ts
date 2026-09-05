@@ -285,14 +285,10 @@ export class DshWebSurfaceController {
           await this.showNow(request, generation)
         } catch (error) {
           if (generation !== this.generation) return
-          if (this.host.getStatus().state === 'ready') {
-            console.warn(
-              '[dsh-surface] page failed; killing host and retrying once:',
-              errorMessage(error)
-            )
-            await this.restartHost()
-            return
-          }
+          // host 处于 ready 说明 DSH 进程本身健康；页面级失败（加载超时、
+          // 过期 sessionId 等）只标记本页失败。此处重启共享 host 会中断
+          // 其他所有 DSH 会话；需要重启时由用户显式触发（restartHost）。
+          console.warn('[dsh-surface] page failed:', errorMessage(error))
           this.phase = 'failed'
           this.visible = false
           this.error = errorMessage(error)

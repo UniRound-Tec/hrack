@@ -270,8 +270,9 @@ test('D1 Desktop carries real DSH HTTP through a fixed public-authority tunnel',
 
     const overlay = resolve(appState.userDataDir, 'dsh-runtime/remote-web.patch.yml')
     expect(existsSync(overlay)).toBe(true)
+    // 断言产品真实的 overlay 注释（RemoteDshOverlay.DSH_REMOTE_BROWSE_OVERLAY）。
     expect(readFileSync(overlay, 'utf8')).toContain(
-      'must not insert a second copy'
+      'Do not insert picker entries here'
     )
     expect(existsSync(resolve(appState.userDataDir, 'dsh-home/remote-web.patch.yml'))).toBe(false)
     console.log(

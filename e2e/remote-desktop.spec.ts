@@ -814,6 +814,42 @@ test.describe('remote desktop client', () => {
     client.dispose()
   })
 
+  test('delivers legal drive history within 32 KiB of the frame limit', async () => {
+    const pty = new MemoryRemotePtyHost()
+    // JSON escaping expands ANSI history past the old 992 KiB send threshold,
+    // while both the output chunk and the complete frame remain protocol-valid.
+    pty.historyData = '\u001b'.repeat(173_000)
+    const client = new RemoteDesktopClient({
+      sessions: new MemorySessions(),
+      broadcast: () => {},
+      pty
+    })
+    await client.connect(relay.joinUrl('aK3'))
+    await expect.poll(() => client.getState().phase).toBe('waiting-phone')
+    const phone = await openPhone(relay, 'aK3')
+    try {
+      await expect.poll(() => client.getState().phase).toBe('peer-online')
+      phone.ws.send(JSON.stringify({
+        v: 1, type: 'drive', requestId: 'drive-near-limit',
+        sessionId: 's1', cols: 40, rows: 18
+      }))
+      await expect.poll(() =>
+        phone.messages.find((message) => message.type === 'drive-ok')
+      ).toBeTruthy()
+      const reply = phone.messages.find((message) => message.type === 'drive-ok')
+      if (!reply || reply.type !== 'drive-ok') throw new Error('missing drive-ok')
+      const bytes = Buffer.byteLength(JSON.stringify(reply))
+      expect(bytes).toBeGreaterThan(REMOTE_PROTOCOL_LIMITS.frameBytes - 32 * 1024)
+      expect(bytes).toBeLessThanOrEqual(REMOTE_PROTOCOL_LIMITS.frameBytes)
+      expect(reply.history.complete).toBe(true)
+      expect(reply.history.retainedOutputBytes).toBe(173_000)
+      expect(client.getDriveState().phase).toBe('driven')
+    } finally {
+      phone.ws.close()
+      client.dispose()
+    }
+  })
+
   test('routes the driven PTY data plane and lets desktop reclaim it', async () => {
     const pty = new MemoryRemotePtyHost()
     const driveStates: string[] = []

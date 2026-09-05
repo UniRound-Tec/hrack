@@ -79,6 +79,8 @@ const MAX_AUGMENTED_ARGS = 32
 const MAX_PRESTART_OBSERVER_EVENTS = 2_000
 const MAX_CAPTION_LENGTH = 128
 const MAX_TOKEN_COUNT = 10_000_000_000
+/** 已结束会话在内存中的保留上限：远程快照（includeExited）只需回看近期退出。 */
+const MAX_RETAINED_FINALIZED_SESSIONS = 100
 
 // ───── 依赖 seam（保持 Runtime 与 Electron / node-pty 解耦，interface 可测） ─────
 
@@ -392,6 +394,8 @@ export class AgentSessionRuntime {
   private readonly listeners = new Set<
     (record: AgentSessionRecord, phase: AgentSessionPhase) => void
   >()
+  /** finalize 完成顺序的 sessionId 队列，驱动上限淘汰。 */
+  private finalizedSessionIds: string[] = []
   private runRootReady: Promise<void> | null = null
   private readonly options: Required<
     Pick<
@@ -1189,6 +1193,24 @@ export class AgentSessionRuntime {
         }
       )
       this.notify(session, 'finalized')
+      this.retainFinalizedSession(session)
+    }
+  }
+
+  /**
+   * 自然退出的会话不再经过 stop() 从 this.sessions 删除（远程快照依赖
+   * includeExited 回看退出会话），但不加限制会随长期运行无界累积；
+   * 超出上限时按 finalize 顺序淘汰最老的已结束会话并广播 removed。
+   */
+  private retainFinalizedSession(session: ActiveAgentSession): void {
+    this.finalizedSessionIds.push(session.sessionId)
+    while (this.finalizedSessionIds.length > MAX_RETAINED_FINALIZED_SESSIONS) {
+      const evictedId = this.finalizedSessionIds.shift()
+      const evicted = evictedId ? this.sessions.get(evictedId) : undefined
+      if (evicted?.finalized) {
+        this.sessions.delete(evicted.sessionId)
+        this.notify(evicted, 'removed')
+      }
     }
   }
 

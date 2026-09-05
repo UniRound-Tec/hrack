@@ -1,5 +1,5 @@
 import { Check, Copy, Minus, Plus, RefreshCw, RotateCcw, Save } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type {
   CliRuntimeError,
   ShellOption,
@@ -227,6 +227,9 @@ export default function SettingsPage({
   }, [])
 
   useEffect(() => {
+    // 只在 logs tab 订阅：诊断日志逐条 append,页面级常驻订阅会让任意
+    // tab 的每次设置操作都被日志洪流连带重渲。
+    if (category !== 'logs') return
     let cancelled = false
     const applyChange = (change: DiagnosticLogChange): void => {
       if (cancelled) return
@@ -258,7 +261,7 @@ export default function SettingsPage({
       cancelled = true
       unsubscribe()
     }
-  }, [])
+  }, [category])
 
   useEffect(() => {
     let cancelled = false
@@ -613,12 +616,16 @@ export default function SettingsPage({
         : window.updateApi.check()
     void action.catch(() => {})
   }
-  const diagnosticLogText = diagnosticLog.entries
-    .map((entry) => {
-      const timestamp = new Date(entry.occurredAt).toISOString()
-      return `${timestamp} ${entry.level.toUpperCase().padEnd(5)} [${entry.source}] ${entry.message}`
-    })
-    .join('\n')
+  const diagnosticLogText = useMemo(
+    () =>
+      diagnosticLog.entries
+        .map((entry) => {
+          const timestamp = new Date(entry.occurredAt).toISOString()
+          return `${timestamp} ${entry.level.toUpperCase().padEnd(5)} [${entry.source}] ${entry.message}`
+        })
+        .join('\n'),
+    [diagnosticLog]
+  )
 
   return (
     <ClickSpark sparkColor="var(--hrack-accent-spark)" sparkSize={8} sparkRadius={18} sparkCount={10} duration={450}>

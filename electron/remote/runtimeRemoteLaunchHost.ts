@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { posix, win32 } from 'node:path'
 import { mergeSkipApprovalArgs } from '../../shared/cli-launch-options'
 import type {
   CliLaunchSelection,
@@ -69,6 +70,22 @@ export function runtimeRemoteLaunchHost(
       )
       if (!launchable) {
         return { ok: false, reason: 'installation-not-found' }
+      }
+      const installation = launchable.installations.find(
+        (candidate) => candidate.id === input.installationId
+      )
+      if (!installation) {
+        return { ok: false, reason: 'installation-not-found' }
+      }
+      // 相对路径会被 CLI 静默解析到主进程 CWD；与 workspace 浏览一致，
+      // 远程启动只接受目标运行环境的绝对路径。
+      const pathApi =
+        installation.runtime.kind === 'wsl' ||
+        installation.runtime.platform !== 'windows'
+          ? posix
+          : win32
+      if (!pathApi.isAbsolute(workspace)) {
+        return { ok: false, reason: 'invalid-workspace' }
       }
 
       let resolvedWorkspace: string

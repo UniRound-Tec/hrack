@@ -4,6 +4,35 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Hardened the DSH web tunnel against unauthenticated denial of service: malformed WebSocket upgrade requests no longer permanently consume the tunnel capacity quota, and relay-side stream-id accounting no longer grows without bound over a relay's lifetime.
+- Fixed relay room capacity exhaustion in deployments without a reconciler: repeatedly creating and revoking rooms no longer leaves permanently revoked tombstones that block all future room creation.
+- Fixed a desktop remote-control deadlock where disconnecting during session creation left the desktop stuck in a phantom "driven" state — local terminals resized to phone dimensions, local resizes blocked, and PTY output stalled until a 1 MB overflow.
+- Fixed swallowed PTY exit events: closing a remotely driven terminal tab or stopping an agent session now reliably delivers the exit fact, releasing the phone's drive instead of freezing the terminal and rejecting later drives as busy.
+- Page-level failures in the embedded DSH surface (load timeouts, stale session ids) no longer restart the shared DSH host and interrupt all other DSH sessions.
+- Hardened the tunnel's local path fence: percent-encoded backslashes (for example `..%5c..%5c`) are now rejected; workspace browsing refuses UNC and device paths (`\\server\share`, `\\.\`), and remote launches refuse relative workspace paths instead of silently resolving them against the desktop's working directory.
+- Fixed DSH host shutdown races: stopping or disposing the host can no longer race an in-flight startup into spawning a new DSH process after teardown, and the `--no-open` retry detection no longer considers output from earlier launch targets.
+- Restarting DSH during startup now waits for the cancelled launch to finish before starting a fresh host.
+- Clearing diagnostics waits for in-flight log writes, preventing cleared entries from reappearing after restart.
+- Valid terminal history responses near the 1 MiB frame limit are delivered, and a drive is released if its response cannot be sent.
+- Fixed an unhandled-exception crash path in the remote DSH preflight when a response stream resets mid-transfer.
+- Fixed tunnel WebSocket streams reporting post-open local errors as open-rejections, which the gateway treated as a protocol violation and tore down the entire tunnel.
+- Directories with more than 5,000 entries are now truncated for pagination instead of failing the entire listing.
+- Naturally exited agent sessions are now retained with a bounded cap (latest 100) instead of accumulating for the lifetime of the main process.
+- ConPTY resize handling now gives up an expectation after repeated size-mismatched redraws instead of suppressing subsequent redraws indefinitely.
+- The phone app validates launch arguments against protocol limits before submitting; oversized submissions no longer cause the relay to disconnect the phone for repeated violations.
+- Negative exit codes (for example `-1` on Windows) are now displayed instead of dropped.
+- Fixed the remote demo page hanging when replaying cursor-sync history events.
+
+### Changed
+
+- Diagnostic log persistence is now serialized and asynchronous instead of synchronously writing to disk on the main thread for every console message; the Settings log panel also subscribes only while its tab is open, so other settings pages no longer re-render on every log line.
+- The DSH session projector merges event-stream reconnects by generation and closes replaced sockets, so a dropped connection no longer multiplies duplicate connections and duplicated events.
+- Outbound remote-control messages exceeding the 1 MiB protocol frame limit are dropped and logged instead of causing the relay to terminate the desktop connection.
+- The remote-driven terminal overlay no longer blocks local scrolling or interaction; only its notification pill is interactive.
+- The pairing QR code is memoized on its URL instead of being rebuilt on every pairing poll.
+
 ## [0.4.5] - 2026-08-28
 
 ### Added

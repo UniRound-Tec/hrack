@@ -70,7 +70,8 @@ export function renderAgentDetail(
   }
   if (detail.startsWith('@agent:exited')) {
     const code = detail.slice('@agent:exited:'.length)
-    return strings.exited(code && /^\d+$/.test(code) ? Number(code) : undefined)
+    // 生产端（node-pty/ConPTY）可能上报负退出码（如 -1），消费端需对称接受。
+    return strings.exited(code && /^-?\d+$/.test(code) ? Number(code) : undefined)
   }
   return detail
 }

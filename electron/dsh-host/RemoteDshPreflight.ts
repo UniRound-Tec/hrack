@@ -41,6 +41,11 @@ function localRequest(
           : {})
       }
     }, (response) => {
+      // Node ≥15：响应体在中途被 reset/destroy 时会在 response 上发 'error'，
+      // 零监听会变成主进程未捕获异常。preflight 在每次远程启动都会执行。
+      response.once('error', (error) => {
+        reject(error instanceof Error ? error : new Error(String(error)))
+      })
       const chunks: Buffer[] = []
       let bytes = 0
       response.on('data', (chunk: Buffer) => {

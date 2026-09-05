@@ -357,19 +357,28 @@ export class PTYManager {
       // 否则主进程权威源会在用户最需要回看退出输出时消失。
       const current = this.ptys.get(ptyId)
       if (current?.pty === pty) {
-        // S1：内部生命周期 seam（Runtime 订阅；已退出 payload 缓存供晚订阅者）。
-        this.exitedPayloads.set(ptyId, payload)
-        const listeners = this.exitListeners.get(ptyId)
-        if (listeners) {
-          for (const cb of listeners) cb(payload)
-        }
-        this.exitListeners.delete(ptyId)
         if (current.resizeTimer) clearTimeout(current.resizeTimer)
         current.resizeTimer = undefined
         current.pendingResize = undefined
         current.pendingResizeRequestedAt = undefined
         current.pty = undefined
       }
+      // S1 seam 的退出事实必须无条件送达：kill() 会先移除 ptys 记录，若把
+      // seam 分发嵌在记录存活检查里，远端驱动与会话运行时将永远收不到
+      // pty-exit（drive 卡死、后续 drive 全部 busy）。
+      this.exitedPayloads.set(ptyId, payload)
+      const listeners = this.exitListeners.get(ptyId)
+      if (listeners) {
+        for (const cb of [...listeners]) cb(payload)
+      }
+      if (current) {
+        // 自然退出：保留缓存供晚订阅者回放（历史保留到显式关闭）。
+        return
+      }
+      // kill() 已移除记录：不会再有晚订阅者（open 以 isRunning 拒绝），
+      // 释放 seam 状态。
+      this.exitListeners.delete(ptyId)
+      this.exitedPayloads.delete(ptyId)
     })
 
     return { ptyId }
@@ -559,11 +568,15 @@ export class PTYManager {
       } catch {
         /* 已退出则忽略 */
       }
+      // 仍在运行的进程：exitListeners 保留到原生 exit 事件送达 seam 订阅者
+      // （见 onExit 处理器），否则 kill 会吞掉退出事实。
+    } else {
+      // 进程已自然退出：不会再有原生 exit 事件，立即释放 seam 状态。
+      this.exitListeners.delete(ptyId)
+      this.exitedPayloads.delete(ptyId)
     }
     // 即使进程早已自行退出，也必须在会话关闭时释放保留的权威历史。
     this.ptys.delete(ptyId)
-    this.exitListeners.delete(ptyId)
-    this.exitedPayloads.delete(ptyId)
     this.inputSubmitListeners.delete(ptyId)
     this.outputListeners.delete(ptyId)
     this.displayOutputListeners.delete(ptyId)
@@ -580,9 +593,14 @@ export class PTYManager {
         .map((managed) => managed.terminal?.terminalId)
         .filter((terminalId): terminalId is string => Boolean(terminalId))
     )
-    for (const { pty, resizeTimer } of this.ptys.values()) {
+    for (const [ptyId, { pty, resizeTimer }] of this.ptys) {
       if (resizeTimer) clearTimeout(resizeTimer)
-      if (!pty) continue
+      if (!pty) {
+        // 已自然退出：不会再有原生 exit 事件，立即释放 seam 状态。
+        this.exitListeners.delete(ptyId)
+        this.exitedPayloads.delete(ptyId)
+        continue
+      }
       try {
         pty.kill()
       } catch {
@@ -590,8 +608,8 @@ export class PTYManager {
       }
     }
     this.ptys.clear()
-    this.exitListeners.clear()
-    this.exitedPayloads.clear()
+    // exitListeners/exitedPayloads 保留给仍在运行进程的原生 exit 分发
+    // （分发完成后由 onExit 处理器自行清理）。
     this.inputSubmitListeners.clear()
     this.outputListeners.clear()
     this.displayOutputListeners.clear()

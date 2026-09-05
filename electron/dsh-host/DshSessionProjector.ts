@@ -412,22 +412,40 @@ export class DshSessionProjector {
     }
   }
 
+  /** 递增于每次 openStreams；旧 socket 的重连定时器据它失效。 */
+  private streamGeneration = 0
+
   private openStreams(): void {
     if (!this.running) return
+    const generation = ++this.streamGeneration
     const base = this.requireBaseUrl().replace(/^http/, 'ws')
-    this.hostSocket = this.openSocket(`${base}/api/events.host`, (payload) => {
+    // 先关闭被替换的旧连接：否则旧 socket 迟到的 onclose 会各自再触发一次
+    // openStreams，重连成倍增殖、事件被重复处理。代数保证同一代只重连一次。
+    for (const previous of [this.hostSocket, this.muxSocket]) {
+      if (
+        previous &&
+        (previous.readyState === WebSocket.CONNECTING ||
+          previous.readyState === WebSocket.OPEN)
+      ) {
+        previous.close(1000, 'replaced')
+      }
+    }
+    this.hostSocket = this.openSocket(generation, `${base}/api/events.host`, (payload) => {
       this.onHostFrame(payload)
     })
-    this.muxSocket = this.openSocket(`${base}/api/events.mux`, (payload) => {
+    this.muxSocket = this.openSocket(generation, `${base}/api/events.mux`, (payload) => {
       this.onMuxFrame(payload)
     })
   }
 
   private openSocket(
+    generation: number,
     url: string,
     onPayload: (payload: Record<string, unknown>) => void
   ): WebSocket {
     const socket = new WebSocket(url)
+    // 全局 WHATWG WebSocket 的未处理 error 事件会成为未捕获异常。
+    socket.addEventListener('error', () => {})
     socket.onmessage = (event) => {
       if (typeof event.data !== 'string') return
       try {
@@ -440,9 +458,11 @@ export class DshSessionProjector {
       }
     }
     socket.onclose = () => {
-      if (!this.running) return
+      if (!this.running || generation !== this.streamGeneration) return
       setTimeout(() => {
-        if (this.running) this.openStreams()
+        if (this.running && generation === this.streamGeneration) {
+          this.openStreams()
+        }
       }, 1_000)
     }
     return socket

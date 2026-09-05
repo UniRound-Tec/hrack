@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runtimeRemoteWorkspaceHost } from '../electron/remote/runtimeRemoteWorkspaceHost'
-import type { CliScanReport } from '../shared/ipc-contract'
+import type { CliRuntime, CliScanReport } from '../shared/ipc-contract'
 
 test.describe('remote workspace host', () => {
   let workspace = ''
@@ -16,8 +16,7 @@ test.describe('remote workspace host', () => {
     await rm(workspace, { recursive: true, force: true })
   })
 
-  function fixture() {
-    const runtime = {
+  function fixture(runtime: CliRuntime = {
       kind: 'host' as const,
       platform:
         process.platform === 'win32'
@@ -25,7 +24,7 @@ test.describe('remote workspace host', () => {
           : process.platform === 'darwin'
             ? ('macos' as const)
             : ('linux' as const)
-    }
+    }) {
     const report: CliScanReport = {
       startedAt: 1,
       finishedAt: 2,
@@ -135,5 +134,17 @@ test.describe('remote workspace host', () => {
       'folder-257'
     ])
     expect(second.nextOffset).toBeUndefined()
+  })
+
+  test('rejects Windows UNC and device paths with either separator', async () => {
+    const host = fixture({ kind: 'host', platform: 'windows' })
+    for (const path of [
+      '\\\\server\\share', '//server/share', '/\\server/share', '\\/server/share',
+      '\\\\.\\pipe\\test', '//./pipe/test', '\\\\?\\C:\\work', '//?/C:/work'
+    ]) {
+      await expect(host.list({
+        installationId: 'codex:fixture', path, offset: 0
+      })).resolves.toEqual({ ok: false, reason: 'invalid-path' })
+    }
   })
 })

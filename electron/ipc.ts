@@ -274,7 +274,7 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
   })
   ipcMain.handle(DiagnosticLogInvokeChannel.Clear, (event) => {
     requireMainWindow(event, ctx)
-    ctx.diagnosticLog.clear()
+    return ctx.diagnosticLog.clear()
   })
   ipcMain.handle(WorkspaceReaderInvokeChannel.Describe, (_event, terminalId: unknown) =>
     ctx.workspaceReader.describe(terminalId)

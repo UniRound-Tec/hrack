@@ -80,9 +80,9 @@ export default function TerminalPage({
         {driven && (
           <div
             data-testid="terminal-remote-overlay"
-            className="absolute inset-0 z-20 flex items-start justify-center bg-black/5 pt-3"
+            className="pointer-events-none absolute inset-0 z-20 flex items-start justify-center bg-black/5 pt-3"
           >
-            <div className="flex items-center gap-2 rounded-xl border border-border-default bg-surface/95 px-3 py-2 shadow-lg backdrop-blur">
+            <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-border-default bg-surface/95 px-3 py-2 shadow-lg backdrop-blur">
               <span className="font-pingfang text-[12px] text-text-secondary">
                 {strings.terminal.remoteDriven}
               </span>

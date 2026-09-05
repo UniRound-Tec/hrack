@@ -23,11 +23,17 @@ test('DSH projector recovers when the control plane briefly returns 404', async 
   const OriginalWebSocket = globalThis.WebSocket
   let sessionListAttempts = 0
 
-  class SilentWebSocket {
+  class SilentWebSocket extends EventTarget {
+    static CONNECTING = 0
+    static OPEN = 1
+    readyState = SilentWebSocket.OPEN
     onmessage: ((event: { data: string }) => void) | null = null
     onclose: (() => void) | null = null
 
-    close(): void {}
+    close(): void {
+      this.readyState = 3
+      this.onclose?.()
+    }
   }
 
   globalThis.fetch = async (input) => {
@@ -145,16 +151,24 @@ test('DSH projector recovers when the control plane briefly returns 404', async 
   }
 })
 
-class ControllableWebSocket {
+class ControllableWebSocket extends EventTarget {
+  static CONNECTING = 0
+  static OPEN = 1
   static instances: ControllableWebSocket[] = []
+  readyState = ControllableWebSocket.OPEN
   onmessage: ((event: { data: string }) => void) | null = null
   onclose: (() => void) | null = null
 
   constructor(readonly url: string) {
+    super()
     ControllableWebSocket.instances.push(this)
   }
 
-  close(): void {}
+  close(): void {
+    if (this.readyState === 3) return
+    this.readyState = 3
+    this.onclose?.()
+  }
 
   emit(payload: Record<string, unknown>): void {
     this.onmessage?.({ data: JSON.stringify({ payload }) })
@@ -467,6 +481,29 @@ test('pausing the projector keeps HRack slots across a host restart', async () =
         intervals: [25, 50, 100]
       })
       .toBe('session-a')
+  } finally {
+    restore()
+  }
+})
+
+test('reconnect replaces both streams once and ignores old close callbacks', async () => {
+  const { restore } = await startLiveProjector([
+    { sessionId: 'session-a', running: false }
+  ])
+  try {
+    const oldHost = latestSocket('/api/events.host')
+    const oldMux = latestSocket('/api/events.mux')
+    oldHost.close()
+    oldMux.close()
+    await expect.poll(() => ControllableWebSocket.instances.length).toBe(4)
+    expect(oldHost.readyState).toBe(3)
+    expect(oldMux.readyState).toBe(3)
+    oldHost.onclose?.()
+    oldMux.onclose?.()
+    await new Promise((resolve) => setTimeout(resolve, 1_100))
+    expect(ControllableWebSocket.instances).toHaveLength(4)
+    expect(latestSocket('/api/events.host').readyState).toBe(1)
+    expect(latestSocket('/api/events.mux').readyState).toBe(1)
   } finally {
     restore()
   }
