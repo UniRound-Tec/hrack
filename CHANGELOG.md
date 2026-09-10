@@ -4,8 +4,12 @@
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-09-10
+
 ### Fixed
 
+- Adapted to DeepSeek Harness 0.1.2+ browser authentication and Typert RPC: HRack now reads the process launch token, exchanges it for the signed session cookie, and uses that cookie for host ready checks, the official embedded page, wire/projector traffic, and the remote tunnel. Ready checks accept both the older `session.list` / `workspace.list` control plane and the 0.1.5 `session/list` remote. Older DSH hosts that do not print a token keep working without a cookie.
+- The embedded official DSH page now recognizes 0.1.5 layout markers, and a missing default sidebar collapse no longer fails the whole surface.
 - Hardened the DSH web tunnel against unauthenticated denial of service: malformed WebSocket upgrade requests no longer permanently consume the tunnel capacity quota, and relay-side stream-id accounting no longer grows without bound over a relay's lifetime.
 - Fixed relay room capacity exhaustion in deployments without a reconciler: repeatedly creating and revoking rooms no longer leaves permanently revoked tombstones that block all future room creation.
 - Fixed a desktop remote-control deadlock where disconnecting during session creation left the desktop stuck in a phantom "driven" state — local terminals resized to phone dimensions, local resizes blocked, and PTY output stalled until a 1 MB overflow.
