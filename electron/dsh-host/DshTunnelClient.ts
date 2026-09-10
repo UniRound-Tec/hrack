@@ -125,7 +125,11 @@ export function isAllowedDshHttpRoute(method: string, path: string): boolean {
 export function isAllowedDshWebSocketRoute(path: string): boolean {
   if (!isSafeRelativePath(path)) return false
   const pathname = new URL(path, 'https://dsh.invalid').pathname
-  return pathname === '/api/events.mux' || pathname === '/api/events.host'
+  return (
+    pathname === '/api/events.mux' ||
+    pathname === '/api/events.host' ||
+    pathname === '/api/remote.mux'
+  )
 }
 
 function requestHeaders(
@@ -192,7 +196,9 @@ export class DshTunnelClient {
   private drainTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(
-    private readonly host: Pick<DshHostManager, 'getStatus'>,
+    private readonly host: Pick<DshHostManager, 'getStatus'> & {
+      publicSessionCookie?: () => string | undefined
+    },
     private readonly onState?: (state: DshTunnelClientState) => void
   ) {}
 
@@ -373,6 +379,8 @@ export class DshTunnelClient {
       this.sendControl({ type: 'http-abort', streamId: message.streamId, reason: 'invalid-origin' })
       return
     }
+    const sessionCookie = this.host.publicSessionCookie?.()
+    if (sessionCookie) headers.cookie = sessionCookie
     const local = new URL(status.baseUrl)
     const req = request({
       hostname: local.hostname,
@@ -476,6 +484,8 @@ export class DshTunnelClient {
       this.sendControl({ type: 'ws-open-reject', streamId: message.streamId, status: 403 })
       return
     }
+    const sessionCookie = this.host.publicSessionCookie?.()
+    if (sessionCookie) headers.cookie = sessionCookie
     const local = new URL(status.baseUrl)
     const socket = new WebSocket(`ws://${local.host}${message.path}`, {
       origin: lease.publicOrigin,

@@ -1,3 +1,4 @@
+import WebSocket from 'ws'
 import type {
   DshWireFetchRequest,
   DshWireFetchResponse,
@@ -5,6 +6,7 @@ import type {
 } from '../../shared/dsh-ipc'
 import { DshEventChannel } from '../../shared/dsh-ipc'
 import type { DshHostManager } from './DshHostManager'
+import { withDshSessionCookie } from './DshBrowserAuth'
 
 /**
  * DshWireProxy —— dsh wire 协议的主进程转发器。
@@ -77,9 +79,16 @@ export class DshWireProxy {
     const controller = new AbortController()
     this.pendingFetches.set(request.requestId, controller)
     try {
+      const requestHeaders = { ...(request.headers ?? {}) }
+      for (const key of Object.keys(requestHeaders)) {
+        if (key.toLowerCase() === 'cookie') delete requestHeaders[key]
+      }
       const response = await fetch(baseUrl + request.path, {
         method: request.method,
-        headers: request.headers ?? {},
+        headers: withDshSessionCookie(
+          requestHeaders,
+          this.host.loopbackSessionCookie()
+        ),
         body: decodeWireBody(request.body, request.bodyEncoding),
         signal: controller.signal
       })
@@ -105,6 +114,7 @@ export class DshWireProxy {
   async getBootManifest(): Promise<unknown> {
     const baseUrl = this.requireBaseUrl()
     const response = await fetch(baseUrl + '/', {
+      headers: withDshSessionCookie({}, this.host.loopbackSessionCookie()),
       signal: AbortSignal.timeout(10_000)
     })
     if (!response.ok) {
@@ -132,34 +142,45 @@ export class DshWireProxy {
       throw new Error('invalid dsh wire stream request')
     }
     const url = baseUrl.replace(/^http/, 'ws') + request.path
-    const socket = new WebSocket(url)
+    const cookie = this.host.loopbackSessionCookie()
+    const socket = new WebSocket(url, {
+      ...(cookie ? { headers: { cookie } } : {}),
+      perMessageDeflate: false
+    })
     this.streams.set(request.streamId, socket)
     const { streamId } = request
-    socket.onopen = () => {
+    socket.on('open', () => {
       this.broadcast(DshEventChannel.WireStreamOpened, { streamId })
-    }
-    socket.onmessage = (event) => {
+    })
+    socket.on('message', (data, isBinary) => {
       // host 只发文本帧；二进制按协议视为非法，直接断开让对端重连。
-      if (typeof event.data !== 'string') {
+      if (isBinary) {
         socket.close(1003, 'unsupported data')
         return
       }
+      const text = typeof data === 'string'
+        ? data
+        : Buffer.isBuffer(data)
+          ? data.toString('utf8')
+          : Array.isArray(data)
+            ? Buffer.concat(data).toString('utf8')
+            : Buffer.from(data).toString('utf8')
       this.broadcast(DshEventChannel.WireStreamMessage, {
         streamId,
-        data: event.data
+        data: text
       })
-    }
-    socket.onerror = () => {
+    })
+    socket.on('error', () => {
       // error 后必跟 close；统一在 close 里清理与通知。
-    }
-    socket.onclose = (event) => {
+    })
+    socket.on('close', (code, reason) => {
       this.streams.delete(streamId)
       this.broadcast(DshEventChannel.WireStreamClosed, {
         streamId,
-        code: event.code,
-        reason: event.reason
+        code,
+        reason: Buffer.isBuffer(reason) ? reason.toString('utf8') : String(reason ?? '')
       })
-    }
+    })
   }
 
   closeStream(streamId: string): void {

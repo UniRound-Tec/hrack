@@ -28,6 +28,12 @@ import {
   selectDshRuntimeCandidates
 } from './DshRuntime'
 import { preflightRemoteDsh } from './RemoteDshPreflight'
+import {
+  dshAuthenticatedPageUrl,
+  exchangeDshLaunchToken,
+  parseDshLaunchToken,
+  redactDshLaunchToken
+} from './DshBrowserAuth'
 
 /**
  * DshHostManager —— 对外只暴露一个 DSH Web host，内部由当前主机安装或
@@ -38,10 +44,20 @@ import { preflightRemoteDsh } from './RemoteDshPreflight'
 const HOST_STARTUP_TIMEOUT_MS = 30_000
 const HOST_READY_POLL_MS = 250
 const OUTPUT_TAIL_LIMIT = 32 * 1024
-const REQUIRED_CONTROL_PLANE_METHODS = [
-  'session.list',
-  'workspace.list'
+
+export type DshRpcConvention = 'legacy' | 'typert'
+
+/** 0.1.1 and earlier: dotted Host RPC, empty payload. */
+const LEGACY_CONTROL_PLANE = [
+  { method: 'session.list', payload: {} },
+  { method: 'workspace.list', payload: {} }
 ] as const
+
+/** 0.1.2+: Typert `/api/<ns>/<method>` with named args. workspace.list is gone. */
+const TYPERT_CONTROL_PLANE = [
+  { method: 'session/list', payload: { args: { _request: {} } } }
+] as const
+
 const execFileAsync = promisify(execFile)
 
 export interface RemoteDshHostConfig {
@@ -176,11 +192,35 @@ export class DshHostManager {
   /** 每次 stop() 递增；进行中的 start 据此放弃后续 spawn/重试。 */
   private stopEpoch = 0
   private disposed = false
+  private launchToken: string | null = null
+  private loopbackCookie: string | null = null
+  private publicCookie: string | null = null
+  private rpcStyle: DshRpcConvention | null = null
 
   constructor(private readonly options: DshHostManagerOptions) {}
 
   getStatus(): DshHostStatus {
     return this.status
+  }
+
+  /** Cookie for loopback Host (waitReady, projector, wire). */
+  loopbackSessionCookie(): string | undefined {
+    return this.loopbackCookie ?? undefined
+  }
+
+  /** Cookie for the current public-origin Host (tunnel, remote preflight). */
+  publicSessionCookie(): string | undefined {
+    return this.publicCookie ?? undefined
+  }
+
+  /** Official page URL; includes `?token=` when this process uses browser auth. */
+  pageUrl(baseUrl: string): string {
+    return dshAuthenticatedPageUrl(baseUrl, this.launchToken)
+  }
+
+  /** Control-plane RPC spelling detected while the host became ready. */
+  rpcConvention(): DshRpcConvention | undefined {
+    return this.rpcStyle ?? undefined
   }
 
   /** 内置版与 native 安装沿用现有 Windows/macOS/Linux DSH_HOME 语义。 */
@@ -341,6 +381,19 @@ export class DshHostManager {
 
   private appendOutput(chunk: string): void {
     this.outputTail = (this.outputTail + chunk).slice(-OUTPUT_TAIL_LIMIT)
+    const token = parseDshLaunchToken(this.outputTail)
+    if (token) this.launchToken = token
+  }
+
+  private clearAuth(): void {
+    this.launchToken = null
+    this.loopbackCookie = null
+    this.publicCookie = null
+    this.rpcStyle = null
+  }
+
+  private errorTail(): string {
+    return redactDshLaunchToken(this.outputTail).slice(-2048)
   }
 
   private async resolveLaunchTargets(): Promise<DshLaunchTarget[]> {
@@ -406,6 +459,7 @@ export class DshHostManager {
   private async start(): Promise<DshHostStatus> {
     const epoch = this.stopEpoch
     this.outputTail = ''
+    this.clearAuth()
     this.setStatus({ state: 'starting' })
     try {
       return await this.attemptStart(epoch)
@@ -431,7 +485,7 @@ export class DshHostManager {
           state: 'failed',
           dshHome: this.status.dshHome,
           activeRuntime: this.status.activeRuntime,
-          error: `${message}\n${this.outputTail.slice(-2048)}`
+          error: `${message}\n${this.errorTail()}`
         })
         return this.status
       }
@@ -530,7 +584,7 @@ export class DshHostManager {
           }
         }
       }
-      const clean = text.trimEnd()
+      const clean = redactDshLaunchToken(text).trimEnd()
       if (!clean) return
       if (isError) console.error('[dsh-host]', clean)
       else console.log('[dsh-host]', clean)
@@ -550,7 +604,7 @@ export class DshHostManager {
         activeRuntime: target.candidate,
         error: error
           ? `dsh host failed: ${error.message}`
-          : `dsh host exited (code ${code}). tail:\n${this.outputTail.slice(-2048)}`
+          : `dsh host exited (code ${code}). tail:\n${this.errorTail()}`
       })
     })
     this.setStatus({
@@ -567,9 +621,22 @@ export class DshHostManager {
       'home',
       dshHome
     )
-    await this.waitReady(baseUrl, HOST_STARTUP_TIMEOUT_MS)
+    await this.waitReady(baseUrl, HOST_STARTUP_TIMEOUT_MS, epoch)
     if (remote) {
-      await preflightRemoteDsh(baseUrl, remote.publicOrigin)
+      if (this.launchToken) {
+        const publicCookie = await exchangeDshLaunchToken(
+          baseUrl,
+          this.launchToken,
+          new URL(remote.publicOrigin).host
+        )
+        if (this.stopEpoch !== epoch) throw new Error('dsh host stop requested')
+        this.publicCookie = publicCookie
+      }
+      await preflightRemoteDsh(
+        baseUrl,
+        remote.publicOrigin,
+        this.publicCookie ?? undefined
+      )
     }
     if (this.child !== child) {
       throw new Error('dsh host exited before becoming ready')
@@ -657,6 +724,7 @@ export class DshHostManager {
     this.activeWslProcess = null
     this.activeWindowsProcessTreePid = null
     this.activePosixProcessGroupPid = null
+    this.clearAuth()
     if (remote) await this.terminateWslProcess(remote)
     if (windowsTreePid) await this.terminateWindowsProcessTree(windowsTreePid)
     if (posixGroupPid) {
@@ -699,36 +767,34 @@ export class DshHostManager {
   /**
    * 静态首页会早于 RPC control plane 开始响应。只有 projector 依赖的
    * RPC 均成功后，host 才能进入 ready；这同时是本机/WSL 的能力门禁。
+   * 0.1.2+ 还要先用启动 token 换到会话 cookie，未认证的 RPC 会 401。
+   * 0.1.5 的 control plane 是 Typert `session/list`，不再提供 workspace.list。
    */
-  private async waitReady(baseUrl: string, timeoutMs: number): Promise<void> {
+  private async waitReady(
+    baseUrl: string,
+    timeoutMs: number,
+    epoch: number
+  ): Promise<void> {
     const deadline = Date.now() + timeoutMs
     let lastError: unknown = null
     while (Date.now() < deadline) {
       if (!this.child) throw new Error('dsh host exited before becoming ready')
+      if (this.stopEpoch !== epoch) throw new Error('dsh host stop requested')
       try {
-        for (const method of REQUIRED_CONTROL_PLANE_METHODS) {
-          const rpcId = crypto.randomUUID()
-          const response = await fetch(`${baseUrl}/api/${method}`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              type: 'client-request',
-              rpcId,
-              method,
-              payload: {}
-            }),
-            signal: AbortSignal.timeout(2000)
-          })
-          if (!response.ok) throw new Error(`${method} HTTP ${response.status}`)
-          const envelope = (await response.json()) as {
-            result?: { ok?: boolean; error?: { message?: string } }
-          }
-          if (envelope.result?.ok !== true) {
-            throw new Error(
-              envelope.result?.error?.message ?? `${method} is not ready`
-            )
-          }
+        await this.ensureLoopbackSession(baseUrl, epoch)
+        const headers: Record<string, string> = {
+          'content-type': 'application/json'
         }
+        if (this.loopbackCookie) headers.cookie = this.loopbackCookie
+        try {
+          await this.probeControlPlane(baseUrl, headers, LEGACY_CONTROL_PLANE)
+          this.rpcStyle = 'legacy'
+          return
+        } catch (legacyError) {
+          lastError = legacyError
+        }
+        await this.probeControlPlane(baseUrl, headers, TYPERT_CONTROL_PLANE)
+        this.rpcStyle = 'typert'
         return
       } catch (error) {
         lastError = error
@@ -738,5 +804,48 @@ export class DshHostManager {
     throw new Error(
       `dsh host did not become ready within ${timeoutMs}ms: ${String(lastError)}`
     )
+  }
+
+  private async probeControlPlane(
+    baseUrl: string,
+    headers: Record<string, string>,
+    methods: readonly { method: string; payload: unknown }[]
+  ): Promise<void> {
+    for (const { method, payload } of methods) {
+      const rpcId = crypto.randomUUID()
+      const response = await fetch(`${baseUrl}/api/${method}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          type: 'client-request',
+          rpcId,
+          method,
+          payload
+        }),
+        signal: AbortSignal.timeout(2000)
+      })
+      if (!response.ok) throw new Error(`${method} HTTP ${response.status}`)
+      const envelope = (await response.json()) as {
+        result?: { ok?: boolean; error?: { message?: string } }
+      }
+      if (envelope.result?.ok !== true) {
+        throw new Error(
+          envelope.result?.error?.message ?? `${method} is not ready`
+        )
+      }
+    }
+  }
+
+  private async ensureLoopbackSession(
+    baseUrl: string,
+    epoch: number
+  ): Promise<void> {
+    if (this.loopbackCookie) return
+    const token = this.launchToken ?? parseDshLaunchToken(this.outputTail)
+    if (!token) return
+    this.launchToken = token
+    const cookie = await exchangeDshLaunchToken(baseUrl, token)
+    if (this.stopEpoch !== epoch) throw new Error('dsh host stop requested')
+    this.loopbackCookie = cookie
   }
 }

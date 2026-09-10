@@ -19,7 +19,7 @@ export interface RemoteDshPreflightEvidence {
 function localRequest(
   baseUrl: string,
   publicOrigin: string,
-  input: { method?: 'GET' | 'POST'; path: string; body?: string }
+  input: { method?: 'GET' | 'POST'; path: string; body?: string; cookie?: string }
 ): Promise<LocalResponse> {
   const target = new URL(baseUrl)
   const authority = new URL(publicOrigin).host
@@ -33,6 +33,7 @@ function localRequest(
       headers: {
         host: authority,
         origin: publicOrigin,
+        ...(input.cookie ? { cookie: input.cookie } : {}),
         ...(body
           ? {
               'content-type': 'application/json',
@@ -128,7 +129,11 @@ function assertRpcSuccess(method: string, response: LocalResponse): void {
   }
 }
 
-function probeSse(baseUrl: string, publicOrigin: string): Promise<void> {
+function probeSse(
+  baseUrl: string,
+  publicOrigin: string,
+  cookie?: string
+): Promise<void> {
   const target = new URL(baseUrl)
   const authority = new URL(publicOrigin).host
   return new Promise((resolve, reject) => {
@@ -137,7 +142,12 @@ function probeSse(baseUrl: string, publicOrigin: string): Promise<void> {
       port: target.port,
       method: 'GET',
       path: '/plugins/events',
-      headers: { host: authority, origin: publicOrigin, accept: 'text/event-stream' }
+      headers: {
+        host: authority,
+        origin: publicOrigin,
+        accept: 'text/event-stream',
+        ...(cookie ? { cookie } : {})
+      }
     })
     const timer = setTimeout(() => {
       req.destroy(new Error('DSH plugin event stream did not open'))
@@ -164,7 +174,8 @@ function probeSse(baseUrl: string, publicOrigin: string): Promise<void> {
 function probeWebSocket(
   baseUrl: string,
   publicOrigin: string,
-  path: string
+  path: string,
+  cookie?: string
 ): Promise<void> {
   const local = new URL(baseUrl)
   const url = `ws://${local.host}${path}`
@@ -172,7 +183,7 @@ function probeWebSocket(
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url, {
       origin: publicOrigin,
-      headers: { host: authority },
+      headers: { host: authority, ...(cookie ? { cookie } : {}) },
       handshakeTimeout: REQUEST_TIMEOUT_MS
     })
     socket.once('open', () => {
@@ -186,9 +197,13 @@ function probeWebSocket(
 /** Product-ready probe: public authority works while the DSH host fence remains closed. */
 export async function preflightRemoteDsh(
   baseUrl: string,
-  publicOrigin: string
+  publicOrigin: string,
+  sessionCookie?: string
 ): Promise<RemoteDshPreflightEvidence> {
-  const root = await localRequest(baseUrl, publicOrigin, { path: '/' })
+  const root = await localRequest(baseUrl, publicOrigin, {
+    path: '/',
+    cookie: sessionCookie
+  })
   if (root.status !== 200) throw new Error(`DSH root HTTP ${root.status}`)
   const entries = parseDshBootManifestEntries(root.body.toString('utf8'))
   const browseId = '@deepseek-ai/dsh-client-ui-directory-picker-browse'
@@ -200,7 +215,8 @@ export async function preflightRemoteDsh(
   }
   const browse = entries.find((entry) => entry.id === browseId)!
   const browseAsset = await localRequest(baseUrl, publicOrigin, {
-    path: browse.url
+    path: browse.url,
+    cookie: sessionCookie
   })
   if (browseAsset.status !== 200 || browseAsset.body.byteLength === 0) {
     throw new Error('DSH browse directory picker client cannot be loaded')
@@ -215,7 +231,8 @@ export async function preflightRemoteDsh(
     const response = await localRequest(baseUrl, publicOrigin, {
       method: 'POST',
       path: `/api/${method}`,
-      body: rpcBody(method)
+      body: rpcBody(method),
+      cookie: sessionCookie
     })
     assertRpcSuccess(method, response)
   }
@@ -230,7 +247,8 @@ export async function preflightRemoteDsh(
     const response = await localRequest(baseUrl, publicOrigin, {
       method: 'POST',
       path: `/api/${method}`,
-      body: rpcBody(method)
+      body: rpcBody(method),
+      cookie: sessionCookie
     })
     if (response.status !== 403 || response.body.toString('utf8') !== 'forbidden') {
       throw new Error(`${method} escaped the DSH public-authority fence`)
@@ -238,10 +256,10 @@ export async function preflightRemoteDsh(
     privilegedDenied += 1
   }
 
-  await probeSse(baseUrl, publicOrigin)
+  await probeSse(baseUrl, publicOrigin, sessionCookie)
   await Promise.all([
-    probeWebSocket(baseUrl, publicOrigin, '/api/events.host'),
-    probeWebSocket(baseUrl, publicOrigin, '/api/events.mux')
+    probeWebSocket(baseUrl, publicOrigin, '/api/events.host', sessionCookie),
+    probeWebSocket(baseUrl, publicOrigin, '/api/events.mux', sessionCookie)
   ])
   return {
     manifestEntries: entries.length,

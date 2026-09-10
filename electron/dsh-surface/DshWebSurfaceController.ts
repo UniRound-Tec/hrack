@@ -79,7 +79,10 @@ function collapseOfficialSidebarScript(forceTransientFailure = false): string {
   const frameDeadline = Date.now() + 5000;
   let frame;
   while (Date.now() < frameDeadline) {
-    frame = document.querySelector('[data-details-collapsed]');
+    frame = document.querySelector('[data-details-collapsed]')
+      || document.querySelector('[data-shell-overlay]')?.parentElement
+      || document.querySelector('[data-sidebar-collapsed]')
+      || document.querySelector('[data-rightbar-collapsed]');
     if (frame) break;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
@@ -217,7 +220,11 @@ function errorMessage(error: unknown): string {
 }
 
 function isTransientSidebarCollapseError(error: unknown): boolean {
-  return errorMessage(error).includes('official DSH sidebar did not collapse')
+  const message = errorMessage(error)
+  return (
+    message.includes('official DSH sidebar did not collapse') ||
+    message.includes('official DSH layout frame is unavailable')
+  )
 }
 
 /**
@@ -393,7 +400,9 @@ export class DshWebSurfaceController {
         `(() => {
           const state = globalThis.__HRACK_DSH_EMBED__;
           const sessions = state?.ctx?.get?.('sessions');
-          const frame = document.querySelector('[data-details-collapsed]');
+          const frame = document.querySelector('[data-details-collapsed]')
+            || document.querySelector('[data-shell-overlay]')?.parentElement
+            || document.querySelector('[data-sidebar-collapsed]');
           const frameStyle = frame ? getComputedStyle(frame) : null;
           const cssRuleCount = [...document.styleSheets].reduce((total, sheet) => {
             try {
@@ -612,7 +621,21 @@ export class DshWebSurfaceController {
     )
 
     try {
-      await view.webContents.loadURL(baseUrl)
+      const cookie = this.host.loopbackSessionCookie()
+      if (cookie) {
+        const separator = cookie.indexOf('=')
+        if (separator > 0) {
+          await view.webContents.session.cookies.set({
+            url: `${origin}/`,
+            name: cookie.slice(0, separator),
+            value: cookie.slice(separator + 1),
+            path: '/',
+            httpOnly: true,
+            sameSite: 'strict'
+          })
+        }
+      }
+      await view.webContents.loadURL(this.host.pageUrl(baseUrl))
       await view.webContents.executeJavaScript(WAIT_FOR_RUNTIME_SCRIPT, true)
       await view.webContents.executeJavaScript(
         INSTALL_ACTIVE_SESSION_REPORTER_SCRIPT,
@@ -725,7 +748,7 @@ export class DshWebSurfaceController {
       return Promise.resolve()
     }
     if (this.sidebarDefaultOperation) return this.sidebarDefaultOperation
-    const collapse = async (): Promise<void> => {
+    const collapse = async (): Promise<boolean> => {
       for (let attempt = 1; attempt <= SIDEBAR_COLLAPSE_MAX_ATTEMPTS; attempt++) {
         const invocation = ++this.sidebarCollapseInvocationCount
         const forceTransientFailure =
@@ -737,20 +760,26 @@ export class DshWebSurfaceController {
             collapseOfficialSidebarScript(forceTransientFailure),
             true
           )
-          return
+          return true
         } catch (error) {
           if (
-            attempt === SIDEBAR_COLLAPSE_MAX_ATTEMPTS ||
-            !isTransientSidebarCollapseError(error)
+            attempt < SIDEBAR_COLLAPSE_MAX_ATTEMPTS &&
+            isTransientSidebarCollapseError(error)
           ) {
-            throw error
+            continue
           }
+          console.warn(
+            '[dsh-surface] official sidebar default collapse skipped:',
+            errorMessage(error)
+          )
+          return false
         }
       }
+      return false
     }
     const operation = collapse()
-      .then(() => {
-        if (this.view === view) this.sidebarDefaultApplied = true
+      .then((applied) => {
+        if (applied && this.view === view) this.sidebarDefaultApplied = true
       })
       .finally(() => {
         if (this.sidebarDefaultOperation === operation) {

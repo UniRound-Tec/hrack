@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { join, resolve } from 'node:path'
 import {
   DSH_CLI_DEFINITION_ID,
@@ -17,6 +18,13 @@ import {
   selectDshRuntimeCandidates
 } from '../electron/dsh-host/DshRuntime'
 import { parseDshBootManifestEntries } from '../electron/dsh-host/RemoteDshPreflight'
+import {
+  dshAuthenticatedPageUrl,
+  exchangeDshLaunchToken,
+  parseDshLaunchToken,
+  parseDshSessionCookie,
+  redactDshLaunchToken
+} from '../electron/dsh-host/DshBrowserAuth'
 import type { DshRuntimeCandidate } from '../shared/dsh-ipc'
 import {
   resolveHrackUserDataDir,
@@ -70,6 +78,87 @@ test('dsh web suppresses the OS browser from 0.1.0-rc.7 onward', () => {
   ])
   expect(dshRejectedNoOpenOption("error: unknown option '--no-open'")).toBe(true)
   expect(dshRejectedNoOpenOption('dsh web: http://127.0.0.1:8080')).toBe(false)
+})
+
+test('DSH browser auth parses the process launch token and session cookie', () => {
+  const token = 'abcdefghijklmnopqrstuvwxyz0123456789-_ABC'
+  expect(parseDshLaunchToken(`dsh web: http://127.0.0.1:51112/?token=${token}`)).toBe(token)
+  expect(
+    parseDshLaunchToken(
+      `dsh web: http://127.0.0.1:51112/?token=${token} (LAN: http://192.168.1.8:51112/?token=${token})`
+    )
+  ).toBe(token)
+  expect(
+    parseDshLaunchToken(
+      `dsh web: http://127.0.0.1:1/?token=oldtokenoldtokenold1\ndsh web: http://127.0.0.1:2/?token=${token}`
+    )
+  ).toBe(token)
+  expect(parseDshLaunchToken('dsh web: http://127.0.0.1:8080')).toBeNull()
+  expect(parseDshLaunchToken('unrelated token=abcdefghijklmnopqrstuvwxyz0123')).toBeNull()
+
+  const cookie = 'dsh-auth-abc=v1.body.sig'
+  expect(
+    parseDshSessionCookie(
+      `${cookie}; Max-Age=2592000; Path=/; HttpOnly; SameSite=Strict`
+    )
+  ).toBe(cookie)
+  expect(parseDshSessionCookie([
+    'other=1',
+    `${cookie}; Path=/`
+  ])).toBe(cookie)
+  expect(parseDshSessionCookie('session=abc')).toBeNull()
+  expect(dshAuthenticatedPageUrl('http://127.0.0.1:51112', token)).toBe(
+    `http://127.0.0.1:51112/?token=${token}`
+  )
+  expect(dshAuthenticatedPageUrl('http://127.0.0.1:51112')).toBe(
+    'http://127.0.0.1:51112/'
+  )
+  expect(
+    redactDshLaunchToken(`dsh web: http://127.0.0.1:51112/?token=${token}`)
+  ).toBe('dsh web: http://127.0.0.1:51112/?token=[redacted]')
+})
+
+test('DSH browser auth exchanges the launch token for an authority-bound cookie', async () => {
+  const token = 'abcdefghijklmnopqrstuvwxyz0123456789-_ABC'
+  const cookie = 'dsh-auth-xyz=v1.body.sig'
+  const server = createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+    if (
+      req.method === 'GET' &&
+      url.pathname === '/' &&
+      url.searchParams.get('token') === token &&
+      req.headers.host
+    ) {
+      res.writeHead(303, {
+        location: '/',
+        'set-cookie': `${cookie}; Max-Age=2592000; Path=/; HttpOnly; SameSite=Strict`
+      })
+      res.end()
+      return
+    }
+    res.writeHead(401, { 'content-type': 'text/plain' })
+    res.end('dsh web authentication required\n')
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    server.close()
+    throw new Error('failed to bind the token-exchange fixture')
+  }
+  const baseUrl = `http://127.0.0.1:${address.port}`
+  try {
+    await expect(exchangeDshLaunchToken(baseUrl, 'short-but-wrong-token-xx')).rejects.toThrow(
+      /HTTP 401/
+    )
+    await expect(exchangeDshLaunchToken(baseUrl, token)).resolves.toBe(cookie)
+    await expect(
+      exchangeDshLaunchToken(baseUrl, token, 'dsh.example.test')
+    ).resolves.toBe(cookie)
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => error ? reject(error) : resolve())
+    )
+  }
 })
 
 test('DSH boot manifest parsing follows the capability across runtime spellings', () => {

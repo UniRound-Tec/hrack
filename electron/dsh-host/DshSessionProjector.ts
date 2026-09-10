@@ -14,6 +14,8 @@ import {
 } from '../agents/AgentEventReducer'
 import type { DshProjectionBridge } from './DshProjectionBridge'
 import type { DshHostManager } from './DshHostManager'
+import { withDshSessionCookie } from './DshBrowserAuth'
+import WsWebSocket from 'ws'
 
 type TurnOutcome = 'completed' | 'cancelled' | 'failed'
 type AttentionKind = 'approval' | 'question'
@@ -322,16 +324,42 @@ export class DshSessionProjector {
     return status.baseUrl
   }
 
+  private sessionCookie(): string | undefined {
+    return this.host.loopbackSessionCookie?.()
+  }
+
+  private rpcCall(method: string, payload: unknown = {}): {
+    path: string
+    method: string
+    payload: unknown
+  } {
+    if (this.host.rpcConvention?.() === 'typert') {
+      const endpoint = method.replaceAll('.', '/')
+      return {
+        path: `/api/${endpoint}`,
+        method: endpoint,
+        payload: method === 'session.list'
+          ? { args: { _request: {} } }
+          : { args: payload && typeof payload === 'object' ? payload : {} }
+      }
+    }
+    return { path: `/api/${method}`, method, payload }
+  }
+
   private async rpc<T>(method: string, payload: unknown = {}): Promise<T> {
     const rpcId = crypto.randomUUID()
-    const response = await fetch(`${this.requireBaseUrl()}/api/${method}`, {
+    const call = this.rpcCall(method, payload)
+    const response = await fetch(`${this.requireBaseUrl()}${call.path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: withDshSessionCookie(
+        { 'content-type': 'application/json' },
+        this.sessionCookie()
+      ),
       body: JSON.stringify({
         type: 'client-request',
         rpcId,
-        method,
-        payload
+        method: call.method,
+        payload: call.payload
       })
     })
     if (!response.ok) {
@@ -359,10 +387,15 @@ export class DshSessionProjector {
           projections?: { values?: { title?: unknown } }
         }>
       }>('session.list')
-      const workspaces = await this.rpc<{
-        archivedSessionIds?: string[]
-      }>('workspace.list')
-      const archived = new Set(workspaces.archivedSessionIds ?? [])
+      const archived = new Set<string>()
+      if (this.host.rpcConvention?.() !== 'typert') {
+        const workspaces = await this.rpc<{
+          archivedSessionIds?: string[]
+        }>('workspace.list')
+        for (const sessionId of workspaces.archivedSessionIds ?? []) {
+          archived.add(sessionId)
+        }
+      }
       if (!this.running || generation !== this.lifecycleGeneration) return
       this.sessions.clear()
       for (const item of listed.items ?? []) {
@@ -443,13 +476,19 @@ export class DshSessionProjector {
     url: string,
     onPayload: (payload: Record<string, unknown>) => void
   ): WebSocket {
-    const socket = new WebSocket(url)
+    const cookie = this.sessionCookie()
+    const socket = cookie
+      ? (new WsWebSocket(url, {
+          headers: { cookie },
+          perMessageDeflate: false
+        }) as unknown as WebSocket)
+      : new WebSocket(url)
     // 全局 WHATWG WebSocket 的未处理 error 事件会成为未捕获异常。
-    socket.addEventListener('error', () => {})
-    socket.onmessage = (event) => {
-      if (typeof event.data !== 'string') return
+    if (cookie) (socket as unknown as WsWebSocket).on('error', () => {})
+    else socket.addEventListener('error', () => {})
+    const onText = (text: string): void => {
       try {
-        const envelope = JSON.parse(event.data) as {
+        const envelope = JSON.parse(text) as {
           payload?: Record<string, unknown>
         }
         if (envelope.payload) onPayload(envelope.payload)
@@ -457,15 +496,37 @@ export class DshSessionProjector {
         /* drop malformed */
       }
     }
-    socket.onclose = () => {
-      if (!this.running || generation !== this.streamGeneration) return
-      setTimeout(() => {
-        if (this.running && generation === this.streamGeneration) {
-          this.openStreams()
-        }
-      }, 1_000)
+    if (cookie) {
+      ;(socket as unknown as WsWebSocket).on('message', (data, isBinary) => {
+        if (isBinary) return
+        const text = typeof data === 'string'
+          ? data
+          : Buffer.isBuffer(data)
+            ? data.toString('utf8')
+            : null
+        if (text) onText(text)
+      })
+      ;(socket as unknown as WsWebSocket).on('close', () => {
+        this.scheduleStreamReconnect(generation)
+      })
+    } else {
+      socket.onmessage = (event) => {
+        if (typeof event.data === 'string') onText(event.data)
+      }
+      socket.onclose = () => {
+        this.scheduleStreamReconnect(generation)
+      }
     }
     return socket
+  }
+
+  private scheduleStreamReconnect(generation: number): void {
+    if (!this.running || generation !== this.streamGeneration) return
+    setTimeout(() => {
+      if (this.running && generation === this.streamGeneration) {
+        this.openStreams()
+      }
+    }, 1_000)
   }
 
   private upsert(partial: SessionPatch): void {
