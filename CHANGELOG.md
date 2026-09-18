@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-09-18
+
+### Fixed
+
+- Fixed newly created DSH sessions not appearing in the desktop sidebar and session changes inside DSH not updating the active sidebar entry after upgrading to DSH 0.1.5.
+- Restored live DSH session title and running-state updates. Reconnecting now catches up on missed changes without overwriting newer updates, while keeping compatibility with older DSH versions.
+
+### Changed
+
+- Added an explicit "Choose image / GIF" option and a GIF-only file filter for terminal backgrounds, with clearer instructions in all five supported languages. Animated GIFs up to 16 MB play in both the preview and terminal, support the existing fit and opacity controls, and remain selected after restart.
+
 ## [0.4.6] - 2026-09-10
 
 ### Fixed

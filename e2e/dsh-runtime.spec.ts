@@ -526,6 +526,88 @@ test('a real installed Windows DSH captures the official Electron surface', asyn
   }
 })
 
+test('installed DSH session creation, selection and titles reach the desktop sidebar', async () => {
+  const executable = process.env['HRACK_E2E_REAL_DSH']
+  test.skip(!executable, 'Set HRACK_E2E_REAL_DSH to an installed DSH 0.1.5+ executable')
+  test.setTimeout(180_000)
+  const { app, window, userDataDir } = await launchApp({
+    createDefaultTerminal: false,
+    env: { HRACK_E2E_DSH_INSTALLATION: executable! }
+  })
+  try {
+    await window.getByTestId('home-quick-dsh').click()
+    await expect(window.getByTestId('dsh-page')).toHaveAttribute(
+      'data-dsh-surface-phase', 'ready', { timeout: 120_000 }
+    )
+    const status = await window.evaluate(() => window.dshApi.getStatus())
+    const official = async <T>(script: string): Promise<T> => app.evaluate(
+      async ({ webContents }, { baseUrl, script }) => {
+        const page = webContents.getAllWebContents().find((item) =>
+          item.getURL().startsWith(baseUrl!)
+        )
+        if (!page) throw new Error('official DSH page is missing')
+        return page.executeJavaScript(script, true)
+      }, { baseUrl: status.baseUrl, script }
+    )
+    const slotId = await window.getByTestId('dsh-page').getAttribute('data-dsh-slot')
+    const active = () => window.evaluate(async () =>
+      (await window.agentApi.listActive()).filter((item) => item.adapterId === 'dsh')
+    )
+    // Use the installed official service and its real host, in an isolated home.
+    const create = () => official<string>(`(async () => {
+      const sessions = globalThis.__HRACK_DSH_EMBED__.ctx.get('sessions');
+      const id = await sessions.create({ cwd: ${JSON.stringify(userDataDir)} });
+      sessions.open(id);
+      return id;
+    })()`)
+    const first = await create()
+    await expect.poll(active, { timeout: 10_000 }).toContainEqual(
+      expect.objectContaining({ sessionId: slotId, adapterSessionId: first })
+    )
+    await expect(window.locator(`[data-testid="sidebar-session-item"][data-session-id="${slotId}"]`)).toBeVisible()
+
+    const second = await create()
+    await expect.poll(active).toContainEqual(
+      expect.objectContaining({ sessionId: slotId, adapterSessionId: second })
+    )
+    await official(`globalThis.__HRACK_DSH_EMBED__.ctx.get('sessions').open(${JSON.stringify(first)})`)
+    await expect.poll(active).toContainEqual(
+      expect.objectContaining({ sessionId: slotId, adapterSessionId: first })
+    )
+    await expect(window.getByTestId('dsh-page')).toHaveAttribute('data-dsh-session', first)
+
+    await official(`(async () => {
+      const result = await globalThis.__HRACK_DSH_EMBED__.ctx.get('remote').session.rename({
+        sessionId: ${JSON.stringify(first)}, title: 'DSH sidebar regression'
+      });
+      if (!result.ok) throw new Error(result.error.message);
+    })()`)
+    await expect(window.locator(`[data-testid="sidebar-session-item"][data-session-id="${slotId}"]`)).toContainText('DSH sidebar regression')
+
+    await window.evaluate(() => {
+      (window as unknown as { __hrackDebugShell: { navigate(page: string): void } })
+        .__hrackDebugShell.navigate('home')
+    })
+    await window.getByTestId('home-quick-dsh').click()
+    await expect(window.getByTestId('dsh-page')).not.toHaveAttribute('data-dsh-slot', slotId!)
+    await expect(window.getByTestId('dsh-page')).toHaveAttribute('data-dsh-surface-phase', 'ready')
+    const secondSlot = await window.getByTestId('dsh-page').getAttribute('data-dsh-slot')
+    const third = await create()
+    await expect.poll(active).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sessionId: slotId, adapterSessionId: first }),
+      expect.objectContaining({ sessionId: secondSlot, adapterSessionId: third })
+    ]))
+    await window.locator(`[data-testid="sidebar-session-item"][data-session-id="${slotId}"]`).click()
+    await expect.poll(() => official<string>(
+      'globalThis.__HRACK_DSH_EMBED__.ctx.get("sessions").list.getSnapshot().current'
+    )).toBe(first)
+    await expect(window.getByTestId('dsh-page')).toHaveAttribute('data-dsh-surface-phase', 'ready')
+    await window.screenshot({ path: '.dev-shots/dsh-session-sync-fixed.png' })
+  } finally {
+    await app.close()
+  }
+})
+
 test('titlebar restart kills the DSH process and reloads the official surface', async () => {
   test.setTimeout(180_000)
   const executable = e2eDshExecutable()

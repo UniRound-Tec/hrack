@@ -364,8 +364,8 @@ export const en = {
     terminalRoundedHint:
       'Rounds the content area and pads the terminal; off hugs the edges',
     terminalBackground: 'Background image',
-    terminalBackgroundHint: 'Shown behind terminal text; clear to restore a solid color',
-    terminalBackgroundChoose: 'Choose image',
+    terminalBackgroundHint: 'Images and animated GIFs up to 16 MB; clear to restore a solid color',
+    terminalBackgroundChoose: 'Choose image / GIF',
     terminalBackgroundChange: 'Change',
     terminalBackgroundClear: 'Clear',
     terminalBackgroundEmpty: 'None',

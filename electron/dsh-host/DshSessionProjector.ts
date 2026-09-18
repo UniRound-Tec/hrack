@@ -16,6 +16,7 @@ import type { DshProjectionBridge } from './DshProjectionBridge'
 import type { DshHostManager } from './DshHostManager'
 import { withDshSessionCookie } from './DshBrowserAuth'
 import WsWebSocket from 'ws'
+import { DshTypertSessionStream } from './DshTypertSessionStream'
 
 type TurnOutcome = 'completed' | 'cancelled' | 'failed'
 type AttentionKind = 'approval' | 'question'
@@ -238,6 +239,9 @@ export class DshSessionProjector {
   private bootstrapRetryTimer: ReturnType<typeof setTimeout> | null = null
   private bootstrapFailures = 0
   private lifecycleGeneration = 0
+  private typertStream: DshTypertSessionStream | null = null
+  private bootstrapChanges: Map<string, SessionPatch | null> | null = null
+  private bootstrapRevision = 0
   constructor(
     private readonly host: DshHostManager,
     private readonly bridge: DshProjectionBridge
@@ -268,6 +272,10 @@ export class DshSessionProjector {
   private disconnect(): void {
     this.running = false
     ++this.lifecycleGeneration
+    ++this.streamGeneration
+    this.typertStream?.stop()
+    this.typertStream = null
+    this.bootstrapChanges = null
     if (this.bootstrapRetryTimer) {
       clearTimeout(this.bootstrapRetryTimer)
       this.bootstrapRetryTimer = null
@@ -286,6 +294,7 @@ export class DshSessionProjector {
       this.slots.set(slotId, adapterSessionId)
     }
     this.publishSlot(slotId)
+    this.syncTypertFollows()
   }
 
   /** Replace only the active slot's official-session binding. */
@@ -301,6 +310,7 @@ export class DshSessionProjector {
       }
     }
     this.slots.set(slotId, sessionId)
+    this.syncTypertFollows()
     if (!sessionId) {
       if (previousSessionId) this.bridge.remove(slotId)
       return
@@ -314,6 +324,7 @@ export class DshSessionProjector {
     this.closedSlotIds.add(slotId)
     if (this.activeSlotId === slotId) this.activeSlotId = undefined
     this.bridge.remove(slotId)
+    this.syncTypertFollows()
   }
 
   private requireBaseUrl(): string {
@@ -346,11 +357,12 @@ export class DshSessionProjector {
     return { path: `/api/${method}`, method, payload }
   }
 
-  private async rpc<T>(method: string, payload: unknown = {}): Promise<T> {
+  private async rpc<T>(method: string, payload: unknown = {}, signal?: AbortSignal): Promise<T> {
     const rpcId = crypto.randomUUID()
     const call = this.rpcCall(method, payload)
     const response = await fetch(`${this.requireBaseUrl()}${call.path}`, {
       method: 'POST',
+      signal,
       headers: withDshSessionCookie(
         { 'content-type': 'application/json' },
         this.sessionCookie()
@@ -374,7 +386,15 @@ export class DshSessionProjector {
     return envelope.result.value as T
   }
 
-  private async bootstrap(generation: number): Promise<void> {
+  private async bootstrap(generation: number, reopenStreams = true): Promise<void> {
+    if (this.bootstrapRetryTimer) {
+      clearTimeout(this.bootstrapRetryTimer)
+      this.bootstrapRetryTimer = null
+    }
+    const revision = ++this.bootstrapRevision
+    const changes = new Map<string, SessionPatch | null>()
+    this.bootstrapChanges = changes
+    const previousIds = new Set(this.sessions.keys())
     try {
       const listed = await this.rpc<{
         items?: Array<{
@@ -396,8 +416,8 @@ export class DshSessionProjector {
           archived.add(sessionId)
         }
       }
-      if (!this.running || generation !== this.lifecycleGeneration) return
-      this.sessions.clear()
+      if (!this.running || generation !== this.lifecycleGeneration || revision !== this.bootstrapRevision) return
+      const listedIds = new Set<string>()
       for (const item of listed.items ?? []) {
         if (
           typeof item.sessionId !== 'string' ||
@@ -406,6 +426,10 @@ export class DshSessionProjector {
         ) {
           continue
         }
+        listedIds.add(item.sessionId)
+        // Live additions, removals and titles can race the list response.
+        const livePatch = changes.get(item.sessionId)
+        if (livePatch === null) continue
         const title = item.projections?.values?.title
         this.sessions.set(item.sessionId, {
           sessionId: item.sessionId,
@@ -421,12 +445,28 @@ export class DshSessionProjector {
           activeTools: {},
           updatedAt: item.updatedAt ?? Date.now()
         })
+        // Merge only the fields changed by live frames: a new title must not
+        // suppress the running bit or workspace metadata from this snapshot.
+        if (livePatch) this.upsert(livePatch)
+        // Reconnection may reveal sessions created while the stream was down.
+        // The initial catalog remains unimported until selected by the user.
+        if (!reopenStreams && !previousIds.has(item.sessionId)) {
+          this.adoptExternalSession(item.sessionId)
+        }
       }
+      for (const sessionId of this.sessions.keys()) {
+        if (!listedIds.has(sessionId) && !changes.has(sessionId)) {
+          this.sessions.delete(sessionId)
+        }
+      }
+      this.bootstrapChanges = null
       this.bootstrapFailures = 0
       this.publishSlots()
-      this.openStreams()
+      this.syncTypertFollows()
+      if (reopenStreams) this.openStreams()
     } catch (error) {
-      if (!this.running || generation !== this.lifecycleGeneration) return
+      if (!this.running || generation !== this.lifecycleGeneration || revision !== this.bootstrapRevision) return
+      this.bootstrapChanges = null
       this.bootstrapFailures++
       const retryDelay = Math.min(
         BOOTSTRAP_RETRY_INITIAL_MS * 2 ** (this.bootstrapFailures - 1),
@@ -439,7 +479,7 @@ export class DshSessionProjector {
       this.bootstrapRetryTimer = setTimeout(() => {
         this.bootstrapRetryTimer = null
         if (this.running && generation === this.lifecycleGeneration) {
-          void this.bootstrap(generation)
+          void this.bootstrap(generation, reopenStreams)
         }
       }, retryDelay)
     }
@@ -450,6 +490,23 @@ export class DshSessionProjector {
 
   private openStreams(): void {
     if (!this.running) return
+    if (this.host.rpcConvention?.() === 'typert') {
+      this.typertStream?.stop()
+      const lifecycle = this.lifecycleGeneration
+      this.typertStream = new DshTypertSessionStream({
+        baseUrl: this.requireBaseUrl(),
+        cookie: this.sessionCookie(),
+        ready: () => { void this.bootstrap(lifecycle, false) },
+        host: (frame) => this.onHostFrame(frame),
+        mux: (frame) => this.onMuxFrame(frame),
+        passEvent: async (clientId, eventId, signal) => {
+          await this.rpc('$events/result', { clientId, eventId, outcome: { kind: 'next' } }, signal)
+        }
+      })
+      this.syncTypertFollows()
+      this.typertStream.start()
+      return
+    }
     const generation = ++this.streamGeneration
     const base = this.requireBaseUrl().replace(/^http/, 'ws')
     // 先关闭被替换的旧连接：否则旧 socket 迟到的 onclose 会各自再触发一次
@@ -487,6 +544,7 @@ export class DshSessionProjector {
     if (cookie) (socket as unknown as WsWebSocket).on('error', () => {})
     else socket.addEventListener('error', () => {})
     const onText = (text: string): void => {
+      if (!this.running || generation !== this.streamGeneration) return
       try {
         const envelope = JSON.parse(text) as {
           payload?: Record<string, unknown>
@@ -530,6 +588,13 @@ export class DshSessionProjector {
   }
 
   private upsert(partial: SessionPatch): void {
+    if (this.bootstrapChanges) {
+      this.bootstrapChanges.set(partial.sessionId, {
+        ...this.bootstrapChanges.get(partial.sessionId),
+        ...Object.fromEntries(Object.entries(partial).filter(([, value]) => value !== undefined)),
+        sessionId: partial.sessionId
+      })
+    }
     const previous = this.sessions.get(partial.sessionId)
     const next: ProjectorSession = {
       sessionId: partial.sessionId,
@@ -570,6 +635,7 @@ export class DshSessionProjector {
     for (const [slotId, adapterSessionId] of this.slots) {
       if (adapterSessionId === next.sessionId) this.publish(slotId, next)
     }
+    this.syncTypertFollows()
   }
 
   /**
@@ -583,12 +649,20 @@ export class DshSessionProjector {
     if (pendingSlot && this.slots.get(pendingSlot) === undefined) {
       this.slots.set(pendingSlot, sessionId)
       this.publishSlot(pendingSlot)
+      this.syncTypertFollows()
       return
     }
     const slotId = adoptedSlotId(sessionId)
     if (this.closedSlotIds.has(slotId)) return
     this.slots.set(slotId, sessionId)
     this.publishSlot(slotId)
+    this.syncTypertFollows()
+  }
+
+  private syncTypertFollows(): void {
+    this.typertStream?.follow([...this.slots.values()].filter(
+      (sessionId): sessionId is string => typeof sessionId === 'string' && this.sessions.has(sessionId)
+    ))
   }
 
   private onHostFrame(payload: Record<string, unknown>): void {
@@ -599,10 +673,11 @@ export class DshSessionProjector {
       const cwd = typeof payload.cwd === 'string' ? payload.cwd : undefined
       const agentPreset =
         typeof payload.agentPreset === 'string' ? payload.agentPreset : undefined
+      const title = (payload.projections as { values?: { title?: unknown } } | undefined)?.values?.title
       this.upsert({
         sessionId,
-        name: titleOf({ sessionId, cwd, agentPreset }),
-        running: false,
+        name: typeof title === 'string' && title.trim() ? title.trim() : titleOf({ sessionId, cwd, agentPreset }),
+        running: payload.running === true,
         cwd,
         agentPreset
       })
@@ -610,12 +685,18 @@ export class DshSessionProjector {
       return
     }
     if (type === 'host/session-removed' && typeof sessionId === 'string') {
+      this.bootstrapChanges?.set(sessionId, null)
       this.sessions.delete(sessionId)
       for (const [slotId, adapterSessionId] of this.slots) {
         if (adapterSessionId !== sessionId) continue
         this.slots.set(slotId, undefined)
         this.bridge.remove(slotId)
       }
+      this.syncTypertFollows()
+      return
+    }
+    if (type === 'host/session-activity' && typeof sessionId === 'string' && typeof payload.updatedAt === 'number') {
+      this.upsert({ sessionId, updatedAt: payload.updatedAt })
       return
     }
     if (type === 'host/session-status' && typeof sessionId === 'string') {
@@ -795,8 +876,9 @@ export class DshSessionProjector {
   }
 
   private publishSlots(): void {
-    for (const slotId of this.slots.keys()) {
-      this.publishSlot(slotId)
+    for (const [slotId, sessionId] of this.slots) {
+      if (sessionId && !this.sessions.has(sessionId)) this.bridge.remove(slotId)
+      else this.publishSlot(slotId)
     }
   }
 }

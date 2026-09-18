@@ -73,6 +73,7 @@ import {
   installTerminalBackgroundProtocol,
   TerminalBackgroundStore
 } from './terminal-background'
+import { TERMINAL_BACKGROUND_EXTENSIONS } from '../shared/terminal-background'
 import {
   installNotificationSoundProtocol,
   NotificationSoundStore
@@ -554,8 +555,9 @@ export function registerIpc(manager: PTYManager, ctx: IpcContext): void {
       filters: [
         {
           name: 'Images',
-          extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif']
-        }
+          extensions: [...TERMINAL_BACKGROUND_EXTENSIONS]
+        },
+        { name: 'GIF', extensions: ['gif'] }
       ]
     }
     const result = win
