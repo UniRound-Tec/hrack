@@ -173,6 +173,18 @@ export function useXterm(
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(container)
+    term.attachCustomWheelEventHandler(() => {
+      // xterm 在无 scrollback 的备用屏幕中会把滚轮回退为方向键，
+      // 导致 AI CLI 的输入历史/选项被意外切换。只保留普通屏幕滚动
+      // 和应用显式启用的滚轮鼠标协议；X10 仅支持点击，不支持滚轮。
+      const mouseMode = term.modes.mouseTrackingMode
+      return (
+        term.buffer.active.type === 'normal' ||
+        mouseMode === 'vt200' ||
+        mouseMode === 'drag' ||
+        mouseMode === 'any'
+      )
+    })
     const outputCursorRendering = installOutputCursorRendering(term)
     const imeCompositionPositioning = installImeCompositionPositioning(
       term,
