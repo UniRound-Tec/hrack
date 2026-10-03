@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-10-03
+
+### Fixed
+
+- Fixed mouse wheel events being converted into Up/Down key presses in terminal alternate screens, which could unexpectedly change CLI input history or selections. Normal terminal scrollback and application-enabled mouse wheel reporting continue to work.
+
 ## [0.4.7] - 2026-09-18
 
 ### Fixed
