@@ -250,6 +250,9 @@ export class PTYManager {
           cols,
           rows,
           cwd,
+          // 系统 ConPTY 会吞掉原生 TUI 的鼠标 DECSET，导致 xterm 未开启
+          // 鼠标上报。使用 node-pty 随附的 ConPTY 保留应用请求的协议。
+          useConptyDll: process.platform === 'win32',
           env: ptyEnvironment(opts.env ?? process.env)
         })
         break

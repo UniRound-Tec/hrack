@@ -4,11 +4,18 @@
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-10-03
+
+### Fixed
+
+- Restored mouse wheel reporting in native Windows terminal applications. HRack now uses the ConPTY runtime bundled with node-pty so application-requested mouse modes reach the terminal renderer instead of being swallowed by the system ConPTY.
+- Removed the 0.4.8 wheel interception that left affected terminal applications unresponsive to scrolling. The bundled ConPTY runtime is now restored after native dependency rebuilds and included beside the packaged native bindings.
+
 ## [0.4.8] - 2026-10-03
 
 ### Fixed
 
-- Fixed mouse wheel events being converted into Up/Down key presses in terminal alternate screens, which could unexpectedly change CLI input history or selections. Normal terminal scrollback and application-enabled mouse wheel reporting continue to work.
+- Blocked alternate-screen wheel-to-arrow fallback. This did not fix missing mouse-mode requests from the system ConPTY and caused affected native Windows terminal applications to ignore wheel input; corrected in 0.4.9.
 
 ## [0.4.7] - 2026-09-18
 
