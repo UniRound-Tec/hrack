@@ -1,12 +1,18 @@
+import { useMemo } from 'react'
 import { renderSVG } from 'uqr'
 
 export default function RemoteJoinQr({ url }: { url: string }) {
-  const svg = renderSVG(url, {
-    pixelSize: 4,
-    border: 4,
-    whiteColor: '#ffffff',
-    blackColor: '#111111'
-  })
+  // renderSVG 开销不小且配对期间父组件会高频重渲，按 url 记忆化。
+  const svg = useMemo(
+    () =>
+      renderSVG(url, {
+        pixelSize: 4,
+        border: 4,
+        whiteColor: '#ffffff',
+        blackColor: '#111111'
+      }),
+    [url]
+  )
   return (
     <div
       data-testid="settings-remote-qr"

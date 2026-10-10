@@ -515,7 +515,7 @@ export class RemoteDesktopClient {
         this.deps.focusSession?.(message.sessionId)
         return
       case 'drive':
-        this.send(this.openDrive(message))
+        this.sendCreateOrDriveResponse(this.openDrive(message))
         return
       case 'create':
         void this.startCreate(message)
@@ -603,7 +603,17 @@ export class RemoteDesktopClient {
 
     const responses = await record.result
     if (this.createRequests.get(message.requestId) !== record) return
-    for (const response of responses) this.send(response)
+    for (const response of responses) this.sendCreateOrDriveResponse(response)
+  }
+
+  private sendCreateOrDriveResponse(message: RemoteMessage): void {
+    if (
+      !this.send(message) &&
+      message.type === 'drive-ok' &&
+      this.driven?.sessionId === message.sessionId
+    ) {
+      this.releaseDrive()
+    }
   }
 
   setDshSurface(surface: RemoteWebSurface | null): void {
@@ -705,6 +715,7 @@ export class RemoteDesktopClient {
       ]
     }
     this.activeCreateRequestId = message.requestId
+    const socket = this.socket
     let result: RemoteLaunchResult
     try {
       result = await launch.create({
@@ -721,6 +732,15 @@ export class RemoteDesktopClient {
       if (this.activeCreateRequestId === message.requestId) {
         this.activeCreateRequestId = null
       }
+    }
+    if (
+      result.ok &&
+      (this.socket !== socket || socket?.readyState !== WebSocket.OPEN)
+    ) {
+      // create 期间连接断开：close 处理已 releaseDrive/resetCreateRequests，
+      // 响应随后会因 createRequests 已清空被丢弃。此时不得再 openDrive，
+      // 否则桌面端会带着无人消费的输出队列卡在假“被驱动”状态。
+      result = { ok: false, reason: 'launch-failed' }
     }
     if (result.ok) {
       const created: Extract<RemoteMessage, { type: 'create-ok' }> = {
@@ -899,11 +919,21 @@ export class RemoteDesktopClient {
     this.cancelPendingRevoke(this.state)
   }
 
-  private send(message: RemoteMessage): void {
-    if (this.socket?.readyState !== WebSocket.OPEN) return
+  private send(message: RemoteMessage): boolean {
+    if (this.socket?.readyState !== WebSocket.OPEN) return false
     const payload = JSON.stringify(message)
+    const bytes = Buffer.byteLength(payload)
+    if (bytes > REMOTE_PROTOCOL_LIMITS.frameBytes) {
+      // relay/手机按 1MiB frameBytes 硬拒，超限帧会以 1009 断开整条连接。
+      // 丢弃并记录，比让 sessions-snapshot 之类的聚合消息反复杀连接更安全。
+      console.warn(
+        `[remote] dropped oversized ${message.type} frame (${bytes} bytes)`
+      )
+      return false
+    }
     this.socket.send(payload)
-    this.recordTraffic('up', Buffer.byteLength(payload))
+    this.recordTraffic('up', bytes)
+    return true
   }
 
   private startLatencyProbes(socket: WebSocket): void {

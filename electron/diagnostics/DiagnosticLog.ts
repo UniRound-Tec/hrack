@@ -1,11 +1,9 @@
 import type { WebContents } from 'electron'
+import { appendFile, rename, rm } from 'node:fs/promises'
 import {
-  appendFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
-  renameSync,
-  rmSync,
   statSync
 } from 'node:fs'
 import { dirname } from 'node:path'
@@ -99,6 +97,9 @@ export class DiagnosticLog {
   private fileBytes = 0
   private consoleInstalled = false
   private readonly capturedWebContents = new WeakSet<WebContents>()
+  /** 串行化异步写盘：append 不再逐条阻塞主线程，顺序与轮转仍确定。 */
+  private writeQueue: Promise<void> = Promise.resolve()
+  private writeEpoch = 0
 
   constructor(private readonly logPath: string) {
     this.archivePath = `${logPath}.1`
@@ -190,18 +191,24 @@ export class DiagnosticLog {
     }
   }
 
-  clear(): void {
+  clear(): Promise<void> {
     this.entries.length = 0
     this.droppedEntries = 0
-    this.fileBytes = 0
-    for (const path of [this.logPath, this.archivePath]) {
-      try {
-        rmSync(path, { force: true })
-      } catch {
-        // A locked diagnostics file must not break Settings.
+    this.writeEpoch += 1
+    // 删除也进入同一队列：已开始的旧写入先完成，之后的日志在删除后写入。
+    this.writeQueue = this.writeQueue.then(async () => {
+      for (const path of [this.logPath, this.archivePath]) {
+        try {
+          await rm(path, { force: true })
+        } catch {
+          // A locked diagnostics file must not break Settings.
+        }
       }
-    }
+      this.fileBytes = 0
+    })
+    const cleared = this.writeQueue
     this.publish({ kind: 'clear' })
+    return cleared
   }
 
   onChanged(listener: (change: DiagnosticLogChange) => void): () => void {
@@ -246,16 +253,27 @@ export class DiagnosticLog {
 
   private persist(entry: DiagnosticLogEntry): void {
     const line = `${JSON.stringify(entry)}\n`
+    const epoch = this.writeEpoch
+    this.writeQueue = this.writeQueue
+      .then(() => this.appendLine(line, epoch))
+      .catch(() => {
+        // Logging must never take down the application.
+      })
+  }
+
+  private async appendLine(line: string, epoch: number): Promise<void> {
+    if (epoch !== this.writeEpoch) return
     try {
       if (this.fileBytes + Buffer.byteLength(line) > FILE_SIZE_LIMIT) {
-        rmSync(this.archivePath, { force: true })
-        if (existsSync(this.logPath)) renameSync(this.logPath, this.archivePath)
+        await rm(this.archivePath, { force: true })
+        if (existsSync(this.logPath)) await rename(this.logPath, this.archivePath)
         this.fileBytes = 0
       }
-      appendFileSync(this.logPath, line, 'utf8')
+      await appendFile(this.logPath, line, 'utf8')
       this.fileBytes += Buffer.byteLength(line)
     } catch {
-      // Logging must never take down the application.
+      // 轮转/写入失败（Windows 上目标文件被占用最常见）只丢当前行，
+      // 不阻塞写队列，也不让日志系统拖垮应用。
     }
   }
 

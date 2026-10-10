@@ -2,6 +2,7 @@ const { existsSync, readdirSync } = require('node:fs')
 const { join } = require('node:path')
 const { listPackage } = require('@electron/asar')
 const assertPackagedTrayAssets = require('./assert-packaged-tray-assets.cjs')
+const { preparePackagedConpty } = require('./prepare-conpty.cjs')
 
 function packagedResourcesDir(context) {
   if (context.electronPlatformName !== 'darwin') {
@@ -51,6 +52,7 @@ function assertNoDevelopmentTrees(context) {
 }
 
 exports.default = async function assertPackagedResources(context) {
+  preparePackagedConpty(context)
   await assertPackagedTrayAssets.default(context)
   assertNoBundledDshRuntime(context)
   assertNoDevelopmentTrees(context)

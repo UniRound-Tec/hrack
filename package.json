@@ -1,6 +1,6 @@
 {
   "name": "hrack",
-  "version": "0.4.5",
+  "version": "0.4.10",
   "description": "Harness Rack for AI CLI sessions",
   "private": true,
   "main": "out/main/index.js",
@@ -17,7 +17,7 @@
     "typecheck:node": "tsc -p tsconfig.node.json --noEmit",
     "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "postinstall": "electron-rebuild -f -w node-pty",
+    "postinstall": "electron-rebuild -f -w node-pty && node scripts/prepare-conpty.cjs",
     "build:win": "npm run release:win",
     "build:mac": "npm run release:mac",
     "build:linux": "npm run release:linux",

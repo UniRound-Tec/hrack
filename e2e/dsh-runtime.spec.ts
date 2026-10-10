@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { join, resolve } from 'node:path'
 import {
   DSH_CLI_DEFINITION_ID,
@@ -17,6 +18,13 @@ import {
   selectDshRuntimeCandidates
 } from '../electron/dsh-host/DshRuntime'
 import { parseDshBootManifestEntries } from '../electron/dsh-host/RemoteDshPreflight'
+import {
+  dshAuthenticatedPageUrl,
+  exchangeDshLaunchToken,
+  parseDshLaunchToken,
+  parseDshSessionCookie,
+  redactDshLaunchToken
+} from '../electron/dsh-host/DshBrowserAuth'
 import type { DshRuntimeCandidate } from '../shared/dsh-ipc'
 import {
   resolveHrackUserDataDir,
@@ -70,6 +78,87 @@ test('dsh web suppresses the OS browser from 0.1.0-rc.7 onward', () => {
   ])
   expect(dshRejectedNoOpenOption("error: unknown option '--no-open'")).toBe(true)
   expect(dshRejectedNoOpenOption('dsh web: http://127.0.0.1:8080')).toBe(false)
+})
+
+test('DSH browser auth parses the process launch token and session cookie', () => {
+  const token = 'abcdefghijklmnopqrstuvwxyz0123456789-_ABC'
+  expect(parseDshLaunchToken(`dsh web: http://127.0.0.1:51112/?token=${token}`)).toBe(token)
+  expect(
+    parseDshLaunchToken(
+      `dsh web: http://127.0.0.1:51112/?token=${token} (LAN: http://192.168.1.8:51112/?token=${token})`
+    )
+  ).toBe(token)
+  expect(
+    parseDshLaunchToken(
+      `dsh web: http://127.0.0.1:1/?token=oldtokenoldtokenold1\ndsh web: http://127.0.0.1:2/?token=${token}`
+    )
+  ).toBe(token)
+  expect(parseDshLaunchToken('dsh web: http://127.0.0.1:8080')).toBeNull()
+  expect(parseDshLaunchToken('unrelated token=abcdefghijklmnopqrstuvwxyz0123')).toBeNull()
+
+  const cookie = 'dsh-auth-abc=v1.body.sig'
+  expect(
+    parseDshSessionCookie(
+      `${cookie}; Max-Age=2592000; Path=/; HttpOnly; SameSite=Strict`
+    )
+  ).toBe(cookie)
+  expect(parseDshSessionCookie([
+    'other=1',
+    `${cookie}; Path=/`
+  ])).toBe(cookie)
+  expect(parseDshSessionCookie('session=abc')).toBeNull()
+  expect(dshAuthenticatedPageUrl('http://127.0.0.1:51112', token)).toBe(
+    `http://127.0.0.1:51112/?token=${token}`
+  )
+  expect(dshAuthenticatedPageUrl('http://127.0.0.1:51112')).toBe(
+    'http://127.0.0.1:51112/'
+  )
+  expect(
+    redactDshLaunchToken(`dsh web: http://127.0.0.1:51112/?token=${token}`)
+  ).toBe('dsh web: http://127.0.0.1:51112/?token=[redacted]')
+})
+
+test('DSH browser auth exchanges the launch token for an authority-bound cookie', async () => {
+  const token = 'abcdefghijklmnopqrstuvwxyz0123456789-_ABC'
+  const cookie = 'dsh-auth-xyz=v1.body.sig'
+  const server = createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+    if (
+      req.method === 'GET' &&
+      url.pathname === '/' &&
+      url.searchParams.get('token') === token &&
+      req.headers.host
+    ) {
+      res.writeHead(303, {
+        location: '/',
+        'set-cookie': `${cookie}; Max-Age=2592000; Path=/; HttpOnly; SameSite=Strict`
+      })
+      res.end()
+      return
+    }
+    res.writeHead(401, { 'content-type': 'text/plain' })
+    res.end('dsh web authentication required\n')
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    server.close()
+    throw new Error('failed to bind the token-exchange fixture')
+  }
+  const baseUrl = `http://127.0.0.1:${address.port}`
+  try {
+    await expect(exchangeDshLaunchToken(baseUrl, 'short-but-wrong-token-xx')).rejects.toThrow(
+      /HTTP 401/
+    )
+    await expect(exchangeDshLaunchToken(baseUrl, token)).resolves.toBe(cookie)
+    await expect(
+      exchangeDshLaunchToken(baseUrl, token, 'dsh.example.test')
+    ).resolves.toBe(cookie)
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => error ? reject(error) : resolve())
+    )
+  }
 })
 
 test('DSH boot manifest parsing follows the capability across runtime spellings', () => {
@@ -434,6 +523,88 @@ test('a real installed Windows DSH captures the official Electron surface', asyn
     })
   } finally {
     await appState.app.close()
+  }
+})
+
+test('installed DSH session creation, selection and titles reach the desktop sidebar', async () => {
+  const executable = process.env['HRACK_E2E_REAL_DSH']
+  test.skip(!executable, 'Set HRACK_E2E_REAL_DSH to an installed DSH 0.1.5+ executable')
+  test.setTimeout(180_000)
+  const { app, window, userDataDir } = await launchApp({
+    createDefaultTerminal: false,
+    env: { HRACK_E2E_DSH_INSTALLATION: executable! }
+  })
+  try {
+    await window.getByTestId('home-quick-dsh').click()
+    await expect(window.getByTestId('dsh-page')).toHaveAttribute(
+      'data-dsh-surface-phase', 'ready', { timeout: 120_000 }
+    )
+    const status = await window.evaluate(() => window.dshApi.getStatus())
+    const official = async <T>(script: string): Promise<T> => app.evaluate(
+      async ({ webContents }, { baseUrl, script }) => {
+        const page = webContents.getAllWebContents().find((item) =>
+          item.getURL().startsWith(baseUrl!)
+        )
+        if (!page) throw new Error('official DSH page is missing')
+        return page.executeJavaScript(script, true)
+      }, { baseUrl: status.baseUrl, script }
+    )
+    const slotId = await window.getByTestId('dsh-page').getAttribute('data-dsh-slot')
+    const active = () => window.evaluate(async () =>
+      (await window.agentApi.listActive()).filter((item) => item.adapterId === 'dsh')
+    )
+    // Use the installed official service and its real host, in an isolated home.
+    const create = () => official<string>(`(async () => {
+      const sessions = globalThis.__HRACK_DSH_EMBED__.ctx.get('sessions');
+      const id = await sessions.create({ cwd: ${JSON.stringify(userDataDir)} });
+      sessions.open(id);
+      return id;
+    })()`)
+    const first = await create()
+    await expect.poll(active, { timeout: 10_000 }).toContainEqual(
+      expect.objectContaining({ sessionId: slotId, adapterSessionId: first })
+    )
+    await expect(window.locator(`[data-testid="sidebar-session-item"][data-session-id="${slotId}"]`)).toBeVisible()
+
+    const second = await create()
+    await expect.poll(active).toContainEqual(
+      expect.objectContaining({ sessionId: slotId, adapterSessionId: second })
+    )
+    await official(`globalThis.__HRACK_DSH_EMBED__.ctx.get('sessions').open(${JSON.stringify(first)})`)
+    await expect.poll(active).toContainEqual(
+      expect.objectContaining({ sessionId: slotId, adapterSessionId: first })
+    )
+    await expect(window.getByTestId('dsh-page')).toHaveAttribute('data-dsh-session', first)
+
+    await official(`(async () => {
+      const result = await globalThis.__HRACK_DSH_EMBED__.ctx.get('remote').session.rename({
+        sessionId: ${JSON.stringify(first)}, title: 'DSH sidebar regression'
+      });
+      if (!result.ok) throw new Error(result.error.message);
+    })()`)
+    await expect(window.locator(`[data-testid="sidebar-session-item"][data-session-id="${slotId}"]`)).toContainText('DSH sidebar regression')
+
+    await window.evaluate(() => {
+      (window as unknown as { __hrackDebugShell: { navigate(page: string): void } })
+        .__hrackDebugShell.navigate('home')
+    })
+    await window.getByTestId('home-quick-dsh').click()
+    await expect(window.getByTestId('dsh-page')).not.toHaveAttribute('data-dsh-slot', slotId!)
+    await expect(window.getByTestId('dsh-page')).toHaveAttribute('data-dsh-surface-phase', 'ready')
+    const secondSlot = await window.getByTestId('dsh-page').getAttribute('data-dsh-slot')
+    const third = await create()
+    await expect.poll(active).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sessionId: slotId, adapterSessionId: first }),
+      expect.objectContaining({ sessionId: secondSlot, adapterSessionId: third })
+    ]))
+    await window.locator(`[data-testid="sidebar-session-item"][data-session-id="${slotId}"]`).click()
+    await expect.poll(() => official<string>(
+      'globalThis.__HRACK_DSH_EMBED__.ctx.get("sessions").list.getSnapshot().current'
+    )).toBe(first)
+    await expect(window.getByTestId('dsh-page')).toHaveAttribute('data-dsh-surface-phase', 'ready')
+    await window.screenshot({ path: '.dev-shots/dsh-session-sync-fixed.png' })
+  } finally {
+    await app.close()
   }
 })
 

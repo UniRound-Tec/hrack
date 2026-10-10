@@ -69,6 +69,15 @@ function validRuntimePath(runtime: CliRuntime, value: string): boolean {
     return false
   }
   if (runtime.kind === 'wsl') return posix.isAbsolute(value)
+  if (
+    runtime.kind === 'host' &&
+    runtime.platform === 'windows' &&
+    win32.normalize(value).startsWith('\\\\')
+  ) {
+    // UNC（\\server\share）与设备路径（\\.\、\\?\）会触发 SMB 认证与内网
+    // 探测，远程浏览围栏不放行。
+    return false
+  }
   return runtimePath(runtime).isAbsolute(value)
 }
 
@@ -203,8 +212,10 @@ async function listDirectory(
           ? 'directory'
           : 'file'
     })
-    if (entries.length > MAX_DIRECTORY_ENTRIES) {
-      throw new RemoteWorkspaceError('too-many-entries')
+    if (entries.length >= MAX_DIRECTORY_ENTRIES) {
+      // 超限目录在此截断而不是整体失败：抛错会让 >5000 条目的目录完全
+      // 不可列出。分页仍基于已收集条目，更深的条目不可见。
+      break
     }
   }
   entries.sort((left, right) => {
