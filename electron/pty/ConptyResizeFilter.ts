@@ -61,6 +61,8 @@ export class ConptyResizeFilter {
   private captureCompletesExpected = false
   private candidate = ''
   private capturing = false
+  /** 当前预期下已完成但尺寸不匹配的重画次数；连续多次后放弃本次预期。 */
+  private mismatchedCompletions = 0
 
   constructor(options: ConptyResizeFilterOptions = {}) {
     this.maxCandidateChars =
@@ -73,6 +75,7 @@ export class ConptyResizeFilter {
     this.expectedGeneration = generation
     this.expectedCols = cols
     this.expectedRows = rows
+    this.mismatchedCompletions = 0
     return generation
   }
 
@@ -140,6 +143,15 @@ export class ConptyResizeFilter {
         this.expectedGeneration === this.captureGeneration
       ) {
         this.clearExpected()
+        this.mismatchedCompletions = 0
+      } else if (
+        !this.captureCompletesExpected &&
+        this.expectedGeneration === this.captureGeneration
+      ) {
+        // ConPTY 实际重画尺寸与预期不符：匹配条件永远无法满足，继续 armed
+        // 只会持续吞掉后续重画（画面停滞）。给少量重试后放弃本次预期。
+        this.mismatchedCompletions += 1
+        if (this.mismatchedCompletions >= 3) this.clearExpected()
       }
       this.capturing = false
       this.captureGeneration = null

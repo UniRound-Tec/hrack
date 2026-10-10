@@ -49,6 +49,8 @@ interface WsStream {
   kind: 'ws'
   id: number
   socket: WebSocket
+  /** 已向网关发送 ws-open-ok；此后本地错误必须走 ws-close 而非 ws-open-reject。 */
+  openAnnounced: boolean
   flow: FlowState
 }
 
@@ -97,6 +99,9 @@ function isSafeRelativePath(path: string): boolean {
     } catch {
       return false
     }
+    // 解码后出现反斜杠只可能来自 %5c 编码。Windows 分隔符必须在围栏内
+    // 拒绝：..%5c..%5c 解码成 ..\ 后不会被下面的 '/' 切分检查捕获。
+    if (decoded.includes('\\')) return false
     if (decoded.split('/').some((segment) => segment === '.' || segment === '..')) return false
   }
   return true
@@ -120,7 +125,11 @@ export function isAllowedDshHttpRoute(method: string, path: string): boolean {
 export function isAllowedDshWebSocketRoute(path: string): boolean {
   if (!isSafeRelativePath(path)) return false
   const pathname = new URL(path, 'https://dsh.invalid').pathname
-  return pathname === '/api/events.mux' || pathname === '/api/events.host'
+  return (
+    pathname === '/api/events.mux' ||
+    pathname === '/api/events.host' ||
+    pathname === '/api/remote.mux'
+  )
 }
 
 function requestHeaders(
@@ -187,7 +196,9 @@ export class DshTunnelClient {
   private drainTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(
-    private readonly host: Pick<DshHostManager, 'getStatus'>,
+    private readonly host: Pick<DshHostManager, 'getStatus'> & {
+      publicSessionCookie?: () => string | undefined
+    },
     private readonly onState?: (state: DshTunnelClientState) => void
   ) {}
 
@@ -368,6 +379,8 @@ export class DshTunnelClient {
       this.sendControl({ type: 'http-abort', streamId: message.streamId, reason: 'invalid-origin' })
       return
     }
+    const sessionCookie = this.host.publicSessionCookie?.()
+    if (sessionCookie) headers.cookie = sessionCookie
     const local = new URL(status.baseUrl)
     const req = request({
       hostname: local.hostname,
@@ -471,6 +484,8 @@ export class DshTunnelClient {
       this.sendControl({ type: 'ws-open-reject', streamId: message.streamId, status: 403 })
       return
     }
+    const sessionCookie = this.host.publicSessionCookie?.()
+    if (sessionCookie) headers.cookie = sessionCookie
     const local = new URL(status.baseUrl)
     const socket = new WebSocket(`ws://${local.host}${message.path}`, {
       origin: lease.publicOrigin,
@@ -479,12 +494,13 @@ export class DshTunnelClient {
       perMessageDeflate: false
     })
     const stream: WsStream = {
-      kind: 'ws', id: message.streamId, socket,
+      kind: 'ws', id: message.streamId, socket, openAnnounced: false,
       flow: { credit: DSH_TUNNEL_LIMITS.initialCreditBytes, sequence: 0, queue: [], queuedBytes: 0, endPending: false }
     }
     this.streams.set(stream.id, stream)
     socket.once('open', () => {
       if (this.streams.get(stream.id) !== stream) return
+      stream.openAnnounced = true
       this.sendControl({ type: 'ws-open-ok', streamId: stream.id, ...(socket.protocol ? { protocol: socket.protocol } : {}) })
     })
     socket.on('message', (data, isBinary) => {
@@ -502,6 +518,9 @@ export class DshTunnelClient {
     })
     socket.once('error', () => {
       if (this.streams.get(stream.id) !== stream) return
+      // 网关对已 opened 的流收到 ws-open-reject 会按协议违规关闭整条隧道。
+      // open 之后本地 WS 的错误交给 close 处理器以 ws-close 通知网关即可。
+      if (stream.openAnnounced) return
       this.sendControl({ type: 'ws-open-reject', streamId: stream.id, status: 502 })
       this.dropStream(stream.id)
     })

@@ -152,6 +152,7 @@ test('Desktop route guard is a DSH allowlist, not a loopback/open proxy', () => 
   }
   expect(isAllowedDshWebSocketRoute('/api/events.host')).toBe(true)
   expect(isAllowedDshWebSocketRoute('/api/events.mux')).toBe(true)
+  expect(isAllowedDshWebSocketRoute('/api/remote.mux')).toBe(true)
   expect(isAllowedDshWebSocketRoute('/api/arbitrary')).toBe(false)
 })
 

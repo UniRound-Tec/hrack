@@ -144,8 +144,6 @@ export function runtimeRemotePtyHost(
         return { ok: false, reason: 'busy' }
       }
       let released = false
-      let ready = false
-      let exitedDuringOpen = false
       let unsubscribeOutput = (): void => {}
       let unsubscribeCursorSync = (): void => {}
       let unsubscribeExit = (): void => {}
@@ -185,16 +183,12 @@ export function runtimeRemotePtyHost(
         }
       })
       unsubscribeCursorSync = manager.onCursorSync(ptyId, observer.onCursorSync)
+      // PTYManager 的 onExit 缓存回放走 queueMicrotask，最早也要到本次同步
+      // open() 返回之后才可能触发，因此不存在“订阅即退出”的同步竞态。
       unsubscribeExit = manager.onExit(ptyId, (payload) => {
-        if (!ready) {
-          exitedDuringOpen = true
-          release()
-          return
-        }
         observer.onExit(payload)
         release()
       })
-      if (exitedDuringOpen) return { ok: false, reason: 'exited' }
       const target: RemoteDrivenPty = {
         sessionId: input.sessionId,
         terminalId: record.terminalId,
@@ -205,7 +199,6 @@ export function runtimeRemotePtyHost(
         acknowledge: (bytes) => outputQueue.ack(bytes),
         release
       }
-      ready = true
       return { ok: true, target }
     }
   }

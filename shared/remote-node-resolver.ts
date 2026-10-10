@@ -34,7 +34,9 @@ function canonicalTransportOrigin(value: unknown): string | null {
     ) {
       return null
     }
-    const loopback = ['localhost', '127.0.0.1', '::1'].includes(url.hostname)
+    // WHATWG URL 对 IPv6 字面量保留方括号（'[::1]'），先剥掉再判定回环。
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+    const loopback = ['localhost', '127.0.0.1', '::1'].includes(hostname)
     if (url.protocol !== 'https:' && !loopback) return null
     return url.origin
   } catch {

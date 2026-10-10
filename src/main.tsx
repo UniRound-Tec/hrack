@@ -43,15 +43,18 @@ async function bootstrap(): Promise<void> {
   const applySelectedUiTheme = (themeId: string): void => {
     const theme = themeRegistry.get(themeId) ?? builtInLightTheme
     applyUiTheme(theme)
+    const language = useSettingsStore.getState().language
     // 首帧底色进主进程偏好文件：下次启动建窗前即可用，消除深色主题启动白闪。
     void window.appApi.setMainPrefs({
       backgroundColor: theme.colors['bg.app'],
       uiThemeId: theme.id,
+      // Keep the startup broadcast from replaying a stale main-process language.
+      language,
       floatingAppearance: {
         themeId: theme.id,
         themeType: theme.type,
         colors: theme.colors,
-        locale: useSettingsStore.getState().language
+        locale: language
       }
     })
   }
